@@ -1,0 +1,26 @@
+name: Deploy to Home Server
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Deploy via SSH
+      uses: appleboy/ssh-action@master
+      with:
+        host: ${{ secrets.HOST }}
+        username: ${{ secrets.USERNAME }}
+        key: ${{ secrets.KEY }}
+        port: ${{ secrets.PORT }}
+        script: |
+          cd /path/to/your/project
+          git pull
+          # Create .env file if it doesn't exist or update it
+          echo "DOMAIN_NAME=${{ secrets.DOMAIN_NAME }}" > .env
+          echo "EMAIL=${{ secrets.EMAIL }}" >> .env
+          
+          docker compose down
+          docker compose up -d --build

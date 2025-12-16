@@ -1,0 +1,43 @@
+services:
+  app:
+    build: .
+    expose:
+      - "3000"
+    environment:
+      - DATABASE_URL=postgres://user:password@db:5432/boardgameclub
+      - ORIGIN=https://${DOMAIN_NAME:-localhost}
+    depends_on:
+      - db
+    restart: always
+
+  db:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_USER=user
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=boardgameclub
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    expose:
+      - "5432"
+    restart: always
+
+  caddy:
+    image: caddy:2-alpine
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    environment:
+      - DOMAIN_NAME=${DOMAIN_NAME:-localhost}
+    depends_on:
+      - app
+
+volumes:
+  db-data:
+  caddy_data:
+  caddy_config:
