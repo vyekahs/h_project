@@ -31,3 +31,25 @@ CREATE TABLE IF NOT EXISTS session_participants (
     session_id INTEGER REFERENCES game_sessions(id) ON DELETE CASCADE,
     attendee_id INTEGER REFERENCES attendees(id) ON DELETE CASCADE
 );
+
+-- Notices table
+CREATE TABLE IF NOT EXISTS notices (
+    id SERIAL PRIMARY KEY,
+    content TEXT NOT NULL,
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- System Settings table
+CREATE TABLE IF NOT EXISTS system_settings (
+    key VARCHAR(50) PRIMARY KEY,
+    value TEXT NOT NULL
+);
+
+-- Visits table (History of visits)
+CREATE TABLE IF NOT EXISTS visits (
+    id SERIAL PRIMARY KEY,
+    attendee_id INTEGER REFERENCES attendees(id) ON DELETE CASCADE,
+    arrival_time TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    departure_time TIMESTAMP WITH TIME ZONE
+);
