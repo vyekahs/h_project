@@ -5,7 +5,8 @@ services:
       - "3000:3000"
     environment:
       - DATABASE_URL=postgres://user:password@db:5432/boardgameclub
-      - ORIGIN=${ORIGIN:-http://localhost:3000}
+      - ORIGIN=${ORIGIN:-http://damonpyo.mooo.com:8989}
+      - BODY_SIZE_LIMIT=Infinity
     depends_on:
       - db
     restart: always
@@ -26,8 +27,8 @@ services:
     image: caddy:2-alpine
     restart: always
     ports:
-      - "80:80"
-      - "443:443"
+      - "8989:80"
+      # - "443:443" # HTTPS disabled for custom port
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile
       - caddy_data:/data
