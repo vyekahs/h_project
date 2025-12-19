@@ -29,5 +29,5 @@ CREATE TABLE IF NOT EXISTS game_sessions (
 CREATE TABLE IF NOT EXISTS session_participants (
     id SERIAL PRIMARY KEY,
     session_id INTEGER REFERENCES game_sessions(id) ON DELETE CASCADE,
-    player_name VARCHAR(50) NOT NULL -- Just the name entered by Admin
+    attendee_id INTEGER REFERENCES attendees(id) ON DELETE CASCADE
 );

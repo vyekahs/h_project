@@ -8,29 +8,26 @@ export const load: PageServerLoad = async () => {
 
     const attendeesResult = await query(`
         SELECT a.id, a.name, a.arrival_time, a.status,
-               MAX(gs.id) as game_id,
-               MAX(gs.game_name) as game_name,
-               BOOL_OR(gs.id IS NOT NULL) as is_playing
+               MAX(g.id) as game_id,
+               MAX(g.game_name) as game_name,
+               BOOL_OR(g.id IS NOT NULL) as is_playing
         FROM attendees a
-        LEFT JOIN session_participants sp ON a.name = sp.player_name
-        LEFT JOIN game_sessions gs ON sp.session_id = gs.id AND gs.status = 'playing'
+        LEFT JOIN session_participants sp ON a.id = sp.attendee_id
+        LEFT JOIN game_sessions g ON sp.session_id = g.id AND g.status = 'playing'
         WHERE a.status = 'present'
         GROUP BY a.id
-        ORDER BY is_playing ASC, a.arrival_time DESC
+        ORDER BY is_playing, a.arrival_time DESC
     `);
     const historyResult = await query(`
-        SELECT name
+        SELECT DISTINCT ON (name) id, name
         FROM attendees
-        GROUP BY name
-        ORDER BY
-            COUNT(*) FILTER (WHERE arrival_time >= NOW() - INTERVAL '3 months') DESC,
-            COUNT(*) DESC,
-            name ASC
+        ORDER BY name, id DESC
     `);
     const gamesResult = await query(`
-        SELECT gs.*, json_agg(sp.player_name) as players
+        SELECT gs.*, json_agg(a.name) as players
         FROM game_sessions gs
         LEFT JOIN session_participants sp ON gs.id = sp.session_id
+        LEFT JOIN attendees a ON sp.attendee_id = a.id
         WHERE gs.status = $1
         GROUP BY gs.id
         ORDER BY gs.start_time DESC
@@ -45,11 +42,10 @@ export const load: PageServerLoad = async () => {
     `);
 
     const noticeResult = await query('SELECT content FROM notices WHERE is_active = true ORDER BY created_at DESC LIMIT 1');
-
     const presentNames = new Set(attendeesResult.rows.map((a: any) => a.name));
     const savedMembers = historyResult.rows
-        .map((r: any) => r.name)
-        .filter((name: string) => !presentNames.has(name));
+        .filter((r: any) => !presentNames.has(r.name))
+        .map((r: any) => ({ id: r.id, name: r.name }));
 
     return {
         attendees: attendeesResult.rows,
@@ -63,38 +59,75 @@ export const load: PageServerLoad = async () => {
 export const actions: Actions = {
     addAttendee: async ({ request }) => {
         const data = await request.formData();
-        const name = data.get('name')?.toString();
+        const name = data.get('name')?.toString().trim();
 
         if (!name) {
-            return fail(400, { missing: true });
+            return fail(400, { error: '이름을 입력해주세요.' });
         }
 
-        try {
-            await query('INSERT INTO attendees (name) VALUES ($1)', [name]);
-        } catch (error) {
-            return fail(500, { error: 'Failed to add attendee' });
+        // Ensure is_open is true
+        await query("INSERT INTO system_settings (key, value) VALUES ('is_open', 'true') ON CONFLICT (key) DO UPDATE SET value = 'true'");
+
+        // 1. Check if attendee exists (by name)
+        const existing = await query('SELECT * FROM attendees WHERE name = $1', [name]);
+
+        if (existing.rows.length > 0) {
+            const attendee = existing.rows[0];
+            
+            // Check if already present
+            if (attendee.status === 'present') {
+                return fail(400, { error: '이미 참여 중인 인원입니다.' });
+            }
+
+            // Re-entry: Update status and Add new visit
+            await query('BEGIN');
+            try {
+                await query('UPDATE attendees SET status = $1, arrival_time = NOW(), updated_at = NOW() WHERE id = $2', ['present', attendee.id]);
+                await query('INSERT INTO visits (attendee_id, arrival_time) VALUES ($1, NOW())', [attendee.id]);
+                await query('COMMIT');
+            } catch (e) {
+                await query('ROLLBACK');
+                throw e;
+            }
+        } else {
+            // New Entry: Create attendee and Add visit
+            await query('BEGIN');
+            try {
+                const result = await query('INSERT INTO attendees (name, status, arrival_time) VALUES ($1, $2, NOW()) RETURNING id', [name, 'present']);
+                const newId = result.rows[0].id;
+                await query('INSERT INTO visits (attendee_id, arrival_time) VALUES ($1, NOW())', [newId]);
+                await query('COMMIT');
+            } catch (e) {
+                await query('ROLLBACK');
+                throw e;
+            }
         }
     },
+
     removeAttendee: async ({ request }) => {
         const data = await request.formData();
-        const id = data.get('id')?.toString();
+        const id = data.get('id');
         const endGame = data.get('endGame') === 'true';
-        const gameId = data.get('gameId')?.toString();
+        const gameId = data.get('gameId');
 
-        if (!id) {
-            return fail(400, { missing: true });
-        }
+        if (!id) return fail(400, { error: 'Invalid ID' });
 
+        await query('BEGIN');
         try {
-            await query('BEGIN');
-            await query('UPDATE attendees SET status = $1 WHERE id = $2', ['left', id]);
-            
+            // 1. Update Attendee Status
+            await query('UPDATE attendees SET status = $1, updated_at = NOW() WHERE id = $2', ['left', id]);
+
+            // 2. Close current visit
+            await query('UPDATE visits SET departure_time = NOW() WHERE attendee_id = $1 AND departure_time IS NULL', [id]);
+
+            // 3. End Game if requested
+            // 3. End Game if requested
             if (endGame && gameId) {
-                await query('UPDATE game_sessions SET status = $1 WHERE id = $2', ['finished', gameId]);
+                await query('UPDATE game_sessions SET status = $1, end_time = NOW() WHERE id = $2', ['finished', gameId]);
             }
-            
+
             await query('COMMIT');
-        } catch (error) {
+        } catch (e) {
             await query('ROLLBACK');
             return fail(500, { error: 'Failed to remove attendee' });
         }
@@ -103,9 +136,9 @@ export const actions: Actions = {
         const data = await request.formData();
         const gameName = data.get('gameName')?.toString();
         const duration = parseInt(data.get('duration')?.toString() || '0');
-        const players = data.getAll('players').map(p => p.toString());
+        const playerIds = data.getAll('players').map(p => p.toString());
 
-        if (!gameName || duration <= 0 || players.length === 0) {
+        if (!gameName || duration <= 0 || playerIds.length === 0) {
             return fail(400, { missing: true });
         }
 
@@ -114,15 +147,16 @@ export const actions: Actions = {
             
             // Check if any player is already playing
             const playingCheck = await query(`
-                SELECT sp.player_name 
+                SELECT a.name 
                 FROM session_participants sp
                 JOIN game_sessions gs ON sp.session_id = gs.id
-                WHERE gs.status = 'playing' AND sp.player_name = ANY($1)
-            `, [players]);
+                JOIN attendees a ON sp.attendee_id = a.id
+                WHERE gs.status = 'playing' AND sp.attendee_id = ANY($1)
+            `, [playerIds]);
 
             if (playingCheck.rows.length > 0) {
                 await query('ROLLBACK');
-                const busyPlayers = playingCheck.rows.map((r: any) => r.player_name).join(', ');
+                const busyPlayers = playingCheck.rows.map((r: any) => r.name).join(', ');
                 return fail(400, { error: `다음 인원은 이미 게임 중입니다: ${busyPlayers}` });
             }
 
@@ -132,8 +166,8 @@ export const actions: Actions = {
             );
             const gameId = result.rows[0].id;
 
-            for (const player of players) {
-                await query('INSERT INTO session_participants (session_id, player_name) VALUES ($1, $2)', [gameId, player]);
+            for (const playerId of playerIds) {
+                await query('INSERT INTO session_participants (session_id, attendee_id) VALUES ($1, $2)', [gameId, playerId]);
             }
             await query('COMMIT');
         } catch (error) {
@@ -196,6 +230,49 @@ export const actions: Actions = {
             );
         } catch (error) {
             return fail(500, { error: 'Failed to extend game' });
+        }
+    },
+    updateSettings: async ({ request }) => {
+        const data = await request.formData();
+        const weekday = data.get('closing_time_weekday')?.toString();
+        const weekend = data.get('closing_time_weekend')?.toString();
+        const weekendDays = data.getAll('weekend_days').join(',');
+
+        if (!weekday || !weekend) {
+            return fail(400, { missing: true });
+        }
+
+        try {
+            await query('BEGIN');
+            await query('INSERT INTO system_settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = $2', ['closing_time_weekday', weekday]);
+            await query('INSERT INTO system_settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = $2', ['closing_time_weekend', weekend]);
+            await query('INSERT INTO system_settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = $2', ['weekend_days', weekendDays]);
+            await query('COMMIT');
+        } catch (error) {
+            await query('ROLLBACK');
+            return fail(500, { error: 'Failed to update settings' });
+        }
+    },
+    closeDay: async () => {
+        try {
+            await query('BEGIN');
+            // Checkout all active visits
+            await query('UPDATE visits SET departure_time = NOW() WHERE departure_time IS NULL');
+            // End all active games
+            await query('UPDATE game_sessions SET end_time = NOW() WHERE end_time > NOW()');
+            // Set is_open to false
+            await query("INSERT INTO system_settings (key, value) VALUES ('is_open', 'false') ON CONFLICT (key) DO UPDATE SET value = 'false'");
+            await query('COMMIT');
+        } catch (error) {
+            await query('ROLLBACK');
+            return fail(500, { error: 'Failed to close day' });
+        }
+    },
+    openDay: async () => {
+        try {
+            await query("INSERT INTO system_settings (key, value) VALUES ('is_open', 'true') ON CONFLICT (key) DO UPDATE SET value = 'true'");
+        } catch (error) {
+            return fail(500, { error: 'Failed to open day' });
         }
     }
 };

@@ -16,7 +16,7 @@ jobs:
         key: ${{ secrets.KEY }}
         port: ${{ secrets.PORT }}
         script: |
-          cd /path/to/your/project
+          cd ~/boardgame-club
           git pull
           # Create .env file if it doesn't exist or update it
           echo "DOMAIN_NAME=${{ secrets.DOMAIN_NAME }}" > .env

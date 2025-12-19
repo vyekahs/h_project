@@ -8,6 +8,38 @@
     let selectedGameName = '';
     let selectedDuration = '';
 
+    // Alert Modal State
+    let alertVisible = false;
+    let alertMessage = '';
+
+    function showAlert(msg: string) {
+        alertMessage = msg;
+        alertVisible = true;
+    }
+
+    // Remove Confirm Modal State
+    let removeModalVisible = false;
+    let removeTarget: any = null;
+
+    function handleRemove(attendee: any) {
+        if (attendee.is_playing) {
+            removeTarget = attendee;
+            removeModalVisible = true;
+        } else {
+            // Instant remove for non-playing users
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.action = '?/removeAttendee';
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = 'id';
+            input.value = attendee.id;
+            form.appendChild(input);
+            document.body.appendChild(form);
+            form.submit();
+        }
+    }
+
     $: {
         const savedGame = data.savedGameNames.find((g: any) => g.game_name === selectedGameName);
         if (savedGame) {
@@ -23,132 +55,148 @@
         const mins = Math.floor(diff / 60000);
         return `${mins}분 남음`;
     }
+
+    function formatTime(dateString: string) {
+        return new Date(dateString).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+    }
 </script>
 
-<div class="container">
-    <div class="header">
-        <h1>관리자 대시보드</h1>
+<section>
+    <h2>📢 공지사항 관리</h2>
+    <div class="notice-manager">
+        {#if data.notice}
+            <div class="current-notice">
+                <strong>현재 공지:</strong> {data.notice}
+                <form method="POST" action="?/clearNotice" use:enhance style="display:inline; margin-left: 1rem;">
+                    <button type="submit" class="btn-delete">숨기기</button>
+                </form>
+            </div>
+        {/if}
+        <form method="POST" action="?/updateNotice" use:enhance class="notice-form">
+            <input type="text" name="content" placeholder="새 공지사항 입력" required />
+            <button type="submit">등록</button>
+        </form>
+    </div>
+</section>
+
+<section>
+    <h2>현재 참여 인원</h2>
+    <ul class="attendee-list">
+        {#each data.attendees as attendee}
+            <li>
+                <div class="attendee-info">
+                    <a href="/admin/attendees/{attendee.id}" class="attendee-link">{attendee.name}</a>
+                    <span class="arrival-time">{formatTime(attendee.arrival_time)} 입장</span>
+                </div>
+                <form method="POST" action="?/removeAttendee" use:enhance={({ cancel }) => {
+                    if (attendee.is_playing) {
+                        cancel(); // Stop default submission
+                        handleRemove(attendee); // Open modal
+                    }
+                }} style="display:inline;">
+                    <input type="hidden" name="id" value={attendee.id} />
+                    <button type="submit" class="btn-delete">퇴장</button>
+                </form>
+            </li>
+        {/each}
+    </ul>
+
+    <form method="POST" action="?/addAttendee" use:enhance={() => {
+        return async ({ result, update }) => {
+            if (result.type === 'failure') {
+                showAlert(result.data?.error || '오류가 발생했습니다.');
+            }
+            await update();
+        };
+    }} class="add-form">
+        <input type="text" name="name" placeholder="이름 입력" required />
+        <button type="submit">인원 추가</button>
+    </form>
+
+    {#if data.savedMembers.length > 0}
+        <div class="quick-add">
+            <h3>저장된 멤버 (클릭하여 추가)</h3>
+            <div class="member-chips">
+                {#each data.savedMembers as member}
+                    <div class="chip-container">
+                        <a href="/admin/attendees/{member.id}" class="chip-link">{member.name}</a>
+                        <form method="POST" action="?/addAttendee" use:enhance={() => {
+                            return async ({ result, update }) => {
+                                if (result.type === 'failure') {
+                                    showAlert(result.data?.error || '오류가 발생했습니다.');
+                                }
+                                await update();
+                            };
+                        }} style="display:inline;">
+                            <input type="hidden" name="name" value={member.name} />
+                            <button type="submit" class="chip-add" title="입장">+</button>
+                        </form>
+                    </div>
+                {/each}
+            </div>
+        </div>
+    {/if}
+</section>
+
+<section>
+    <div class="section-header">
+        <h2>진행 중인 게임</h2>
         <button class="btn-primary" on:click={() => {
             showModal = true;
             selectedGameName = '';
             selectedDuration = '';
         }}>+ 새 게임 시작</button>
     </div>
-
-    <section>
-        <h2>📢 공지사항 관리</h2>
-        <div class="notice-manager">
-            {#if data.notice}
-                <div class="current-notice">
-                    <strong>현재 공지:</strong> {data.notice}
-                    <form method="POST" action="?/clearNotice" use:enhance style="display:inline; margin-left: 1rem;">
-                        <button type="submit" class="btn-delete">숨기기</button>
+    <div class="games-grid">
+        {#each data.games as game}
+            <div class="game-card">
+                <h3>{game.game_name}</h3>
+                <p>참여자: {game.players.join(', ')}</p>
+                <p>종료 예정: {new Date(game.end_time).toLocaleTimeString()} <span class="time-remaining">({getTimeRemaining(game.end_time)})</span></p>
+                <div class="game-actions">
+                    <form method="POST" action="?/extendGame" use:enhance>
+                        <input type="hidden" name="id" value={game.id} />
+                        <input type="hidden" name="minutes" value="10" />
+                        <button type="submit" class="btn-extend">+10분</button>
                     </form>
-                </div>
-            {/if}
-            <form method="POST" action="?/updateNotice" use:enhance class="notice-form">
-                <input type="text" name="content" placeholder="새 공지사항 입력" required />
-                <button type="submit">등록</button>
-            </form>
-        </div>
-    </section>
-
-    <section>
-        <h2>현재 참여 인원</h2>
-        <ul class="attendee-list">
-            {#each data.attendees as attendee}
-                <li>
-                    {attendee.name}
-                    <form method="POST" action="?/removeAttendee" use:enhance={({ cancel, formData }) => {
-                        if (attendee.is_playing) {
-                            if (confirm('이 사용자는 현재 게임 중입니다. 게임도 함께 종료하시겠습니까?\n\n[확인]: 게임 종료 및 퇴장\n[취소]: 사용자만 퇴장')) {
-                                formData.append('endGame', 'true');
-                                formData.append('gameId', attendee.game_id);
-                            } else {
-                                if (!confirm('정말 퇴장시키겠습니까?')) {
-                                    return cancel();
-                                }
-                                if (confirm('참여 중인 게임도 함께 종료하시겠습니까?')) {
-                                    formData.append('endGame', 'true');
-                                    formData.append('gameId', attendee.game_id);
-                                }
-                            }
-                        }
-                    }} style="display:inline;">
-                        <input type="hidden" name="id" value={attendee.id} />
-                        <button type="submit" class="btn-delete">퇴장</button>
+                    <form method="POST" action="?/extendGame" use:enhance>
+                        <input type="hidden" name="id" value={game.id} />
+                        <input type="hidden" name="minutes" value="30" />
+                        <button type="submit" class="btn-extend">+30분</button>
                     </form>
-                </li>
-            {/each}
-        </ul>
-
-        <form method="POST" action="?/addAttendee" use:enhance class="add-form">
-            <input type="text" name="name" placeholder="이름 입력" required />
-            <button type="submit">인원 추가</button>
-        </form>
-
-        {#if data.savedMembers.length > 0}
-            <div class="quick-add">
-                <h3>저장된 멤버 (클릭하여 추가)</h3>
-                <div class="member-chips">
-                    {#each data.savedMembers as member}
-                        <form method="POST" action="?/addAttendee" use:enhance style="display:inline;">
-                            <input type="hidden" name="name" value={member} />
-                            <button type="submit" class="chip">{member}</button>
-                        </form>
-                    {/each}
+                    <form method="POST" action="?/endGame" use:enhance>
+                        <input type="hidden" name="id" value={game.id} />
+                        <button type="submit" class="btn-delete">게임 종료</button>
+                    </form>
                 </div>
             </div>
+        {/each}
+        {#if data.games.length === 0}
+            <p class="empty-state">진행 중인 게임이 없습니다.</p>
         {/if}
-    </section>
-
-    <section>
-        <h2>진행 중인 게임</h2>
-        <div class="games-grid">
-            {#each data.games as game}
-                <div class="game-card">
-                    <h3>{game.game_name}</h3>
-                    <p>참여자: {game.players.join(', ')}</p>
-                    <p>종료 예정: {new Date(game.end_time).toLocaleTimeString()} <span class="time-remaining">({getTimeRemaining(game.end_time)})</span></p>
-                    <div class="game-actions">
-                        <form method="POST" action="?/extendGame" use:enhance>
-                            <input type="hidden" name="id" value={game.id} />
-                            <input type="hidden" name="minutes" value="10" />
-                            <button type="submit" class="btn-extend">+10분</button>
-                        </form>
-                        <form method="POST" action="?/extendGame" use:enhance>
-                            <input type="hidden" name="id" value={game.id} />
-                            <input type="hidden" name="minutes" value="30" />
-                            <button type="submit" class="btn-extend">+30분</button>
-                        </form>
-                        <form method="POST" action="?/endGame" use:enhance>
-                            <input type="hidden" name="id" value={game.id} />
-                            <button type="submit" class="btn-delete">게임 종료</button>
-                        </form>
-                    </div>
-                </div>
-            {/each}
-            {#if data.games.length === 0}
-                <p class="empty-state">진행 중인 게임이 없습니다.</p>
-            {/if}
-        </div>
-    </section>
-</div>
+    </div>
+</section>
 
 {#if showModal}
-    <div class="modal-backdrop" on:click={() => showModal = false}>
-        <div class="modal-content" on:click|stopPropagation>
+    <!-- svelte-ignore a11y-click-events-have-key-events -->
+    <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
+    <div class="modal-backdrop" on:click={() => showModal = false} role="presentation">
+        <div class="modal-content" on:click|stopPropagation role="dialog">
             <h2>새 게임 시작</h2>
             <form method="POST" action="?/createGame" use:enhance={() => {
-                return async ({ update }) => {
+                return async ({ result, update }) => {
+                    if (result.type === 'failure') {
+                        showAlert(result.data?.error || '오류가 발생했습니다.');
+                    } else {
+                        showModal = false;
+                    }
                     await update();
-                    showModal = false;
                 };
             }} class="game-form">
                 <input type="text" name="gameName" placeholder="게임 이름" list="game-list" bind:value={selectedGameName} required />
                 <datalist id="game-list">
                     {#each data.savedGameNames as game}
-                        <option value={game.game_name} />
+                        <option value={game.game_name}></option>
                     {/each}
                 </datalist>
                 <input type="number" name="duration" placeholder="소요 시간 (분)" bind:value={selectedDuration} required />
@@ -157,7 +205,7 @@
                     <p>참여자 선택:</p>
                     {#each data.attendees as attendee}
                         <label class:disabled={attendee.is_playing}>
-                            <input type="checkbox" name="players" value={attendee.name} disabled={attendee.is_playing} />
+                            <input type="checkbox" name="players" value={attendee.id} disabled={attendee.is_playing} />
                             {attendee.name}
                             {#if attendee.is_playing}
                                 <span class="status-text">(게임 중)</span>
@@ -175,13 +223,61 @@
     </div>
 {/if}
 
+<!-- Alert Modal -->
+{#if alertVisible}
+    <!-- svelte-ignore a11y-click-events-have-key-events -->
+    <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
+    <div class="modal-backdrop" on:click={() => alertVisible = false} role="presentation">
+        <div class="modal-content alert-modal" on:click|stopPropagation role="alertdialog">
+            <h3>알림</h3>
+            <p>{alertMessage}</p>
+            <div class="modal-actions">
+                <button class="btn-primary" on:click={() => alertVisible = false}>확인</button>
+            </div>
+        </div>
+    </div>
+{/if}
+
+<!-- Remove Confirm Modal -->
+{#if removeModalVisible && removeTarget}
+    <!-- svelte-ignore a11y-click-events-have-key-events -->
+    <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
+    <div class="modal-backdrop" on:click={() => removeModalVisible = false} role="presentation">
+        <div class="modal-content confirm-modal" on:click|stopPropagation role="dialog">
+            <h3>참가자 퇴장 확인</h3>
+            <p><strong>{removeTarget.name}</strong>님은 현재 <strong>{removeTarget.game_name}</strong> 게임에 참여 중입니다.</p>
+            <p>어떻게 처리하시겠습니까?</p>
+            
+            <div class="modal-actions column-actions">
+                <form method="POST" action="?/removeAttendee" use:enhance={() => {
+                    return async ({ update }) => {
+                        removeModalVisible = false;
+                        await update();
+                    };
+                }}>
+                    <input type="hidden" name="id" value={removeTarget.id} />
+                    <input type="hidden" name="endGame" value="true" />
+                    <input type="hidden" name="gameId" value={removeTarget.game_id} />
+                    <button type="submit" class="btn-delete full-width">게임 종료 및 퇴장</button>
+                </form>
+
+                <form method="POST" action="?/removeAttendee" use:enhance={() => {
+                    return async ({ update }) => {
+                        removeModalVisible = false;
+                        await update();
+                    };
+                }}>
+                    <input type="hidden" name="id" value={removeTarget.id} />
+                    <button type="submit" class="btn-warning full-width">참가자만 퇴장</button>
+                </form>
+
+                <button class="btn-cancel full-width" on:click={() => removeModalVisible = false}>취소</button>
+            </div>
+        </div>
+    </div>
+{/if}
+
 <style>
-    .container {
-        max-width: 800px;
-        margin: 0 auto;
-        padding: 2rem;
-        font-family: sans-serif;
-    }
     section {
         margin-bottom: 3rem;
         padding: 1.5rem;
@@ -198,6 +294,29 @@
         justify-content: space-between;
         padding: 0.5rem;
         border-bottom: 1px solid #ddd;
+    }
+    .attendee-info {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    .attendee-link {
+        text-decoration: none;
+        color: #333;
+        font-weight: 500;
+        display: flex;
+        align-items: center;
+    }
+    .attendee-link:hover {
+        color: #007bff;
+        text-decoration: underline;
+    }
+    .arrival-time {
+        font-size: 0.8rem;
+        color: #666;
+        background: #eee;
+        padding: 0.1rem 0.4rem;
+        border-radius: 4px;
     }
     .add-form, .game-form {
         margin-top: 1rem;
@@ -220,18 +339,36 @@
         flex-wrap: wrap;
         gap: 0.5rem;
     }
-    .chip {
+    .chip-container {
+        display: flex;
+        align-items: center;
         background: #e0e0e0;
+        border-radius: 16px;
+        padding-left: 0.75rem;
+        overflow: hidden;
+    }
+    .chip-link {
+        text-decoration: none;
+        color: #333;
+        font-size: 0.85rem;
+        margin-right: 0.5rem;
+    }
+    .chip-link:hover {
+        text-decoration: underline;
+        color: #007bff;
+    }
+    .chip-add {
+        background: #bdbdbd;
         color: #333;
         border: none;
-        padding: 0.25rem 0.75rem;
-        border-radius: 16px;
+        padding: 0.25rem 0.6rem;
         font-size: 0.85rem;
         cursor: pointer;
         transition: background 0.2s;
+        border-left: 1px solid #ccc;
     }
-    .chip:hover {
-        background: #d0d0d0;
+    .chip-add:hover {
+        background: #a0a0a0;
     }
     .game-card {
         background: white;
@@ -242,6 +379,14 @@
     }
     .btn-delete {
         background: #ff4444;
+        color: white;
+        border: none;
+        padding: 0.25rem 0.5rem;
+        border-radius: 4px;
+        cursor: pointer;
+    }
+    .btn-warning {
+        background: #ff9800;
         color: white;
         border: none;
         padding: 0.25rem 0.5rem;
@@ -277,11 +422,18 @@
         color: #ff9800;
         margin-left: 0.25rem;
     }
-    .header {
+    .section-header {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        margin-bottom: 2rem;
+        margin-bottom: 1rem;
+        border-bottom: 2px solid #e0e0e0;
+        padding-bottom: 0.5rem;
+    }
+    .section-header h2 {
+        margin: 0;
+        border: none;
+        padding: 0;
     }
     .btn-primary {
         background: #007bff;
@@ -317,11 +469,27 @@
         max-height: 90vh;
         overflow-y: auto;
     }
+    .alert-modal {
+        max-width: 400px;
+        text-align: center;
+    }
+    .confirm-modal {
+        max-width: 400px;
+    }
     .modal-actions {
         display: flex;
         justify-content: flex-end;
         gap: 1rem;
         margin-top: 1.5rem;
+    }
+    .column-actions {
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+    .full-width {
+        width: 100%;
+        padding: 0.75rem;
+        font-size: 1rem;
     }
     .empty-state {
         color: #999;

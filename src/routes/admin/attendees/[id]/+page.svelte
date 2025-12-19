@@ -1,0 +1,418 @@
+<script lang="ts">
+    import type { PageData } from './$types';
+    
+    export let data: PageData;
+
+    let activeTab = 'history'; // 'history' | 'partners'
+    let viewMode = 'list'; // 'list' | 'calendar'
+
+    // Calendar Logic
+    const today = new Date();
+    let currentYear = today.getFullYear();
+    let currentMonth = today.getMonth(); // 0-indexed
+
+    $: daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+    $: firstDayOfMonth = new Date(currentYear, currentMonth, 1).getDay(); // 0 (Sun) - 6 (Sat)
+    
+    $: calendarDays = Array.from({ length: daysInMonth }, (_, i) => {
+        const date = new Date(currentYear, currentMonth, i + 1);
+        const dateString = date.toISOString().split('T')[0];
+        const games = data.history.filter((h: any) => {
+            const gameDate = new Date(h.start_time).toISOString().split('T')[0];
+            return gameDate === dateString;
+        });
+        return { day: i + 1, games, dateString };
+    });
+
+    function prevMonth() {
+        if (currentMonth === 0) {
+            currentMonth = 11;
+            currentYear--;
+        } else {
+            currentMonth--;
+        }
+    }
+
+    function nextMonth() {
+        if (currentMonth === 11) {
+            currentMonth = 0;
+            currentYear++;
+        } else {
+            currentMonth++;
+        }
+    }
+
+    const monthNames = ["1월", "2월", "3월", "4월", "5월", "6월", "7월", "8월", "9월", "10월", "11월", "12월"];
+</script>
+
+<div class="attendee-detail">
+    <div class="header">
+        <a href="/admin" class="back-link">← 관리자 대시보드</a>
+        <h1>{data.attendee.name}님의 활동 기록</h1>
+        <div class="stats">
+            <div class="stat-card">
+                <span class="label">총 게임 수</span>
+                <span class="value">{data.history.length}</span>
+            </div>
+            <div class="stat-card">
+                <span class="label">최다 파트너</span>
+                <span class="value">{data.partners[0]?.name || '-'}</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="tabs">
+        <button class:active={activeTab === 'history'} on:click={() => activeTab = 'history'}>게임 이력</button>
+        <button class:active={activeTab === 'partners'} on:click={() => activeTab = 'partners'}>함께한 파트너</button>
+        <button class:active={activeTab === 'visits'} on:click={() => activeTab = 'visits'}>방문 기록</button>
+    </div>
+
+    <div class="content">
+        {#if activeTab === 'history'}
+            <div class="view-controls">
+                <button class:active={viewMode === 'list'} on:click={() => viewMode = 'list'}>목록 보기</button>
+                <button class:active={viewMode === 'calendar'} on:click={() => viewMode = 'calendar'}>달력 보기</button>
+            </div>
+
+            {#if viewMode === 'list'}
+                <table class="history-table">
+                    <thead>
+                        <tr>
+                            <th>날짜</th>
+                            <th>시간</th>
+                            <th>게임명</th>
+                            <th>소요 시간</th>
+                            <th>상태</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {#each data.history as game}
+                            <tr>
+                                <td>{new Date(game.start_time).toLocaleDateString()}</td>
+                                <td>{new Date(game.start_time).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}</td>
+                                <td>{game.game_name}</td>
+                                <td>{game.duration_minutes}분</td>
+                                <td>
+                                    <span class="status-badge {game.status}">
+                                        {game.status === 'playing' ? '진행 중' : '종료'}
+                                    </span>
+                                </td>
+                            </tr>
+                        {/each}
+                        {#if data.history.length === 0}
+                            <tr>
+                                <td colspan="5" class="empty">기록이 없습니다.</td>
+                            </tr>
+                        {/if}
+                    </tbody>
+                </table>
+            {:else}
+                <div class="calendar-view">
+                    <div class="calendar-header">
+                        <button on:click={prevMonth}>&lt;</button>
+                        <h3>{currentYear}년 {monthNames[currentMonth]}</h3>
+                        <button on:click={nextMonth}>&gt;</button>
+                    </div>
+                    <div class="calendar-grid">
+                        <div class="weekday">일</div>
+                        <div class="weekday">월</div>
+                        <div class="weekday">화</div>
+                        <div class="weekday">수</div>
+                        <div class="weekday">목</div>
+                        <div class="weekday">금</div>
+                        <div class="weekday">토</div>
+                        
+                        {#each Array(firstDayOfMonth) as _}
+                            <div class="day empty"></div>
+                        {/each}
+                        
+                        {#each calendarDays as day}
+                            <div class="day {day.games.length > 0 ? 'has-games' : ''}">
+                                <span class="day-number">{day.day}</span>
+                                {#if day.games.length > 0}
+                                    <div class="game-dots">
+                                        {#each day.games as game}
+                                            <div class="dot" title="{game.game_name}"></div>
+                                        {/each}
+                                    </div>
+                                    <div class="game-count">{day.games.length}게임</div>
+                                {/if}
+                            </div>
+                        {/each}
+                    </div>
+                </div>
+            {/if}
+
+        {:else if activeTab === 'partners'}
+            <div class="partners-list">
+                {#each data.partners as partner, i}
+                    <div class="partner-card">
+                        <div class="rank">{i + 1}</div>
+                        <div class="info">
+                            <div class="name">{partner.name}</div>
+                            <div class="count">{partner.game_count}게임 함께함</div>
+                        </div>
+                    </div>
+                {/each}
+                {#if data.partners.length === 0}
+                    <p class="empty">함께한 파트너 기록이 없습니다.</p>
+                {/if}
+            </div>
+
+        {:else if activeTab === 'visits'}
+            <table class="history-table">
+                <thead>
+                    <tr>
+                        <th>날짜</th>
+                        <th>입장 시간</th>
+                        <th>퇴장 시간</th>
+                        <th>체류 시간</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {#each data.visits as visit}
+                        <tr>
+                            <td>{new Date(visit.arrival_time).toLocaleDateString()}</td>
+                            <td>{new Date(visit.arrival_time).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}</td>
+                            <td>
+                                {#if visit.departure_time}
+                                    {new Date(visit.departure_time).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}
+                                {:else}
+                                    <span class="status-badge playing">현재 체류 중</span>
+                                {/if}
+                            </td>
+                            <td>
+                                {#if visit.departure_time}
+                                    {visit.duration_minutes}분
+                                {:else}
+                                    -
+                                {/if}
+                            </td>
+                        </tr>
+                    {/each}
+                    {#if data.visits.length === 0}
+                        <tr>
+                            <td colspan="4" class="empty">방문 기록이 없습니다.</td>
+                        </tr>
+                    {/if}
+                </tbody>
+            </table>
+        {/if}
+    </div>
+</div>
+
+<style>
+    .attendee-detail {
+        /* Padding handled by layout */
+    }
+    .header {
+        margin-bottom: 2rem;
+    }
+    .back-link {
+        text-decoration: none;
+        color: #666;
+        font-size: 0.9rem;
+        display: inline-block;
+        margin-bottom: 1rem;
+    }
+    .stats {
+        display: flex;
+        gap: 1rem;
+        margin-top: 1rem;
+    }
+    .stat-card {
+        background: #f5f5f5;
+        padding: 1rem;
+        border-radius: 8px;
+        flex: 1;
+        text-align: center;
+    }
+    .stat-card .label {
+        display: block;
+        font-size: 0.8rem;
+        color: #666;
+        margin-bottom: 0.25rem;
+    }
+    .stat-card .value {
+        font-size: 1.5rem;
+        font-weight: bold;
+        color: #333;
+    }
+    .tabs {
+        display: flex;
+        border-bottom: 1px solid #ddd;
+        margin-bottom: 1.5rem;
+    }
+    .tabs button {
+        padding: 0.75rem 1.5rem;
+        background: none;
+        border: none;
+        border-bottom: 2px solid transparent;
+        cursor: pointer;
+        font-size: 1rem;
+        color: #666;
+    }
+    .tabs button.active {
+        color: #007bff;
+        border-bottom-color: #007bff;
+        font-weight: bold;
+    }
+    .view-controls {
+        display: flex;
+        gap: 0.5rem;
+        margin-bottom: 1rem;
+        justify-content: flex-end;
+    }
+    .view-controls button {
+        padding: 0.25rem 0.75rem;
+        background: #eee;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 0.85rem;
+    }
+    .view-controls button.active {
+        background: #007bff;
+        color: white;
+    }
+    .history-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    .history-table th, .history-table td {
+        padding: 0.75rem;
+        text-align: left;
+        border-bottom: 1px solid #eee;
+    }
+    .history-table th {
+        background: #f9f9f9;
+        font-weight: 600;
+    }
+    .status-badge {
+        padding: 0.25rem 0.5rem;
+        border-radius: 12px;
+        font-size: 0.75rem;
+    }
+    .status-badge.playing {
+        background: #e3f2fd;
+        color: #1976d2;
+    }
+    .status-badge.finished {
+        background: #eee;
+        color: #666;
+    }
+    
+    /* Calendar Styles */
+    .calendar-view {
+        border: 1px solid #eee;
+        border-radius: 8px;
+        padding: 1rem;
+    }
+    .calendar-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1rem;
+    }
+    .calendar-header button {
+        background: none;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        padding: 0.25rem 0.75rem;
+        cursor: pointer;
+    }
+    .calendar-grid {
+        display: grid;
+        grid-template-columns: repeat(7, 1fr);
+        gap: 0.5rem;
+    }
+    .weekday {
+        text-align: center;
+        font-weight: bold;
+        color: #666;
+        padding-bottom: 0.5rem;
+    }
+    .day {
+        border: 1px solid #eee;
+        border-radius: 4px;
+        min-height: 80px;
+        padding: 0.25rem;
+        position: relative;
+    }
+    .day.empty {
+        background: #fafafa;
+        border: none;
+    }
+    .day.has-games {
+        background: #e3f2fd;
+        border-color: #90caf9;
+    }
+    .day-number {
+        font-size: 0.8rem;
+        color: #666;
+        position: absolute;
+        top: 4px;
+        left: 4px;
+    }
+    .game-dots {
+        display: flex;
+        gap: 2px;
+        margin-top: 1.2rem;
+        flex-wrap: wrap;
+    }
+    .dot {
+        width: 6px;
+        height: 6px;
+        background: #1976d2;
+        border-radius: 50%;
+    }
+    .game-count {
+        font-size: 0.7rem;
+        color: #1976d2;
+        margin-top: 0.25rem;
+        text-align: center;
+    }
+
+    /* Partners Styles */
+    .partners-list {
+        display: grid;
+        gap: 1rem;
+    }
+    .partner-card {
+        display: flex;
+        align-items: center;
+        padding: 1rem;
+        background: white;
+        border: 1px solid #eee;
+        border-radius: 8px;
+    }
+    .rank {
+        width: 30px;
+        height: 30px;
+        background: #333;
+        color: white;
+        border-radius: 50%;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        font-weight: bold;
+        margin-right: 1rem;
+    }
+    .partner-card:nth-child(1) .rank { background: #ffd700; color: #333; }
+    .partner-card:nth-child(2) .rank { background: #c0c0c0; color: #333; }
+    .partner-card:nth-child(3) .rank { background: #cd7f32; color: white; }
+    
+    .info .name {
+        font-weight: bold;
+        font-size: 1.1rem;
+    }
+    .info .count {
+        color: #666;
+        font-size: 0.9rem;
+    }
+    .empty {
+        text-align: center;
+        color: #999;
+        padding: 2rem;
+    }
+</style>

@@ -26,10 +26,17 @@
 
 <div class="container">
     <header>
-        <h1>🎲 보드게임 동아리 현황판</h1>
+        <h1>🎲현황판</h1>
         <div class="header-info">
             <p class="last-updated">최근 업데이트: {lastUpdated.toLocaleTimeString()}</p>
-            <p class="live-indicator">● 실시간</p>
+            <div class="status-indicators">
+                {#if data.isOpen}
+                    <span class="status-badge open">🟢 오픈</span>
+                {:else}
+                    <span class="status-badge closed">🔴 마감</span>
+                {/if}
+                <p class="live-indicator">● 실시간</p>
+            </div>
         </div>
     </header>
 
@@ -55,7 +62,11 @@
                     </div>
                 {/each}
                 {#if data.attendees.length === 0}
-                    <p class="empty-state">아직 아무도 없어요. 첫 번째로 오세요!</p>
+                    {#if !data.isOpen}
+                        <p class="empty-state closed-state">🌙 금일 마감되었습니다. 오픈 전입니다.</p>
+                    {:else}
+                        <p class="empty-state">아직 아무도 없어요. 첫 번째로 오세요!</p>
+                    {/if}
                 {/if}
             </div>
         </section>
@@ -114,6 +125,28 @@
         font-size: 1.5rem;
         margin: 0;
         color: #1a1a1a;
+    }
+    .status-indicators {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 0.5rem;
+    }
+    .status-badge {
+        font-size: 0.85rem;
+        font-weight: bold;
+        padding: 0.2rem 0.5rem;
+        border-radius: 12px;
+    }
+    .status-badge.open {
+        background: #e8f5e9;
+        color: #2e7d32;
+        border: 1px solid #c8e6c9;
+    }
+    .status-badge.closed {
+        background: #ffebee;
+        color: #c62828;
+        border: 1px solid #ffcdd2;
     }
     .live-indicator {
         color: #00c853;
@@ -225,10 +258,19 @@
         color: #666;
     }
     .empty-state {
+        grid-column: 1 / -1;
         color: #999;
         text-align: center;
         padding: 2rem;
         background: rgba(255,255,255,0.5);
         border-radius: 8px;
+        width: 100%;
+        box-sizing: border-box;
+    }
+    .closed-state {
+        background: #eceff1;
+        color: #546e7a;
+        font-weight: bold;
+        border: 1px solid #cfd8dc;
     }
 </style>
