@@ -19,6 +19,7 @@ services:
       - POSTGRES_DB=boardgameclub
     volumes:
       - db-data:/var/lib/postgresql/data
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/init.sql
     ports:
       - "5432:5432"
     restart: always
