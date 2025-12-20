@@ -54,6 +54,21 @@
 
         <slot />
     </main>
+
+    <nav class="mobile-bottom-nav">
+        <a href="/admin" class="bottom-nav-item" class:active={$page.url.pathname === '/admin'}>
+            <span class="icon">🏠</span>
+            <span class="label">대시보드</span>
+        </a>
+        <a href="/admin/stats" class="bottom-nav-item" class:active={$page.url.pathname === '/admin/stats'}>
+            <span class="icon">📊</span>
+            <span class="label">통계</span>
+        </a>
+        <button class="bottom-nav-item" on:click={() => settingsModalVisible = true}>
+            <span class="icon">⚙️</span>
+            <span class="label">설정</span>
+        </button>
+    </nav>
 </div>
 
 {#if settingsModalVisible}
@@ -267,6 +282,10 @@
         gap: 1rem;
     }
     
+    .mobile-bottom-nav {
+        display: none;
+    }
+
     /* Mobile Responsive Styles */
     @media (max-width: 768px) {
         .admin-layout {
@@ -274,66 +293,32 @@
         }
         .sidebar {
             width: 100%;
-            padding: 0.75rem;
+            padding: 1rem;
             box-sizing: border-box;
             flex-direction: row;
-            flex-wrap: wrap; /* Allow wrapping */
             align-items: center;
-            gap: 0.5rem;
+            justify-content: center;
+            background: #2c3e50;
         }
         .sidebar-header {
             margin-bottom: 0;
-            margin-right: auto; /* Push footer to right */
-            display: flex;
-            align-items: center;
+            text-align: center;
         }
         .sidebar-header h2 {
-            font-size: 1.1rem;
+            font-size: 1.2rem;
         }
         .sidebar-header p {
-            display: none; /* Hide subtitle on mobile */
+            display: none;
         }
         
-        /* Footer (Settings button) goes to the right of header */
-        .sidebar-footer {
-            display: block;
-            margin-top: 0;
-            padding-top: 0;
-            border-top: none;
-            margin-left: 0;
-        }
-        .btn-sidebar {
-            width: auto;
-            padding: 0.4rem 0.8rem;
-            font-size: 0.85rem;
-        }
-
-        /* Nav goes to the second row */
-        .sidebar-nav {
-            width: 100%;
-            order: 3; /* Force to bottom */
-            flex-direction: row;
-            overflow-x: auto;
-            padding-top: 0.5rem;
-            margin-top: 0.5rem;
-            border-top: 1px solid rgba(255,255,255,0.1);
-            justify-content: flex-start;
-            gap: 0.5rem;
-        }
-        .nav-item {
-            white-space: nowrap;
-            padding: 0.5rem 0.75rem;
-            font-size: 0.9rem;
-            background: rgba(255,255,255,0.1); /* Slight background for tabs */
-            border-radius: 20px;
-        }
-        .nav-item.active {
-            background: #3498db;
-            color: white;
+        /* Hide Desktop Nav & Footer on Mobile */
+        .sidebar-nav, .sidebar-footer {
+            display: none;
         }
         
         .main-content {
             padding: 1rem;
+            padding-bottom: 80px; /* Space for bottom nav */
         }
         .header {
             flex-direction: column;
@@ -346,6 +331,40 @@
         }
         .header-actions button {
             flex: 1;
+        }
+
+        /* Show Bottom Nav */
+        .mobile-bottom-nav {
+            display: flex;
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            background: white;
+            border-top: 1px solid #ddd;
+            padding: 0.5rem 0;
+            justify-content: space-around;
+            z-index: 100;
+            box-shadow: 0 -2px 10px rgba(0,0,0,0.05);
+        }
+        .bottom-nav-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-decoration: none;
+            color: #888;
+            background: none;
+            border: none;
+            font-size: 0.75rem;
+            gap: 0.25rem;
+            padding: 0.5rem;
+            flex: 1;
+        }
+        .bottom-nav-item .icon {
+            font-size: 1.5rem;
+        }
+        .bottom-nav-item.active, .bottom-nav-item:active {
+            color: #007bff;
         }
     }
     .btn-secondary {
