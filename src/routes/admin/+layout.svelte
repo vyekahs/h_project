@@ -274,67 +274,62 @@
         }
         .sidebar {
             width: 100%;
-            padding: 1rem;
+            padding: 0.75rem;
             box-sizing: border-box;
+            flex-direction: row;
+            flex-wrap: wrap; /* Allow wrapping */
+            align-items: center;
+            gap: 0.5rem;
         }
         .sidebar-header {
-            margin-bottom: 1rem;
+            margin-bottom: 0;
+            margin-right: auto; /* Push footer to right */
             display: flex;
-            justify-content: space-between;
             align-items: center;
         }
         .sidebar-header h2 {
-            font-size: 1.2rem;
+            font-size: 1.1rem;
         }
-        .sidebar-nav {
-            flex-direction: row;
-            overflow-x: auto;
-            padding-bottom: 0.5rem;
+        .sidebar-header p {
+            display: none; /* Hide subtitle on mobile */
         }
-        .nav-item {
-            white-space: nowrap;
-            padding: 0.5rem 0.75rem;
-            font-size: 0.9rem;
-        }
-        .sidebar-footer {
-            display: none; /* Hide settings on mobile sidebar to save space, maybe move to nav? */
-        }
-        /* Alternative: Keep footer but make it compact */
+        
+        /* Footer (Settings button) goes to the right of header */
         .sidebar-footer {
             display: block;
             margin-top: 0;
             padding-top: 0;
             border-top: none;
-            margin-left: auto;
+            margin-left: 0;
         }
         .btn-sidebar {
             width: auto;
-            padding: 0.5rem 1rem;
+            padding: 0.4rem 0.8rem;
+            font-size: 0.85rem;
         }
-        
-        /* Re-arrange sidebar for mobile: Header | Nav | Settings */
-        .sidebar {
-            flex-direction: row;
-            align-items: center;
-            justify-content: space-between;
-            gap: 1rem;
-            padding: 0.5rem 1rem;
-        }
-        .sidebar-header {
-            margin: 0;
-        }
+
+        /* Nav goes to the second row */
         .sidebar-nav {
-            flex: 1;
+            width: 100%;
+            order: 3; /* Force to bottom */
             flex-direction: row;
-            gap: 0.5rem;
-            padding: 0;
             overflow-x: auto;
-            justify-content: flex-end; /* Align nav items to right */
+            padding-top: 0.5rem;
+            margin-top: 0.5rem;
+            border-top: 1px solid rgba(255,255,255,0.1);
+            justify-content: flex-start;
+            gap: 0.5rem;
         }
-        .sidebar-footer {
-            margin: 0;
-            padding: 0;
-            border: 0;
+        .nav-item {
+            white-space: nowrap;
+            padding: 0.5rem 0.75rem;
+            font-size: 0.9rem;
+            background: rgba(255,255,255,0.1); /* Slight background for tabs */
+            border-radius: 20px;
+        }
+        .nav-item.active {
+            background: #3498db;
+            color: white;
         }
         
         .main-content {
