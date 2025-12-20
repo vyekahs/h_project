@@ -266,6 +266,93 @@
         display: flex;
         gap: 1rem;
     }
+    
+    /* Mobile Responsive Styles */
+    @media (max-width: 768px) {
+        .admin-layout {
+            flex-direction: column;
+        }
+        .sidebar {
+            width: 100%;
+            padding: 1rem;
+            box-sizing: border-box;
+        }
+        .sidebar-header {
+            margin-bottom: 1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .sidebar-header h2 {
+            font-size: 1.2rem;
+        }
+        .sidebar-nav {
+            flex-direction: row;
+            overflow-x: auto;
+            padding-bottom: 0.5rem;
+        }
+        .nav-item {
+            white-space: nowrap;
+            padding: 0.5rem 0.75rem;
+            font-size: 0.9rem;
+        }
+        .sidebar-footer {
+            display: none; /* Hide settings on mobile sidebar to save space, maybe move to nav? */
+        }
+        /* Alternative: Keep footer but make it compact */
+        .sidebar-footer {
+            display: block;
+            margin-top: 0;
+            padding-top: 0;
+            border-top: none;
+            margin-left: auto;
+        }
+        .btn-sidebar {
+            width: auto;
+            padding: 0.5rem 1rem;
+        }
+        
+        /* Re-arrange sidebar for mobile: Header | Nav | Settings */
+        .sidebar {
+            flex-direction: row;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1rem;
+            padding: 0.5rem 1rem;
+        }
+        .sidebar-header {
+            margin: 0;
+        }
+        .sidebar-nav {
+            flex: 1;
+            flex-direction: row;
+            gap: 0.5rem;
+            padding: 0;
+            overflow-x: auto;
+            justify-content: flex-end; /* Align nav items to right */
+        }
+        .sidebar-footer {
+            margin: 0;
+            padding: 0;
+            border: 0;
+        }
+        
+        .main-content {
+            padding: 1rem;
+        }
+        .header {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 1rem;
+        }
+        .header-actions {
+            width: 100%;
+            justify-content: stretch;
+        }
+        .header-actions button {
+            flex: 1;
+        }
+    }
     .btn-secondary {
         background: white;
         color: #333;

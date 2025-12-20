@@ -537,4 +537,43 @@
         cursor: pointer;
         font-size: 0.85rem;
     }
+
+    @media (max-width: 600px) {
+        .attendee-list li {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 0.5rem;
+        }
+        .attendee-info {
+            width: 100%;
+            justify-content: space-between;
+        }
+        .btn-delete {
+            width: 100%;
+            margin-top: 0.5rem;
+        }
+        .game-header {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 0.5rem;
+        }
+        .game-actions {
+            flex-wrap: wrap;
+        }
+        .game-actions form {
+            flex: 1;
+        }
+        .game-actions button {
+            width: 100%;
+        }
+        .notice-manager {
+            gap: 0.5rem;
+        }
+        .notice-form {
+            flex-direction: column;
+        }
+        .notice-form button {
+            width: 100%;
+        }
+    }
 </style>
