@@ -25,9 +25,9 @@ async function checkAndClose() {
     const currentMinute = kstNow.getUTCMinutes();
     
     // Determine "Business Day"
-    // If current time is 00:00 ~ 11:59, it belongs to "Yesterday's" business day
+    // If current time is 00:00 ~ 05:59, it belongs to "Yesterday's" business day
     let businessDay = kstNow.getUTCDay(); // 0=Sun, ..., 6=Sat
-    if (currentHour < 12) {
+    if (currentHour < 6) {
         businessDay = (businessDay + 6) % 7; // Go back 1 day
     }
 
@@ -46,25 +46,29 @@ async function checkAndClose() {
     const isWeekend = weekendDays.includes(businessDay);
     const targetTime = isWeekend ? settings.closing_time_weekend : settings.closing_time_weekday;
 
-    // Convert times to "minutes from noon" to handle next day logic safely
-    // 12:00 -> 0
-    // 23:59 -> 719
-    // 00:00 -> 720
-    // 02:00 -> 840
-    // 11:59 -> 1439
+    // Convert times to "minutes from 06:00" to handle late night closing safely
+    // 06:00 -> 0
+    // 12:00 -> 360
+    // 22:00 -> 960
+    // 00:00 -> 1080
+    // 02:00 -> 1200
+    // 05:59 -> 1439
     
-    const getMinutesFromNoon = (hour: number, minute: number) => {
-        const adjustedHour = hour < 12 ? hour + 24 : hour;
-        return (adjustedHour - 12) * 60 + minute;
+    const getMinutesSince6AM = (hour: number, minute: number) => {
+        const adjustedHour = hour < 6 ? hour + 24 : hour;
+        return (adjustedHour - 6) * 60 + minute;
     };
 
     const [targetHour, targetMinute] = targetTime.split(':').map(Number);
     
-    const currentMinutesFromNoon = getMinutesFromNoon(currentHour, currentMinute);
-    const targetMinutesFromNoon = getMinutesFromNoon(targetHour, targetMinute);
+    const currentMinutes = getMinutesSince6AM(currentHour, currentMinute);
+    const targetMinutes = getMinutesSince6AM(targetHour, targetMinute);
+
+    console.log(`[AutoClose Debug] Now(UTC): ${now.toISOString()}, KST_Shifted: ${kstNow.toISOString()}`);
+    console.log(`[AutoClose Debug] Current: ${currentHour}:${currentMinute} (${currentMinutes}m), Target: ${targetTime} (${targetMinutes}m), Day: ${businessDay}`);
 
     // Check if current time is past the closing time
-    if (currentMinutesFromNoon >= targetMinutesFromNoon) {
+    if (currentMinutes >= targetMinutes) {
         console.log(`Auto-Closing Day... (Current: ${currentHour}:${currentMinute}, Target: ${targetTime}, Business Day: ${businessDay})`);
         await performCloseDay();
     }
