@@ -8,7 +8,7 @@
         <h1>🔐 관리자 로그인</h1>
         <form method="POST" use:enhance>
             <div class="form-group">
-                <input type="password" name="password" placeholder="비밀번호를 입력하세요" required />
+                <input type="password" name="password" placeholder="비밀번호를 입력하세요" required autocomplete="current-password" />
             </div>
             {#if form?.error}
                 <p class="error">{form.error}</p>
