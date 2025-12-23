@@ -5,22 +5,16 @@
 
 <div class="login-container">
     <div class="login-box">
-        <h1>🔐 로그인</h1>
-        
+        <h1>🔐 관리자 로그인</h1>
         <form method="POST" use:enhance>
             <div class="form-group">
-                <input type="text" name="name" placeholder="이름 (닉네임)" required />
-            </div>
-            <div class="form-group">
-                <input type="password" name="password" placeholder="비밀번호" required autocomplete="current-password" />
+                <input type="password" name="password" placeholder="관리자 비밀번호" required autocomplete="current-password" />
             </div>
             {#if form?.error}
                 <p class="error">{form.error}</p>
             {/if}
-            <button type="submit" class="btn-primary">로그인</button>
+            <button type="submit" class="btn-dark">로그인</button>
         </form>
-        <a href="/signup" class="signup-link">계정이 없으신가요? 회원가입</a>
-        
         <a href="/" class="back-link">← 메인으로 돌아가기</a>
     </div>
 </div>
@@ -31,7 +25,7 @@
         justify-content: center;
         align-items: center;
         min-height: 100vh;
-        background: #f0f2f5;
+        background: #2c3e50;
         font-family: sans-serif;
         padding: 1rem;
     }
@@ -39,14 +33,14 @@
         background: white;
         padding: 2rem;
         border-radius: 12px;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
         width: 100%;
-        max-width: 360px;
+        max-width: 320px;
         text-align: center;
     }
     h1 {
         font-size: 1.5rem;
-        margin-bottom: 1.5rem;
+        margin-bottom: 2rem;
         color: #333;
     }
     .form-group {
@@ -60,7 +54,7 @@
         font-size: 1rem;
         box-sizing: border-box;
     }
-    button[type="submit"] {
+    button {
         width: 100%;
         padding: 0.75rem;
         color: white;
@@ -71,29 +65,25 @@
         cursor: pointer;
         transition: background 0.2s;
     }
-    .btn-primary {
-        background: #007bff;
+    .btn-dark {
+        background: #333;
     }
-    .btn-primary:hover {
-        background: #0056b3;
+    .btn-dark:hover {
+        background: #000;
     }
     .error {
         color: #d32f2f;
         margin-bottom: 1rem;
         font-size: 0.9rem;
     }
-    .back-link, .signup-link {
+    .back-link {
         display: block;
         margin-top: 1.5rem;
         color: #666;
         text-decoration: none;
         font-size: 0.9rem;
     }
-    .back-link:hover, .signup-link:hover {
+    .back-link:hover {
         text-decoration: underline;
-    }
-    .signup-link {
-        color: #007bff;
-        margin-top: 1rem;
     }
 </style>

@@ -5,12 +5,12 @@ startAutoCloseScheduler();
 
 /** @type {import('@sveltejs/kit').Handle} */
 export async function handle({ event, resolve }) {
-    if (event.url.pathname.startsWith('/admin')) {
+    if (event.url.pathname.startsWith('/admin') && !event.url.pathname.startsWith('/admin/login')) {
         const auth = event.cookies.get('admin_auth');
         if (auth !== 'true') {
             return new Response('Redirect', {
                 status: 303,
-                headers: { Location: '/login' }
+                headers: { Location: '/admin/login' }
             });
         }
     }

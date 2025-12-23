@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE TABLE IF NOT EXISTS attendees (
     id SERIAL PRIMARY KEY,
     name VARCHAR(50) NOT NULL, -- Just the name, no user ID linkage
+    password VARCHAR(255), -- User password for login
     arrival_time TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     status VARCHAR(20) DEFAULT 'present' CHECK (status IN ('present', 'left')),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP

@@ -1,7 +1,9 @@
 <script lang="ts">
     import type { PageData } from './$types';
     
+    import { enhance } from '$app/forms';
     export let data: PageData;
+    export let form;
 
     let activeTab = 'history'; // 'history' | 'partners'
     let viewMode = 'list'; // 'list' | 'calendar'
@@ -65,6 +67,7 @@
         <button class:active={activeTab === 'history'} on:click={() => activeTab = 'history'}>게임 이력</button>
         <button class:active={activeTab === 'partners'} on:click={() => activeTab = 'partners'}>함께한 파트너</button>
         <button class:active={activeTab === 'visits'} on:click={() => activeTab = 'visits'}>방문 기록</button>
+        <button class:active={activeTab === 'account'} on:click={() => activeTab = 'account'}>계정 관리</button>
     </div>
 
     <div class="content">
@@ -197,6 +200,26 @@
                     {/if}
                 </tbody>
             </table>
+
+        {:else if activeTab === 'account'}
+            <div class="account-section">
+                <h3>🔑 비밀번호 변경</h3>
+                <p class="description">사용자의 비밀번호를 강제로 재설정합니다.</p>
+                
+                <form method="POST" action="?/resetPassword" use:enhance>
+                    <div class="form-group">
+                        <label for="newPassword">새 비밀번호</label>
+                        <input type="password" id="newPassword" name="newPassword" placeholder="새 비밀번호 입력" required minlength="4" />
+                    </div>
+                    <button type="submit" class="btn-primary">비밀번호 변경</button>
+                </form>
+                
+                {#if form?.success}
+                    <p class="success-msg">✅ 비밀번호가 성공적으로 변경되었습니다.</p>
+                {:else if form?.error}
+                    <p class="error-msg">❌ {form.error}</p>
+                {/if}
+            </div>
         {/if}
     </div>
 </div>
@@ -414,5 +437,66 @@
         text-align: center;
         color: #999;
         padding: 2rem;
+    }
+
+    /* Account Section */
+    .account-section {
+        max-width: 400px;
+        margin: 0 auto;
+        padding: 2rem;
+        background: white;
+        border-radius: 8px;
+        border: 1px solid #eee;
+        text-align: center;
+    }
+    .account-section h3 {
+        margin-bottom: 0.5rem;
+    }
+    .account-section .description {
+        color: #666;
+        margin-bottom: 2rem;
+        font-size: 0.9rem;
+    }
+    .form-group {
+        text-align: left;
+        margin-bottom: 1.5rem;
+    }
+    .form-group label {
+        display: block;
+        margin-bottom: 0.5rem;
+        font-weight: bold;
+        color: #555;
+    }
+    .form-group input {
+        width: 100%;
+        padding: 0.75rem;
+        border: 1px solid #ddd;
+        border-radius: 6px;
+        font-size: 1rem;
+        box-sizing: border-box;
+    }
+    .btn-primary {
+        width: 100%;
+        padding: 0.75rem;
+        background: #007bff;
+        color: white;
+        border: none;
+        border-radius: 6px;
+        font-weight: bold;
+        cursor: pointer;
+        font-size: 1rem;
+    }
+    .btn-primary:hover {
+        background: #0056b3;
+    }
+    .success-msg {
+        color: #2e7d32;
+        margin-top: 1rem;
+        font-weight: bold;
+    }
+    .error-msg {
+        color: #d32f2f;
+        margin-top: 1rem;
+        font-weight: bold;
     }
 </style>

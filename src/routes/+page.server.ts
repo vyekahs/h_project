@@ -1,7 +1,7 @@
 import { query } from '$lib/server/db';
 import type { PageServerLoad } from './$types';
 
-export const load: PageServerLoad = async () => {
+export const load: PageServerLoad = async ({ cookies }) => {
     // Auto-finish expired games
     await query("UPDATE game_sessions SET status = 'finished' WHERE status = 'playing' AND end_time < NOW()");
 
@@ -27,10 +27,21 @@ export const load: PageServerLoad = async () => {
     const settingsResult = await query("SELECT value FROM system_settings WHERE key = 'is_open'");
     const isOpen = settingsResult.rows[0]?.value !== 'false'; // Default to true if not set
 
+    const userAuth = cookies.get('user_auth');
+    let user = null;
+    if (userAuth) {
+        try {
+            user = JSON.parse(userAuth);
+        } catch (e) {
+            // Invalid cookie
+        }
+    }
+
     return {
         attendees: attendeesResult.rows,
         games: gamesResult.rows,
         notice: noticeResult.rows[0]?.content || null,
-        isOpen
+        isOpen,
+        user
     };
 };

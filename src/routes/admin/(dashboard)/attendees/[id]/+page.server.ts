@@ -65,3 +65,28 @@ export const load: PageServerLoad = async ({ params }) => {
         visits: visitsResult.rows
     };
 };
+
+import { fail } from '@sveltejs/kit';
+import type { Actions } from './$types';
+import bcrypt from 'bcryptjs';
+
+export const actions: Actions = {
+    resetPassword: async ({ request, params }) => {
+        const data = await request.formData();
+        const newPassword = data.get('newPassword') as string;
+        const attendeeId = params.id;
+
+        if (!newPassword || newPassword.length < 4) {
+            return fail(400, { error: '비밀번호는 4자 이상이어야 합니다.' });
+        }
+
+        try {
+            const hashedPassword = await bcrypt.hash(newPassword, 10);
+            await query('UPDATE attendees SET password = $1 WHERE id = $2', [hashedPassword, attendeeId]);
+            return { success: true };
+        } catch (err) {
+            console.error(err);
+            return fail(500, { error: '비밀번호 변경 중 오류가 발생했습니다.' });
+        }
+    }
+};

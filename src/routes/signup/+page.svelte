@@ -3,30 +3,36 @@
     export let form;
 </script>
 
-<div class="login-container">
-    <div class="login-box">
-        <h1>🔐 로그인</h1>
-        
+<div class="auth-container">
+    <div class="auth-box">
+        <h1>📝 회원가입</h1>
         <form method="POST" use:enhance>
             <div class="form-group">
-                <input type="text" name="name" placeholder="이름 (닉네임)" required />
+                <label for="name">이름 (닉네임)</label>
+                <input type="text" id="name" name="name" placeholder="사용할 이름을 입력하세요" required />
             </div>
             <div class="form-group">
-                <input type="password" name="password" placeholder="비밀번호" required autocomplete="current-password" />
+                <label for="password">비밀번호</label>
+                <input type="password" id="password" name="password" placeholder="비밀번호" required />
+            </div>
+            <div class="form-group">
+                <label for="confirmPassword">비밀번호 확인</label>
+                <input type="password" id="confirmPassword" name="confirmPassword" placeholder="비밀번호 확인" required />
             </div>
             {#if form?.error}
                 <p class="error">{form.error}</p>
             {/if}
-            <button type="submit" class="btn-primary">로그인</button>
+            <button type="submit">가입하기</button>
         </form>
-        <a href="/signup" class="signup-link">계정이 없으신가요? 회원가입</a>
-        
-        <a href="/" class="back-link">← 메인으로 돌아가기</a>
+        <div class="links">
+            <a href="/login">이미 계정이 있으신가요? 로그인</a>
+            <a href="/">메인으로 돌아가기</a>
+        </div>
     </div>
 </div>
 
 <style>
-    .login-container {
+    .auth-container {
         display: flex;
         justify-content: center;
         align-items: center;
@@ -35,22 +41,28 @@
         font-family: sans-serif;
         padding: 1rem;
     }
-    .login-box {
+    .auth-box {
         background: white;
         padding: 2rem;
         border-radius: 12px;
         box-shadow: 0 4px 12px rgba(0,0,0,0.1);
         width: 100%;
-        max-width: 360px;
-        text-align: center;
+        max-width: 400px;
     }
     h1 {
+        text-align: center;
         font-size: 1.5rem;
-        margin-bottom: 1.5rem;
+        margin-bottom: 2rem;
         color: #333;
     }
     .form-group {
         margin-bottom: 1rem;
+    }
+    label {
+        display: block;
+        margin-bottom: 0.5rem;
+        font-weight: 500;
+        color: #555;
     }
     input {
         width: 100%;
@@ -60,9 +72,10 @@
         font-size: 1rem;
         box-sizing: border-box;
     }
-    button[type="submit"] {
+    button {
         width: 100%;
         padding: 0.75rem;
+        background: #007bff;
         color: white;
         border: none;
         border-radius: 6px;
@@ -70,30 +83,31 @@
         font-weight: bold;
         cursor: pointer;
         transition: background 0.2s;
+        margin-top: 1rem;
     }
-    .btn-primary {
-        background: #007bff;
-    }
-    .btn-primary:hover {
+    button:hover {
         background: #0056b3;
     }
     .error {
         color: #d32f2f;
         margin-bottom: 1rem;
         font-size: 0.9rem;
+        text-align: center;
     }
-    .back-link, .signup-link {
-        display: block;
+    .links {
         margin-top: 1.5rem;
+        text-align: center;
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+    .links a {
         color: #666;
         text-decoration: none;
         font-size: 0.9rem;
     }
-    .back-link:hover, .signup-link:hover {
+    .links a:hover {
         text-decoration: underline;
-    }
-    .signup-link {
         color: #007bff;
-        margin-top: 1rem;
     }
 </style>

@@ -28,6 +28,16 @@
     <header>
         <h1>🎲현황판</h1>
         <div class="header-info">
+            <div class="user-status">
+                {#if data.user}
+                    <span class="welcome-msg">👋 <strong>{data.user.name}</strong>님</span>
+                    <form method="POST" action="/logout" style="display:inline;">
+                        <button type="submit" class="btn-logout">로그아웃</button>
+                    </form>
+                {:else}
+                    <a href="/login" class="btn-login">로그인 / 회원가입</a>
+                {/if}
+            </div>
             <p class="last-updated">최근 업데이트: {lastUpdated.toLocaleTimeString()}</p>
             <div class="status-indicators">
                 {#if data.isOpen}
@@ -272,5 +282,38 @@
         color: #546e7a;
         font-weight: bold;
         border: 1px solid #cfd8dc;
+    }
+    .user-status {
+        margin-bottom: 0.5rem;
+        font-size: 0.9rem;
+    }
+    .welcome-msg {
+        margin-right: 0.5rem;
+        color: #333;
+    }
+    .btn-login {
+        text-decoration: none;
+        color: #007bff;
+        font-weight: bold;
+        border: 1px solid #007bff;
+        padding: 0.25rem 0.75rem;
+        border-radius: 16px;
+        transition: all 0.2s;
+    }
+    .btn-login:hover {
+        background: #007bff;
+        color: white;
+    }
+    .btn-logout {
+        background: none;
+        border: none;
+        color: #666;
+        text-decoration: underline;
+        cursor: pointer;
+        font-size: 0.85rem;
+        padding: 0;
+    }
+    .btn-logout:hover {
+        color: #333;
     }
 </style>
