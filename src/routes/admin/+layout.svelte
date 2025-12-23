@@ -77,7 +77,7 @@
     <div class="modal-backdrop" on:click={() => settingsModalVisible = false} role="presentation">
         <div class="modal-content" on:click|stopPropagation role="dialog">
             <h2>⚙️ 환경 설정</h2>
-            <form method="POST" action="/admin?/updateSettings" use:enhance={() => {
+            <form method="POST" action="/admin?/updateSettings" id="settings-form" use:enhance={() => {
                 return async ({ result, update }) => {
                     if (result.type === 'failure') {
                         showAlert(result.data?.error || '설정 저장 실패');
@@ -123,11 +123,17 @@
                 </div>
 
                 <p class="hint-text">💡 00:00 ~ 11:59 입력 시 <strong>익일</strong>로 설정됩니다.</p>
-                <div class="modal-actions">
-                    <button type="button" class="btn-secondary" on:click={() => settingsModalVisible = false}>취소</button>
-                    <button type="submit" class="btn-primary">저장</button>
-                </div>
             </form>
+                
+            <div class="modal-actions" style="justify-content: space-between;">
+                <form method="POST" action="/logout">
+                    <button type="submit" class="btn-danger" style="padding: 0.75rem;">로그아웃</button>
+                </form>
+                <div style="display: flex; gap: 1rem;">
+                    <button type="button" class="btn-secondary" on:click={() => settingsModalVisible = false}>취소</button>
+                    <button type="submit" form="settings-form" class="btn-primary">저장</button>
+                </div>
+            </div>
         </div>
     </div>
 {/if}

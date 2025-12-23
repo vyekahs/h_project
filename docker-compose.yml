@@ -7,6 +7,7 @@ services:
       - DATABASE_URL=postgres://user:password@db:5432/boardgameclub
       - ORIGIN=${ORIGIN:-http://damonpyo.mooo.com:8988}
       - BODY_SIZE_LIMIT=Infinity
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin1234}
     depends_on:
       - db
     restart: always
