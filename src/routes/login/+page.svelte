@@ -1,5 +1,6 @@
 <script lang="ts">
     import { enhance } from '$app/forms';
+    import { page } from '$app/stores';
     export let form;
 </script>
 
@@ -19,7 +20,7 @@
             {/if}
             <button type="submit" class="btn-primary">로그인</button>
         </form>
-        <a href="/signup" class="signup-link">계정이 없으신가요? 회원가입</a>
+        <a href="/signup{$page.url.search}" class="signup-link">계정이 없으신가요? 회원가입</a>
         
         <a href="/" class="back-link">← 메인으로 돌아가기</a>
     </div>

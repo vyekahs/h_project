@@ -13,7 +13,7 @@ export const load: PageServerLoad = async ({ cookies }) => {
 };
 
 export const actions: Actions = {
-    default: async ({ request, cookies }) => {
+    default: async ({ request, cookies, url }) => {
         const data = await request.formData();
         const name = data.get('name') as string;
         const password = data.get('password') as string;
@@ -56,6 +56,7 @@ export const actions: Actions = {
             return fail(500, { error: '로그인 중 오류가 발생했습니다.' });
         }
 
-        throw redirect(303, '/');
+        const redirectTo = url.searchParams.get('redirectTo');
+        throw redirect(303, redirectTo || '/');
     }
 };

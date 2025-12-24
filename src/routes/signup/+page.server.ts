@@ -4,7 +4,7 @@ import { query } from '$lib/server/db';
 import bcrypt from 'bcryptjs';
 
 export const actions: Actions = {
-    default: async ({ request }) => {
+    default: async ({ request, cookies, url }) => {
         const data = await request.formData();
         const name = data.get('name') as string;
         const password = data.get('password') as string;
@@ -21,9 +21,6 @@ export const actions: Actions = {
         // Check if name already exists
         const existing = await query('SELECT id FROM attendees WHERE name = $1', [name]);
         if (existing.rows.length > 0) {
-            // Check if password is null (legacy user)
-            // If legacy user, maybe allow "claiming" the account?
-            // For now, just say name exists.
             return fail(400, { error: '이미 존재하는 이름입니다.' });
         }
 
@@ -31,15 +28,30 @@ export const actions: Actions = {
             const hashedPassword = await bcrypt.hash(password, 10);
             
             // Insert new user with status 'left' (not currently present)
-            await query(
-                'INSERT INTO attendees (name, password, status) VALUES ($1, $2, $3)',
+            const result = await query(
+                'INSERT INTO attendees (name, password, status) VALUES ($1, $2, $3) RETURNING id, name',
                 [name, hashedPassword, 'left']
             );
+            
+            const newUser = result.rows[0];
+
+            // Auto-login: Set user auth cookie
+            const userSession = JSON.stringify({ id: newUser.id, name: newUser.name });
+            
+            cookies.set('user_auth', userSession, {
+                path: '/',
+                httpOnly: true,
+                sameSite: 'lax',
+                secure: false,
+                maxAge: 60 * 60 * 24 * 365 // 1 year
+            });
+
         } catch (err) {
             console.error(err);
             return fail(500, { error: '회원가입 중 오류가 발생했습니다.' });
         }
 
-        throw redirect(303, '/login');
+        const redirectTo = url.searchParams.get('redirectTo');
+        throw redirect(303, redirectTo || '/');
     }
 };
