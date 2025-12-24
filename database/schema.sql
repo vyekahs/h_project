@@ -16,10 +16,26 @@ CREATE TABLE IF NOT EXISTS attendees (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Games table (Board game collection)
+CREATE TABLE IF NOT EXISTS games (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    min_players INTEGER,
+    max_players INTEGER,
+    playtime_min INTEGER,
+    difficulty VARCHAR(20), -- 'Easy', 'Medium', 'Hard'
+    image_url TEXT,
+    description TEXT,
+    included_dlcs TEXT, -- Comma-separated list of DLCs
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Game Sessions table (Active games)
 CREATE TABLE IF NOT EXISTS game_sessions (
     id SERIAL PRIMARY KEY,
     game_name VARCHAR(100) NOT NULL,
+    game_id INTEGER REFERENCES games(id) ON DELETE SET NULL, -- Link to games table
     start_time TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     end_time TIMESTAMP WITH TIME ZONE, -- Estimated end time
     status VARCHAR(20) DEFAULT 'playing' CHECK (status IN ('playing', 'finished')),
@@ -30,7 +46,8 @@ CREATE TABLE IF NOT EXISTS game_sessions (
 CREATE TABLE IF NOT EXISTS session_participants (
     id SERIAL PRIMARY KEY,
     session_id INTEGER REFERENCES game_sessions(id) ON DELETE CASCADE,
-    attendee_id INTEGER REFERENCES attendees(id) ON DELETE CASCADE
+    attendee_id INTEGER REFERENCES attendees(id) ON DELETE CASCADE,
+    is_winner BOOLEAN DEFAULT false
 );
 
 -- Notices table

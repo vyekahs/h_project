@@ -26,6 +26,7 @@
         </div>
         <nav class="sidebar-nav">
             <a href="/admin" class="nav-item" class:active={$page.url.pathname === '/admin'}>🏠 대시보드</a>
+            <a href="/admin/games" class="nav-item" class:active={$page.url.pathname === '/admin/games'}>📚 게임 도감 관리</a>
             <a href="/admin/stats" class="nav-item" class:active={$page.url.pathname === '/admin/stats'}>📊 통계 보기</a>
         </nav>
         <div class="sidebar-footer">
@@ -59,6 +60,10 @@
         <a href="/admin" class="bottom-nav-item" class:active={$page.url.pathname === '/admin'}>
             <span class="icon">🏠</span>
             <span class="label">대시보드</span>
+        </a>
+        <a href="/admin/games" class="bottom-nav-item" class:active={$page.url.pathname === '/admin/games'}>
+            <span class="icon">📚</span>
+            <span class="label">게임 관리</span>
         </a>
         <a href="/admin/stats" class="bottom-nav-item" class:active={$page.url.pathname === '/admin/stats'}>
             <span class="icon">📊</span>
