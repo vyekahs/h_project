@@ -169,22 +169,37 @@ export const actions: Actions = {
             // Decode HTML entities and strip tags
             description = cheerio.load(description).text();
 
+            const searchName = data.get('searchName')?.toString();
+            const hasKorean = (str: string) => /[ㄱ-ㅎ|ㅏ-ㅣ|가-힣]/.test(str);
+
             // Translate Name and Description
             try {
-                const [nameRes, descRes] = await Promise.all([
-                    translate(name, { to: 'ko' }),
-                    translate(description, { to: 'ko' })
-                ]);
-                
-                // @ts-ignore
-                const translatedName = nameRes.text;
-                // Combine Korean and English name if they are different
-                if (translatedName && translatedName.trim() !== name.trim()) {
-                    name = `${translatedName} (${name})`;
+                if (searchName && hasKorean(searchName)) {
+                    // Use searchName if it already has Korean (from search results)
+                    if (searchName.trim() !== name.trim()) {
+                        name = `${searchName} (${name})`;
+                    }
+                    // Still need to translate description
+                    const descRes = await translate(description, { to: 'ko' });
+                    // @ts-ignore
+                    description = descRes.text;
+                } else {
+                    // Fallback to translating both if searchName is not Korean or missing
+                    const [nameRes, descRes] = await Promise.all([
+                        translate(name, { to: 'ko' }),
+                        translate(description, { to: 'ko' })
+                    ]);
+                    
+                    // @ts-ignore
+                    const translatedName = nameRes.text;
+                    // Combine Korean and English name if they are different
+                    if (translatedName && translatedName.trim() !== name.trim()) {
+                        name = `${translatedName} (${name})`;
+                    }
+                    
+                    // @ts-ignore
+                    description = descRes.text;
                 }
-                
-                // @ts-ignore
-                description = descRes.text;
             } catch (tErr) {
                 console.error('[Translation Error]', tErr);
                 // Fallback to original if translation fails

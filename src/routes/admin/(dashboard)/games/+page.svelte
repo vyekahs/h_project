@@ -287,6 +287,7 @@
                                     };
                                 }}>
                                     <input type="hidden" name="bggId" value={game.id} />
+                                    <input type="hidden" name="searchName" value={game.name} />
                                     <button type="submit" class="btn-secondary" disabled={isImporting}>
                                         {isImporting ? '가져오는 중...' : '가져오기'}
                                     </button>
