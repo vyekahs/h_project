@@ -27,6 +27,11 @@ CREATE TABLE IF NOT EXISTS games (
     image_url TEXT,
     description TEXT,
     included_dlcs TEXT, -- Comma-separated list of DLCs
+    bgg_id INTEGER UNIQUE,
+    max_playtime INTEGER,
+    min_age INTEGER,
+    complexity FLOAT,
+    best_players TEXT,
     is_active BOOLEAN DEFAULT true,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
