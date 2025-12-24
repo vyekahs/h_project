@@ -74,11 +74,34 @@ export const actions: Actions = {
         const id = data.get('id');
 
         try {
-            await query('DELETE FROM games WHERE id = $1', [id]);
+            // Check if the game has any sessions
+            const sessions = await query('SELECT id FROM game_sessions WHERE game_id = $1 LIMIT 1', [id]);
+            
+            if (sessions.rows.length > 0) {
+                // If it has sessions, just deactivate it
+                await query('UPDATE games SET is_active = false WHERE id = $1', [id]);
+                return { success: true, deactivated: true };
+            } else {
+                // If no sessions, delete the record
+                await query('DELETE FROM games WHERE id = $1', [id]);
+                return { success: true, deleted: true };
+            }
+        } catch (err) {
+            console.error(err);
+            return fail(500, { error: '게임 삭제/비활성화 중 오류가 발생했습니다.' });
+        }
+    },
+
+    reactivate: async ({ request }) => {
+        const data = await request.formData();
+        const id = data.get('id');
+
+        try {
+            await query('UPDATE games SET is_active = true WHERE id = $1', [id]);
             return { success: true };
         } catch (err) {
             console.error(err);
-            return fail(500, { error: '게임 삭제 중 오류가 발생했습니다.' });
+            return fail(500, { error: '게임 복구 중 오류가 발생했습니다.' });
         }
     },
 

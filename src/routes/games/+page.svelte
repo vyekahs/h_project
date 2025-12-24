@@ -85,16 +85,24 @@
         {#each filteredGames as game}
             <!-- svelte-ignore a11y-click-events-have-key-events -->
             <!-- svelte-ignore a11y-no-static-element-interactions -->
-            <div class="game-card" on:click={() => openDetailModal(game)}>
+            <div class="game-card" class:inactive={!game.is_active} on:click={() => openDetailModal(game)}>
                 <div class="game-image">
                     {#if game.image_url}
                         <img src={game.image_url} alt={game.name} />
                     {:else}
                         <div class="placeholder">🎲</div>
                     {/if}
+                    {#if !game.is_active}
+                        <div class="inactive-overlay">비활성화됨</div>
+                    {/if}
                 </div>
                 <div class="game-info">
-                    <h3>{game.name}</h3>
+                    <div class="title-row">
+                        <h3>{game.name}</h3>
+                        {#if !game.is_active}
+                            <span class="badge-inactive">비활성화됨</span>
+                        {/if}
+                    </div>
                     <div class="meta">
                         <span class="badge players">👥 {game.min_players}-{game.max_players}인</span>
                         <span class="badge time">⏱ {game.playtime_min}분</span>
@@ -324,6 +332,38 @@
     }
     .badge.complexity { background: #f3e5f5; color: #7b1fa2; }
     
+    .game-card.inactive {
+        filter: grayscale(0.8);
+        opacity: 0.7;
+    }
+    .game-image {
+        position: relative;
+    }
+    .inactive-overlay {
+        position: absolute;
+        top: 0; left: 0; width: 100%; height: 100%;
+        background: rgba(0,0,0,0.3);
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: bold;
+        font-size: 1.2rem;
+    }
+    .title-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 0.5rem;
+    }
+    .title-row h3 { margin: 0; }
+    .badge-inactive {
+        font-size: 0.75rem;
+        background: #666;
+        color: white;
+        padding: 2px 6px;
+        border-radius: 4px;
+    }
     .dlc-info {
         font-size: 0.9rem;
         color: #4caf50;

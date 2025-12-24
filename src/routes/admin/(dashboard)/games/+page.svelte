@@ -90,16 +90,24 @@
         {#each data.games as game}
             <!-- svelte-ignore a11y-click-events-have-key-events -->
             <!-- svelte-ignore a11y-no-static-element-interactions -->
-            <div class="game-card" on:click={() => openDetailModal(game)}>
+            <div class="game-card" class:inactive={!game.is_active} on:click={() => openDetailModal(game)}>
                 <div class="game-image">
                     {#if game.image_url}
                         <img src={game.image_url} alt={game.name} />
                     {:else}
                         <div class="placeholder">🎲</div>
                     {/if}
+                    {#if !game.is_active}
+                        <div class="inactive-overlay">비활성화됨</div>
+                    {/if}
                 </div>
                 <div class="game-info">
-                    <h3>{game.name}</h3>
+                    <div class="title-row">
+                        <h3>{game.name}</h3>
+                        {#if !game.is_active}
+                            <span class="badge-inactive">비활성화됨</span>
+                        {/if}
+                    </div>
                     <div class="meta">
                         <span>👥 {game.min_players}-{game.max_players}인</span>
                         <span>⏱ {game.playtime_min}분</span>
@@ -110,11 +118,18 @@
                     {/if}
                     <p class="desc">{game.description || '설명이 없습니다.'}</p>
                     <div class="actions">
-                        <button class="btn-edit" on:click|stopPropagation={() => openEditModal(game)}>수정</button>
-                        <form method="POST" action="?/delete" use:enhance on:submit|preventDefault={(e) => confirm('정말 삭제하시겠습니까?') && (e.target as HTMLFormElement).submit()} on:click|stopPropagation>
-                            <input type="hidden" name="id" value={game.id} />
-                            <button type="submit" class="btn-delete">삭제</button>
-                        </form>
+                        {#if game.is_active}
+                            <button class="btn-edit" on:click|stopPropagation={() => openEditModal(game)}>수정</button>
+                            <form method="POST" action="?/delete" use:enhance on:submit|preventDefault={(e) => confirm('정말 삭제하시겠습니까? (기록이 있는 경우 비활성화됩니다)') && (e.target as HTMLFormElement).submit()} on:click|stopPropagation>
+                                <input type="hidden" name="id" value={game.id} />
+                                <button type="submit" class="btn-delete">삭제</button>
+                            </form>
+                        {:else}
+                            <form method="POST" action="?/reactivate" use:enhance on:click|stopPropagation>
+                                <input type="hidden" name="id" value={game.id} />
+                                <button type="submit" class="btn-restore">복구</button>
+                            </form>
+                        {/if}
                     </div>
                 </div>
             </div>
@@ -406,6 +421,40 @@
     .btn-primary { background: #007bff; color: white; font-weight: bold; }
     .btn-edit { background: #f0f0f0; color: #333; }
     .btn-delete { background: #ffebee; color: #d32f2f; }
+    .btn-restore { background: #e8f5e9; color: #2e7d32; font-weight: bold; }
+
+    .game-card.inactive {
+        filter: grayscale(0.8);
+        opacity: 0.7;
+    }
+    .game-image {
+        position: relative;
+    }
+    .inactive-overlay {
+        position: absolute;
+        top: 0; left: 0; width: 100%; height: 100%;
+        background: rgba(0,0,0,0.3);
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: bold;
+        font-size: 1.2rem;
+    }
+    .title-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 0.5rem;
+    }
+    .title-row h3 { margin: 0; }
+    .badge-inactive {
+        font-size: 0.75rem;
+        background: #666;
+        color: white;
+        padding: 2px 6px;
+        border-radius: 4px;
+    }
     
     /* Modal */
     .modal-backdrop {
