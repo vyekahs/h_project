@@ -157,7 +157,12 @@
     <form method="POST" action="?/addAttendee" use:enhance={() => {
         return async ({ result, update }) => {
             if (result.type === 'failure') {
-                showAlert(result.data?.error || '오류가 발생했습니다.');
+                const data = result.data as { error?: string, missing?: boolean };
+                if (data?.missing) {
+                    showAlert('필수 입력 항목을 입력해주세요.');
+                } else {
+                    showAlert(data?.error || '오류가 발생했습니다.');
+                }
             }
             await update();
         };
@@ -176,7 +181,12 @@
                         <form method="POST" action="?/addAttendee" use:enhance={() => {
                             return async ({ result, update }) => {
                                 if (result.type === 'failure') {
-                                    showAlert(result.data?.error || '오류가 발생했습니다.');
+                                    const data = result.data as { error?: string, missing?: boolean };
+                                    if (data?.missing) {
+                                        showAlert('필수 입력 항목을 입력해주세요.');
+                                    } else {
+                                        showAlert(data?.error || '오류가 발생했습니다.');
+                                    }
                                 }
                                 await update();
                             };
@@ -247,7 +257,12 @@
             <form method="POST" action="?/createGame" use:enhance={() => {
                 return async ({ result, update }) => {
                     if (result.type === 'failure') {
-                        showAlert(result.data?.error || '오류가 발생했습니다.');
+                        const data = result.data as { error?: string, missing?: boolean };
+                        if (data?.missing) {
+                            showAlert('필수 입력 항목을 입력해주세요.');
+                        } else {
+                            showAlert(data?.error || '오류가 발생했습니다.');
+                        }
                     } else {
                         showModal = false;
                     }
@@ -324,7 +339,12 @@
             <form method="POST" action="?/endGame" use:enhance={() => {
                 return async ({ result, update }) => {
                     if (result.type === 'failure') {
-                        showAlert(result.data?.error || '오류가 발생했습니다.');
+                        const data = result.data as { error?: string, missing?: boolean };
+                        if (data?.missing) {
+                            showAlert('필수 입력 항목을 입력해주세요.');
+                        } else {
+                            showAlert(data?.error || '오류가 발생했습니다.');
+                        }
                     } else {
                         endGameModalVisible = false;
                         showAlert('게임이 종료되고 승자가 기록되었습니다! 🏆');
@@ -336,11 +356,14 @@
                 
                 <div class="player-select">
                     {#each selectedEndGame.players as player}
-                        <label class="winner-option">
-                            <input type="checkbox" name="winnerIds" value={player.id} />
-                            <span class="player-name">{player.name}</span>
-                            <span class="medal">🏅</span>
-                        </label>
+                        <div class="winner-row">
+                            <label class="winner-option">
+                                <input type="checkbox" name="winnerIds" value={player.id} />
+                                <span class="player-name">{player.name}</span>
+                                <span class="medal">🏅</span>
+                            </label>
+                            <input type="number" name="score_{player.id}" placeholder="점수" class="score-input" />
+                        </div>
                     {/each}
                 </div>
 
@@ -833,5 +856,23 @@
     .game-option-info .meta {
         font-size: 0.8rem;
         color: #888;
+    }
+
+    .winner-row {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        width: 100%;
+        margin-bottom: 0.5rem;
+    }
+    .winner-row .winner-option {
+        flex: 1;
+        margin-bottom: 0;
+    }
+    .score-input {
+        width: 80px;
+        padding: 0.75rem;
+        border: 1px solid #ddd;
+        border-radius: 8px;
     }
 </style>

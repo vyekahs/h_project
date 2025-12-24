@@ -185,6 +185,17 @@ export const actions: Actions = {
         const data = await request.formData();
         const id = data.get('id')?.toString();
         const winnerIds = data.getAll('winnerIds').map(id => id.toString());
+        
+        // Process scores: scores are sent as "score_{attendeeId}"
+        const scores: Record<string, number> = {};
+        for (const [key, value] of data.entries()) {
+            if (key.startsWith('score_')) {
+                const attendeeId = key.replace('score_', '');
+                if (value.toString().trim() !== '') {
+                    scores[attendeeId] = parseInt(value.toString());
+                }
+            }
+        }
 
         if (!id) {
             return fail(400, { missing: true });
@@ -196,6 +207,11 @@ export const actions: Actions = {
             
             if (winnerIds.length > 0) {
                 await query('UPDATE session_participants SET is_winner = true WHERE session_id = $1 AND attendee_id = ANY($2)', [id, winnerIds]);
+            }
+
+            // Update scores
+            for (const [attendeeId, score] of Object.entries(scores)) {
+                await query('UPDATE session_participants SET score = $1 WHERE session_id = $2 AND attendee_id = $3', [score, id, attendeeId]);
             }
             
             await query('COMMIT');
