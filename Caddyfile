@@ -2,6 +2,6 @@
     email {$EMAIL}
 }
 
-:80 {
+damonpyo.mooo.com {
     reverse_proxy app:3000
 }
