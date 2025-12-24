@@ -1,7 +1,10 @@
 {
+    "id": "/",
     "name": "보드게임 동아리 현황판",
     "short_name": "보드게임 현황",
+    "description": "보드게임 동아리의 실시간 현황과 게임 도감을 확인하세요.",
     "start_url": "/",
+    "scope": "/",
     "display": "standalone",
     "background_color": "#f0f2f5",
     "theme_color": "#ffffff",
@@ -9,12 +12,14 @@
         {
             "src": "/icon-192.png",
             "sizes": "192x192",
-            "type": "image/png"
+            "type": "image/png",
+            "purpose": "any maskable"
         },
         {
             "src": "/icon-512.png",
             "sizes": "512x512",
-            "type": "image/png"
+            "type": "image/png",
+            "purpose": "any maskable"
         }
     ]
 }
