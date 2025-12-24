@@ -184,7 +184,7 @@
             </div>
 
             <div class="modal-actions">
-                <button class="btn-edit" on:click={() => { closeDetailModal(); openEditModal(selectedDetailGame); }}>수정</button>
+                <button class="btn-edit" on:click={() => { openEditModal(selectedDetailGame); closeDetailModal(); }}>수정</button>
                 <button class="btn-primary" on:click={closeDetailModal}>닫기</button>
             </div>
         </div>
