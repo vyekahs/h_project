@@ -26,7 +26,13 @@
 
 <div class="container">
     <header>
-        <h1>🎲현황판</h1>
+        <div class="title-section">
+            <h1>🎲현황판</h1>
+            <nav class="main-nav">
+                <a href="/games" class="nav-link">📚 도감</a>
+                <a href="/rankings" class="nav-link">🏆 랭킹</a>
+            </nav>
+        </div>
         <div class="header-info">
             <div class="user-status">
                 {#if data.user}
@@ -135,6 +141,29 @@
         font-size: 1.5rem;
         margin: 0;
         color: #1a1a1a;
+    }
+    .title-section {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+    .main-nav {
+        display: flex;
+        gap: 1rem;
+    }
+    .nav-link {
+        text-decoration: none;
+        color: #666;
+        font-size: 0.9rem;
+        font-weight: 500;
+        padding: 0.25rem 0.5rem;
+        border-radius: 4px;
+        background: #e0e0e0;
+        transition: background 0.2s;
+    }
+    .nav-link:hover {
+        background: #d0d0d0;
+        color: #333;
     }
     .status-indicators {
         display: flex;

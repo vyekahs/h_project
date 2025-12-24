@@ -8,6 +8,8 @@
     let selectedGameName = '';
     let selectedDuration = '';
 
+    let selectedGameId = '';
+
     // Alert Modal State
     let alertVisible = false;
     let alertMessage = '';
@@ -40,10 +42,61 @@
         }
     }
 
+    // End Game Modal State
+    let endGameModalVisible = false;
+    let selectedEndGame: any = null;
+
+    function openEndGameModal(game: any) {
+        selectedEndGame = game;
+        endGameModalVisible = true;
+    }
+
+    // Custom Dropdown State
+    let dropdownOpen = false;
+    let searchInput: HTMLInputElement;
+
+    function toggleDropdown() {
+        dropdownOpen = !dropdownOpen;
+        if (dropdownOpen && searchInput) {
+            setTimeout(() => searchInput.focus(), 0);
+        }
+    }
+
+    function selectGame(game: any) {
+        selectedGameName = game.name;
+        selectedGameId = game.id;
+        selectedDuration = game.playtime_min;
+        dropdownOpen = false;
+    }
+
+    function handleInputClick() {
+        dropdownOpen = true;
+    }
+
+    function handleModalClick(event: MouseEvent) {
+        event.stopPropagation();
+        const target = event.target as HTMLElement;
+        if (!target.closest('.custom-dropdown')) {
+            dropdownOpen = false;
+        }
+    }
+
+    $: filteredGames = data.allGames?.filter((g: any) => 
+        g.name.toLowerCase().includes(selectedGameName.toLowerCase())
+    ) || [];
+
     $: {
-        const savedGame = data.savedGameNames.find((g: any) => g.game_name === selectedGameName);
-        if (savedGame) {
-            selectedDuration = savedGame.duration;
+        const libraryGame = data.allGames?.find((g: any) => g.name === selectedGameName);
+        const historyGame = data.savedGameNames.find((g: any) => g.game_name === selectedGameName);
+        
+        if (libraryGame) {
+            selectedGameId = libraryGame.id;
+            selectedDuration = libraryGame.playtime_min;
+        } else if (historyGame && !libraryGame) { // Only fallback if not in library
+            selectedGameId = '';
+            selectedDuration = historyGame.duration;
+        } else if (!libraryGame) {
+            selectedGameId = '';
         }
     }
 
@@ -145,14 +198,25 @@
             showModal = true;
             selectedGameName = '';
             selectedDuration = '';
+            selectedGameId = '';
+            dropdownOpen = false;
         }}>+ 새 게임 시작</button>
     </div>
     <div class="games-grid">
         {#each data.games as game}
             <div class="game-card">
-                <h3>{game.game_name}</h3>
-                <p>참여자: {game.players.join(', ')}</p>
-                <p>종료 예정: {new Date(game.end_time).toLocaleTimeString()} <span class="time-remaining">({getTimeRemaining(game.end_time)})</span></p>
+                <div class="game-header-row">
+                    {#if game.image_url}
+                        <img src={game.image_url} alt={game.game_name} class="game-thumb" />
+                    {:else}
+                        <div class="game-thumb placeholder">🎲</div>
+                    {/if}
+                    <div class="game-details">
+                        <h3>{game.game_name}</h3>
+                        <p class="players-list">참여자: {game.players.map(p => p.name).join(', ')}</p>
+                        <p class="end-time">종료 예정: {new Date(game.end_time).toLocaleTimeString()} <span class="time-remaining">({getTimeRemaining(game.end_time)})</span></p>
+                    </div>
+                </div>
                 <div class="game-actions">
                     <form method="POST" action="?/extendGame" use:enhance>
                         <input type="hidden" name="id" value={game.id} />
@@ -164,10 +228,7 @@
                         <input type="hidden" name="minutes" value="30" />
                         <button type="submit" class="btn-extend">+30분</button>
                     </form>
-                    <form method="POST" action="?/endGame" use:enhance>
-                        <input type="hidden" name="id" value={game.id} />
-                        <button type="submit" class="btn-delete">게임 종료</button>
-                    </form>
+                    <button class="btn-delete" on:click={() => openEndGameModal(game)}>게임 종료</button>
                 </div>
             </div>
         {/each}
@@ -181,7 +242,7 @@
     <!-- svelte-ignore a11y-click-events-have-key-events -->
     <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
     <div class="modal-backdrop" on:click={() => showModal = false} role="presentation">
-        <div class="modal-content" on:click|stopPropagation role="dialog">
+        <div class="modal-content" on:click={handleModalClick} role="dialog">
             <h2>새 게임 시작</h2>
             <form method="POST" action="?/createGame" use:enhance={() => {
                 return async ({ result, update }) => {
@@ -193,12 +254,39 @@
                     await update();
                 };
             }} class="game-form">
-                <input type="text" name="gameName" placeholder="게임 이름" list="game-list" bind:value={selectedGameName} required />
-                <datalist id="game-list">
-                    {#each data.savedGameNames as game}
-                        <option value={game.game_name}></option>
-                    {/each}
-                </datalist>
+                <input type="hidden" name="gameId" value={selectedGameId} />
+                <div class="input-group custom-dropdown">
+                    <input 
+                        type="text" 
+                        name="gameName" 
+                        placeholder="게임 이름 (직접 입력 또는 선택)" 
+                        bind:value={selectedGameName} 
+                        bind:this={searchInput}
+                        on:click={handleInputClick}
+                        on:focus={handleInputClick}
+                        required 
+                        autocomplete="off" 
+                    />
+                    
+                    {#if dropdownOpen && filteredGames.length > 0}
+                        <ul class="dropdown-menu">
+                            {#each filteredGames as game}
+                                <li>
+                                    <button type="button" on:click={() => selectGame(game)}>
+                                        {#if game.image_url}
+                                            <img src={game.image_url} alt="" class="mini-thumb" />
+                                        {/if}
+                                        <div class="game-option-info">
+                                            <span class="name">{game.name}</span>
+                                            <span class="meta">👥 {game.min_players}-{game.max_players}인 | ⏱ {game.playtime_min}분</span>
+                                        </div>
+                                    </button>
+                                </li>
+                            {/each}
+                        </ul>
+                    {/if}
+                </div>
+
                 <input type="number" name="duration" placeholder="소요 시간 (분)" bind:value={selectedDuration} required />
                 
                 <div class="player-select">
@@ -217,6 +305,48 @@
                 <div class="modal-actions">
                     <button type="button" on:click={() => showModal = false} class="btn-cancel">취소</button>
                     <button type="submit" class="btn-primary">게임 시작</button>
+                </div>
+            </form>
+        </div>
+    </div>
+{/if}
+
+<!-- End Game Modal -->
+{#if endGameModalVisible && selectedEndGame}
+    <!-- svelte-ignore a11y-click-events-have-key-events -->
+    <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
+    <div class="modal-backdrop" on:click={() => endGameModalVisible = false} role="presentation">
+        <div class="modal-content" on:click|stopPropagation role="dialog">
+            <h2>🏆 게임 종료 및 승자 선택</h2>
+            <p><strong>{selectedEndGame.game_name}</strong> 게임을 종료합니다.</p>
+            <p>승리한 플레이어를 선택해주세요 (복수 선택 가능):</p>
+            
+            <form method="POST" action="?/endGame" use:enhance={() => {
+                return async ({ result, update }) => {
+                    if (result.type === 'failure') {
+                        showAlert(result.data?.error || '오류가 발생했습니다.');
+                    } else {
+                        endGameModalVisible = false;
+                        showAlert('게임이 종료되고 승자가 기록되었습니다! 🏆');
+                    }
+                    await update();
+                };
+            }}>
+                <input type="hidden" name="id" value={selectedEndGame.id} />
+                
+                <div class="player-select">
+                    {#each selectedEndGame.players as player}
+                        <label class="winner-option">
+                            <input type="checkbox" name="winnerIds" value={player.id} />
+                            <span class="player-name">{player.name}</span>
+                            <span class="medal">🏅</span>
+                        </label>
+                    {/each}
+                </div>
+
+                <div class="modal-actions">
+                    <button type="button" on:click={() => endGameModalVisible = false} class="btn-cancel">취소</button>
+                    <button type="submit" class="btn-primary">종료 및 저장</button>
                 </div>
             </form>
         </div>
@@ -575,5 +705,133 @@
         .notice-form button {
             width: 100%;
         }
+    }
+    .winner-option {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.75rem;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: background 0.2s;
+    }
+    .winner-option:hover {
+        background: #f5f5f5;
+    }
+    .winner-option:has(input:checked) {
+        background: #fff8e1;
+        border-color: #ffc107;
+    }
+    .winner-option .player-name {
+        flex: 1;
+        font-weight: 500;
+    }
+    .winner-option .medal {
+        opacity: 0;
+        transition: opacity 0.2s;
+    }
+    .winner-option:has(input:checked) .medal {
+        opacity: 1;
+    }
+
+    /* New Game UI Styles */
+    .game-header-row {
+        display: flex;
+        gap: 1rem;
+        margin-bottom: 1rem;
+    }
+    .game-thumb {
+        width: 60px;
+        height: 60px;
+        border-radius: 8px;
+        object-fit: cover;
+        background: #f0f0f0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.5rem;
+    }
+    .game-details {
+        flex: 1;
+    }
+    .game-details h3 {
+        margin: 0 0 0.25rem 0;
+    }
+    .players-list {
+        margin: 0 0 0.25rem 0;
+        font-size: 0.9rem;
+        color: #555;
+    }
+    .end-time {
+        margin: 0;
+        font-size: 0.85rem;
+        color: #888;
+    }
+
+    .input-group {
+        position: relative;
+        margin-bottom: 0.5rem;
+    }
+
+    /* Custom Dropdown Styles */
+    .custom-dropdown {
+        position: relative;
+    }
+    .dropdown-menu {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        width: 100%;
+        max-height: 300px;
+        overflow-y: auto;
+        background: white;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        z-index: 1000;
+        list-style: none;
+        padding: 0;
+        margin: 4px 0 0 0;
+    }
+    .dropdown-menu li {
+        border-bottom: 1px solid #eee;
+    }
+    .dropdown-menu li:last-child {
+        border-bottom: none;
+    }
+    .dropdown-menu button {
+        width: 100%;
+        text-align: left;
+        padding: 0.75rem;
+        background: none;
+        border: none;
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        cursor: pointer;
+        transition: background 0.2s;
+    }
+    .dropdown-menu button:hover {
+        background: #f5f5f5;
+    }
+    .mini-thumb {
+        width: 40px;
+        height: 40px;
+        border-radius: 4px;
+        object-fit: cover;
+        background: #eee;
+    }
+    .game-option-info {
+        display: flex;
+        flex-direction: column;
+    }
+    .game-option-info .name {
+        font-weight: 500;
+        color: #333;
+    }
+    .game-option-info .meta {
+        font-size: 0.8rem;
+        color: #888;
     }
 </style>

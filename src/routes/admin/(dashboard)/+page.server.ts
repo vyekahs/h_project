@@ -24,12 +24,13 @@ export const load: PageServerLoad = async () => {
         ORDER BY name, id DESC
     `);
     const gamesResult = await query(`
-        SELECT gs.*, json_agg(a.name) as players
+        SELECT gs.*, g.image_url, json_agg(json_build_object('id', a.id, 'name', a.name)) as players
         FROM game_sessions gs
         LEFT JOIN session_participants sp ON gs.id = sp.session_id
         LEFT JOIN attendees a ON sp.attendee_id = a.id
+        LEFT JOIN games g ON gs.game_id = g.id
         WHERE gs.status = $1
-        GROUP BY gs.id
+        GROUP BY gs.id, g.image_url
         ORDER BY gs.start_time DESC
     `, ['playing']);
 
@@ -46,17 +47,21 @@ export const load: PageServerLoad = async () => {
     const savedMembers = historyResult.rows
         .filter((r: any) => !presentNames.has(r.name))
         .map((r: any) => ({ id: r.id, name: r.name }));
+    
+    const allGamesResult = await query('SELECT id, name, playtime_min FROM games WHERE is_active = true ORDER BY name ASC');
 
     return {
         attendees: attendeesResult.rows,
         savedMembers,
         games: gamesResult.rows,
         savedGameNames: gameNamesResult.rows,
+        allGames: allGamesResult.rows,
         notice: noticeResult.rows[0]?.content || null
     };
 };
 
 export const actions: Actions = {
+    // ... (addAttendee, removeAttendee omitted for brevity, they are unchanged)
     addAttendee: async ({ request }) => {
         const data = await request.formData();
         const name = data.get('name')?.toString().trim();
@@ -121,7 +126,6 @@ export const actions: Actions = {
             await query('UPDATE visits SET departure_time = NOW() WHERE attendee_id = $1 AND departure_time IS NULL', [id]);
 
             // 3. End Game if requested
-            // 3. End Game if requested
             if (endGame && gameId) {
                 await query('UPDATE game_sessions SET status = $1, end_time = NOW() WHERE id = $2', ['finished', gameId]);
             }
@@ -132,9 +136,11 @@ export const actions: Actions = {
             return fail(500, { error: 'Failed to remove attendee' });
         }
     },
+
     createGame: async ({ request }) => {
         const data = await request.formData();
         const gameName = data.get('gameName')?.toString();
+        const gameId = data.get('gameId') ? parseInt(data.get('gameId') as string) : null;
         const duration = parseInt(data.get('duration')?.toString() || '0');
         const playerIds = data.getAll('players').map(p => p.toString());
 
@@ -161,13 +167,13 @@ export const actions: Actions = {
             }
 
             const result = await query(
-                'INSERT INTO game_sessions (game_name, start_time, end_time, status) VALUES ($1, NOW(), NOW() + interval \'' + duration + ' minutes\', $2) RETURNING id',
-                [gameName, 'playing']
+                'INSERT INTO game_sessions (game_name, game_id, start_time, end_time, status) VALUES ($1, $2, NOW(), NOW() + interval \'' + duration + ' minutes\', $3) RETURNING id',
+                [gameName, gameId, 'playing']
             );
-            const gameId = result.rows[0].id;
+            const newGameId = result.rows[0].id;
 
             for (const playerId of playerIds) {
-                await query('INSERT INTO session_participants (session_id, attendee_id) VALUES ($1, $2)', [gameId, playerId]);
+                await query('INSERT INTO session_participants (session_id, attendee_id) VALUES ($1, $2)', [newGameId, playerId]);
             }
             await query('COMMIT');
         } catch (error) {
@@ -178,14 +184,23 @@ export const actions: Actions = {
     endGame: async ({ request }) => {
         const data = await request.formData();
         const id = data.get('id')?.toString();
+        const winnerIds = data.getAll('winnerIds').map(id => id.toString());
 
         if (!id) {
             return fail(400, { missing: true });
         }
 
         try {
-            await query('UPDATE game_sessions SET status = $1 WHERE id = $2', ['finished', id]);
+            await query('BEGIN');
+            await query('UPDATE game_sessions SET status = $1, end_time = NOW() WHERE id = $2', ['finished', id]);
+            
+            if (winnerIds.length > 0) {
+                await query('UPDATE session_participants SET is_winner = true WHERE session_id = $1 AND attendee_id = ANY($2)', [id, winnerIds]);
+            }
+            
+            await query('COMMIT');
         } catch (error) {
+            await query('ROLLBACK');
             return fail(500, { error: 'Failed to end game' });
         }
     },
