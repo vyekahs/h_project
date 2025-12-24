@@ -4,22 +4,29 @@
     export let data: PageData;
 
     let searchQuery = '';
-    let difficultyFilter = 'All';
+    let complexityFilter = 'All';
 
     $: filteredGames = data.games.filter((g: any) => {
         const matchesSearch = g.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
                               (g.description && g.description.toLowerCase().includes(searchQuery.toLowerCase()));
-        const matchesDiff = difficultyFilter === 'All' || g.difficulty === difficultyFilter;
-        return matchesSearch && matchesDiff;
+        
+        let matchesComplexity = true;
+        const score = g.complexity || 0;
+        if (complexityFilter === 'Light') matchesComplexity = score >= 1 && score < 2.5;
+        else if (complexityFilter === 'Medium') matchesComplexity = score >= 2.5 && score < 3.5;
+        else if (complexityFilter === 'Heavy') matchesComplexity = score >= 3.5;
+
+        return matchesSearch && matchesComplexity;
     });
+
     let dropdownOpen = false;
 
     function toggleDropdown() {
         dropdownOpen = !dropdownOpen;
     }
 
-    function selectDifficulty(diff: string) {
-        difficultyFilter = diff;
+    function selectComplexity(filter: string) {
+        complexityFilter = filter;
         dropdownOpen = false;
     }
 
@@ -29,6 +36,19 @@
         if (dropdownOpen && !target.closest('.custom-dropdown')) {
             dropdownOpen = false;
         }
+    }
+
+    let showDetailModal = false;
+    let selectedDetailGame: any = null;
+
+    function openDetailModal(game: any) {
+        selectedDetailGame = game;
+        showDetailModal = true;
+    }
+
+    function closeDetailModal() {
+        showDetailModal = false;
+        selectedDetailGame = null;
     }
 </script>
 
@@ -45,17 +65,17 @@
         
         <div class="custom-dropdown">
             <button class="dropdown-toggle" on:click|stopPropagation={toggleDropdown}>
-                {difficultyFilter === 'All' ? '모든 난이도' : 
-                 difficultyFilter === 'Easy' ? '쉬움 (Easy)' : 
-                 difficultyFilter === 'Medium' ? '보통 (Medium)' : '어려움 (Hard)'}
+                {complexityFilter === 'All' ? '모든 난이도' : 
+                 complexityFilter === 'Light' ? '가벼움 (1.0~2.5)' : 
+                 complexityFilter === 'Medium' ? '중간 (2.5~3.5)' : '무거움 (3.5+)'}
                 <span class="arrow">▼</span>
             </button>
             {#if dropdownOpen}
                 <ul class="dropdown-menu">
-                    <li><button on:click={() => selectDifficulty('All')}>모든 난이도</button></li>
-                    <li><button on:click={() => selectDifficulty('Easy')}>쉬움 (Easy)</button></li>
-                    <li><button on:click={() => selectDifficulty('Medium')}>보통 (Medium)</button></li>
-                    <li><button on:click={() => selectDifficulty('Hard')}>어려움 (Hard)</button></li>
+                    <li><button on:click={() => selectComplexity('All')}>모든 난이도</button></li>
+                    <li><button on:click={() => selectComplexity('Light')}>가벼움 (1.0~2.5)</button></li>
+                    <li><button on:click={() => selectComplexity('Medium')}>중간 (2.5~3.5)</button></li>
+                    <li><button on:click={() => selectComplexity('Heavy')}>무거움 (3.5+)</button></li>
                 </ul>
             {/if}
         </div>
@@ -63,7 +83,9 @@
 
     <div class="games-grid">
         {#each filteredGames as game}
-            <div class="game-card">
+            <!-- svelte-ignore a11y-click-events-have-key-events -->
+            <!-- svelte-ignore a11y-no-static-element-interactions -->
+            <div class="game-card" on:click={() => openDetailModal(game)}>
                 <div class="game-image">
                     {#if game.image_url}
                         <img src={game.image_url} alt={game.name} />
@@ -76,7 +98,7 @@
                     <div class="meta">
                         <span class="badge players">👥 {game.min_players}-{game.max_players}인</span>
                         <span class="badge time">⏱ {game.playtime_min}분</span>
-                        <span class="badge difficulty {game.difficulty?.toLowerCase()}">{game.difficulty || '-'}</span>
+                        <span class="badge complexity">⚖️ {game.complexity || '-'} / 5</span>
                     </div>
                     {#if game.included_dlcs}
                         <p class="dlc-info">➕ 포함된 확장: {game.included_dlcs}</p>
@@ -90,6 +112,71 @@
         {/if}
     </div>
 </div>
+
+{#if showDetailModal && selectedDetailGame}
+    <div class="modal-backdrop" on:click={closeDetailModal}>
+        <div class="modal detail-modal" on:click|stopPropagation>
+            <div class="detail-header">
+                <h2>{selectedDetailGame.name}</h2>
+                <button class="btn-close" on:click={closeDetailModal}>✕</button>
+            </div>
+            
+            <div class="detail-content">
+                <div class="detail-image">
+                    {#if selectedDetailGame.image_url}
+                        <img src={selectedDetailGame.image_url} alt={selectedDetailGame.name} />
+                    {:else}
+                        <div class="placeholder">🎲</div>
+                    {/if}
+                </div>
+                
+                <div class="detail-info">
+                    <div class="info-grid">
+                        <div class="info-item">
+                            <span class="label">인원</span>
+                            <span class="value">{selectedDetailGame.min_players}-{selectedDetailGame.max_players}명</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="label">시간</span>
+                            <span class="value">{selectedDetailGame.playtime_min}분~{selectedDetailGame.max_playtime || selectedDetailGame.playtime_min}분</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="label">연령</span>
+                            <span class="value">{selectedDetailGame.min_age ? selectedDetailGame.min_age + '세 이상' : '-'}</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="label">난이도</span>
+                            <span class="value complexity-badge">⚖️ {selectedDetailGame.complexity || '-'} / 5</span>
+                        </div>
+                    </div>
+
+                    {#if selectedDetailGame.best_players}
+                        <div class="best-players">
+                            <span class="label">👍 베스트 인원:</span>
+                            <span class="value">{selectedDetailGame.best_players}명</span>
+                        </div>
+                    {/if}
+
+                    {#if selectedDetailGame.included_dlcs}
+                        <div class="dlc-section">
+                            <h4>➕ 포함된 확장</h4>
+                            <p>{selectedDetailGame.included_dlcs}</p>
+                        </div>
+                    {/if}
+
+                    <div class="description-section">
+                        <h4>📝 게임 설명</h4>
+                        <p>{selectedDetailGame.description || '설명이 없습니다.'}</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-actions">
+                <button class="btn-primary" on:click={closeDetailModal}>닫기</button>
+            </div>
+        </div>
+    </div>
+{/if}
 
 <style>
     .library-container {
@@ -127,7 +214,7 @@
     .custom-dropdown {
         position: relative;
         display: inline-block;
-        min-width: 140px;
+        min-width: 160px;
     }
     .dropdown-toggle {
         width: 100%;
@@ -187,6 +274,7 @@
         border: 1px solid #eee;
         display: flex;
         flex-direction: column;
+        cursor: pointer;
     }
     .game-card:hover {
         transform: translateY(-5px);
@@ -234,10 +322,8 @@
         color: #555;
         font-weight: 500;
     }
-    .badge.difficulty.easy { background: #e8f5e9; color: #2e7d32; }
-    .badge.difficulty.medium { background: #fff3e0; color: #ef6c00; }
-    .badge.difficulty.hard { background: #ffebee; color: #c62828; }
-
+    .badge.complexity { background: #f3e5f5; color: #7b1fa2; }
+    
     .dlc-info {
         font-size: 0.9rem;
         color: #4caf50;
@@ -263,6 +349,124 @@
         font-size: 1.1rem;
     }
 
+    /* Modal Styles */
+    .modal-backdrop {
+        position: fixed;
+        top: 0; left: 0; width: 100%; height: 100%;
+        background: rgba(0,0,0,0.5);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 1000;
+    }
+    .modal {
+        background: white;
+        padding: 2rem;
+        border-radius: 12px;
+        width: 90%;
+        max-width: 500px;
+        max-height: 90vh;
+        overflow-y: auto;
+    }
+    .detail-modal {
+        max-width: 700px;
+    }
+    .detail-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1.5rem;
+    }
+    .detail-header h2 { margin: 0; }
+    .btn-close {
+        background: none;
+        border: none;
+        font-size: 1.5rem;
+        cursor: pointer;
+        padding: 0;
+        color: #666;
+    }
+    .detail-content {
+        display: flex;
+        gap: 2rem;
+        margin-bottom: 2rem;
+    }
+    .detail-image {
+        flex: 0 0 250px;
+        height: 250px;
+        border-radius: 8px;
+        overflow: hidden;
+        background: #f5f5f5;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .detail-image img {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+    }
+    .detail-image .placeholder { font-size: 4rem; }
+    .detail-info { flex: 1; }
+    .info-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 1rem;
+        margin-bottom: 1.5rem;
+        background: #f8f9fa;
+        padding: 1rem;
+        border-radius: 8px;
+    }
+    .info-item {
+        display: flex;
+        flex-direction: column;
+    }
+    .info-item .label {
+        font-size: 0.85rem;
+        color: #666;
+        margin-bottom: 0.25rem;
+    }
+    .info-item .value {
+        font-weight: bold;
+        font-size: 1.1rem;
+    }
+    .complexity-badge {
+        color: #7b1fa2;
+    }
+    .best-players {
+        margin-bottom: 1.5rem;
+        padding: 0.75rem;
+        background: #e3f2fd;
+        border-radius: 6px;
+        color: #1565c0;
+    }
+    .dlc-section, .description-section {
+        margin-bottom: 1.5rem;
+    }
+    .dlc-section h4, .description-section h4 {
+        margin: 0 0 0.5rem 0;
+        font-size: 1rem;
+        color: #333;
+    }
+    .dlc-section p, .description-section p {
+        margin: 0;
+        color: #555;
+        line-height: 1.6;
+    }
+    .modal-actions {
+        display: flex;
+        justify-content: flex-end;
+    }
+    .btn-primary {
+        background: #007bff;
+        color: white;
+        border: none;
+        padding: 0.5rem 1rem;
+        border-radius: 6px;
+        cursor: pointer;
+        font-weight: bold;
+    }
+
     @media (max-width: 600px) {
         .filters {
             flex-wrap: nowrap;
@@ -285,6 +489,14 @@
         }
         .dropdown-toggle .arrow {
             margin-left: 4px;
+        }
+        .detail-content {
+            flex-direction: column;
+        }
+        .detail-image {
+            width: 100%;
+            height: 200px;
+            flex: none;
         }
     }
 </style>
