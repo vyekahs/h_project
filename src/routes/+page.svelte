@@ -29,8 +29,8 @@
         <div class="title-section">
             <h1>🎲현황판</h1>
             <nav class="main-nav">
-                <a href="/games" class="nav-link">📚 도감</a>
-                <a href="/rankings" class="nav-link">🏆 랭킹</a>
+                <a href="/games" class="nav-link">📚 보드게임 목록</a>
+                <!-- <a href="/rankings" class="nav-link">🏆 랭킹</a> -->
             </nav>
         </div>
         <div class="header-info">
@@ -44,14 +44,14 @@
                     <a href="/login" class="btn-login">로그인 / 회원가입</a>
                 {/if}
             </div>
-            <p class="last-updated">최근 업데이트: {lastUpdated.toLocaleTimeString()}</p>
+            <!-- <p class="last-updated">최근 </p> -->
             <div class="status-indicators">
                 {#if data.isOpen}
                     <span class="status-badge open">🟢 오픈</span>
                 {:else}
                     <span class="status-badge closed">🔴 마감</span>
                 {/if}
-                <p class="live-indicator">● 실시간</p>
+                <p class="live-indicator">● 실시간 {lastUpdated.toLocaleTimeString()}</p>
             </div>
         </div>
     </header>
