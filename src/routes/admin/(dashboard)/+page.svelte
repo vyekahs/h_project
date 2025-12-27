@@ -21,9 +21,9 @@
 
     // Remove Confirm Modal State
     let removeModalVisible = false;
-    let removeTarget: any = null;
+    let removeTarget: Attendee | null = null;
 
-    function handleRemove(attendee: any) {
+    function handleRemove(attendee: Attendee) {
         if (attendee.is_playing) {
             removeTarget = attendee;
             removeModalVisible = true;
@@ -35,7 +35,7 @@
             const input = document.createElement('input');
             input.type = 'hidden';
             input.name = 'id';
-            input.value = attendee.id;
+            input.value = String(attendee.id);
             form.appendChild(input);
             document.body.appendChild(form);
             form.submit();
@@ -44,9 +44,9 @@
 
     // End Game Modal State
     let endGameModalVisible = false;
-    let selectedEndGame: any = null;
+    let selectedEndGame: GameSession | null = null;
 
-    function openEndGameModal(game: any) {
+    function openEndGameModal(game: GameSession) {
         selectedEndGame = game;
         endGameModalVisible = true;
     }
@@ -62,10 +62,10 @@
         }
     }
 
-    function selectGame(game: any) {
+    function selectGame(game: { name: string, id: number, playtime_min: number }) {
         selectedGameName = game.name;
-        selectedGameId = game.id;
-        selectedDuration = game.playtime_min;
+        selectedGameId = String(game.id);
+        selectedDuration = String(game.playtime_min);
         dropdownOpen = false;
     }
 
@@ -81,20 +81,20 @@
         }
     }
 
-    $: filteredGames = data.allGames?.filter((g: any) => 
+    $: filteredGames = (data.allGames as any[])?.filter((g: any) => 
         g.name.toLowerCase().includes(selectedGameName.toLowerCase())
     ) || [];
 
     $: {
-        const libraryGame = data.allGames?.find((g: any) => g.name === selectedGameName);
-        const historyGame = data.savedGameNames.find((g: any) => g.game_name === selectedGameName);
+        const libraryGame = (data.allGames as any[])?.find((g: any) => g.name === selectedGameName);
+        const historyGame = (data.savedGameNames as any[]).find((g: any) => g.game_name === selectedGameName);
         
         if (libraryGame) {
-            selectedGameId = libraryGame.id;
-            selectedDuration = libraryGame.playtime_min;
+            selectedGameId = String(libraryGame.id);
+            selectedDuration = String(libraryGame.playtime_min);
         } else if (historyGame && !libraryGame) { // Only fallback if not in library
             selectedGameId = '';
-            selectedDuration = historyGame.duration;
+            selectedDuration = String(historyGame.duration);
         } else if (!libraryGame) {
             selectedGameId = '';
         }
@@ -112,6 +112,61 @@
     function formatTime(dateString: string) {
         return new Date(dateString).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
     }
+
+    interface Attendee {
+        id: number;
+        name: string;
+        arrival_time: string;
+        status: string;
+        penalty_points: number;
+        is_blacklisted: boolean;
+        game_id: number | null;
+        game_name: string | null;
+        is_playing: boolean;
+    }
+
+    interface GameSession {
+        id: number;
+        game_name: string;
+        game_id: number | null;
+        start_time: string;
+        end_time: string;
+        status: string;
+        image_url: string | null;
+        max_players: number;
+        participants: { id: number; name: string }[];
+        players: { id: number; name: string }[];
+        scheduled_at: string;
+    }
+
+    interface Reservation {
+        id: number;
+        attendee_id: number;
+        session_id: number;
+        status: string;
+        created_at: string;
+        attendee_name: string;
+        game_name: string;
+    }
+
+    interface SavedMember {
+        id: number;
+        name: string;
+        penalty_points: number;
+        is_blacklisted: boolean;
+    }
+
+    let attendees: Attendee[];
+    let games: GameSession[];
+    let scheduledGames: GameSession[];
+    let reservations: Reservation[];
+    let savedMembers: SavedMember[];
+
+    $: attendees = data.attendees as Attendee[];
+    $: games = data.games as GameSession[];
+    $: scheduledGames = data.scheduledGames as GameSession[];
+    $: reservations = data.reservations as Reservation[];
+    $: savedMembers = data.savedMembers as SavedMember[];
 </script>
 
 <section>
@@ -135,38 +190,47 @@
 <section>
     <h2>현재 참여 인원</h2>
     <ul class="attendee-list">
-        {#each data.attendees as attendee}
+        {#each (attendees || []) as attendee (attendee.id)}
             <li>
                 <div class="attendee-info">
-                    <a href="/admin/attendees/{attendee.id}" class="attendee-link">{attendee.name}</a>
+                    <div class="name-row">
+                        <a href="/admin/attendees/{attendee.id}" class="attendee-link">{attendee.name}</a>
+                        {#if attendee.is_blacklisted}
+                            <span class="badge blacklist">🚫 블랙</span>
+                        {/if}
+                        {#if attendee.penalty_points > 0}
+                            <span class="badge penalty">⚠️ {attendee.penalty_points}</span>
+                        {/if}
+                    </div>
                     <span class="arrival-time">{formatTime(attendee.arrival_time)} 입장</span>
                 </div>
-                <form method="POST" action="?/removeAttendee" use:enhance={({ cancel }) => {
-                    if (attendee.is_playing) {
-                        cancel(); // Stop default submission
-                        handleRemove(attendee); // Open modal
-                    }
-                }} style="display:inline;">
-                    <input type="hidden" name="id" value={attendee.id} />
-                    <button type="submit" class="btn-delete">퇴장</button>
-                </form>
+                <div class="attendee-actions">
+                    <form method="POST" action="?/applyPenaltyAdmin" use:enhance style="display:inline;">
+                        <input type="hidden" name="attendeeId" value={attendee.id} />
+                        <input type="hidden" name="points" value="1" />
+                        <button type="submit" class="btn-penalty" title="페널티 +1">+1</button>
+                    </form>
+                    <form method="POST" action="?/toggleBlacklist" use:enhance style="display:inline;">
+                        <input type="hidden" name="attendeeId" value={attendee.id} />
+                        <button type="submit" class="btn-blacklist" title="블랙리스트 토글">
+                            {attendee.is_blacklisted ? '해제' : '블랙'}
+                        </button>
+                    </form>
+                    <form method="POST" action="?/removeAttendee" use:enhance={({ cancel }) => {
+                        if (attendee.is_playing) {
+                            cancel(); // Stop default submission
+                            handleRemove(attendee); // Open modal
+                        }
+                    }} style="display:inline;">
+                        <input type="hidden" name="id" value={attendee.id} />
+                        <button type="submit" class="btn-delete">퇴장</button>
+                    </form>
+                </div>
             </li>
         {/each}
     </ul>
 
-    <form method="POST" action="?/addAttendee" use:enhance={() => {
-        return async ({ result, update }) => {
-            if (result.type === 'failure') {
-                const data = result.data as { error?: string, missing?: boolean };
-                if (data?.missing) {
-                    showAlert('필수 입력 항목을 입력해주세요.');
-                } else {
-                    showAlert(data?.error || '오류가 발생했습니다.');
-                }
-            }
-            await update();
-        };
-    }} class="add-form">
+    <form method="POST" action="?/addAttendee" use:enhance class="add-form">
         <input type="text" name="name" placeholder="이름 입력" required />
         <button type="submit">인원 추가</button>
     </form>
@@ -175,30 +239,91 @@
         <div class="quick-add">
             <h3>저장된 멤버 (클릭하여 추가)</h3>
             <div class="member-chips">
-                {#each data.savedMembers as member}
-                    <div class="chip-container">
-                        <a href="/admin/attendees/{member.id}" class="chip-link">{member.name}</a>
-                        <form method="POST" action="?/addAttendee" use:enhance={() => {
-                            return async ({ result, update }) => {
-                                if (result.type === 'failure') {
-                                    const data = result.data as { error?: string, missing?: boolean };
-                                    if (data?.missing) {
-                                        showAlert('필수 입력 항목을 입력해주세요.');
-                                    } else {
-                                        showAlert(data?.error || '오류가 발생했습니다.');
-                                    }
-                                }
-                                await update();
-                            };
-                        }} style="display:inline;">
+                {#each (savedMembers || []) as member (member.id)}
+                    <div class="chip-container {member.is_blacklisted ? 'blacklisted' : ''}">
+                        <a href="/admin/attendees/{member.id}" class="chip-link">
+                            {member.name}
+                            {#if member.penalty_points > 0}
+                                <span class="penalty-dot">({member.penalty_points})</span>
+                            {/if}
+                        </a>
+                        <form method="POST" action="?/addAttendee" use:enhance style="display:inline;">
                             <input type="hidden" name="name" value={member.name} />
-                            <button type="submit" class="chip-add" title="입장">+</button>
+                            <button type="submit" class="chip-add" title="입장" disabled={member.is_blacklisted}>+</button>
                         </form>
                     </div>
                 {/each}
             </div>
         </div>
     {/if}
+</section>
+
+<section>
+    <h2>📅 시작 예정 게임 ({scheduledGames.length})</h2>
+    <div class="scheduled-grid">
+        {#each (scheduledGames || []) as game (game.id)}
+            <div class="scheduled-card">
+                <div class="game-header-row">
+                    {#if game.image_url}
+                        <img src={game.image_url} alt={game.game_name} class="game-thumb" />
+                    {:else}
+                        <div class="game-thumb placeholder">🎲</div>
+                    {/if}
+                    <div class="game-details">
+                        <h3>{game.game_name}</h3>
+                        <p class="start-time">예정: {formatTime(game.scheduled_at)}</p>
+                        <p class="participants-list">참여자 ({game.participants.length}/{game.max_players}): {game.participants.map(p => p.name).join(', ')}</p>
+                    </div>
+                </div>
+                <div class="game-actions">
+                    <form method="POST" action="?/startScheduledGame" use:enhance>
+                        <input type="hidden" name="sessionId" value={game.id} />
+                        <input type="number" name="duration" value="60" class="duration-input" />
+                        <button type="submit" class="btn-primary">게임 시작</button>
+                    </form>
+                    <form method="POST" action="?/dissolveScheduledGame" use:enhance>
+                        <input type="hidden" name="sessionId" value={game.id} />
+                        <button type="submit" class="btn-delete">폭파</button>
+                    </form>
+                </div>
+            </div>
+        {/each}
+        {#if data.scheduledGames.length === 0}
+            <p class="empty-state">예정된 게임이 없습니다.</p>
+        {/if}
+    </div>
+</section>
+
+<section>
+    <h2>🎟️ 예약 및 대기열 ({reservations.length})</h2>
+    <div class="reservations-list">
+        {#each (reservations || []) as res (res.id)}
+            <div class="reservation-item {res.status}">
+                <div class="res-info">
+                    <span class="res-name"><strong>{res.attendee_name}</strong></span>
+                    <span class="res-game">{res.game_name}</span>
+                    <span class="res-status-badge {res.status}">
+                        {res.status === 'pending' ? '대기' : res.status === 'waitlisted' ? '대기열' : '확정'}
+                    </span>
+                </div>
+                <div class="res-actions">
+                    {#if res.status === 'pending'}
+                        <form method="POST" action="?/confirmReservation" use:enhance>
+                            <input type="hidden" name="reservationId" value={res.id} />
+                            <button type="submit" class="btn-confirm">확정</button>
+                        </form>
+                    {/if}
+                    <form method="POST" action="?/cancelReservationAdmin" use:enhance>
+                        <input type="hidden" name="reservationId" value={res.id} />
+                        <button type="submit" class="btn-delete">취소</button>
+                    </form>
+                </div>
+            </div>
+        {/each}
+        {#if data.reservations.length === 0}
+            <p class="empty-state">현재 예약 내역이 없습니다.</p>
+        {/if}
+    </div>
 </section>
 
 <section>
@@ -213,7 +338,7 @@
         }}>+ 새 게임 시작</button>
     </div>
     <div class="games-grid">
-        {#each data.games as game}
+        {#each (games || []) as game (game.id)}
             <div class="game-card">
                 <div class="game-header-row">
                     {#if game.image_url}
@@ -255,7 +380,7 @@
         <div class="modal-content" on:click={handleModalClick} role="dialog">
             <h2>새 게임 시작</h2>
             <form method="POST" action="?/createGame" use:enhance={() => {
-                return async ({ result, update }) => {
+                return async ({ result, update }: { result: any, update: (options?: { reset?: boolean }) => Promise<void> }) => {
                     if (result.type === 'failure') {
                         const data = result.data as { error?: string, missing?: boolean };
                         if (data?.missing) {
@@ -306,7 +431,7 @@
                 
                 <div class="player-select">
                     <p>참여자 선택:</p>
-                    {#each data.attendees as attendee}
+                    {#each (attendees || []) as attendee (attendee.id)}
                         <label class:disabled={attendee.is_playing}>
                             <input type="checkbox" name="players" value={attendee.id} disabled={attendee.is_playing} />
                             {attendee.name}
@@ -337,7 +462,7 @@
             <p>승리한 플레이어를 선택해주세요 (복수 선택 가능):</p>
             
             <form method="POST" action="?/endGame" use:enhance={() => {
-                return async ({ result, update }) => {
+                return async ({ result, update }: { result: any, update: (options?: { reset?: boolean }) => Promise<void> }) => {
                     if (result.type === 'failure') {
                         const data = result.data as { error?: string, missing?: boolean };
                         if (data?.missing) {
@@ -355,7 +480,7 @@
                 <input type="hidden" name="id" value={selectedEndGame.id} />
                 
                 <div class="player-select">
-                    {#each selectedEndGame.players as player}
+                    {#each (selectedEndGame?.players || []) as player}
                         <div class="winner-row">
                             <label class="winner-option">
                                 <input type="checkbox" name="winnerIds" value={player.id} />
@@ -393,6 +518,8 @@
 
 <!-- Remove Confirm Modal -->
 {#if removeModalVisible && removeTarget}
+    <!-- svelte-ignore a11y-click-events-have-key-events -->
+    <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
     <!-- svelte-ignore a11y-click-events-have-key-events -->
     <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
     <div class="modal-backdrop" on:click={() => removeModalVisible = false} role="presentation">
@@ -790,6 +917,119 @@
         margin: 0;
         font-size: 0.85rem;
         color: #888;
+    }
+
+    /* New Admin UI Styles */
+    .name-row {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    .badge {
+        font-size: 0.7rem;
+        padding: 0.1rem 0.4rem;
+        border-radius: 4px;
+        font-weight: bold;
+    }
+    .badge.blacklist {
+        background: #ff5252;
+        color: white;
+    }
+    .badge.penalty {
+        background: #ffd740;
+        color: #333;
+    }
+    .attendee-actions {
+        display: flex;
+        gap: 0.25rem;
+    }
+    .btn-penalty {
+        background: #ffd740;
+        color: #333;
+        border: none;
+        padding: 0.25rem 0.5rem;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 0.8rem;
+    }
+    .btn-blacklist {
+        background: #424242;
+        color: white;
+        border: none;
+        padding: 0.25rem 0.5rem;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 0.8rem;
+    }
+    .chip-container.blacklisted {
+        opacity: 0.5;
+        background: #bdbdbd;
+    }
+    .penalty-dot {
+        font-size: 0.7rem;
+        color: #f44336;
+        margin-left: 0.2rem;
+    }
+
+    .scheduled-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+        gap: 1rem;
+    }
+    .scheduled-card {
+        background: white;
+        padding: 1rem;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        border-left: 4px solid #4c6ef5;
+    }
+    .duration-input {
+        width: 50px;
+        padding: 0.25rem;
+        border-radius: 4px;
+        border: 1px solid #ddd;
+    }
+
+    .reservations-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+    .reservation-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.75rem;
+        background: white;
+        border-radius: 6px;
+        border: 1px solid #eee;
+    }
+    .reservation-item.confirmed { border-left: 4px solid #4caf50; }
+    .reservation-item.pending { border-left: 4px solid #ff9800; }
+    .reservation-item.waitlisted { border-left: 4px solid #9e9e9e; }
+    
+    .res-info {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+    }
+    .res-status-badge {
+        font-size: 0.75rem;
+        padding: 0.2rem 0.5rem;
+        border-radius: 10px;
+        background: #eee;
+    }
+    .res-status-badge.confirmed { background: #e8f5e9; color: #2e7d32; }
+    .res-status-badge.pending { background: #fff3e0; color: #ef6c00; }
+    .res-status-badge.waitlisted { background: #f5f5f5; color: #616161; }
+
+    .btn-confirm {
+        background: #4caf50;
+        color: white;
+        border: none;
+        padding: 0.25rem 0.75rem;
+        border-radius: 4px;
+        cursor: pointer;
     }
 
     .input-group {

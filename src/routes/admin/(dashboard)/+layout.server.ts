@@ -12,7 +12,13 @@ export const load: LayoutServerLoad = async () => {
     const now = new Date();
     // Convert to KST for day check (UTC+9)
     const kstNow = new Date(now.getTime() + 9 * 60 * 60 * 1000);
-    const day = kstNow.getUTCDay(); // 0=Sun, 1=Mon, ..., 5=Fri, 6=Sat
+    const currentHour = kstNow.getUTCHours();
+    let day = kstNow.getUTCDay(); // 0=Sun, 1=Mon, ..., 5=Fri, 6=Sat
+    
+    // Business day cutoff: 9 AM
+    if (currentHour < 9) {
+        day = (day + 6) % 7;
+    }
     
     // Check if today is a configured weekend day
     const weekendDays = settings.weekend_days.split(',').map(Number);

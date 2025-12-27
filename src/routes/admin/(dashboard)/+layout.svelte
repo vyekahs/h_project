@@ -127,7 +127,7 @@
                     </div>
                 </div>
 
-                <p class="hint-text">💡 00:00 ~ 11:59 입력 시 <strong>익일</strong>로 설정됩니다.</p>
+                <p class="hint-text">💡 00:00 ~ 08:59 입력 시 <strong>익일</strong>로 설정됩니다.</p>
             </form>
                 
             <div class="modal-actions" style="justify-content: space-between;">

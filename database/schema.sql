@@ -13,6 +13,9 @@ CREATE TABLE IF NOT EXISTS attendees (
     password VARCHAR(255), -- User password for login
     arrival_time TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     status VARCHAR(20) DEFAULT 'present' CHECK (status IN ('present', 'left')),
+    penalty_points INTEGER DEFAULT 0,
+    is_blacklisted BOOLEAN DEFAULT false,
+    last_penalty_at TIMESTAMP WITH TIME ZONE,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -43,7 +46,8 @@ CREATE TABLE IF NOT EXISTS game_sessions (
     game_id INTEGER REFERENCES games(id) ON DELETE SET NULL, -- Link to games table
     start_time TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     end_time TIMESTAMP WITH TIME ZONE, -- Estimated end time
-    status VARCHAR(20) DEFAULT 'playing' CHECK (status IN ('playing', 'finished')),
+    status VARCHAR(20) DEFAULT 'playing' CHECK (status IN ('playing', 'finished', 'scheduled')),
+    scheduled_at TIMESTAMP WITH TIME ZONE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -63,10 +67,19 @@ CREATE TABLE IF NOT EXISTS notices (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- System Settings table
 CREATE TABLE IF NOT EXISTS system_settings (
     key VARCHAR(50) PRIMARY KEY,
     value TEXT NOT NULL
+);
+
+-- Reservations table
+CREATE TABLE IF NOT EXISTS reservations (
+    id SERIAL PRIMARY KEY,
+    session_id INTEGER REFERENCES game_sessions(id) ON DELETE CASCADE,
+    game_id INTEGER REFERENCES games(id) ON DELETE CASCADE,
+    attendee_id INTEGER REFERENCES attendees(id) ON DELETE CASCADE,
+    status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'waitlisted', 'confirmed', 'cancelled')),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Visits table (History of visits)

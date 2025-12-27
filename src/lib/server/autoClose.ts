@@ -1,6 +1,8 @@
 import { query } from './db';
+import { applyPenalty, promoteWaitlist } from './reservations';
 
 let intervalId: NodeJS.Timeout | null = null;
+let isRunning = false;
 
 export function startAutoCloseScheduler() {
     if (intervalId) return; // Already running
@@ -9,10 +11,15 @@ export function startAutoCloseScheduler() {
 
     // Check every minute
     intervalId = setInterval(async () => {
+        if (isRunning) return;
+        isRunning = true;
         try {
             await checkAndClose();
+            await checkReservations();
         } catch (err) {
             console.error('Auto-Close Error:', err);
+        } finally {
+            isRunning = false;
         }
     }, 60 * 1000);
 }
@@ -25,68 +32,121 @@ async function checkAndClose() {
     const currentMinute = kstNow.getUTCMinutes();
     
     // Determine "Business Day"
-    // If current time is 00:00 ~ 05:59, it belongs to "Yesterday's" business day
+    // If current time is 00:00 ~ 08:59, it belongs to "Yesterday's" business day
     let businessDay = kstNow.getUTCDay(); // 0=Sun, ..., 6=Sat
-    if (currentHour < 6) {
+    let businessDateObj = new Date(kstNow);
+    if (currentHour < 9) {
         businessDay = (businessDay + 6) % 7; // Go back 1 day
+        businessDateObj.setUTCDate(businessDateObj.getUTCDate() - 1);
     }
+    const businessDate = businessDateObj.toISOString().split('T')[0]; // YYYY-MM-DD
 
     // Fetch Settings
     const settingsResult = await query('SELECT key, value FROM system_settings');
     const settings = settingsResult.rows.reduce((acc: any, row: any) => {
         acc[row.key] = row.value;
         return acc;
-    }, { closing_time_weekday: '22:00', closing_time_weekend: '23:00', weekend_days: '5,6', is_open: 'true' });
+    }, { 
+        closing_time_weekday: '22:00', 
+        closing_time_weekend: '23:00', 
+        weekend_days: '5,6', 
+        is_open: 'true',
+        last_auto_close_date: ''
+    });
 
     // If already closed, do nothing
     if (settings.is_open === 'false') return;
+
+    // If already auto-closed today, do nothing
+    if (settings.last_auto_close_date === businessDate) {
+        return;
+    }
 
     // Determine Target Closing Time
     const weekendDays = settings.weekend_days.split(',').map(Number);
     const isWeekend = weekendDays.includes(businessDay);
     const targetTime = isWeekend ? settings.closing_time_weekend : settings.closing_time_weekday;
 
-    // Convert times to "minutes from 06:00" to handle late night closing safely
-    // 06:00 -> 0
-    // 12:00 -> 360
-    // 22:00 -> 960
-    // 00:00 -> 1080
-    // 02:00 -> 1200
-    // 05:59 -> 1439
-    
-    const getMinutesSince6AM = (hour: number, minute: number) => {
-        const adjustedHour = hour < 6 ? hour + 24 : hour;
-        return (adjustedHour - 6) * 60 + minute;
+    const getMinutesSince9AM = (hour: number, minute: number) => {
+        const adjustedHour = hour < 9 ? hour + 24 : hour;
+        return (adjustedHour - 9) * 60 + minute;
     };
 
     const [targetHour, targetMinute] = targetTime.split(':').map(Number);
     
-    const currentMinutes = getMinutesSince6AM(currentHour, currentMinute);
-    const targetMinutes = getMinutesSince6AM(targetHour, targetMinute);
+    const currentMinutes = getMinutesSince9AM(currentHour, currentMinute);
+    const targetMinutes = getMinutesSince9AM(targetHour, targetMinute);
 
     console.log(`[AutoClose Debug] Now(UTC): ${now.toISOString()}, KST_Shifted: ${kstNow.toISOString()}`);
-    console.log(`[AutoClose Debug] Current: ${currentHour}:${currentMinute} (${currentMinutes}m), Target: ${targetTime} (${targetMinutes}m), Day: ${businessDay}`);
+    console.log(`[AutoClose Debug] Current: ${currentHour}:${currentMinute} (${currentMinutes}m), Target: ${targetTime} (${targetMinutes}m), Day: ${businessDay}, BusinessDate: ${businessDate}`);
 
     // Check if current time is past the closing time
     if (currentMinutes >= targetMinutes) {
-        console.log(`Auto-Closing Day... (Current: ${currentHour}:${currentMinute}, Target: ${targetTime}, Business Day: ${businessDay})`);
-        await performCloseDay();
+        console.log(`Auto-Closing Day... (Current: ${currentHour}:${currentMinute}, Target: ${targetTime}, Business Day: ${businessDay}, Date: ${businessDate})`);
+        await performCloseDay(businessDate);
     }
 }
 
-async function performCloseDay() {
+async function performCloseDay(businessDate: string) {
     try {
         await query('BEGIN');
         // Checkout all active visits
         await query('UPDATE visits SET departure_time = NOW() WHERE departure_time IS NULL');
+        // Set all attendees to 'left'
+        await query("UPDATE attendees SET status = 'left' WHERE status = 'present'");
         // End all active games
-        await query('UPDATE game_sessions SET end_time = NOW() WHERE end_time > NOW()');
+        await query("UPDATE game_sessions SET status = 'finished', end_time = NOW() WHERE status = 'playing'");
         // Set is_open to false
         await query("INSERT INTO system_settings (key, value) VALUES ('is_open', 'false') ON CONFLICT (key) DO UPDATE SET value = 'false'");
+        // Record the last auto-close date
+        await query("INSERT INTO system_settings (key, value) VALUES ('last_auto_close_date', $1) ON CONFLICT (key) DO UPDATE SET value = $1", [businessDate]);
         await query('COMMIT');
-        console.log('Auto-Close Complete.');
+        console.log(`Auto-Close Complete for ${businessDate}.`);
     } catch (error) {
         await query('ROLLBACK');
         console.error('Failed to perform auto-close:', error);
+    }
+}
+
+async function checkReservations() {
+    try {
+        // 1. Auto-cancel No-shows (10 minutes after scheduled_at)
+        const noShows = await query(`
+            SELECT r.id, r.attendee_id, r.session_id
+            FROM reservations r
+            JOIN game_sessions gs ON r.session_id = gs.id
+            WHERE gs.status = 'scheduled' 
+              AND gs.scheduled_at < NOW() - interval '10 minutes'
+              AND r.status IN ('pending', 'confirmed')
+        `);
+        
+        for (const row of noShows.rows) {
+            await query("UPDATE reservations SET status = 'cancelled' WHERE id = $1", [row.id]);
+            await applyPenalty(row.attendee_id);
+            await promoteWaitlist(row.session_id);
+            console.log(`Auto-cancelled reservation ${row.id} for attendee ${row.attendee_id} (No-show)`);
+        }
+
+        // 2. Auto-dissolve scheduled games (if min_players not met 10 mins BEFORE scheduled_at)
+        const underpopulated = await query(`
+            SELECT gs.id, g.min_players, COUNT(sp.id) as current_players
+            FROM game_sessions gs
+            JOIN games g ON gs.game_id = g.id
+            LEFT JOIN session_participants sp ON gs.id = sp.session_id
+            WHERE gs.status = 'scheduled'
+              AND gs.scheduled_at < NOW() + interval '10 minutes'
+            GROUP BY gs.id, g.min_players
+            HAVING COUNT(sp.id) < g.min_players
+        `);
+
+        for (const row of underpopulated.rows) {
+            await query("UPDATE game_sessions SET status = 'finished' WHERE id = $1", [row.id]);
+            // Also cancel any reservations for this session
+            await query("UPDATE reservations SET status = 'cancelled' WHERE session_id = $1", [row.id]);
+            console.log(`Auto-dissolved session ${row.id} (Min players not met 10 mins before start)`);
+        }
+
+    } catch (error) {
+        console.error('Failed to check reservations:', error);
     }
 }

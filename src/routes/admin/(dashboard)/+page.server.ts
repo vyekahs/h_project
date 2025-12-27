@@ -7,7 +7,7 @@ export const load: PageServerLoad = async () => {
     await query("UPDATE game_sessions SET status = 'finished' WHERE status = 'playing' AND end_time < NOW()");
 
     const attendeesResult = await query(`
-        SELECT a.id, a.name, a.arrival_time, a.status,
+        SELECT a.id, a.name, a.arrival_time, a.status, a.penalty_points, a.is_blacklisted,
                MAX(g.id) as game_id,
                MAX(g.game_name) as game_name,
                BOOL_OR(g.id IS NOT NULL) as is_playing
@@ -15,13 +15,13 @@ export const load: PageServerLoad = async () => {
         LEFT JOIN session_participants sp ON a.id = sp.attendee_id
         LEFT JOIN game_sessions g ON sp.session_id = g.id AND g.status = 'playing'
         WHERE a.status = 'present'
-        GROUP BY a.id
+        GROUP BY a.id, a.name, a.arrival_time, a.status, a.penalty_points, a.is_blacklisted
         ORDER BY is_playing, a.arrival_time DESC
     `);
     const historyResult = await query(`
-        SELECT DISTINCT ON (name) id, name
+        SELECT id, name, penalty_points, is_blacklisted
         FROM attendees
-        ORDER BY name, id DESC
+        ORDER BY name ASC
     `);
     const gamesResult = await query(`
         SELECT gs.*, g.image_url, json_agg(json_build_object('id', a.id, 'name', a.name)) as players
@@ -29,10 +29,30 @@ export const load: PageServerLoad = async () => {
         LEFT JOIN session_participants sp ON gs.id = sp.session_id
         LEFT JOIN attendees a ON sp.attendee_id = a.id
         LEFT JOIN games g ON gs.game_id = g.id
-        WHERE gs.status = $1
+        WHERE gs.status = 'playing'
         GROUP BY gs.id, g.image_url
         ORDER BY gs.start_time DESC
-    `, ['playing']);
+    `);
+
+    const scheduledGamesResult = await query(`
+        SELECT gs.*, g.image_url, g.max_players, json_agg(json_build_object('id', a.id, 'name', a.name)) as participants
+        FROM game_sessions gs
+        LEFT JOIN session_participants sp ON gs.id = sp.session_id
+        LEFT JOIN attendees a ON sp.attendee_id = a.id
+        LEFT JOIN games g ON gs.game_id = g.id
+        WHERE gs.status = 'scheduled'
+        GROUP BY gs.id, g.image_url, g.max_players
+        ORDER BY gs.scheduled_at ASC
+    `);
+
+    const reservationsResult = await query(`
+        SELECT r.*, a.name as attendee_name, gs.game_name
+        FROM reservations r
+        JOIN attendees a ON r.attendee_id = a.id
+        JOIN game_sessions gs ON r.session_id = gs.id
+        WHERE r.status IN ('pending', 'waitlisted', 'confirmed')
+        ORDER BY r.created_at ASC
+    `);
 
     const gameNamesResult = await query(`
         SELECT DISTINCT ON (game_name) 
@@ -46,7 +66,7 @@ export const load: PageServerLoad = async () => {
     const presentNames = new Set(attendeesResult.rows.map((a: any) => a.name));
     const savedMembers = historyResult.rows
         .filter((r: any) => !presentNames.has(r.name))
-        .map((r: any) => ({ id: r.id, name: r.name }));
+        .map((r: any) => ({ id: r.id, name: r.name, penalty_points: r.penalty_points, is_blacklisted: r.is_blacklisted }));
     
     const allGamesResult = await query('SELECT id, name, playtime_min FROM games WHERE is_active = true ORDER BY name ASC');
 
@@ -54,6 +74,8 @@ export const load: PageServerLoad = async () => {
         attendees: attendeesResult.rows,
         savedMembers,
         games: gamesResult.rows,
+        scheduledGames: scheduledGamesResult.rows,
+        reservations: reservationsResult.rows,
         savedGameNames: gameNamesResult.rows,
         allGames: allGamesResult.rows,
         notice: noticeResult.rows[0]?.content || null
@@ -289,10 +311,24 @@ export const actions: Actions = {
             await query('BEGIN');
             // Checkout all active visits
             await query('UPDATE visits SET departure_time = NOW() WHERE departure_time IS NULL');
+            // Set all attendees to 'left'
+            await query("UPDATE attendees SET status = 'left' WHERE status = 'present'");
             // End all active games
-            await query('UPDATE game_sessions SET end_time = NOW() WHERE end_time > NOW()');
+            await query("UPDATE game_sessions SET status = 'finished', end_time = NOW() WHERE status = 'playing'");
             // Set is_open to false
             await query("INSERT INTO system_settings (key, value) VALUES ('is_open', 'false') ON CONFLICT (key) DO UPDATE SET value = 'false'");
+            
+            // Record business date to prevent auto-close from re-triggering if reopened
+            const now = new Date();
+            const kstNow = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+            const currentHour = kstNow.getUTCHours();
+            let businessDateObj = new Date(kstNow);
+            if (currentHour < 9) {
+                businessDateObj.setUTCDate(businessDateObj.getUTCDate() - 1);
+            }
+            const businessDate = businessDateObj.toISOString().split('T')[0];
+            await query("INSERT INTO system_settings (key, value) VALUES ('last_auto_close_date', $1) ON CONFLICT (key) DO UPDATE SET value = $1", [businessDate]);
+
             await query('COMMIT');
         } catch (error) {
             await query('ROLLBACK');
@@ -305,5 +341,92 @@ export const actions: Actions = {
         } catch (error) {
             return fail(500, { error: 'Failed to open day' });
         }
+    },
+
+    confirmReservation: async ({ request }) => {
+        const data = await request.formData();
+        const reservationId = data.get('reservationId');
+        if (!reservationId) return fail(400, { error: 'Invalid ID' });
+
+        await query("UPDATE reservations SET status = 'confirmed' WHERE id = $1", [reservationId]);
+        return { success: true };
+    },
+
+    cancelReservationAdmin: async ({ request }) => {
+        const data = await request.formData();
+        const reservationId = data.get('reservationId');
+        if (!reservationId) return fail(400, { error: 'Invalid ID' });
+
+        const res = await query('SELECT session_id FROM reservations WHERE id = $1', [reservationId]);
+        const sessionId = res.rows[0]?.session_id;
+
+        await query('DELETE FROM reservations WHERE id = $1', [reservationId]);
+        if (sessionId) {
+            const { promoteWaitlist } = await import('$lib/server/reservations');
+            await promoteWaitlist(sessionId);
+        }
+        return { success: true };
+    },
+
+    dissolveScheduledGame: async ({ request }) => {
+        const data = await request.formData();
+        const sessionId = data.get('sessionId');
+        if (!sessionId) return fail(400, { error: 'Invalid ID' });
+
+        await query('BEGIN');
+        try {
+            await query('DELETE FROM session_participants WHERE session_id = $1', [sessionId]);
+            await query('DELETE FROM reservations WHERE session_id = $1', [sessionId]);
+            await query('DELETE FROM game_sessions WHERE id = $1', [sessionId]);
+            await query('COMMIT');
+            return { success: true };
+        } catch (e) {
+            await query('ROLLBACK');
+            return fail(500, { error: 'Failed to dissolve game' });
+        }
+    },
+
+    startScheduledGame: async ({ request }) => {
+        const data = await request.formData();
+        const sessionId = data.get('sessionId');
+        const duration = parseInt(data.get('duration')?.toString() || '60');
+
+        if (!sessionId) return fail(400, { error: 'Invalid ID' });
+
+        await query('BEGIN');
+        try {
+            await query(
+                "UPDATE game_sessions SET status = 'playing', start_time = NOW(), end_time = NOW() + interval '" + duration + " minutes' WHERE id = $1",
+                [sessionId]
+            );
+            // Confirm all pending reservations for this session (if any)
+            await query("UPDATE reservations SET status = 'confirmed' WHERE session_id = $1 AND status = 'pending'", [sessionId]);
+            await query('COMMIT');
+            return { success: true };
+        } catch (e) {
+            await query('ROLLBACK');
+            return fail(500, { error: 'Failed to start game' });
+        }
+    },
+
+    applyPenaltyAdmin: async ({ request }) => {
+        const data = await request.formData();
+        const attendeeId = data.get('attendeeId');
+        const points = parseInt(data.get('points')?.toString() || '1');
+
+        if (!attendeeId) return fail(400, { error: 'Invalid ID' });
+
+        const { applyPenalty } = await import('$lib/server/reservations');
+        await applyPenalty(Number(attendeeId), points);
+        return { success: true };
+    },
+
+    toggleBlacklist: async ({ request }) => {
+        const data = await request.formData();
+        const attendeeId = data.get('attendeeId');
+        if (!attendeeId) return fail(400, { error: 'Invalid ID' });
+
+        await query('UPDATE attendees SET is_blacklisted = NOT is_blacklisted WHERE id = $1', [attendeeId]);
+        return { success: true };
     }
 };
