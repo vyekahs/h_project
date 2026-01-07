@@ -5,7 +5,6 @@
 
     export let data: LayoutData;
 
-    let settingsModalVisible = false;
     let closeDayModalVisible = false;
     let openDayModalVisible = false;
     
@@ -30,7 +29,7 @@
             <a href="/admin/stats" class="nav-item" class:active={$page.url.pathname === '/admin/stats'}>📊 통계 보기</a>
         </nav>
         <div class="sidebar-footer">
-            <button class="btn-sidebar" on:click={() => settingsModalVisible = true}>⚙️ 설정</button>
+            <a href="/admin/settings" class="btn-sidebar">⚙️ 설정</a>
         </div>
     </aside>
 
@@ -69,79 +68,13 @@
             <span class="icon">📊</span>
             <span class="label">통계</span>
         </a>
-        <button class="bottom-nav-item" on:click={() => settingsModalVisible = true}>
+        <a href="/admin/settings" class="bottom-nav-item" class:active={$page.url.pathname === '/admin/settings'}>
             <span class="icon">⚙️</span>
             <span class="label">설정</span>
-        </button>
+        </a>
     </nav>
 </div>
 
-{#if settingsModalVisible}
-    <!-- svelte-ignore a11y-click-events-have-key-events -->
-    <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-    <div class="modal-backdrop" on:click={() => settingsModalVisible = false} role="presentation">
-        <div class="modal-content" on:click|stopPropagation role="dialog">
-            <h2>⚙️ 환경 설정</h2>
-            <form method="POST" action="/admin?/updateSettings" id="settings-form" use:enhance={() => {
-                return async ({ result, update }) => {
-                    if (result.type === 'failure') {
-                        showAlert(result.data?.error || '설정 저장 실패');
-                    } else {
-                        settingsModalVisible = false;
-                        showAlert('설정이 저장되었습니다.');
-                    }
-                    await update();
-                };
-            }}>
-                <div class="form-group">
-                    <label for="closing_time_weekday">주중 마감 시간</label>
-                    <input type="time" id="closing_time_weekday" name="closing_time_weekday" value={data.settings.closing_time_weekday} required />
-                </div>
-                <div class="form-group">
-                    <label for="closing_time_weekend">주말 마감 시간</label>
-                    <input type="time" id="closing_time_weekend" name="closing_time_weekend" value={data.settings.closing_time_weekend} required />
-                </div>
-                
-                <div class="form-group">
-                    <label>주말 적용 요일</label>
-                    <div class="day-selector">
-                        {#each [
-                            { val: 1, label: '월' },
-                            { val: 2, label: '화' },
-                            { val: 3, label: '수' },
-                            { val: 4, label: '목' },
-                            { val: 5, label: '금' },
-                            { val: 6, label: '토' },
-                            { val: 0, label: '일' }
-                        ] as day}
-                            <label class="day-checkbox">
-                                <input 
-                                    type="checkbox" 
-                                    name="weekend_days" 
-                                    value={day.val} 
-                                    checked={data.settings.weekend_days.split(',').includes(String(day.val))}
-                                />
-                                {day.label}
-                            </label>
-                        {/each}
-                    </div>
-                </div>
-
-                <p class="hint-text">💡 00:00 ~ 08:59 입력 시 <strong>익일</strong>로 설정됩니다.</p>
-            </form>
-                
-            <div class="modal-actions" style="justify-content: space-between;">
-                <form method="POST" action="/logout">
-                    <button type="submit" class="btn-danger" style="padding: 0.75rem;">로그아웃</button>
-                </form>
-                <div style="display: flex; gap: 1rem;">
-                    <button type="button" class="btn-secondary" on:click={() => settingsModalVisible = false}>취소</button>
-                    <button type="submit" form="settings-form" class="btn-primary">저장</button>
-                </div>
-            </div>
-        </div>
-    </div>
-{/if}
 
 {#if closeDayModalVisible}
     <!-- svelte-ignore a11y-click-events-have-key-events -->
@@ -272,6 +205,8 @@
         border-radius: 4px;
         cursor: pointer;
         text-align: left;
+        text-decoration: none;
+        display: block;
     }
     .btn-sidebar:hover {
         background: #2c3e50;

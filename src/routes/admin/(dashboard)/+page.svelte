@@ -3,6 +3,7 @@
     import { enhance } from '$app/forms';
 
     export let data: PageData;
+    if (!data) throw new Error('Data is required');
 
     let showModal = false;
     let selectedGameName = '';
@@ -49,6 +50,42 @@
     function openEndGameModal(game: GameSession) {
         selectedEndGame = game;
         endGameModalVisible = true;
+    }
+
+    // Scheduled Game Modal State
+    let showScheduledGameModal = false;
+    let scheduledGameName = '';
+    let scheduledAt = '';
+    let minPlayers = 2;
+    let maxPlayers = 4;
+
+    function openScheduledGameModal() {
+        showScheduledGameModal = true;
+        scheduledGameName = '';
+        dropdownOpen = false;
+        
+        // Set default time to 30 minutes from now, rounded to 10 minutes
+        const now = new Date();
+        now.setMinutes(Math.ceil((now.getMinutes() + 30) / 10) * 10);
+        
+        // Format to YYYY-MM-DDTHH:mm in local time
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        const hours = String(now.getHours()).padStart(2, '0');
+        const minutes = String(now.getMinutes()).padStart(2, '0');
+        scheduledAt = `${year}-${month}-${day}T${hours}:${minutes}`;
+    }
+
+    $: filteredScheduledGames = (data.allGames as any[])?.filter((g: any) => 
+        g.name.toLowerCase().includes(scheduledGameName.toLowerCase())
+    ) || [];
+
+    function selectScheduledGame(game: any) {
+        scheduledGameName = game.name;
+        minPlayers = game.min_players;
+        maxPlayers = game.max_players;
+        dropdownOpen = false;
     }
 
     // Custom Dropdown State
@@ -156,11 +193,17 @@
         is_blacklisted: boolean;
     }
 
+    interface Table {
+        id: number;
+        name: string;
+    }
+
     let attendees: Attendee[];
     let games: GameSession[];
     let scheduledGames: GameSession[];
     let reservations: Reservation[];
     let savedMembers: SavedMember[];
+    let tables: Table[];
 
     $: attendees = data.attendees as Attendee[];
     $: games = data.games as GameSession[];
@@ -168,6 +211,7 @@
     $: reservations = data.reservations as Reservation[];
     $: savedMembers = data.savedMembers as SavedMember[];
 </script>
+
 
 <section>
     <h2>📢 공지사항 관리</h2>
@@ -191,38 +235,39 @@
     <h2>현재 참여 인원</h2>
     <ul class="attendee-list">
         {#each (attendees || []) as attendee (attendee.id)}
+            {@const a = attendee as Attendee}
             <li>
                 <div class="attendee-info">
                     <div class="name-row">
-                        <a href="/admin/attendees/{attendee.id}" class="attendee-link">{attendee.name}</a>
-                        {#if attendee.is_blacklisted}
+                        <a href="/admin/attendees/{a.id}" class="attendee-link">{a.name}</a>
+                        {#if a.is_blacklisted}
                             <span class="badge blacklist">🚫 블랙</span>
                         {/if}
-                        {#if attendee.penalty_points > 0}
-                            <span class="badge penalty">⚠️ {attendee.penalty_points}</span>
+                        {#if a.penalty_points > 0}
+                            <span class="badge penalty">⚠️ {a.penalty_points}</span>
                         {/if}
                     </div>
-                    <span class="arrival-time">{formatTime(attendee.arrival_time)} 입장</span>
+                    <span class="arrival-time">{formatTime(a.arrival_time)} 입장</span>
                 </div>
                 <div class="attendee-actions">
                     <form method="POST" action="?/applyPenaltyAdmin" use:enhance style="display:inline;">
-                        <input type="hidden" name="attendeeId" value={attendee.id} />
+                        <input type="hidden" name="attendeeId" value={a.id} />
                         <input type="hidden" name="points" value="1" />
                         <button type="submit" class="btn-penalty" title="페널티 +1">+1</button>
                     </form>
                     <form method="POST" action="?/toggleBlacklist" use:enhance style="display:inline;">
-                        <input type="hidden" name="attendeeId" value={attendee.id} />
+                        <input type="hidden" name="attendeeId" value={a.id} />
                         <button type="submit" class="btn-blacklist" title="블랙리스트 토글">
-                            {attendee.is_blacklisted ? '해제' : '블랙'}
+                            {a.is_blacklisted ? '해제' : '블랙'}
                         </button>
                     </form>
                     <form method="POST" action="?/removeAttendee" use:enhance={({ cancel }) => {
-                        if (attendee.is_playing) {
+                        if (a.is_playing) {
                             cancel(); // Stop default submission
-                            handleRemove(attendee); // Open modal
+                            handleRemove(a); // Open modal
                         }
                     }} style="display:inline;">
-                        <input type="hidden" name="id" value={attendee.id} />
+                        <input type="hidden" name="id" value={a.id} />
                         <button type="submit" class="btn-delete">퇴장</button>
                     </form>
                 </div>
@@ -235,7 +280,7 @@
         <button type="submit">인원 추가</button>
     </form>
 
-    {#if data.savedMembers.length > 0}
+    {#if (data.savedMembers || []).length > 0}
         <div class="quick-add">
             <h3>저장된 멤버 (클릭하여 추가)</h3>
             <div class="member-chips">
@@ -259,43 +304,75 @@
 </section>
 
 <section>
-    <h2>📅 시작 예정 게임 ({scheduledGames.length})</h2>
+    <div class="section-header">
+        <h2>📅 시작 예정 게임 ({(scheduledGames || []).length})</h2>
+        <button class="btn-create-game" on:click={openScheduledGameModal}>+ 게임 생성</button>
+    </div>
     <div class="scheduled-grid">
         {#each (scheduledGames || []) as game (game.id)}
+            {@const g = game as GameSession}
             <div class="scheduled-card">
                 <div class="game-header-row">
-                    {#if game.image_url}
-                        <img src={game.image_url} alt={game.game_name} class="game-thumb" />
+                    {#if g.image_url}
+                        <img src={g.image_url} alt={g.game_name} class="game-thumb" />
                     {:else}
                         <div class="game-thumb placeholder">🎲</div>
                     {/if}
                     <div class="game-details">
-                        <h3>{game.game_name}</h3>
-                        <p class="start-time">예정: {formatTime(game.scheduled_at)}</p>
-                        <p class="participants-list">참여자 ({game.participants.length}/{game.max_players}): {game.participants.map(p => p.name).join(', ')}</p>
+                        <h3>{g.game_name}</h3>
+                        <p class="start-time">예정: {formatTime(g.scheduled_at)}</p>
+                        <p class="participants-list">인원: (최소 {g.min_players} / 최대 {g.max_players})</p>
+                        <p class="participants-list">참여자 ({(g.participants || []).length}): {(g.participants || []).map(p => p.name).join(', ')}</p>
                     </div>
                 </div>
                 <div class="game-actions">
+                    <form method="POST" action="/?/joinScheduledGame" use:enhance class="inline-add-form">
+                        <input type="hidden" name="sessionId" value={g.id} />
+                        <select name="attendeeId" required class="attendee-select-mini">
+                            <option value="">참여자 추가</option>
+                            {#each (attendees || []) as attendee}
+                                <option value={attendee.id}>{attendee.name}</option>
+                            {/each}
+                        </select>
+                        <button type="submit" class="btn-mini">추가</button>
+                    </form>
                     <form method="POST" action="?/startScheduledGame" use:enhance>
-                        <input type="hidden" name="sessionId" value={game.id} />
+                        <input type="hidden" name="sessionId" value={g.id} />
                         <input type="number" name="duration" value="60" class="duration-input" />
                         <button type="submit" class="btn-primary">게임 시작</button>
                     </form>
                     <form method="POST" action="?/dissolveScheduledGame" use:enhance>
-                        <input type="hidden" name="sessionId" value={game.id} />
+                        <input type="hidden" name="sessionId" value={g.id} />
                         <button type="submit" class="btn-delete">폭파</button>
                     </form>
                 </div>
             </div>
         {/each}
-        {#if data.scheduledGames.length === 0}
+        {#if (data.scheduledGames || []).length === 0}
             <p class="empty-state">예정된 게임이 없습니다.</p>
         {/if}
     </div>
 </section>
 
 <section>
-    <h2>🎟️ 예약 및 대기열 ({reservations.length})</h2>
+    <div class="section-header">
+        <h2>🎟️ 예약 및 대기열 ({(reservations || []).length})</h2>
+        <form method="POST" action="/?/reserveGame" use:enhance class="inline-add-form">
+            <select name="attendeeId" required class="attendee-select-mini">
+                <option value="">예약자 추가</option>
+                {#each (attendees || []) as attendee}
+                    <option value={attendee.id}>{attendee.name}</option>
+                {/each}
+            </select>
+            <select name="sessionId" required class="session-select-mini">
+                <option value="">게임 선택</option>
+                {#each (games || []) as game}
+                    <option value={game.id}>{game.game_name}</option>
+                {/each}
+            </select>
+            <button type="submit" class="btn-mini">추가</button>
+        </form>
+    </div>
     <div class="reservations-list">
         {#each (reservations || []) as res (res.id)}
             <div class="reservation-item {res.status}">
@@ -320,7 +397,7 @@
                 </div>
             </div>
         {/each}
-        {#if data.reservations.length === 0}
+        {#if (data.reservations || []).length === 0}
             <p class="empty-state">현재 예약 내역이 없습니다.</p>
         {/if}
     </div>
@@ -353,6 +430,16 @@
                     </div>
                 </div>
                 <div class="game-actions">
+                    <form method="POST" action="/?/joinScheduledGame" use:enhance class="inline-add-form">
+                        <input type="hidden" name="sessionId" value={game.id} />
+                        <select name="attendeeId" required class="attendee-select-mini">
+                            <option value="">참여자 추가</option>
+                            {#each (attendees || []) as attendee}
+                                <option value={attendee.id}>{attendee.name}</option>
+                            {/each}
+                        </select>
+                        <button type="submit" class="btn-mini">추가</button>
+                    </form>
                     <form method="POST" action="?/extendGame" use:enhance>
                         <input type="hidden" name="id" value={game.id} />
                         <input type="hidden" name="minutes" value="10" />
@@ -367,7 +454,7 @@
                 </div>
             </div>
         {/each}
-        {#if data.games.length === 0}
+        {#if (data.games || []).length === 0}
             <p class="empty-state">진행 중인 게임이 없습니다.</p>
         {/if}
     </div>
@@ -427,8 +514,20 @@
                     {/if}
                 </div>
 
-                <input type="number" name="duration" placeholder="소요 시간 (분)" bind:value={selectedDuration} required />
-                
+                <div class="input-group">
+                    <label for="duration">예상 플레이 시간 (분)</label>
+                    <input 
+                        type="number" 
+                        id="duration"
+                        name="duration" 
+                        bind:value={selectedDuration} 
+                        placeholder="분 단위 입력" 
+                        required 
+                        min="1" 
+                        class="duration-input"
+                    />
+                </div>
+
                 <div class="player-select">
                     <p>참여자 선택:</p>
                     {#each (attendees || []) as attendee (attendee.id)}
@@ -557,6 +656,85 @@
     </div>
 {/if}
 
+{#if showScheduledGameModal}
+    <!-- svelte-ignore a11y-click-events-have-key-events -->
+    <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
+    <div class="modal-backdrop" on:click={() => showScheduledGameModal = false} role="presentation">
+        <div class="modal-content" on:click={handleModalClick} role="dialog">
+            <h2>📅 시작 예정 게임 생성</h2>
+            <form method="POST" action="/?/createScheduledGame" use:enhance={() => {
+                return async ({ result, update }: { result: any, update: (options?: { reset?: boolean }) => Promise<void> }) => {
+                    if (result.type === 'failure') {
+                        const data = result.data as { error?: string };
+                        showAlert(data?.error || '오류가 발생했습니다.');
+                    } else {
+                        showScheduledGameModal = false;
+                        showAlert('예약 게임이 생성되었습니다.');
+                    }
+                    await update();
+                };
+            }} class="game-form">
+                
+                <div class="input-group custom-dropdown">
+                    <label for="scheduledGameName">게임 이름</label>
+                    <input 
+                        type="text" 
+                        id="scheduledGameName"
+                        name="gameName" 
+                        placeholder="게임 이름 (직접 입력 또는 선택)" 
+                        bind:value={scheduledGameName} 
+                        bind:this={searchInput}
+                        on:click={handleInputClick}
+                        on:focus={handleInputClick}
+                        required 
+                        autocomplete="off" 
+                    />
+                    
+                    {#if dropdownOpen && filteredScheduledGames.length > 0}
+                        <ul class="dropdown-menu">
+                            {#each filteredScheduledGames as game}
+                                <li>
+                                    <button type="button" on:click={() => selectScheduledGame(game)}>
+                                        {#if game.image_url}
+                                            <img src={game.image_url} alt="" class="mini-thumb" />
+                                        {/if}
+                                        <div class="game-option-info">
+                                            <span class="name">{game.name}</span>
+                                            <span class="meta">👥 {game.min_players}-{game.max_players}인 | ⏱ {game.playtime_min}분</span>
+                                        </div>
+                                    </button>
+                                </li>
+                            {/each}
+                        </ul>
+                    {/if}
+                </div>
+
+                <div class="input-group">
+                    <label for="scheduledAt">시작 예정 시간</label>
+                    <input type="datetime-local" id="scheduledAt" name="scheduledAt" bind:value={scheduledAt} required class="full-width-input">
+                    <p class="hint">※ 시작 10분 전까지 최소 인원이 모이지 않으면 자동 폭파됩니다.</p>
+                </div>
+
+                <div class="player-limits">
+                    <div class="input-group">
+                        <label for="minPlayers">최소 인원</label>
+                        <input type="number" id="minPlayers" name="minPlayers" min="1" bind:value={minPlayers} required class="number-input">
+                    </div>
+                    <div class="input-group">
+                        <label for="maxPlayers">최대 인원</label>
+                        <input type="number" id="maxPlayers" name="maxPlayers" min="1" bind:value={maxPlayers} required class="number-input">
+                    </div>
+                </div>
+                
+                <div class="modal-actions">
+                    <button type="button" on:click={() => showScheduledGameModal = false} class="btn-cancel">취소</button>
+                    <button type="submit" class="btn-primary">예약 생성</button>
+                </div>
+            </form>
+        </div>
+    </div>
+{/if}
+
 <style>
     section {
         margin-bottom: 3rem;
@@ -673,13 +851,18 @@
         border-radius: 4px;
         cursor: pointer;
     }
-    button {
+    button, .btn-secondary {
         padding: 0.5rem 1rem;
         background: #007bff;
         color: white;
         border: none;
         border-radius: 4px;
         cursor: pointer;
+        text-decoration: none;
+        display: inline-block;
+    }
+    .btn-secondary {
+        background: #6c757d;
     }
     .player-select {
         width: 100%;
@@ -727,6 +910,19 @@
     .btn-cancel {
         background: #ccc;
         color: #333;
+    }
+    .btn-create-game {
+        background: #4caf50;
+        color: white;
+        padding: 0.5rem 1rem;
+        border-radius: 8px;
+        text-decoration: none;
+        font-weight: bold;
+        font-size: 0.9rem;
+        transition: background 0.2s;
+    }
+    .btn-create-game:hover {
+        background: #43a047;
     }
     .modal-backdrop {
         position: fixed;
@@ -1114,5 +1310,73 @@
         padding: 0.75rem;
         border: 1px solid #ddd;
         border-radius: 8px;
+    }
+
+    /* New Settings & Inline Add Styles */
+    .settings-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 1.5rem;
+    }
+    .settings-card {
+        background: white;
+        padding: 1.5rem;
+        border-radius: 12px;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+        border: 1px solid #eee;
+    }
+    .settings-card h3 {
+        margin-top: 0;
+        margin-bottom: 1.5rem;
+        font-size: 1.1rem;
+        color: #333;
+        border-bottom: 2px solid #f0f0f0;
+        padding-bottom: 0.5rem;
+    }
+    .setting-item {
+        margin-bottom: 1.25rem;
+    }
+    .setting-item label {
+        display: block;
+        font-size: 0.9rem;
+        font-weight: 600;
+        color: #666;
+        margin-bottom: 0.5rem;
+    }
+    .setting-item input {
+        width: 100%;
+        padding: 0.6rem;
+        border: 1px solid #ddd;
+        border-radius: 6px;
+        font-size: 1rem;
+    }
+    .setting-item .hint {
+        font-size: 0.8rem;
+        color: #888;
+        margin-top: 0.25rem;
+    }
+    .inline-add-form {
+        display: flex;
+        gap: 0.5rem;
+        align-items: center;
+    }
+    .attendee-select-mini, .session-select-mini {
+        padding: 0.4rem;
+        border-radius: 6px;
+        border: 1px solid #ddd;
+        font-size: 0.85rem;
+    }
+    .btn-mini {
+        padding: 0.4rem 0.8rem;
+        background: #4c6ef5;
+        color: white;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 0.85rem;
+        font-weight: 600;
+    }
+    .btn-mini:hover {
+        background: #3b5bdb;
     }
 </style>

@@ -23,6 +23,7 @@ export const load: PageServerLoad = async () => {
         FROM attendees
         ORDER BY name ASC
     `);
+
     const gamesResult = await query(`
         SELECT gs.*, g.image_url, json_agg(json_build_object('id', a.id, 'name', a.name)) as players
         FROM game_sessions gs
@@ -35,13 +36,14 @@ export const load: PageServerLoad = async () => {
     `);
 
     const scheduledGamesResult = await query(`
-        SELECT gs.*, g.image_url, g.max_players, json_agg(json_build_object('id', a.id, 'name', a.name)) as participants
+        SELECT gs.id, gs.game_name, gs.game_id, gs.min_players, gs.max_players, gs.scheduled_at, g.image_url,
+               COALESCE(json_agg(json_build_object('id', a.id, 'name', a.name)) FILTER (WHERE a.id IS NOT NULL), '[]') as participants
         FROM game_sessions gs
         LEFT JOIN session_participants sp ON gs.id = sp.session_id
         LEFT JOIN attendees a ON sp.attendee_id = a.id
         LEFT JOIN games g ON gs.game_id = g.id
         WHERE gs.status = 'scheduled'
-        GROUP BY gs.id, g.image_url, g.max_players
+        GROUP BY gs.id, gs.game_name, gs.game_id, gs.min_players, gs.max_players, gs.scheduled_at, g.image_url
         ORDER BY gs.scheduled_at ASC
     `);
 
@@ -70,6 +72,20 @@ export const load: PageServerLoad = async () => {
     
     const allGamesResult = await query('SELECT id, name, playtime_min FROM games WHERE is_active = true ORDER BY name ASC');
 
+    const settingsResult = await query('SELECT key, value FROM system_settings');
+    const settings = settingsResult.rows.reduce((acc: any, row: any) => {
+        acc[row.key] = row.value;
+        return acc;
+    }, {
+        closing_time_weekday: '22:00',
+        closing_time_weekend: '23:00',
+        weekend_days: '5,6',
+        is_open: 'true',
+        no_show_limit_minutes: '10',
+        auto_dissolve_limit_minutes: '10',
+        penalty_threshold: '3'
+    });
+
     return {
         attendees: attendeesResult.rows,
         savedMembers,
@@ -78,7 +94,8 @@ export const load: PageServerLoad = async () => {
         reservations: reservationsResult.rows,
         savedGameNames: gameNamesResult.rows,
         allGames: allGamesResult.rows,
-        notice: noticeResult.rows[0]?.content || null
+        notice: noticeResult.rows[0]?.content || null,
+        settings
     };
 };
 
@@ -187,12 +204,14 @@ export const actions: Actions = {
                 const busyPlayers = playingCheck.rows.map((r: any) => r.name).join(', ');
                 return fail(400, { error: `다음 인원은 이미 게임 중입니다: ${busyPlayers}` });
             }
-
-            const result = await query(
-                'INSERT INTO game_sessions (game_name, game_id, start_time, end_time, status) VALUES ($1, $2, NOW(), NOW() + interval \'' + duration + ' minutes\', $3) RETURNING id',
-                [gameName, gameId, 'playing']
+            // 1. Create Game Session
+            const sessionResult = await query(
+                `INSERT INTO game_sessions (game_name, game_id, status, start_time, end_time) 
+                 VALUES ($1, $2, 'playing', NOW(), NOW() + ($3 || ' minutes')::INTERVAL) 
+                 RETURNING id`,
+                [gameName, gameId, duration]
             );
-            const newGameId = result.rows[0].id;
+            const newGameId = sessionResult.rows[0].id;
 
             for (const playerId of playerIds) {
                 await query('INSERT INTO session_participants (session_id, attendee_id) VALUES ($1, $2)', [newGameId, playerId]);
@@ -290,16 +309,18 @@ export const actions: Actions = {
         const weekday = data.get('closing_time_weekday')?.toString();
         const weekend = data.get('closing_time_weekend')?.toString();
         const weekendDays = data.getAll('weekend_days').join(',');
-
-        if (!weekday || !weekend) {
-            return fail(400, { missing: true });
-        }
+        const noShowLimit = data.get('no_show_limit_minutes')?.toString();
+        const autoDissolveLimit = data.get('auto_dissolve_limit_minutes')?.toString();
+        const penaltyThreshold = data.get('penalty_threshold')?.toString();
 
         try {
             await query('BEGIN');
-            await query('INSERT INTO system_settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = $2', ['closing_time_weekday', weekday]);
-            await query('INSERT INTO system_settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = $2', ['closing_time_weekend', weekend]);
-            await query('INSERT INTO system_settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = $2', ['weekend_days', weekendDays]);
+            if (weekday) await query('INSERT INTO system_settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = $2', ['closing_time_weekday', weekday]);
+            if (weekend) await query('INSERT INTO system_settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = $2', ['closing_time_weekend', weekend]);
+            if (weekendDays !== undefined) await query('INSERT INTO system_settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = $2', ['weekend_days', weekendDays]);
+            if (noShowLimit) await query('INSERT INTO system_settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = $2', ['no_show_limit_minutes', noShowLimit]);
+            if (autoDissolveLimit) await query('INSERT INTO system_settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = $2', ['auto_dissolve_limit_minutes', autoDissolveLimit]);
+            if (penaltyThreshold) await query('INSERT INTO system_settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = $2', ['penalty_threshold', penaltyThreshold]);
             await query('COMMIT');
         } catch (error) {
             await query('ROLLBACK');
@@ -427,6 +448,24 @@ export const actions: Actions = {
         if (!attendeeId) return fail(400, { error: 'Invalid ID' });
 
         await query('UPDATE attendees SET is_blacklisted = NOT is_blacklisted WHERE id = $1', [attendeeId]);
+        return { success: true };
+    },
+
+    addTable: async ({ request }) => {
+        const data = await request.formData();
+        const name = data.get('name')?.toString().trim();
+        if (!name) return fail(400, { error: '테이블 이름을 입력해주세요.' });
+
+        await query('INSERT INTO tables (name) VALUES ($1)', [name]);
+        return { success: true };
+    },
+
+    removeTable: async ({ request }) => {
+        const data = await request.formData();
+        const id = data.get('id');
+        if (!id) return fail(400, { error: 'Invalid ID' });
+
+        await query('UPDATE tables SET is_active = false WHERE id = $1', [id]);
         return { success: true };
     }
 };
