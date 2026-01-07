@@ -5,9 +5,10 @@ services:
       - "3000:3000"
     environment:
       - DATABASE_URL=postgres://user:password@db:5432/boardgameclub
-      - ORIGIN=${ORIGIN:-https://damonpyo.mooo.com}
+      - ORIGIN=${ORIGIN:-http://localhost:3000}
       - BODY_SIZE_LIMIT=Infinity
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin1234}
+      - TZ=Asia/Seoul
     depends_on:
       - db
     restart: always
@@ -18,12 +19,14 @@ services:
       - POSTGRES_USER=user
       - POSTGRES_PASSWORD=password
       - POSTGRES_DB=boardgameclub
+      - TZ=Asia/Seoul
     volumes:
       - db-data:/var/lib/postgresql/data
       - ./database/schema.sql:/docker-entrypoint-initdb.d/init.sql
     ports:
       - "5432:5432"
     restart: always
+    command: postgres -c timezone=Asia/Seoul
 
   caddy:
     image: caddy:2-alpine

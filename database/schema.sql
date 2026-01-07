@@ -39,6 +39,18 @@ CREATE TABLE IF NOT EXISTS games (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Tables table (Physical or logical tables in the club)
+CREATE TABLE IF NOT EXISTS tables (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(50) NOT NULL,
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Insert default tables
+INSERT INTO tables (name) VALUES ('Table 1'), ('Table 2'), ('Table 3'), ('Table 4')
+ON CONFLICT DO NOTHING;
+
 -- Game Sessions table (Active games)
 CREATE TABLE IF NOT EXISTS game_sessions (
     id SERIAL PRIMARY KEY,
@@ -48,6 +60,8 @@ CREATE TABLE IF NOT EXISTS game_sessions (
     end_time TIMESTAMP WITH TIME ZONE, -- Estimated end time
     status VARCHAR(20) DEFAULT 'playing' CHECK (status IN ('playing', 'finished', 'scheduled')),
     scheduled_at TIMESTAMP WITH TIME ZONE,
+    min_players INTEGER DEFAULT 2,
+    max_players INTEGER DEFAULT 4,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -77,6 +91,7 @@ CREATE TABLE IF NOT EXISTS reservations (
     id SERIAL PRIMARY KEY,
     session_id INTEGER REFERENCES game_sessions(id) ON DELETE CASCADE,
     game_id INTEGER REFERENCES games(id) ON DELETE CASCADE,
+    table_id INTEGER REFERENCES tables(id) ON DELETE CASCADE,
     attendee_id INTEGER REFERENCES attendees(id) ON DELETE CASCADE,
     status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'waitlisted', 'confirmed', 'cancelled')),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP

@@ -8,12 +8,11 @@ export async function promoteWaitlist(sessionId: number) {
     try {
         // 1. Get session info and current participant count
         const sessionInfo = await query(`
-            SELECT gs.id, gs.status, g.max_players, COUNT(sp.id) as current_players
+            SELECT gs.id, gs.status, gs.max_players, COUNT(sp.id) as current_players
             FROM game_sessions gs
-            JOIN games g ON gs.game_id = g.id
             LEFT JOIN session_participants sp ON gs.id = sp.session_id
             WHERE gs.id = $1
-            GROUP BY gs.id, gs.status, g.max_players
+            GROUP BY gs.id, gs.status, gs.max_players
         `, [sessionId]);
 
         if (sessionInfo.rows.length === 0) {

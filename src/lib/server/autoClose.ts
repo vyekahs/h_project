@@ -110,15 +110,28 @@ async function performCloseDay(businessDate: string) {
 
 async function checkReservations() {
     try {
-        // 1. Auto-cancel No-shows (10 minutes after scheduled_at)
+        // Fetch Settings
+        const settingsResult = await query('SELECT key, value FROM system_settings');
+        const settings = settingsResult.rows.reduce((acc: any, row: any) => {
+            acc[row.key] = row.value;
+            return acc;
+        }, { 
+            no_show_limit_minutes: '10',
+            auto_dissolve_limit_minutes: '10'
+        });
+
+        const noShowLimit = parseInt(settings.no_show_limit_minutes);
+        const autoDissolveLimit = parseInt(settings.auto_dissolve_limit_minutes);
+
+        // 1. Auto-cancel No-shows
         const noShows = await query(`
             SELECT r.id, r.attendee_id, r.session_id
             FROM reservations r
             JOIN game_sessions gs ON r.session_id = gs.id
             WHERE gs.status = 'scheduled' 
-              AND gs.scheduled_at < NOW() - interval '10 minutes'
+              AND gs.scheduled_at < NOW() - ($1 || ' minutes')::interval
               AND r.status IN ('pending', 'confirmed')
-        `);
+        `, [noShowLimit]);
         
         for (const row of noShows.rows) {
             await query("UPDATE reservations SET status = 'cancelled' WHERE id = $1", [row.id]);
@@ -127,17 +140,16 @@ async function checkReservations() {
             console.log(`Auto-cancelled reservation ${row.id} for attendee ${row.attendee_id} (No-show)`);
         }
 
-        // 2. Auto-dissolve scheduled games (if min_players not met 10 mins BEFORE scheduled_at)
+        // 2. Auto-dissolve scheduled games
         const underpopulated = await query(`
-            SELECT gs.id, g.min_players, COUNT(sp.id) as current_players
+            SELECT gs.id, gs.min_players, COUNT(sp.id) as current_players
             FROM game_sessions gs
-            JOIN games g ON gs.game_id = g.id
             LEFT JOIN session_participants sp ON gs.id = sp.session_id
             WHERE gs.status = 'scheduled'
-              AND gs.scheduled_at < NOW() + interval '10 minutes'
-            GROUP BY gs.id, g.min_players
-            HAVING COUNT(sp.id) < g.min_players
-        `);
+              AND gs.scheduled_at < NOW() + ($1 || ' minutes')::interval
+            GROUP BY gs.id, gs.min_players
+            HAVING COUNT(sp.id) < COALESCE(gs.min_players, 2)
+        `, [autoDissolveLimit]);
 
         for (const row of underpopulated.rows) {
             await query("UPDATE game_sessions SET status = 'finished' WHERE id = $1", [row.id]);
