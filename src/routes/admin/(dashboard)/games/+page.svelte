@@ -233,28 +233,28 @@
 
                 <div class="row">
                     <div class="form-group">
-                        <label>플레이 시간 (분)</label>
-                        <input type="number" name="playtime_min" bind:value={selectedGame.playtime_min} step="5" />
+                        <label for="playtime">플레이 시간 (분)</label>
+                        <input type="number" id="playtime" name="playtime_min" bind:value={selectedGame.playtime_min} step="5" />
                     </div>
                     <div class="form-group">
-                        <label>난이도 (Weight 1~5)</label>
-                        <input type="number" name="complexity" bind:value={selectedGame.complexity} step="0.01" min="1" max="5" />
+                        <label for="complexity">난이도 (Weight 1~5)</label>
+                        <input type="number" id="complexity" name="complexity" bind:value={selectedGame.complexity} step="0.01" min="1" max="5" />
                     </div>
                 </div>
 
                 <div class="form-group">
-                    <label>포함된 확장 (DLC)</label>
-                    <input type="text" name="included_dlcs" bind:value={selectedGame.included_dlcs} placeholder="예: 도시와 기사, 항해사 (쉼표로 구분)" />
+                    <label for="included_dlcs">포함된 확장 (DLC)</label>
+                    <input type="text" id="included_dlcs" name="included_dlcs" bind:value={selectedGame.included_dlcs} placeholder="예: 도시와 기사, 항해사 (쉼표로 구분)" />
                 </div>
 
                 <div class="form-group">
-                    <label>이미지 URL</label>
-                    <input type="text" name="image_url" bind:value={selectedGame.image_url} placeholder="https://..." />
+                    <label for="image_url">이미지 URL</label>
+                    <input type="text" id="image_url" name="image_url" bind:value={selectedGame.image_url} placeholder="https://..." />
                 </div>
 
                 <div class="form-group">
-                    <label>설명</label>
-                    <textarea name="description" bind:value={selectedGame.description} rows="3"></textarea>
+                    <label for="description">설명</label>
+                    <textarea id="description" name="description" bind:value={selectedGame.description} rows="3"></textarea>
                 </div>
 
                 <div class="modal-actions">
@@ -267,8 +267,8 @@
 {/if}
 
 {#if showBggModal}
-    <div class="modal-backdrop" on:click={closeBggModal}>
-        <div class="modal bgg-modal" on:click|stopPropagation>
+    <div class="modal-backdrop" on:click={closeBggModal} on:keydown={(e) => e.key === 'Escape' && closeBggModal()} role="button" tabindex="0" aria-label="Close modal">
+        <div class="modal bgg-modal" on:click|stopPropagation role="presentation">
             <h2>🌍 BGG 게임 검색</h2>
             <form method="POST" action="?/searchBgg" use:enhance={() => {
                 isSearching = true;
@@ -575,7 +575,7 @@
     .row { display: flex; gap: 1rem; }
     .row .form-group { flex: 1; }
     label { display: block; margin-bottom: 0.5rem; font-weight: bold; font-size: 0.9rem; }
-    input, select, textarea {
+    input, textarea {
         width: 100%;
         padding: 0.75rem;
         border: 1px solid #ddd;

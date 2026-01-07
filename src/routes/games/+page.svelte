@@ -122,8 +122,8 @@
 </div>
 
 {#if showDetailModal && selectedDetailGame}
-    <div class="modal-backdrop" on:click={closeDetailModal}>
-        <div class="modal detail-modal" on:click|stopPropagation>
+    <div class="modal-backdrop" on:click={closeDetailModal} on:keydown={(e) => e.key === 'Escape' && closeDetailModal()} role="button" tabindex="0" aria-label="Close modal">
+        <div class="modal detail-modal" on:click|stopPropagation role="presentation">
             <div class="detail-header">
                 <h2>{selectedDetailGame.name}</h2>
                 <button class="btn-close" on:click={closeDetailModal}>✕</button>
