@@ -159,7 +159,7 @@ export const actions: Actions = {
         // 2. Create reservation
         await query(
             'INSERT INTO reservations (session_id, attendee_id, status) VALUES ($1, $2, $3)',
-            [sessionId, attendeeId, 'pending']
+            [sessionId, attendeeId, 'confirmed']
         );
 
         return { success: true };

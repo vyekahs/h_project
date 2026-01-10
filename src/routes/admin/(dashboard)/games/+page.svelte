@@ -9,6 +9,7 @@
     let showBggModal = false;
     let isEditing = false;
     let selectedGame: any = null;
+    let isUnlimitedTime = false;
 
     // BGG State
     let bggQuery = '';
@@ -28,12 +29,14 @@
             image_url: '',
             included_dlcs: ''
         };
+        isUnlimitedTime = false;
         showModal = true;
     }
 
     function openEditModal(game: any) {
         isEditing = true;
         selectedGame = { ...game };
+        isUnlimitedTime = selectedGame.playtime_min === 0;
         showModal = true;
     }
 
@@ -110,7 +113,7 @@
                     </div>
                     <div class="meta">
                         <span>👥 {game.min_players}-{game.max_players}인</span>
-                        <span>⏱ {game.playtime_min}분</span>
+                        <span>⏱ {game.playtime_min === 0 ? '무제한' : game.playtime_min + '분'}</span>
                         <span class="complexity-badge">⚖️ {game.complexity || '-'} / 5</span>
                     </div>
                     {#if game.included_dlcs}
@@ -165,7 +168,13 @@
                         </div>
                         <div class="info-item">
                             <span class="label">시간</span>
-                            <span class="value">{selectedDetailGame.playtime_min}분~{selectedDetailGame.max_playtime || selectedDetailGame.playtime_min}분</span>
+                            <span class="value">
+                                {#if selectedDetailGame.playtime_min === 0}
+                                    무제한
+                                {:else}
+                                    {selectedDetailGame.playtime_min}분~{selectedDetailGame.max_playtime || selectedDetailGame.playtime_min}분
+                                {/if}
+                            </span>
                         </div>
                         <div class="info-item">
                             <span class="label">연령</span>
@@ -234,7 +243,21 @@
                 <div class="row">
                     <div class="form-group">
                         <label for="playtime">플레이 시간 (분)</label>
-                        <input type="number" id="playtime" name="playtime_min" bind:value={selectedGame.playtime_min} step="5" />
+                        <div class="playtime-input-group">
+                            <input type="number" id="playtime" name="playtime_min" 
+                                value={isUnlimitedTime ? 0 : selectedGame.playtime_min} 
+                                on:input={(e) => selectedGame.playtime_min = parseInt(e.currentTarget.value)}
+                                step="5" 
+                                disabled={isUnlimitedTime} 
+                            />
+                            <label class="checkbox-label">
+                                <input type="checkbox" bind:checked={isUnlimitedTime} on:change={() => {
+                                    if (isUnlimitedTime) selectedGame.playtime_min = 0;
+                                    else selectedGame.playtime_min = 30;
+                                }} />
+                                제한 시간 없음
+                            </label>
+                        </div>
                     </div>
                     <div class="form-group">
                         <label for="complexity">난이도 (Weight 1~5)</label>
@@ -582,6 +605,24 @@
         border-radius: 6px;
         font-size: 1rem;
         box-sizing: border-box;
+    }
+    .playtime-input-group {
+        display: flex;
+        gap: 1rem;
+        align-items: center;
+    }
+    .checkbox-label {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        white-space: nowrap;
+        font-weight: normal;
+        margin: 0;
+        cursor: pointer;
+    }
+    .checkbox-label input {
+        width: auto;
+        margin: 0;
     }
     .modal-actions {
         display: flex;

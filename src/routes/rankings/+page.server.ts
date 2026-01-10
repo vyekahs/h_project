@@ -7,7 +7,9 @@ export const load: PageServerLoad = async () => {
         SELECT a.name, COUNT(*) as wins
         FROM session_participants sp
         JOIN attendees a ON sp.attendee_id = a.id
-        WHERE sp.is_winner = true
+        JOIN game_sessions gs ON sp.session_id = gs.id
+        JOIN games g ON gs.game_id = g.id
+        WHERE sp.is_winner = true AND g.playtime_min > 0
         GROUP BY a.name
         ORDER BY wins DESC
         LIMIT 10
@@ -23,7 +25,8 @@ export const load: PageServerLoad = async () => {
         FROM session_participants sp
         JOIN attendees a ON sp.attendee_id = a.id
         JOIN game_sessions gs ON sp.session_id = gs.id
-        WHERE gs.status = 'finished'
+        JOIN games g ON gs.game_id = g.id
+        WHERE gs.status = 'finished' AND g.playtime_min > 0
         GROUP BY a.name
         HAVING COUNT(*) >= 5
         ORDER BY win_rate DESC, wins DESC
@@ -38,8 +41,9 @@ export const load: PageServerLoad = async () => {
             COUNT(*) as wins
         FROM session_participants sp
         JOIN game_sessions gs ON sp.session_id = gs.id
+        JOIN games g ON gs.game_id = g.id
         JOIN attendees a ON sp.attendee_id = a.id
-        WHERE sp.is_winner = true
+        WHERE sp.is_winner = true AND g.playtime_min > 0
         GROUP BY gs.game_name, a.name
         ORDER BY gs.game_name, wins DESC
     `);
