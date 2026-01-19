@@ -12,6 +12,11 @@ WORKDIR /app
 COPY --from=builder /app/build build/
 COPY --from=builder /app/node_modules node_modules/
 COPY package.json .
+COPY database/ database/
+COPY start.sh .
+
+RUN chmod +x start.sh
+
 EXPOSE 3000
 ENV NODE_ENV=production
-CMD [ "node", "build" ]
+CMD [ "./start.sh" ]

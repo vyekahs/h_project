@@ -8,8 +8,8 @@ export const load: PageServerLoad = async () => {
     // 1. Generate random token
     const token = crypto.randomBytes(32).toString('hex');
     
-    // 2. Set expiration (30 seconds)
-    const expiresAt = new Date(Date.now() + 30 * 1000);
+    // 2. Set expiration (100 years - effectively forever)
+    const expiresAt = new Date(Date.now() + 100 * 365 * 24 * 60 * 60 * 1000);
 
     // 3. Save to DB
     await query('INSERT INTO qr_tokens (token, expires_at) VALUES ($1, $2)', [token, expiresAt]);

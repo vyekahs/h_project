@@ -2,6 +2,7 @@ import { fail, redirect } from '@sveltejs/kit';
 import type { Actions } from './$types';
 import { query } from '$lib/server/db';
 import bcrypt from 'bcryptjs';
+import { createAttendeeSession } from '$lib/server/auth';
 
 export const actions: Actions = {
     default: async ({ request, cookies, url }) => {
@@ -35,16 +36,19 @@ export const actions: Actions = {
             
             const newUser = result.rows[0];
 
-            // Auto-login: Set user auth cookie
-            const userSession = JSON.stringify({ id: newUser.id, name: newUser.name });
+            // Auto-login: Set user session cookie
+            const token = await createAttendeeSession(newUser.id);
             
-            cookies.set('user_auth', userSession, {
+            cookies.set('user_session', token, {
                 path: '/',
                 httpOnly: true,
                 sameSite: 'lax',
                 secure: false,
                 maxAge: 60 * 60 * 24 * 365 // 1 year
             });
+            
+            // Clean up old insecure cookie
+            cookies.delete('user_auth', { path: '/' });
 
         } catch (err) {
             console.error(err);

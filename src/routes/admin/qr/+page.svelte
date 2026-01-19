@@ -1,34 +1,7 @@
 <script lang="ts">
-    import { onMount, onDestroy } from 'svelte';
     import { invalidateAll } from '$app/navigation';
 
     export let data;
-
-    let timeLeft = 30;
-    let timer: NodeJS.Timeout;
-
-    function startTimer() {
-        timeLeft = 30;
-        if (timer) clearInterval(timer);
-        timer = setInterval(() => {
-            timeLeft--;
-            if (timeLeft <= 0) {
-                invalidateAll(); // Refresh data to get new QR
-                timeLeft = 30;
-            }
-        }, 1000);
-    }
-
-    onMount(() => {
-        startTimer();
-    });
-
-    onDestroy(() => {
-        if (timer) clearInterval(timer);
-    });
-
-    // Reset timer when data changes (new QR loaded)
-    $: if (data.qrCode) startTimer();
 </script>
 
 <div class="qr-container">
@@ -46,10 +19,7 @@
             {/if}
         </div>
         
-        <div class="timer">
-            <div class="progress-bar" style="width: {(timeLeft / 30) * 100}%"></div>
-            <p>QR 코드는 <strong>{timeLeft}초</strong> 후 갱신됩니다.</p>
-        </div>
+
 
         <div class="instructions">
             <p>1. 카메라 앱을 켜세요.</p>
@@ -109,13 +79,6 @@
     }
     .timer {
         margin-bottom: 2rem;
-    }
-    .progress-bar {
-        height: 4px;
-        background: #007bff;
-        border-radius: 2px;
-        margin-bottom: 0.5rem;
-        transition: width 1s linear;
     }
     .timer p {
         color: #666;

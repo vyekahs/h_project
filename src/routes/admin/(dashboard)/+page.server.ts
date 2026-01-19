@@ -1,13 +1,35 @@
 import { query } from '$lib/server/db';
-import { fail } from '@sveltejs/kit';
+import { fail, redirect } from '@sveltejs/kit';
+import QRCode from 'qrcode';
 import type { Actions, PageServerLoad } from './$types';
+import { verifyAdminSession } from '$lib/server/auth';
+
+async function canModifyGame(request: Request, gameId: string | number): Promise<boolean> {
+    const sessionToken = request.headers.get('cookie')?.match(/admin_session=([^;]+)/)?.[1];
+    if (sessionToken && await verifyAdminSession(sessionToken)) return true;
+
+    const userSessionToken = request.headers.get('cookie')?.match(/user_session=([^;]+)/)?.[1];
+    if (!userSessionToken) return false;
+
+    try {
+        const user = await verifyAttendeeSession(userSessionToken);
+        if (!user || !user.can_manage_games) return false;
+
+        const res = await query('SELECT created_by FROM game_sessions WHERE id = $1', [gameId]);
+        if (res.rows.length === 0) return false;
+        
+        return res.rows[0].created_by === user.id;
+    } catch (e) {
+        return false;
+    }
+}
 
 export const load: PageServerLoad = async () => {
     // Auto-finish expired games
     await query("UPDATE game_sessions SET status = 'finished' WHERE status = 'playing' AND end_time < NOW()");
 
     const attendeesResult = await query(`
-        SELECT a.id, a.name, a.arrival_time, a.status, a.penalty_points, a.is_blacklisted,
+        SELECT a.id, a.name, a.arrival_time, a.status, a.penalty_points, a.is_blacklisted, a.can_manage_games,
                MAX(g.id) as game_id,
                MAX(g.game_name) as game_name,
                BOOL_OR(g.id IS NOT NULL) as is_playing
@@ -15,7 +37,7 @@ export const load: PageServerLoad = async () => {
         LEFT JOIN session_participants sp ON a.id = sp.attendee_id
         LEFT JOIN game_sessions g ON sp.session_id = g.id AND g.status = 'playing'
         WHERE a.status = 'present'
-        GROUP BY a.id, a.name, a.arrival_time, a.status, a.penalty_points, a.is_blacklisted
+        GROUP BY a.id, a.name, a.arrival_time, a.status, a.penalty_points, a.is_blacklisted, a.can_manage_games
         ORDER BY is_playing, a.arrival_time DESC
     `);
     const historyResult = await query(`
@@ -204,12 +226,24 @@ export const actions: Actions = {
                 const busyPlayers = playingCheck.rows.map((r: any) => r.name).join(', ');
                 return fail(400, { error: `다음 인원은 이미 게임 중입니다: ${busyPlayers}` });
             }
+            // 0. Get Creator ID (if Manager)
+            const userAuth = request.headers.get('cookie')?.match(/user_auth=([^;]+)/)?.[1];
+            let createdBy = null;
+            if (userAuth) {
+                try {
+                    const user = JSON.parse(decodeURIComponent(userAuth));
+                    createdBy = user.id;
+                } catch (e) {
+                    // ignore
+                }
+            }
+
             // 1. Create Game Session
             const sessionResult = await query(
-                `INSERT INTO game_sessions (game_name, game_id, status, start_time, end_time) 
-                 VALUES ($1, $2, 'playing', NOW(), NOW() + ($3 || ' minutes')::INTERVAL) 
+                `INSERT INTO game_sessions (game_name, game_id, status, start_time, end_time, created_by) 
+                 VALUES ($1, $2, 'playing', NOW(), NOW() + ($3 || ' minutes')::INTERVAL, $4) 
                  RETURNING id`,
-                [gameName, gameId, duration]
+                [gameName, gameId, duration, createdBy]
             );
             const newGameId = sessionResult.rows[0].id;
 
@@ -225,6 +259,10 @@ export const actions: Actions = {
     endGame: async ({ request }) => {
         const data = await request.formData();
         const id = data.get('id')?.toString();
+        
+        if (!id) return fail(400, { missing: true });
+        if (!(await canModifyGame(request, id))) return fail(403, { error: 'Unauthorized' });
+
         const winnerIds = data.getAll('winnerIds').map(id => id.toString());
         
         // Process scores: scores are sent as "score_{attendeeId}"
@@ -294,6 +332,7 @@ export const actions: Actions = {
         if (!id || minutes <= 0) {
             return fail(400, { missing: true });
         }
+        if (!(await canModifyGame(request, id))) return fail(403, { error: 'Unauthorized' });
 
         try {
             await query(
@@ -393,6 +432,7 @@ export const actions: Actions = {
         const data = await request.formData();
         const sessionId = data.get('sessionId');
         if (!sessionId) return fail(400, { error: 'Invalid ID' });
+        if (!(await canModifyGame(request, sessionId.toString()))) return fail(403, { error: 'Unauthorized' });
 
         await query('BEGIN');
         try {
@@ -413,6 +453,7 @@ export const actions: Actions = {
         const duration = parseInt(data.get('duration')?.toString() || '60');
 
         if (!sessionId) return fail(400, { error: 'Invalid ID' });
+        if (!(await canModifyGame(request, sessionId.toString()))) return fail(403, { error: 'Unauthorized' });
 
         await query('BEGIN');
         try {
@@ -443,11 +484,26 @@ export const actions: Actions = {
     },
 
     toggleBlacklist: async ({ request }) => {
+        const sessionToken = request.headers.get('cookie')?.match(/admin_session=([^;]+)/)?.[1];
+        if (!sessionToken || !(await verifyAdminSession(sessionToken))) return fail(403, { error: 'Unauthorized' });
+
         const data = await request.formData();
         const attendeeId = data.get('attendeeId');
         if (!attendeeId) return fail(400, { error: 'Invalid ID' });
 
         await query('UPDATE attendees SET is_blacklisted = NOT is_blacklisted WHERE id = $1', [attendeeId]);
+        return { success: true };
+    },
+
+    toggleManager: async ({ request }) => {
+        const sessionToken = request.headers.get('cookie')?.match(/admin_session=([^;]+)/)?.[1];
+        if (!sessionToken || !(await verifyAdminSession(sessionToken))) return fail(403, { error: 'Unauthorized' });
+
+        const data = await request.formData();
+        const attendeeId = data.get('attendeeId');
+        if (!attendeeId) return fail(400, { error: 'Invalid ID' });
+
+        await query('UPDATE attendees SET can_manage_games = NOT can_manage_games WHERE id = $1', [attendeeId]);
         return { success: true };
     },
 

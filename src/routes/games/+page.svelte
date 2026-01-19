@@ -1,5 +1,6 @@
 <script lang="ts">
     import type { PageData } from './$types';
+    import { enhance } from '$app/forms';
 
     export let data: PageData;
 
@@ -50,6 +51,25 @@
         showDetailModal = false;
         selectedDetailGame = null;
     }
+
+    // BGG Logic
+    let showBggModal = false;
+    let bggQuery = '';
+    let bggResults: any[] = [];
+    let bggLoading = false;
+    let alertVisible = false;
+    let alertMessage = '';
+
+    function openBggModal() {
+        showBggModal = true;
+        bggQuery = '';
+        bggResults = [];
+    }
+
+    function showAlert(msg: string) {
+        alertMessage = msg;
+        alertVisible = true;
+    }
 </script>
 
 <svelte:window on:click={handleWindowClick} />
@@ -58,6 +78,9 @@
     <div class="header">
         <h1>🎲 보드게임 도감</h1>
         <p>우리 동호회가 보유한 보드게임 목록입니다.</p>
+        {#if data.user && (data.user.can_manage_games || data.isAdmin)}
+             <button class="btn-create" on:click={openBggModal}>🎲 게임 DB 추가</button>
+        {/if}
     </div>
 
     <div class="filters">
@@ -186,6 +209,89 @@
     </div>
 {/if}
 
+<!-- BGG Search Modal -->
+{#if showBggModal}
+    <!-- svelte-ignore a11y-click-events-have-key-events -->
+    <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
+    <div class="modal-backdrop" on:click={() => showBggModal = false} role="presentation">
+        <div class="modal" on:click|stopPropagation role="dialog">
+            <h2>🎲 BGG 게임 검색 및 추가</h2>
+            
+            <form method="POST" action="?/searchBgg" use:enhance={() => {
+                bggLoading = true;
+                return async ({ result }) => {
+                    bggLoading = false;
+                    if (result.type === 'success') {
+                        // @ts-ignore
+                        bggResults = result.data.bggGames;
+                        if (bggResults.length === 0) {
+                            showAlert('검색 결과가 없습니다.');
+                        }
+                    } else if (result.type === 'failure') {
+                        // @ts-ignore
+                        showAlert(result.data?.error || '검색 실패');
+                    }
+                };
+            }} class="bgg-search-form">
+                <input type="text" name="query" placeholder="게임 이름 (영문 추천)" bind:value={bggQuery} required autoFocus>
+                <button type="submit" class="btn-primary" disabled={bggLoading}>
+                    {bggLoading ? '...' : '검색'}
+                </button>
+            </form>
+
+            <div class="bgg-results">
+                {#if bggLoading}
+                    <div class="loader">BGG에서 검색 중입니다... ⏳</div>
+                {:else if bggResults.length > 0}
+                    {#each bggResults as game}
+                        <div class="bgg-item">
+                            <div class="bgg-info">
+                                <h4>{game.name}</h4>
+                                <span class="bgg-year">{game.year}</span>
+                            </div>
+                            <form method="POST" action="?/importBgg" use:enhance={() => {
+                                return async ({ result, update }) => {
+                                    if (result.type === 'success') {
+                                        showAlert(`'${game.name}' 게임이 추가되었습니다! 🎲`);
+                                        showBggModal = false;
+                                        await update(); // Refresh game list
+                                    } else {
+                                        // @ts-ignore
+                                        showAlert(result.data?.error || '가져오기 실패');
+                                    }
+                                };
+                            }}>
+                                <input type="hidden" name="bggId" value={game.id}>
+                                <input type="hidden" name="searchName" value={bggQuery}> <!-- Pass query as potential Korean name hint -->
+                                <button type="submit" class="btn-primary" style="font-size: 0.8rem; padding: 0.4rem 0.8rem;">가져오기</button>
+                            </form>
+                        </div>
+                    {/each}
+                {/if}
+            </div>
+
+            <div class="modal-actions" style="margin-top: 1rem;">
+                <button type="button" class="btn-cancel" on:click={() => showBggModal = false}>닫기</button>
+            </div>
+        </div>
+    </div>
+{/if}
+
+<!-- Alert Modal -->
+{#if alertVisible}
+    <!-- svelte-ignore a11y-click-events-have-key-events -->
+    <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
+    <div class="modal-backdrop" on:click={() => alertVisible = false} role="presentation">
+        <div class="modal-content alert-modal" on:click|stopPropagation role="alertdialog">
+            <h3>알림</h3>
+            <p>{alertMessage}</p>
+            <div class="modal-actions">
+                <button class="btn-primary" on:click={() => alertVisible = false}>확인</button>
+            </div>
+        </div>
+    </div>
+{/if}
+
 <style>
     .library-container {
         max-width: 1200px;
@@ -195,6 +301,7 @@
     .header {
         text-align: center;
         margin-bottom: 2rem;
+        position: relative;
     }
     .header h1 {
         margin: 0 0 0.5rem 0;
@@ -401,6 +508,8 @@
     }
     .modal {
         background: white;
+        background-color: white; /* Force opaque background */
+        box-shadow: 0 4px 20px rgba(0,0,0,0.15); /* Add shadow for better separation */
         padding: 2rem;
         border-radius: 12px;
         width: 90%;
@@ -505,6 +614,75 @@
         border-radius: 6px;
         cursor: pointer;
         font-weight: bold;
+    }
+
+
+    .btn-create {
+        position: absolute;
+        top: 0;
+        right: 0;
+        padding: 0.5rem 1rem;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        font-weight: bold;
+        background-color: #fab005; 
+        color: #fff;
+    }
+    /* BGG Modal Styles */
+    .bgg-search-form {
+        display: flex;
+        gap: 0.5rem;
+        margin-bottom: 2rem;
+    }
+    .bgg-search-form input {
+        flex: 1;
+        padding: 0.75rem;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+    }
+    .bgg-results {
+        max-height: 400px;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+    }
+    .bgg-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 1rem;
+        border: 1px solid #eee;
+        border-radius: 8px;
+        background: #f8f9fa;
+        text-align: left;
+    }
+    .bgg-info h4 {
+        margin: 0;
+        font-size: 1rem;
+        color: #333;
+    }
+    .bgg-year {
+        font-size: 0.8rem;
+        color: #888;
+    }
+    .loader {
+        text-align: center;
+        padding: 2rem;
+        color: #666;
+    }
+    .btn-cancel {
+        background: #f1f3f5;
+        color: #495057;
+        border: none;
+        padding: 0.75rem 1.5rem;
+        border-radius: 8px;
+        font-weight: bold;
+        cursor: pointer;
+    }
+    .alert-modal {
+        text-align: center;
     }
 
     @media (max-width: 600px) {

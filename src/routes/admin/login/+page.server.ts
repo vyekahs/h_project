@@ -1,10 +1,11 @@
 import { fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { env } from '$env/dynamic/private';
+import { createAdminSession, getOrCreateAdminUser, verifyAdminSession } from '$lib/server/auth';
 
 export const load: PageServerLoad = async ({ cookies }) => {
-    const auth = cookies.get('admin_auth');
-    if (auth === 'true') {
+    const sessionToken = cookies.get('admin_session');
+    if (sessionToken && await verifyAdminSession(sessionToken)) {
         throw redirect(303, '/admin');
     }
 };
@@ -19,13 +20,25 @@ export const actions: Actions = {
             return fail(400, { error: '비밀번호가 올바르지 않습니다.' });
         }
 
-        cookies.set('admin_auth', 'true', {
-            path: '/',
-            httpOnly: true,
-            sameSite: 'lax',
-            secure: false,
-            maxAge: 60 * 60 * 24 * 365 // 1 year
-        });
+        try {
+            const userId = await getOrCreateAdminUser();
+            const token = await createAdminSession(userId);
+
+            cookies.set('admin_session', token, {
+                path: '/',
+                httpOnly: true,
+                sameSite: 'lax', // Strict might be too aggressive for redirects
+                secure: false, // Set to true in prod with HTTPS
+                maxAge: 60 * 60 * 24 * 7 // 7 days matching token
+            });
+            
+            // Clear old insecure cookie if exists
+            cookies.delete('admin_auth', { path: '/' });
+
+        } catch (e) {
+            console.error('Login Error:', e);
+            return fail(500, { error: '로그인 처리 중 오류가 발생했습니다.' });
+        }
 
         throw redirect(303, '/admin');
     }

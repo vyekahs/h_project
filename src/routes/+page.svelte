@@ -3,17 +3,31 @@
     import { onMount } from 'svelte';
     import { enhance } from '$app/forms';
 
-    export let data: PageData;
+
 
     let lastUpdated = new Date();
 
-    onMount(() => {
-        const interval = setInterval(() => {
-            window.location.reload();
-        }, 5 * 60 * 1000); // 5 minutes
-
-        return () => clearInterval(interval);
-    });
+    interface User {
+        id: number;
+        name: string;
+        can_manage_games: boolean;
+    }
+    
+    export let data: {
+        attendees: Attendee[];
+        games: GameSession[];
+        scheduledGames: GameSession[];
+        userReservation: Reservation | null;
+        userScheduledGame: GameSession | null;
+        userPlayingGame: GameSession | null;
+        user: User | null;
+        isOpen: boolean;
+        notice: string | null;
+        userPenaltyInfo: { penalty_points: number } | null;
+        isAdmin: boolean;
+        reservations: Reservation[];
+        allGames: any[]; // Using any[] for simplicity or define Game interface
+    };
 
     interface Attendee {
         id: number;
@@ -31,8 +45,9 @@
         image_url: string | null;
         min_players: number;
         max_players: number;
+        created_by: number;
         participants: { id: number; name: string }[];
-        players: string[];
+        players: { id: number; name: string }[];
         scheduled_at: string;
     }
 
@@ -71,6 +86,95 @@
 
     function getGameReservations(gameId: number) {
         return (data.reservations || []).filter((r: any) => r.session_id === gameId);
+    }
+
+    // --- Game Management Logic ---
+    let showModal = false;
+    let selectedGameName = '';
+    let selectedDuration = '';
+    let selectedGameId = '';
+    let dropdownOpen = false;
+    let searchInput: HTMLInputElement;
+
+    let showScheduledGameModal = false;
+    let scheduledGameName = '';
+    let scheduledAt = '';
+    let minPlayers = 2;
+    let maxPlayers = 4;
+
+    let endGameModalVisible = false;
+    let selectedEndGame: GameSession | null = null;
+
+    let alertVisible = false;
+    let alertMessage = '';
+
+    function showAlert(msg: string) {
+        alertMessage = msg;
+        alertVisible = true;
+    }
+
+
+
+    function openEndGameModal(game: GameSession) {
+        selectedEndGame = game;
+        endGameModalVisible = true;
+    }
+
+    function openScheduledGameModal() {
+        showScheduledGameModal = true;
+        scheduledGameName = '';
+        dropdownOpen = false;
+        
+        const now = new Date();
+        now.setMinutes(Math.ceil((now.getMinutes() + 30) / 10) * 10);
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        const hours = String(now.getHours()).padStart(2, '0');
+        const minutes = String(now.getMinutes()).padStart(2, '0');
+        scheduledAt = `${year}-${month}-${day}T${hours}:${minutes}`;
+    }
+
+    $: filteredGames = (data.allGames as any[])?.filter((g: any) => 
+        g.name.toLowerCase().includes(selectedGameName.toLowerCase())
+    ) || [];
+
+    $: filteredScheduledGames = (data.allGames as any[])?.filter((g: any) => 
+        g.name.toLowerCase().includes(scheduledGameName.toLowerCase())
+    ) || [];
+
+    function selectGame(game: { name: string, id: number, playtime_min: number }) {
+        selectedGameName = game.name;
+        selectedGameId = String(game.id);
+        selectedDuration = String(game.playtime_min);
+        dropdownOpen = false;
+    }
+
+    function selectScheduledGame(game: any) {
+        scheduledGameName = game.name;
+        minPlayers = game.min_players;
+        maxPlayers = game.max_players;
+        dropdownOpen = false;
+    }
+
+    function handleInputClick() {
+        dropdownOpen = true;
+    }
+
+    function handleModalClick(event: MouseEvent) {
+        event.stopPropagation();
+        const target = event.target as HTMLElement;
+        if (!target.closest('.custom-dropdown')) {
+            dropdownOpen = false;
+        }
+    }
+
+    function canManageGame(game: GameSession) {
+        if (!data.user) return false;
+        if (data.isAdmin) return true;
+        // Check if user is manager AND creator
+        // Note: game.created_by comes from server now
+        return data.user.can_manage_games && (game as any).created_by === data.user.id;
     }
 </script>
 
@@ -210,14 +314,37 @@
         </section>
 
         <section class="tables-section">
-            <h2>🎮 진행 중인 게임 ({games.length})</h2>
+            <div class="section-header">
+                <h2>🎮 진행 중인 게임 ({games.length})</h2>
+                {#if data.user && (data.user.can_manage_games || data.isAdmin)}
+                    <button class="btn-create" on:click={() => {
+                        showModal = true; 
+                        selectedGameName = '';
+                        selectedDuration = '';
+                        selectedGameId = '';
+                        dropdownOpen = false;
+                    }}>+ 게임 시작</button>
+                {/if}
+            </div>
             <div class="tables-grid">
                 {#each games as game}
                     {@const gameReservations = getGameReservations(game.id)}
                     <div class="table-card playing">
                         <div class="table-header">
                             <h3>{game.game_name}</h3>
-                            <span class="status-badge playing">진행 중</span>
+                            <div class="header-meta-row">
+                                <span class="status-badge playing">진행 중</span>
+                                {#if canManageGame(game)}
+                                    <div class="manage-controls">
+                                        <button class="btn-action-text danger" on:click={() => openEndGameModal(game)}>종료</button>
+                                        <form method="POST" action="?/extendGame" use:enhance style="display:inline;">
+                                            <input type="hidden" name="id" value={game.id}>
+                                            <input type="hidden" name="minutes" value="30">
+                                            <button class="btn-action-text">연장</button>
+                                        </form>
+                                    </div>
+                                {/if}
+                            </div>
                         </div>
 
                         <div class="table-content">
@@ -227,7 +354,7 @@
                                 </div>
                                 <div class="players">
                                     {#each (game.players || []) as player}
-                                        <span class="player-tag">{player}</span>
+                                        <span class="player-tag">{player.name}</span>
                                     {/each}
                                 </div>
                                 
@@ -283,13 +410,32 @@
 
 
         <section class="tables-section">
-            <h2>📅 시작 예정 게임 ({scheduledGames.length})</h2>
+            <div class="section-header">
+                <h2>📅 시작 예정 게임 ({scheduledGames.length})</h2>
+                 {#if data.user && (data.user.can_manage_games || data.isAdmin)}
+                    <button class="btn-create" on:click={openScheduledGameModal}>+ 예정 생성</button>
+                {/if}
+            </div>
             <div class="tables-grid">
                 {#each scheduledGames as game}
                     <div class="table-card available">
                         <div class="table-header">
                             <h3>{game.game_name}</h3>
-                            <span class="status-badge available">예정됨</span>
+                            <div class="header-meta-row">
+                                <span class="status-badge available">예정됨</span>
+                                {#if canManageGame(game)}
+                                    <div class="manage-controls">
+                                        <form method="POST" action="?/startScheduledGame" use:enhance style="display:inline;">
+                                            <input type="hidden" name="sessionId" value={game.id}>
+                                            <button class="btn-action-text primary">시작</button>
+                                        </form>
+                                        <form method="POST" action="?/dissolveScheduledGame" use:enhance style="display:inline;">
+                                            <input type="hidden" name="sessionId" value={game.id}>
+                                            <button class="btn-action-text danger">삭제</button>
+                                        </form>
+                                    </div>
+                                {/if}
+                            </div>
                         </div>
 
                         <div class="table-content">
@@ -329,6 +475,251 @@
         </section>
     </main>
 </div>
+
+{#if showModal}
+    <!-- svelte-ignore a11y-click-events-have-key-events -->
+    <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
+    <div class="modal-backdrop" on:click={() => showModal = false} role="presentation">
+        <div class="modal-content" on:click={handleModalClick} role="dialog">
+            <h2>새 게임 시작</h2>
+            <form method="POST" action="?/createGame" use:enhance={() => {
+                return async ({ result, update }) => {
+                    if (result.type === 'failure') {
+                        const data = result.data as any;
+                        if (data?.missing) {
+                            showAlert('필수 입력 항목을 입력해주세요.');
+                        } else {
+                            showAlert(data?.error || '오류가 발생했습니다.');
+                        }
+                    } else {
+                        showModal = false;
+                    }
+                    await update();
+                };
+            }} class="game-form">
+                <input type="hidden" name="gameId" value={selectedGameId} />
+                <div class="input-group custom-dropdown">
+                    <input 
+                        type="text" 
+                        name="gameName" 
+                        placeholder="게임 이름 (직접 입력 또는 선택)" 
+                        bind:value={selectedGameName} 
+                        bind:this={searchInput}
+                        on:click={handleInputClick}
+                        on:focus={handleInputClick}
+                        required 
+                        autocomplete="off" 
+                    />
+                    
+                    {#if dropdownOpen && filteredGames.length > 0}
+                        <ul class="dropdown-menu">
+                            {#each filteredGames as game}
+                                <li>
+                                    <button type="button" on:click={() => selectGame(game)}>
+                                        {#if game.image_url}
+                                            <img src={game.image_url} alt="" class="mini-thumb" />
+                                        {/if}
+                                        <div class="game-option-info">
+                                            <span class="name">{game.name}</span>
+                                            <span class="meta">👥 {game.min_players}-{game.max_players}인 | ⏱ {game.playtime_min}분</span>
+                                        </div>
+                                    </button>
+                                </li>
+                            {/each}
+                        </ul>
+                    {/if}
+                </div>
+
+                <div class="input-group">
+                    <label for="duration">예상 플레이 시간 (분)</label>
+                    <input 
+                        type="number" 
+                        id="duration"
+                        name="duration" 
+                        bind:value={selectedDuration} 
+                        placeholder="분 단위 입력" 
+                        required 
+                        min="1" 
+                        class="duration-input"
+                    />
+                </div>
+
+                <div class="player-select">
+                    <p>참여자 선택:</p>
+                    {#each (attendees || []) as attendee (attendee.id)}
+                        <label class:disabled={attendee.is_playing}>
+                            <input type="checkbox" name="players" value={attendee.id} disabled={attendee.is_playing} />
+                            {attendee.name}
+                            {#if attendee.is_playing}
+                                <span class="status-text">(게임 중)</span>
+                            {/if}
+                        </label>
+                    {/each}
+                </div>
+                
+                <div class="modal-actions">
+                    <button type="button" on:click={() => showModal = false} class="btn-cancel">취소</button>
+                    <button type="submit" class="btn-primary">게임 시작</button>
+                </div>
+            </form>
+        </div>
+    </div>
+{/if}
+
+<!-- End Game Modal -->
+{#if endGameModalVisible && selectedEndGame}
+    <!-- svelte-ignore a11y-click-events-have-key-events -->
+    <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
+    <div class="modal-backdrop" on:click={() => endGameModalVisible = false} role="presentation">
+        <div class="modal-content" on:click|stopPropagation role="dialog">
+            <h2>🏆 게임 종료 및 승자 선택</h2>
+            <p><strong>{selectedEndGame.game_name}</strong> 게임을 종료합니다.</p>
+            <p>승리한 플레이어를 선택해주세요 (복수 선택 가능):</p>
+            
+            <form method="POST" action="?/endGame" use:enhance={() => {
+                return async ({ result, update }) => {
+                    if (result.type === 'failure') {
+                        const data = result.data as any;
+                        showAlert(data?.error || '오류가 발생했습니다.');
+                    } else {
+                        endGameModalVisible = false;
+                        showAlert('게임이 종료되고 승자가 기록되었습니다! 🏆');
+                    }
+                    await update();
+                };
+            }}>
+                <input type="hidden" name="id" value={selectedEndGame.id} />
+                
+                <div class="player-select">
+                    {#if selectedEndGame?.players && selectedEndGame.players.length > 0}
+                        {#each selectedEndGame.players as player}
+                            <div class="player-score-row">
+                                <label class="checkbox-label">
+                                    <input type="checkbox" name="winnerIds" value={player.id}>
+                                    <span class="p-name">{player.name}</span>
+                                    {#if player.id === selectedEndGame.created_by}
+                                        <span class="owner-badge">👑</span>
+                                    {/if}
+                                </label>
+                                <input 
+                                    type="number" 
+                                    name="score_{player.id}" 
+                                    placeholder="점수" 
+                                    class="score-input"
+                                >
+                            </div>
+                        {/each}
+                    {:else}
+                        <p class="no-players">플레이어 정보가 없습니다.</p>
+                    {/if}
+                </div>
+
+                <div class="modal-actions">
+                    <button type="button" class="btn-cancel" on:click={() => endGameModalVisible = false}>취소</button>
+                    <button type="submit" class="btn-primary">게임 종료 및 승점 기록</button>
+                </div>
+            </form>
+        </div>
+    </div>
+{/if}
+
+{#if showScheduledGameModal}
+    <!-- svelte-ignore a11y-click-events-have-key-events -->
+    <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
+    <div class="modal-backdrop" on:click={() => showScheduledGameModal = false} role="presentation">
+        <div class="modal-content" on:click={handleModalClick} role="dialog">
+            <h2>📅 시작 예정 게임 생성</h2>
+
+            <form method="POST" action="?/createScheduledGame" use:enhance={() => {
+                return async ({ result, update }) => {
+                    if (result.type === 'failure') {
+                        const data = result.data as any;
+                        showAlert(data?.error || '오류가 발생했습니다.');
+                    } else {
+                        showScheduledGameModal = false;
+                        showAlert('예약 게임이 생성되었습니다.');
+                    }
+                    await update();
+                };
+            }} class="game-form">
+                
+                <div class="input-group custom-dropdown">
+                    <label for="scheduledGameName">게임 이름</label>
+                    <input 
+                        type="text" 
+                        id="scheduledGameName"
+                        name="gameName" 
+                        placeholder="게임 이름 (직접 입력 또는 선택)" 
+                        bind:value={scheduledGameName} 
+                        bind:this={searchInput}
+                        on:click={handleInputClick}
+                        on:focus={handleInputClick}
+                        required 
+                        autocomplete="off" 
+                    />
+                    
+                    {#if dropdownOpen && filteredScheduledGames.length > 0}
+                        <ul class="dropdown-menu">
+                            {#each filteredScheduledGames as game}
+                                <li>
+                                    <button type="button" on:click={() => selectScheduledGame(game)}>
+                                        {#if game.image_url}
+                                            <img src={game.image_url} alt="" class="mini-thumb" />
+                                        {/if}
+                                        <div class="game-option-info">
+                                            <span class="name">{game.name}</span>
+                                            <span class="meta">👥 {game.min_players}-{game.max_players}인 | ⏱ {game.playtime_min}분</span>
+                                        </div>
+                                    </button>
+                                </li>
+                            {/each}
+                        </ul>
+                    {/if}
+                </div>
+
+                <div class="input-group">
+                    <label for="scheduledAt">시작 예정 시간</label>
+                    <input type="datetime-local" id="scheduledAt" name="scheduledAt" bind:value={scheduledAt} required class="full-width-input">
+                    <p class="hint">※ 시작 10분 전까지 최소 인원이 모이지 않으면 자동 폭파됩니다.</p>
+                </div>
+
+                <div class="player-limits">
+                    <div class="input-group">
+                        <label for="minPlayers">최소 인원</label>
+                        <input type="number" id="minPlayers" name="minPlayers" min="1" bind:value={minPlayers} required class="number-input">
+                    </div>
+                    <div class="input-group">
+                        <label for="maxPlayers">최대 인원</label>
+                        <input type="number" id="maxPlayers" name="maxPlayers" min="1" bind:value={maxPlayers} required class="number-input">
+                    </div>
+                </div>
+                
+                <div class="modal-actions">
+                    <button type="button" on:click={() => showScheduledGameModal = false} class="btn-cancel">취소</button>
+                    <button type="submit" class="btn-primary">예약 생성</button>
+                </div>
+            </form>
+        </div>
+    </div>
+{/if}
+
+
+<!-- Alert Modal -->
+{#if alertVisible}
+    <!-- svelte-ignore a11y-click-events-have-key-events -->
+    <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
+    <div class="modal-backdrop" on:click={() => alertVisible = false} role="presentation">
+        <div class="modal-content alert-modal" on:click|stopPropagation role="alertdialog">
+            <h3>알림</h3>
+            <p>{alertMessage}</p>
+            <div class="modal-actions">
+                <button class="btn-primary" on:click={() => alertVisible = false}>확인</button>
+            </div>
+        </div>
+    </div>
+{/if}
+
+
 
 <style>
     :global(body) {
@@ -428,6 +819,26 @@
         text-align: center;
         border: 1px solid #ffe0b2;
         box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+    .manager-actions {
+        margin-bottom: 2rem;
+        text-align: center;
+    }
+    .btn-manager {
+        background: #2b8a3e;
+        color: white;
+        text-decoration: none;
+        padding: 0.75rem 1.5rem;
+        border-radius: 8px;
+        font-weight: bold;
+        display: inline-block;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .btn-manager:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+        background: #237032;
     }
     section {
         margin-bottom: 2rem;
@@ -708,14 +1119,19 @@
     }
     .table-header {
         display: flex;
+        flex-wrap: wrap;
         justify-content: space-between;
         align-items: center;
+        gap: 0.5rem;
     }
     .table-header h3 {
         margin: 0;
         font-size: 1.25rem;
         color: #1a1a1a;
+        width: 100%; /* Force title to new line for clarity/space */
+        order: -1; /* Ensure title is first visually if needed, though HTML order implies it */
     }
+    /* If we want badge and controls on same line, we rely on wrap */
     .status-badge {
         font-size: 0.75rem;
         font-weight: 800;
@@ -730,6 +1146,13 @@
     .status-badge.available {
         background: #e8f5e9;
         color: #2e7d32;
+    }
+    .header-meta-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        width: 100%;
+        margin-top: 0.5rem;
     }
     .table-content {
         display: flex;
@@ -981,5 +1404,253 @@
         background: #e9ecef;
         border-color: #adb5bd;
         color: #212529;
+    }
+    
+    /* Modal Styles */
+    .modal-backdrop {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.5);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 1000;
+    }
+    .modal-content {
+        background: white;
+        padding: 2rem;
+        border-radius: 12px;
+        width: 90%;
+        max-width: 500px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        max-height: 90vh;
+        overflow-y: auto;
+    }
+    .modal-content h2 {
+        margin-top: 0;
+        border-bottom: 2px solid #f0f0f0;
+        padding-bottom: 0.5rem;
+    }
+    .input-group {
+        margin-bottom: 1rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        position: relative;
+    }
+    .input-group label {
+        font-weight: 600;
+        font-size: 0.9rem;
+        color: #555;
+    }
+    .input-group input {
+        padding: 0.75rem;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        font-size: 1rem;
+    }
+    .modal-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 0.5rem;
+        margin-top: 2rem;
+    }
+    .btn-primary {
+        background: #4c6ef5;
+        color: white;
+        border: none;
+        padding: 0.75rem 1.5rem;
+        border-radius: 8px;
+        font-weight: bold;
+        cursor: pointer;
+    }
+    .btn-cancel {
+        background: #f1f3f5;
+        color: #495057;
+        border: none;
+        padding: 0.75rem 1.5rem;
+        border-radius: 8px;
+        font-weight: bold;
+        cursor: pointer;
+    }
+
+
+    .player-select {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        max-height: 200px;
+        overflow-y: auto;
+        border: 1px solid #eee;
+        padding: 0.5rem;
+        border-radius: 8px;
+    }
+    .player-select label {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.25rem;
+        cursor: pointer;
+    }
+    .player-select label:hover {
+        background: #f8f9fa;
+    }
+    
+    .manage-controls {
+        display: flex;
+        gap: 0.25rem;
+    }
+    .btn-icon {
+        background: none;
+        border: none;
+        cursor: pointer;
+        font-size: 1.1rem;
+        padding: 0.2rem;
+        transition: transform 0.1s;
+    }
+    .btn-icon:hover {
+        transform: scale(1.2);
+    }
+    .btn-action-text {
+        background: white;
+        border: 1px solid #ddd;
+        padding: 0.25rem 0.6rem;
+        border-radius: 6px;
+        font-size: 0.8rem;
+        font-weight: 600;
+        cursor: pointer;
+        color: #555;
+        transition: all 0.2s;
+    }
+    .btn-action-text:hover {
+        background: #f8f9fa;
+        color: #333;
+        border-color: #ccc;
+    }
+    .btn-action-text.primary {
+        background: #e7f5ff;
+        color: #1971c2;
+        border-color: #d0ebff;
+    }
+    .btn-action-text.primary:hover {
+        background: #d0ebff;
+        color: #1864ab;
+    }
+    .btn-action-text.danger {
+        background: #fff5f5;
+        color: #e03131;
+        border-color: #ffe3e3;
+    }
+    .btn-action-text.danger:hover {
+        background: #ffe3e3;
+        color: #c92a2a;
+    }
+    .btn-create {
+        background: #4c6ef5;
+        color: white;
+        border: none;
+        padding: 0.4rem 0.8rem;
+        border-radius: 6px;
+        font-weight: 600;
+        cursor: pointer;
+        font-size: 0.85rem;
+    }
+    .btn-create:hover {
+        background: #364fc7;
+    }
+    
+    /* Dropdown Styles */
+    .dropdown-menu {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        background: white;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        max-height: 200px;
+        overflow-y: auto;
+        z-index: 10;
+        list-style: none;
+        padding: 0;
+        margin: 0;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+    .dropdown-menu li button {
+        width: 100%;
+        text-align: left;
+        padding: 0.75rem;
+        background: none;
+        border: none;
+        border-bottom: 1px solid #f0f0f0;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+    }
+    .dropdown-menu li button:hover {
+        background: #f8f9fa;
+    }
+    .mini-thumb {
+        width: 32px;
+        height: 32px;
+        border-radius: 4px;
+        object-fit: cover;
+    }
+    .game-option-info {
+        display: flex;
+        flex-direction: column;
+    }
+    .game-option-info .name {
+        font-weight: 600;
+        color: #333;
+    }
+    .game-option-info .meta {
+        font-size: 0.75rem;
+        color: #888;
+    }
+
+    /* End Game Modal Player Score Row */
+    .player-select {
+        max-height: 300px;
+        overflow-y: auto;
+        border: 1px solid #eee;
+        border-radius: 8px;
+        padding: 0.5rem;
+        margin-bottom: 1.5rem;
+    }
+    .player-score-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.5rem;
+        border-bottom: 1px solid #f8f9fa;
+        gap: 0.5rem;
+    }
+    .player-score-row:last-child {
+        border-bottom: none;
+    }
+    .checkbox-label {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        cursor: pointer;
+        flex: 1;
+        /* Ensure text truncates if too long, though names shouldn't be that long */
+        min-width: 0; 
+    }
+    .score-input {
+        width: 70px;
+        padding: 0.4rem;
+        border: 1px solid #ddd;
+        border-radius: 6px;
+        font-size: 0.9rem;
+        text-align: center;
+    }
+    .owner-badge {
+        font-size: 0.8rem;
     }
 </style>

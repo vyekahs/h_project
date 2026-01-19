@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS attendees (
     status VARCHAR(20) DEFAULT 'present' CHECK (status IN ('present', 'left')),
     penalty_points INTEGER DEFAULT 0,
     is_blacklisted BOOLEAN DEFAULT false,
+    can_manage_games BOOLEAN DEFAULT FALSE,
     last_penalty_at TIMESTAMP WITH TIME ZONE,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );

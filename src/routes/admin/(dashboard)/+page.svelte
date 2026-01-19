@@ -160,6 +160,7 @@
         game_id: number | null;
         game_name: string | null;
         is_playing: boolean;
+        can_manage_games: boolean;
     }
 
     interface GameSession {
@@ -170,6 +171,7 @@
         end_time: string;
         status: string;
         image_url: string | null;
+        min_players: number;
         max_players: number;
         participants: { id: number; name: string }[];
         players: { id: number; name: string }[];
@@ -259,6 +261,12 @@
                         <input type="hidden" name="attendeeId" value={a.id} />
                         <button type="submit" class="btn-blacklist" title="블랙리스트 토글">
                             {a.is_blacklisted ? '해제' : '블랙'}
+                        </button>
+                    </form>
+                    <form method="POST" action="?/toggleManager" use:enhance style="display:inline;">
+                        <input type="hidden" name="attendeeId" value={a.id} />
+                        <button type="submit" class="btn-manager-toggle {a.can_manage_games ? 'active' : ''}" title="게임 관리 권한 토글">
+                            {a.can_manage_games ? '👑 매니저' : '👤 유저'}
                         </button>
                     </form>
                     <form method="POST" action="?/removeAttendee" use:enhance={({ cancel }) => {
@@ -1378,5 +1386,23 @@
     }
     .btn-mini:hover {
         background: #3b5bdb;
+    }
+    .btn-manager-toggle {
+        background: #e9ecef;
+        color: #495057;
+        border: 1px solid #ced4da;
+        padding: 0.25rem 0.5rem;
+        border-radius: 4px;
+        font-size: 0.8rem;
+        cursor: pointer;
+    }
+    .btn-manager-toggle.active {
+        background: #ffd43b;
+        color: #212529;
+        border-color: #fcc419;
+        font-weight: bold;
+    }
+    .btn-manager-toggle:hover {
+        opacity: 0.9;
     }
 </style>
