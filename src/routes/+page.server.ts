@@ -93,7 +93,7 @@ export const load: PageServerLoad = async ({ locals, cookies, request }) => {
     let user = null;
     let userPenaltyInfo = null;
     let userReservation = null;
-    let userScheduledGame = null;
+    let userScheduledGames: any[] = [];
     let userPlayingGame = null;
 
     if (userSessionToken) {
@@ -123,9 +123,9 @@ export const load: PageServerLoad = async ({ locals, cookies, request }) => {
                     FROM game_sessions gs
                     JOIN session_participants sp ON gs.id = sp.session_id
                     WHERE sp.attendee_id = $1 AND gs.status = 'scheduled'
-                    LIMIT 1
+                    ORDER BY gs.scheduled_at ASC
                 `, [user.id]);
-                userScheduledGame = schedResult.rows[0] || null;
+                userScheduledGames = schedResult.rows;
     
                 const playingResult = await query(`
                     SELECT gs.id, gs.game_name
@@ -147,11 +147,10 @@ export const load: PageServerLoad = async ({ locals, cookies, request }) => {
         isOpen: isOpen,
         notice: notice,
         userPenaltyInfo: userPenaltyInfo,
+        userReservation: userReservation,
+        userScheduledGames: userScheduledGames,
+        userPlayingGame: userPlayingGame,
         allGames: allGamesResult.rows,
-        reservations: reservationsResult.rows,
-        userReservation,
-        userScheduledGame,
-        userPlayingGame,
     };
 };
 

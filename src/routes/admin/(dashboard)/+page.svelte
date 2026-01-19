@@ -150,6 +150,15 @@
         return new Date(dateString).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
     }
 
+    function formatScheduledTime(dateString: string) {
+        const date = new Date(dateString);
+        const now = new Date();
+        const isToday = date.getDate() === now.getDate() && date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear();
+        
+        const timeStr = date.toLocaleTimeString('ko-KR', {hour: '2-digit', minute:'2-digit'});
+        return isToday ? timeStr : `${date.getMonth() + 1}/${date.getDate()} ${timeStr}`;
+    }
+
     interface Attendee {
         id: number;
         name: string;
@@ -328,12 +337,12 @@
                     {/if}
                     <div class="game-details">
                         <h3>{g.game_name}</h3>
-                        <p class="start-time">예정: {formatTime(g.scheduled_at)}</p>
+                        <p class="start-time">예정: <strong>{formatScheduledTime(g.scheduled_at)}</strong></p>
                         <p class="participants-list">인원: (최소 {g.min_players} / 최대 {g.max_players})</p>
                         <p class="participants-list">참여자 ({(g.participants || []).length}): {(g.participants || []).map(p => p.name).join(', ')}</p>
                     </div>
                 </div>
-                <div class="game-actions">
+                <div class="game-actions-container">
                     <form method="POST" action="/?/joinScheduledGame" use:enhance class="inline-add-form">
                         <input type="hidden" name="sessionId" value={g.id} />
                         <select name="attendeeId" required class="attendee-select-mini">
@@ -344,15 +353,18 @@
                         </select>
                         <button type="submit" class="btn-mini">추가</button>
                     </form>
-                    <form method="POST" action="?/startScheduledGame" use:enhance>
-                        <input type="hidden" name="sessionId" value={g.id} />
-                        <input type="number" name="duration" value="60" class="duration-input" />
-                        <button type="submit" class="btn-primary">게임 시작</button>
-                    </form>
-                    <form method="POST" action="?/dissolveScheduledGame" use:enhance>
-                        <input type="hidden" name="sessionId" value={g.id} />
-                        <button type="submit" class="btn-delete">폭파</button>
-                    </form>
+                    <div class="action-group">
+                        <form method="POST" action="?/startScheduledGame" use:enhance>
+                            <input type="hidden" name="sessionId" value={g.id} />
+                            <span class="input-label">예상(분):</span>
+                            <input type="number" name="duration" value="60" class="duration-input" title="예상 시간(분)"/>
+                            <button type="submit" class="btn-primary">시작</button>
+                        </form>
+                        <form method="POST" action="?/dissolveScheduledGame" use:enhance>
+                            <input type="hidden" name="sessionId" value={g.id} />
+                            <button type="submit" class="btn-delete btn-unified">폭파</button>
+                        </form>
+                    </div>
                 </div>
             </div>
         {/each}
@@ -437,7 +449,7 @@
                         <p class="end-time">종료 예정: {new Date(game.end_time).toLocaleTimeString()} <span class="time-remaining">({getTimeRemaining(game.end_time)})</span></p>
                     </div>
                 </div>
-                <div class="game-actions">
+                <div class="game-actions-container">
                     <form method="POST" action="/?/joinScheduledGame" use:enhance class="inline-add-form">
                         <input type="hidden" name="sessionId" value={game.id} />
                         <select name="attendeeId" required class="attendee-select-mini">
@@ -448,17 +460,19 @@
                         </select>
                         <button type="submit" class="btn-mini">추가</button>
                     </form>
-                    <form method="POST" action="?/extendGame" use:enhance>
-                        <input type="hidden" name="id" value={game.id} />
-                        <input type="hidden" name="minutes" value="10" />
-                        <button type="submit" class="btn-extend">+10분</button>
-                    </form>
-                    <form method="POST" action="?/extendGame" use:enhance>
-                        <input type="hidden" name="id" value={game.id} />
-                        <input type="hidden" name="minutes" value="30" />
-                        <button type="submit" class="btn-extend">+30분</button>
-                    </form>
-                    <button class="btn-delete" on:click={() => openEndGameModal(game)}>게임 종료</button>
+                    <div class="action-group">
+                        <form method="POST" action="?/extendGame" use:enhance>
+                            <input type="hidden" name="id" value={game.id} />
+                            <input type="hidden" name="minutes" value="10" />
+                            <button type="submit" class="btn-extend">+10분</button>
+                        </form>
+                        <form method="POST" action="?/extendGame" use:enhance>
+                            <input type="hidden" name="id" value={game.id} />
+                            <input type="hidden" name="minutes" value="30" />
+                            <button type="submit" class="btn-extend">+30분</button>
+                        </form>
+                        <button class="btn-delete btn-unified" on:click={() => openEndGameModal(game)}>종료</button>
+                    </div>
                 </div>
             </div>
         {/each}
@@ -1007,21 +1021,26 @@
         border: 1px solid #ddd;
         border-radius: 4px;
     }
-    .game-actions {
+    .game-actions-container {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+        margin-top: 1rem;
+        padding-top: 1rem;
+        border-top: 1px dashed #eee;
+    }
+    .action-group {
         display: flex;
         gap: 0.5rem;
-        margin-top: 0.5rem;
+        align-items: center;
+        flex-wrap: wrap;
     }
-    .btn-extend {
-        background: #4caf50;
-        color: white;
-        border: none;
-        padding: 0.25rem 0.5rem;
-        border-radius: 4px;
-        cursor: pointer;
-        font-size: 0.85rem;
+    .action-group form {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
     }
-
+    
     @media (max-width: 600px) {
         .attendee-list li {
             flex-direction: column;
@@ -1033,7 +1052,7 @@
             justify-content: space-between;
         }
         .btn-delete {
-            width: 100%;
+            width: 100%; /* Keep specific override or reset if needed */
             margin-top: 0.5rem;
         }
         .game-header {
@@ -1041,8 +1060,20 @@
             align-items: flex-start;
             gap: 0.5rem;
         }
-        .game-actions {
-            flex-wrap: wrap;
+        .game-actions-container {
+            align-items: stretch;
+        }
+        .inline-add-form {
+            flex-direction: row; 
+        }
+        .action-group {
+            flex-direction: row;
+        }
+        .action-group button, .action-group form {
+            flex: 1; 
+        }
+        .notice-manager {
+            gap: 0.5rem;
         }
         .game-actions form {
             flex: 1;
@@ -1188,10 +1219,11 @@
         border-left: 4px solid #4c6ef5;
     }
     .duration-input {
-        width: 50px;
-        padding: 0.25rem;
+        width: 60px;
+        padding: 0.4rem;
         border-radius: 4px;
         border: 1px solid #ddd;
+        font-size: 0.9rem;
     }
 
     .reservations-list {
@@ -1405,4 +1437,47 @@
     .btn-manager-toggle:hover {
         opacity: 0.9;
     }
+    /* Unified Button Styles for Card Actions */
+    .action-group button, .btn-extend, .btn-delete.btn-unified {
+        padding: 0.4rem 0.8rem;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 0.85rem;
+        font-weight: 600;
+        border: none;
+        color: white;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        height: 34px; /* Fixed height for alignment */
+    }
+    
+    .btn-primary.btn-unified {
+        background: #007bff;
+    }
+    
+    .btn-delete.btn-unified {
+        background: #ff4444; 
+    }
+    
+    .btn-extend {
+        background: #4caf50;
+    }
+    .btn-extend:hover {
+        background: #43a047;
+    }
+    
+    /* Override existing minimal styles if needed or use new classes */
+    .action-group .btn-primary {
+       padding: 0.4rem 0.8rem;
+       font-size: 0.85rem;
+    }
+    
+    .input-label {
+        font-size: 0.85rem;
+        font-weight: 600;
+        color: #555;
+    }
+
 </style>

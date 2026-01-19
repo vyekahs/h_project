@@ -18,7 +18,7 @@
         games: GameSession[];
         scheduledGames: GameSession[];
         userReservation: Reservation | null;
-        userScheduledGame: GameSession | null;
+        userScheduledGames: GameSession[]; // Changed from userScheduledGame
         userPlayingGame: GameSession | null;
         user: User | null;
         isOpen: boolean;
@@ -73,7 +73,7 @@
     $: games = data.games as GameSession[];
     $: scheduledGames = data.scheduledGames as GameSession[];
     $: userReservation = data.userReservation as Reservation | null;
-    $: userScheduledGame = data.userScheduledGame as GameSession | null;
+    $: userScheduledGames = (data.userScheduledGames || []) as GameSession[]; // Change to array
 
     function getTimeRemaining(endTime: string) {
         const end = new Date(endTime).getTime();
@@ -176,6 +176,14 @@
         // Note: game.created_by comes from server now
         return data.user.can_manage_games && (game as any).created_by === data.user.id;
     }
+    function formatScheduledTime(dateString: string) {
+        const date = new Date(dateString);
+        const now = new Date();
+        const isToday = date.getDate() === now.getDate() && date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear();
+        
+        const timeStr = date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+        return isToday ? timeStr : `${date.getMonth() + 1}/${date.getDate()} ${timeStr}`;
+    }
 </script>
 
 <div class="container">
@@ -217,7 +225,7 @@
     {/if}
 
     <main>
-        {#if data.user}
+        {#if data.user && ((data.userPenaltyInfo && data.userPenaltyInfo.penalty_points > 0) || (data.userScheduledGames && data.userScheduledGames.length > 0) || data.userPlayingGame || data.userReservation)}
             <section class="my-status-section">
                 <h2>🎫 나의 예약 현황</h2>
                 <div class="my-status-grid">
@@ -231,37 +239,34 @@
                         </div>
                     {/if}
 
-                    {#if data.userScheduledGame}
-                        <div class="status-card scheduled">
-                            <span class="label">📅 참여 예정 게임</span>
-                            <span class="value">{data.userScheduledGame.game_name}</span>
-                            <span class="sub-value">{new Date(data.userScheduledGame.scheduled_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} 시작</span>
-                            <form method="POST" action="?/leaveScheduledGame" on:submit|preventDefault={(e) => {
-                                const scheduledAt = new Date(data.userScheduledGame.scheduled_at).getTime();
-                                const now = Date.now();
-                                if (scheduledAt - now < 10 * 60 * 1000) {
-                                    if (confirm('⚠️ 시작 10분 전입니다. 지금 취소하면 페널티가 부여됩니다. 정말 취소하시겠습니까?')) {
-                                        e.target.submit();
+                    {#if data.userScheduledGames && data.userScheduledGames.length > 0}
+                        {#each data.userScheduledGames as game}
+                            <div class="status-card scheduled">
+                                <span class="label">📅 참여 예정 게임</span>
+                                <span class="value">{game.game_name}</span>
+                                <span class="sub-value">{formatScheduledTime(game.scheduled_at)} 시작</span>
+                                <form method="POST" action="?/leaveScheduledGame" on:submit|preventDefault={(e) => {
+                                    const scheduledAt = new Date(game.scheduled_at).getTime();
+                                    const now = Date.now();
+                                    if (scheduledAt - now < 10 * 60 * 1000) {
+                                        if (confirm('⚠️ 시작 10분 전입니다. 지금 취소하면 페널티가 부여됩니다. 정말 취소하시겠습니까?')) {
+                                            e.target.submit();
+                                        }
+                                    } else {
+                                        if (confirm('정말 참여를 취소하시겠습니까?')) {
+                                            e.target.submit();
+                                        }
                                     }
-                                } else {
-                                    if (confirm('정말 참여를 취소하시겠습니까?')) {
-                                        e.target.submit();
-                                    }
-                                }
-                            }}>
-                                <input type="hidden" name="sessionId" value={data.userScheduledGame.id}>
-                                <button type="submit" class="btn-cancel-small">참여 취소</button>
-                            </form>
-                        </div>
+                                }}>
+                                    <input type="hidden" name="sessionId" value={game.id}>
+                                    <button type="submit" class="btn-cancel-small">참여 취소</button>
+                                </form>
+                            </div>
+                        {/each}
                     {:else if data.userPlayingGame}
                         <div class="status-card playing">
                             <span class="label">🎮 참여 중인 게임</span>
                             <span class="value">{data.userPlayingGame.game_name}</span>
-                        </div>
-                    {:else}
-                        <div class="status-card">
-                            <span class="label">🎮 참여 중인 게임</span>
-                            <span class="value">없음</span>
                         </div>
                     {/if}
 
@@ -358,7 +363,7 @@
                                     {/each}
                                 </div>
                                 
-                                {#if data.user && !data.userReservation && !data.userScheduledGame && !data.userPlayingGame}
+                                {#if data.user && !data.userReservation && (!data.userScheduledGames || data.userScheduledGames.length === 0) && !data.userPlayingGame}
                                     <div class="user-actions">
                                         <form method="POST" action="?/reserveGame" use:enhance={() => {
                                             return async ({ result, update }) => {
@@ -441,7 +446,7 @@
                         <div class="table-content">
                             <div class="session-info next">
                                 <div class="session-header">
-                                    <span class="start-time">{new Date(game.scheduled_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} 시작</span>
+                                    <span class="start-time">{formatScheduledTime(game.scheduled_at)} 시작</span>
                                 </div>
                                 <div class="participants">
                                     <span class="count">👥 {(game.participants || []).length} / {game.max_players}</span>
@@ -453,7 +458,7 @@
                                     </div>
                                 </div>
                                 <div class="actions">
-                                    {#if data.user && !data.userScheduledGame && !data.userReservation && !data.userPlayingGame}
+                                    {#if data.user && (!data.userScheduledGames || data.userScheduledGames.length === 0) && !data.userReservation && !data.userPlayingGame}
                                         <form method="POST" action="?/joinScheduledGame">
                                             <input type="hidden" name="sessionId" value={game.id}>
                                             <button type="submit" class="btn-join">
