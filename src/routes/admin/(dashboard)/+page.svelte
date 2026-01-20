@@ -142,8 +142,15 @@
         const now = new Date().getTime();
         const diff = end - now;
         if (diff <= 0) return '종료됨';
-        const mins = Math.floor(diff / 60000);
-        return `${mins}분 남음`;
+        
+        const totalMins = Math.floor(diff / 60000);
+        if (totalMins < 60) {
+            return `${totalMins}분 남음`;
+        } else {
+            const hours = Math.floor(totalMins / 60);
+            const mins = totalMins % 60;
+            return `${hours}시간 ${mins}분 남음`;
+        }
     }
 
     function formatTime(dateString: string) {
@@ -899,6 +906,7 @@
         font-weight: bold;
         color: #ef6c00;
         margin-left: 0.5rem;
+        white-space: nowrap;
     }
     .player-select label.disabled {
         color: #999;

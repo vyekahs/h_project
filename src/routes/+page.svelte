@@ -80,8 +80,15 @@
         const now = new Date().getTime();
         const diff = end - now;
         if (diff <= 0) return '종료됨';
-        const mins = Math.floor(diff / 60000);
-        return `${mins}분 남음`;
+        
+        const totalMins = Math.floor(diff / 60000);
+        if (totalMins < 60) {
+            return `${totalMins}분 남음`;
+        } else {
+            const hours = Math.floor(totalMins / 60);
+            const mins = totalMins % 60;
+            return `${hours}시간 ${mins}분 남음`;
+        }
     }
 
     function getGameReservations(gameId: number) {
@@ -356,6 +363,7 @@
                             <div class="session-info current">
                                 <div class="session-header">
                                     <span class="time-remaining">{getTimeRemaining(game.end_time)}</span>
+                                    <span class="end-time-label">({new Date(game.end_time).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} 종료)</span>
                                 </div>
                                 <div class="players">
                                     {#each (game.players || []) as player}
@@ -912,12 +920,12 @@
         font-size: 1.1rem;
     }
     .time-remaining {
-        background: #fff3e0;
         color: #ef6c00;
-        padding: 0.25rem 0.75rem;
+        padding: 0.25rem;
         border-radius: 20px;
-        font-size: 0.85rem;
         font-weight: 600;
+        font-size: 0.8rem;
+        white-space: nowrap;
     }
     .players {
         display: flex;
@@ -1180,7 +1188,6 @@
     }
     .session-header {
         display: flex;
-        justify-content: space-between;
         align-items: center;
         margin-bottom: 0.75rem;
     }
@@ -1189,12 +1196,7 @@
         font-size: 1rem;
         color: #212529;
     }
-    .time-remaining {
-        font-size: 0.8rem;
-        font-weight: 700;
-        color: #ef6c00;
-    }
-    
+
     .game-reservations {
         margin-top: 1rem;
         padding-top: 0.75rem;
@@ -1657,5 +1659,11 @@
     }
     .owner-badge {
         font-size: 0.8rem;
+    }
+    .end-time-label {
+        font-size: 0.75rem;
+        color: #868e96;
+        font-weight: normal;
+        white-space: nowrap;
     }
 </style>
