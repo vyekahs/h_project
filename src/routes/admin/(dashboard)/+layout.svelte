@@ -29,6 +29,9 @@
             <a href="/admin/stats" class="nav-item" class:active={$page.url.pathname === '/admin/stats'}>📊 통계 보기</a>
         </nav>
         <div class="sidebar-footer">
+            <form method="POST" action="/logout">
+                <button type="submit" class="btn-sidebar">🚪 로그아웃</button>
+            </form>
             <a href="/admin/settings" class="btn-sidebar">⚙️ 설정</a>
         </div>
     </aside>
@@ -89,7 +92,8 @@
                 <form method="POST" action="/admin?/closeDay" use:enhance={() => {
                     return async ({ result, update }) => {
                         if (result.type === 'failure') {
-                            showAlert(result.data?.error || '마감 실패');
+                            const data = result.data as { error?: string };
+                            showAlert(data?.error || '마감 실패');
                         } else {
                             closeDayModalVisible = false;
                             showAlert('오늘 하루가 마감되었습니다. 수고하셨습니다! 🌙');
@@ -116,7 +120,8 @@
                 <form method="POST" action="/admin?/openDay" use:enhance={() => {
                     return async ({ result, update }) => {
                         if (result.type === 'failure') {
-                            showAlert(result.data?.error || '오픈 실패');
+                            const data = result.data as { error?: string };
+                            showAlert(data?.error || '오픈 실패');
                         } else {
                             openDayModalVisible = false;
                             showAlert('활기찬 하루 되세요! ☀️');
@@ -195,6 +200,9 @@
         margin-top: auto;
         padding-top: 1rem;
         border-top: 1px solid #34495e;
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
     }
     .btn-sidebar {
         width: 100%;

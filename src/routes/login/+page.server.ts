@@ -55,6 +55,10 @@ export const actions: Actions = {
             // Clean up old insecure cookie
             cookies.delete('user_auth', { path: '/' });
 
+            // Feature 6: Clear Admin Session to enforce mutual exclusion
+            cookies.delete('admin_session', { path: '/' });
+            cookies.delete('admin_auth', { path: '/' });
+
         } catch (err) {
             console.error(err);
             return fail(500, { error: '로그인 중 오류가 발생했습니다.' });

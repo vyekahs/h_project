@@ -34,6 +34,10 @@ export const actions: Actions = {
             
             // Clear old insecure cookie if exists
             cookies.delete('admin_auth', { path: '/' });
+            
+            // Feature 6: Clear User Session to enforce mutual exclusion
+            cookies.delete('user_session', { path: '/' });
+            cookies.delete('user_auth', { path: '/' });
 
         } catch (e) {
             console.error('Login Error:', e);
