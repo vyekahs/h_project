@@ -2,7 +2,7 @@ import { query } from '$lib/server/db';
 import { fail, redirect } from '@sveltejs/kit';
 import QRCode from 'qrcode';
 import type { Actions, PageServerLoad } from './$types';
-import { verifyAdminSession } from '$lib/server/auth';
+import { verifyAdminSession, verifyAttendeeSession } from '$lib/server/auth';
 
 async function canModifyGame(request: Request, gameId: string | number): Promise<boolean> {
     const sessionToken = request.headers.get('cookie')?.match(/admin_session=([^;]+)/)?.[1];

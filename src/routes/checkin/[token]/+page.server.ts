@@ -1,18 +1,23 @@
 import { query } from '$lib/server/db';
 import { redirect } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
+import { verifyAttendeeSession } from '$lib/server/auth';
 
 export const load: PageServerLoad = async ({ params, cookies, url }) => {
     const token = params.token;
-    const userAuth = cookies.get('user_auth');
+    const sessionToken = cookies.get('user_session');
 
     // 1. Check if logged in
-    if (!userAuth) {
-        // Redirect to login with return URL
-        throw redirect(303, `/login?redirectTo=${url.pathname}`);
+    if (!sessionToken) {
+         // Redirect to login with return URL
+         throw redirect(303, `/login?redirectTo=${url.pathname}`);
     }
 
-    const user = JSON.parse(userAuth);
+    const user = await verifyAttendeeSession(sessionToken);
+    if (!user) {
+        // Session invalid
+        throw redirect(303, `/login?redirectTo=${url.pathname}`);
+    }
 
     // 2. Validate Token
     const tokenResult = await query('SELECT * FROM qr_tokens WHERE token = $1', [token]);
@@ -34,20 +39,21 @@ export const load: PageServerLoad = async ({ params, cookies, url }) => {
 
     // 3. Process Check-in
     try {
-        // Update status to 'present'
-        await query('UPDATE attendees SET status = $1 WHERE id = $2', ['present', user.id]);
+        await query('BEGIN');
+        // Update status to 'present' AND update arrival_time/updated_at
+        // This ensures they appear at the top of the list if sorted by arrival_time
+        await query('UPDATE attendees SET status = $1, arrival_time = NOW(), updated_at = NOW() WHERE id = $2', ['present', user.id]);
         
         // Record visit
-        await query('INSERT INTO visits (attendee_id) VALUES ($1)', [user.id]);
-
-        // Optional: Delete used token to prevent reuse (though it expires quickly anyway)
-        // await query('DELETE FROM qr_tokens WHERE token = $1', [token]);
+        await query('INSERT INTO visits (attendee_id, arrival_time) VALUES ($1, NOW())', [user.id]);
+        await query('COMMIT');
 
         return {
             success: true,
             user
         };
     } catch (err) {
+        await query('ROLLBACK');
         console.error(err);
         return {
             success: false,
