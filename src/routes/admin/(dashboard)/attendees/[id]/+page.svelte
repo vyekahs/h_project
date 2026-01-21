@@ -181,7 +181,7 @@
                                 {#if visit.departure_time}
                                     {new Date(visit.departure_time).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}
                                 {:else}
-                                    <span class="status-badge playing">현재 체류 중</span>
+                                    <span class="status-badge playing">현재 방문 중</span>
                                 {/if}
                             </td>
                             <td>

@@ -134,22 +134,25 @@ export const actions: Actions = {
         // Ensure is_open is true
         await query("INSERT INTO system_settings (key, value) VALUES ('is_open', 'true') ON CONFLICT (key) DO UPDATE SET value = 'true'");
 
-        // 1. Check if attendee exists (by name)
-        const existing = await query('SELECT * FROM attendees WHERE name = $1', [name]);
+        // 1. Check if ANY attendee with this name exists
+        const existingResult = await query('SELECT * FROM attendees WHERE name = $1 ORDER BY id DESC', [name]);
+        const existingRecords = existingResult.rows;
 
-        if (existing.rows.length > 0) {
-            const attendee = existing.rows[0];
-            
-            // Check if already present
-            if (attendee.status === 'present') {
-                return fail(400, { error: '이미 참여 중인 인원입니다.' });
-            }
+        // Check if ANY of them are currently present
+        const alreadyPresent = existingRecords.find((a: any) => a.status === 'present');
+        if (alreadyPresent) {
+            return fail(400, { error: '이미 참여 중인 인원입니다.' });
+        }
 
-            // Re-entry: Update status and Add new visit
+        if (existingRecords.length > 0) {
+            // User exists but is not present. Reuse the most recent record (first in list due to DESC sort)
+            const attendeeToReactivate = existingRecords[0];
+
+             // Re-entry: Update status and Add new visit
             await query('BEGIN');
             try {
-                await query('UPDATE attendees SET status = $1, arrival_time = NOW(), updated_at = NOW() WHERE id = $2', ['present', attendee.id]);
-                await query('INSERT INTO visits (attendee_id, arrival_time) VALUES ($1, NOW())', [attendee.id]);
+                await query('UPDATE attendees SET status = $1, arrival_time = NOW(), updated_at = NOW() WHERE id = $2', ['present', attendeeToReactivate.id]);
+                await query('INSERT INTO visits (attendee_id, arrival_time) VALUES ($1, NOW())', [attendeeToReactivate.id]);
                 await query('COMMIT');
             } catch (e) {
                 await query('ROLLBACK');
