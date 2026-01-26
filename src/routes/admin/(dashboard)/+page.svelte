@@ -270,11 +270,18 @@
                     <span class="arrival-time">{formatTime(a.arrival_time)} 입장</span>
                 </div>
                 <div class="attendee-actions">
-                    <form method="POST" action="?/applyPenaltyAdmin" use:enhance style="display:inline;">
-                        <input type="hidden" name="attendeeId" value={a.id} />
-                        <input type="hidden" name="points" value="1" />
-                        <button type="submit" class="btn-penalty" title="페널티 +1">+1</button>
-                    </form>
+                    <div class="penalty-actions">
+                        <form method="POST" action="?/applyPenaltyAdmin" use:enhance style="display:inline;">
+                            <input type="hidden" name="attendeeId" value={a.id} />
+                            <input type="hidden" name="points" value="-1" />
+                            <button type="submit" class="btn-penalty remove" title="페널티 -1">-1</button>
+                        </form>
+                        <form method="POST" action="?/applyPenaltyAdmin" use:enhance style="display:inline;">
+                            <input type="hidden" name="attendeeId" value={a.id} />
+                            <input type="hidden" name="points" value="1" />
+                            <button type="submit" class="btn-penalty add" title="페널티 +1">+1</button>
+                        </form>
+                    </div>
                     <form method="POST" action="?/toggleBlacklist" use:enhance style="display:inline;">
                         <input type="hidden" name="attendeeId" value={a.id} />
                         <button type="submit" class="btn-blacklist" title="블랙리스트 토글">
@@ -352,7 +359,15 @@
                     </div>
                 </div>
                 <div class="game-actions-container">
-                    <form method="POST" action="/?/joinScheduledGame" use:enhance class="inline-add-form">
+                    <form method="POST" action="?/joinGame" use:enhance={() => {
+                        return async ({ result, update }) => {
+                            if (result.type === 'failure') {
+                                // @ts-ignore
+                                showAlert(result.data?.error || '참가 처리 중 오류가 발생했습니다.');
+                            }
+                            await update();
+                        };
+                    }} class="inline-add-form">
                         <input type="hidden" name="sessionId" value={g.id} />
                         <select name="attendeeId" required class="attendee-select-mini">
                             <option value="">참여자 추가</option>
@@ -383,7 +398,7 @@
     </div>
 </section>
 
-<section>
+<!-- <section>
     <div class="section-header">
         <h2>🎟️ 예약 및 대기열 ({(reservations || []).length})</h2>
         <form method="POST" action="/?/reserveGame" use:enhance class="inline-add-form">
@@ -430,7 +445,7 @@
             <p class="empty-state">현재 예약 내역이 없습니다.</p>
         {/if}
     </div>
-</section>
+</section> -->
 
 <section>
     <div class="section-header">
@@ -459,7 +474,15 @@
                     </div>
                 </div>
                 <div class="game-actions-container">
-                    <form method="POST" action="/?/joinScheduledGame" use:enhance class="inline-add-form">
+                    <form method="POST" action="?/joinGame" use:enhance={() => {
+                        return async ({ result, update }) => {
+                            if (result.type === 'failure') {
+                                // @ts-ignore
+                                showAlert(result.data?.error || '참가 처리 중 오류가 발생했습니다.');
+                            }
+                            await update();
+                        };
+                    }} class="inline-add-form">
                         <input type="hidden" name="sessionId" value={game.id} />
                         <select name="attendeeId" required class="attendee-select-mini">
                             <option value="">참여자 추가</option>
@@ -1188,14 +1211,28 @@
         display: flex;
         gap: 0.25rem;
     }
+    .penalty-actions {
+        display: flex;
+        gap: 0;
+        border-radius: 4px;
+        overflow: hidden;
+    }
     .btn-penalty {
-        background: #ffd740;
-        color: #333;
         border: none;
         padding: 0.25rem 0.5rem;
-        border-radius: 4px;
         cursor: pointer;
         font-size: 0.8rem;
+        font-weight: bold;
+    }
+    .btn-penalty.add {
+        background: #ffd740;
+        color: #333;
+        border-radius: 0 4px 4px 0;
+    }
+    .btn-penalty.remove {
+        background: #ff5252;
+        color: white;
+        border-radius: 4px 0 0 4px;
     }
     .btn-blacklist {
         background: #424242;

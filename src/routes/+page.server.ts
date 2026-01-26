@@ -71,11 +71,14 @@ export const load: PageServerLoad = async ({ locals, cookies, request }) => {
     const allGamesResult = await query('SELECT id, name, min_players, max_players, playtime_min, image_url FROM games ORDER BY name ASC');
     
     // Fetch all reservations
+    // Fetch all reservations
     const reservationsResult = await query(`
-        SELECT r.id, r.session_id, r.game_id, r.attendee_id, r.status, a.name as attendee_name, g.name as game_name
+        SELECT r.id, r.session_id, r.game_id, r.attendee_id, r.status, a.name as attendee_name, 
+               COALESCE(g.name, gs.game_name) as game_name
         FROM reservations r
         JOIN attendees a ON r.attendee_id = a.id
-        JOIN games g ON r.game_id = g.id
+        LEFT JOIN games g ON r.game_id = g.id
+        LEFT JOIN game_sessions gs ON r.session_id = gs.id
         WHERE r.status != 'cancelled'
     `);
 
@@ -151,6 +154,7 @@ export const load: PageServerLoad = async ({ locals, cookies, request }) => {
         userScheduledGames: userScheduledGames,
         userPlayingGame: userPlayingGame,
         allGames: allGamesResult.rows,
+        reservations: reservationsResult.rows,
     };
 };
 
@@ -189,16 +193,28 @@ export const actions: Actions = {
         }
 
         // 1. Check if already playing or reserved
+        // 1. Check if already playing or reserved (for TODAY)
         const busyCheck = await query(`
             SELECT 1 FROM session_participants sp
             JOIN game_sessions gs ON sp.session_id = gs.id
-            WHERE sp.attendee_id = $1 AND (gs.status = 'playing' OR gs.status = 'scheduled')
+            WHERE sp.attendee_id = $1 
+            AND (
+                gs.status = 'playing' 
+                OR (gs.status = 'scheduled' AND gs.scheduled_at::date = CURRENT_DATE)
+            )
             UNION
-            SELECT 1 FROM reservations WHERE attendee_id = $1 AND status IN ('pending', 'waitlisted', 'confirmed')
+            SELECT 1 FROM reservations r
+            JOIN game_sessions gs ON r.session_id = gs.id
+            WHERE r.attendee_id = $1 
+            AND r.status IN ('pending', 'waitlisted', 'confirmed')
+            AND (
+                gs.status = 'playing' 
+                OR (gs.status = 'scheduled' AND gs.scheduled_at::date = CURRENT_DATE)
+            )
         `, [attendeeId]);
 
         if (busyCheck.rows.length > 0) {
-            return fail(400, { error: '이미 게임 중이거나 예약된 내역이 있습니다.' });
+            return fail(400, { error: '오늘 진행 중이거나 예약된 게임이 있어 예약할 수 없습니다.' });
         }
 
         // 2. Create reservation
@@ -285,16 +301,24 @@ export const actions: Actions = {
         }
 
         // 1. Check if busy
+        // 1. Check if already joined THIS session
+        const existingParticipant = await query('SELECT 1 FROM session_participants WHERE session_id = $1 AND attendee_id = $2', [sessionId, finalAttendeeId]);
+        if (existingParticipant.rows.length > 0) {
+            return fail(400, { error: '이미 참여 중인 게임입니다.' });
+        }
+
+        // 2. Check if busy with OTHER games or reservations
+        // Crucial Fix: effectively ignore reservations for THIS session ID here, treated as "modifying my status"
         const busyCheck = await query(`
             SELECT 1 FROM session_participants sp
             JOIN game_sessions gs ON sp.session_id = gs.id
-            WHERE sp.attendee_id = $1 AND (gs.status = 'playing' OR gs.status = 'scheduled')
+            WHERE sp.attendee_id = $1 AND (gs.status = 'playing' OR gs.status = 'scheduled') AND gs.id != $2
             UNION
-            SELECT 1 FROM reservations WHERE attendee_id = $1 AND status IN ('pending', 'waitlisted', 'confirmed')
-        `, [finalAttendeeId]);
+            SELECT 1 FROM reservations WHERE attendee_id = $1 AND status IN ('pending', 'waitlisted', 'confirmed') AND session_id != $2
+        `, [finalAttendeeId, sessionId]);
 
         if (busyCheck.rows.length > 0) {
-            return fail(400, { error: '이미 게임 중이거나 예약된 내역이 있습니다.' });
+            return fail(400, { error: '이미 다른 게임에 참여 중이거나 예약된 내역이 있습니다.' });
         }
 
         // 2. Check if session is full
@@ -319,7 +343,16 @@ export const actions: Actions = {
         }
 
         // 3. Join session
-        await query('INSERT INTO session_participants (session_id, attendee_id) VALUES ($1, $2)', [sessionId, finalAttendeeId]);
+        await query('BEGIN');
+        try {
+            await query('INSERT INTO session_participants (session_id, attendee_id) VALUES ($1, $2)', [sessionId, finalAttendeeId]);
+            // If there was a reservation for this session, confirm it
+            await query("UPDATE reservations SET status = 'confirmed' WHERE session_id = $1 AND attendee_id = $2 AND status != 'cancelled'", [sessionId, finalAttendeeId]);
+            await query('COMMIT');
+        } catch (e) {
+            await query('ROLLBACK');
+            throw e;
+        }
         return { success: true };
     },
 

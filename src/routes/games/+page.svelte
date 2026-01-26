@@ -76,9 +76,9 @@
 
 <div class="library-container">
     <div class="header">
-        <h1>🎲 보드게임 도감</h1>
-        <p>우리 동호회가 보유한 보드게임 목록입니다.</p>
-        {#if data.user && (data.user.can_manage_games || data.isAdmin)}
+        <h1>🎲 보드게임 목록</h1>
+        <p>보유한 보드게임 목록입니다.</p>
+        {#if data.user && (data.user.can_manage_games)}
              <button class="btn-create" on:click={openBggModal}>🎲 게임 DB 추가</button>
         {/if}
     </div>
@@ -686,6 +686,16 @@
     }
 
     @media (max-width: 600px) {
+        .header {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .btn-create {
+            position: static;
+            margin-top: 0.5rem;
+            width: 100%;
+        }
         .filters {
             flex-wrap: nowrap;
             gap: 0.5rem;

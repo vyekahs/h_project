@@ -115,6 +115,18 @@
     let alertVisible = false;
     let alertMessage = '';
 
+    // Limit visible games
+    let limitGames = 5;
+    let limitScheduledGames = 5;
+
+    function toggleLimitGames() {
+        limitGames = limitGames === 5 ? games.length : 5;
+    }
+
+    function toggleLimitScheduledGames() {
+        limitScheduledGames = limitScheduledGames === 5 ? scheduledGames.length : 5;
+    }
+
     function showAlert(msg: string) {
         alertMessage = msg;
         alertVisible = true;
@@ -186,10 +198,29 @@
     function formatScheduledTime(dateString: string) {
         const date = new Date(dateString);
         const now = new Date();
-        const isToday = date.getDate() === now.getDate() && date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear();
+        const diffMs = date.getTime() - now.getTime();
         
         const timeStr = date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-        return isToday ? timeStr : `${date.getMonth() + 1}/${date.getDate()} ${timeStr}`;
+        const dateStr = `${date.getMonth() + 1}/${date.getDate()}`;
+        const isToday = date.getDate() === now.getDate() && date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear();
+        const fullTimeStr = isToday ? timeStr : `${dateStr} ${timeStr}`;
+
+        if (diffMs < 0) return { relative: "곧 시작", absolute: fullTimeStr };
+
+        const diffMins = Math.floor(diffMs / (1000 * 60));
+        const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+        const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+        let relativeStr = "";
+        if (diffMins < 60) {
+            relativeStr = `${diffMins}분 뒤`;
+        } else if (diffHours < 24) {
+            relativeStr = `${diffHours}시간 뒤`;
+        } else {
+            relativeStr = `${diffDays}일 뒤`;
+        }
+
+        return { relative: relativeStr, absolute: fullTimeStr };
     }
 </script>
 
@@ -248,10 +279,11 @@
 
                     {#if data.userScheduledGames && data.userScheduledGames.length > 0}
                         {#each data.userScheduledGames as game}
+                            {@const time = formatScheduledTime(game.scheduled_at)}
                             <div class="status-card scheduled">
                                 <span class="label">📅 참여 예정 게임</span>
                                 <span class="value">{game.game_name}</span>
-                                <span class="sub-value">{formatScheduledTime(game.scheduled_at)} 시작</span>
+                                <span class="sub-value"><span class="highlight-orange">{time.relative}</span> ({time.absolute} 시작)</span>
                                 <form method="POST" action="?/leaveScheduledGame" on:submit|preventDefault={(e) => {
                                     const scheduledAt = new Date(game.scheduled_at).getTime();
                                     const now = Date.now();
@@ -339,13 +371,12 @@
                 {/if}
             </div>
             <div class="tables-grid">
-                {#each games as game}
+                {#each games.slice(0, limitGames) as game}
                     {@const gameReservations = getGameReservations(game.id)}
                     <div class="table-card playing">
                         <div class="table-header">
                             <h3>{game.game_name}</h3>
                             <div class="header-meta-row">
-                                <span class="status-badge playing">진행 중</span>
                                 {#if canManageGame(game)}
                                     <div class="manage-controls">
                                         <button class="btn-action-text danger" on:click={() => openEndGameModal(game)}>종료</button>
@@ -356,22 +387,7 @@
                                         </form>
                                     </div>
                                 {/if}
-                            </div>
-                        </div>
-
-                        <div class="table-content">
-                            <div class="session-info current">
-                                <div class="session-header">
-                                    <span class="time-remaining">{getTimeRemaining(game.end_time)}</span>
-                                    <span class="end-time-label">({new Date(game.end_time).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} 종료)</span>
-                                </div>
-                                <div class="players">
-                                    {#each (game.players || []) as player}
-                                        <span class="player-tag">{player.name}</span>
-                                    {/each}
-                                </div>
-                                
-                                {#if data.user && !data.userReservation && (!data.userScheduledGames || data.userScheduledGames.length === 0) && !data.userPlayingGame}
+                                 {#if data.user && !data.userPlayingGame}
                                     <div class="user-actions">
                                         <form method="POST" action="?/reserveGame" use:enhance={() => {
                                             return async ({ result, update }) => {
@@ -390,28 +406,44 @@
                                         </form>
                                     </div>
                                 {/if}
-
-                                {#if gameReservations.length > 0}
-                                    <div class="game-reservations">
-                                        <span class="res-label">대기열:</span>
-                                        <div class="res-list">
-                                            {#each gameReservations as res}
-                                                <div class="res-item">
-                                                    <span class="res-name">{res.attendee_name}</span>
-                                                    {#if data.user && data.userReservation && data.userReservation.id === res.id}
-                                                        <form method="POST" action="?/cancelReservation" class="cancel-form-inline">
-                                                            <input type="hidden" name="reservationId" value={res.id}>
-                                                            <button type="submit" class="btn-cancel-x" aria-label="취소">×</button>
-                                                        </form>
-                                                    {/if}
-                                                </div>
-                                            {/each}
-                                        </div>
-                                    </div>
-                                {/if}
                             </div>
                         </div>
+
+                        <div class="table-content">
+                            <div class="session-info current">
+                                <div class="session-header">
+                                    <span class="time-remaining">{getTimeRemaining(game.end_time)}</span>
+                                    <span class="end-time-label">({new Date(game.end_time).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} 종료)</span>
+                                </div>
+                                <div class="players">
+                                    {#each (game.players || []) as player}
+                                        <span class="player-tag">{player.name}</span>
+                                    {/each}
+                                </div>
+                                
+                                
+                            </div>
+                        </div>
+                    {#if gameReservations.length > 0}
+                        <div class="game-reservations">
+                            <span class="res-label">대기열:</span>
+                            <div class="res-list">
+                                {#each gameReservations as res}
+                                    <div class="res-item">
+                                        <span class="res-name">{res.attendee_name}</span>
+                                        {#if data.user && data.userReservation && data.userReservation.id === res.id}
+                                            <form method="POST" action="?/cancelReservation" class="cancel-form-inline">
+                                                <input type="hidden" name="reservationId" value={res.id}>
+                                                <button type="submit" class="btn-cancel-x" aria-label="취소">×</button>
+                                            </form>
+                                        {/if}
+                                    </div>
+                                {/each}
+                            </div>
+                        </div>
+                    {/if}
                     </div>
+                    
                 {/each}
                 {#if games.length === 0}
                     <div class="empty-state-message">
@@ -419,6 +451,13 @@
                     </div>
                 {/if}
             </div>
+            {#if games.length > 5}
+                <div class="show-more-container">
+                    <button class="btn-show-more" on:click={toggleLimitGames}>
+                        {limitGames === 5 ? '더보기 (+)' : '접기 (-)'}
+                    </button>
+                </div>
+            {/if}
         </section>
 
 
@@ -430,12 +469,12 @@
                 {/if}
             </div>
             <div class="tables-grid">
-                {#each scheduledGames as game}
+                {#each scheduledGames.slice(0, limitScheduledGames) as game}
+                    {@const time = formatScheduledTime(game.scheduled_at)}
                     <div class="table-card available">
                         <div class="table-header">
-                            <h3>{game.game_name}</h3>
+                            <h3>{game.game_name} <span class="sub-text">({(game.participants || []).length} / {game.max_players})</span></h3>
                             <div class="header-meta-row">
-                                <span class="status-badge available">예정됨</span>
                                 {#if canManageGame(game)}
                                     <div class="manage-controls">
                                         <form method="POST" action="?/startScheduledGame" use:enhance style="display:inline;">
@@ -454,10 +493,12 @@
                         <div class="table-content">
                             <div class="session-info next">
                                 <div class="session-header">
-                                    <span class="start-time">{formatScheduledTime(game.scheduled_at)} 시작</span>
+                                    <span class="start-time">
+                                        <span class="highlight-green">{time.relative}</span>
+                                        <span class="sub-text">({time.absolute} 시작)</span>
+                                    </span>
                                 </div>
                                 <div class="participants">
-                                    <span class="count">👥 {(game.participants || []).length} / {game.max_players}</span>
                                     <div class="participant-list">
                                         {#each (game.participants || []) as p}
                                             {@const participant = p as Attendee}
@@ -485,6 +526,13 @@
                     </div>
                 {/if}
             </div>
+            {#if scheduledGames.length > 5}
+                <div class="show-more-container">
+                    <button class="btn-show-more" on:click={toggleLimitScheduledGames}>
+                        {limitScheduledGames === 5 ? '더보기 (+)' : '접기 (-)'}
+                    </button>
+                </div>
+            {/if}
         </section>
     </main>
 </div>
@@ -881,6 +929,11 @@
     .name {
         font-weight: 600;
         font-size: 0.9rem;
+        max-width: 100%;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        display: block;
     }
     .time {
         font-size: 0.75rem;
@@ -921,7 +974,6 @@
     }
     .time-remaining {
         color: #ef6c00;
-        padding: 0.25rem;
         border-radius: 20px;
         font-weight: 600;
         font-size: 0.8rem;
@@ -1104,25 +1156,25 @@
     }
 
     .tables-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-        gap: 1.5rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
         margin-bottom: 2rem;
     }
     .table-card {
         background: white;
-        padding: 1.5rem;
-        border-radius: 20px;
-        box-shadow: 0 8px 24px rgba(0,0,0,0.06);
+        padding: 0.75rem 1rem;
+        border-radius: 12px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
         border: 1px solid #eee;
         display: flex;
         flex-direction: column;
-        gap: 1.25rem;
+        gap: 1rem;
         transition: transform 0.2s, box-shadow 0.2s;
     }
     .table-card:hover {
-        transform: translateY(-4px);
-        box-shadow: 0 12px 32px rgba(0,0,0,0.1);
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.08);
     }
     .table-card.playing {
         border-left: 6px solid #ff9800;
@@ -1132,25 +1184,25 @@
     }
     .table-header {
         display: flex;
-        flex-wrap: wrap;
-        justify-content: space-between;
         align-items: center;
-        gap: 0.5rem;
+        justify-content: space-between;
+        gap: 0.75rem;
+        margin-bottom: 0;
     }
     .table-header h3 {
         margin: 0;
-        font-size: 1.25rem;
+        font-size: 1rem;
         color: #1a1a1a;
-        width: 100%; /* Force title to new line for clarity/space */
-        order: -1; /* Ensure title is first visually if needed, though HTML order implies it */
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        order: 0;
+        width: auto;
     }
-    /* If we want badge and controls on same line, we rely on wrap */
     .status-badge {
-        font-size: 0.75rem;
-        font-weight: 800;
-        padding: 0.25rem 0.75rem;
-        border-radius: 20px;
-        text-transform: uppercase;
+        font-size: 0.65rem;
+        padding: 0.15rem 0.5rem;
+        display: inline-block;
     }
     .status-badge.playing {
         background: #fff3e0;
@@ -1161,56 +1213,65 @@
         color: #2e7d32;
     }
     .header-meta-row {
+        width: auto;
+        margin-top: 0;
         display: flex;
-        justify-content: space-between;
+        gap: 0.5rem;
         align-items: center;
-        width: 100%;
-        margin-top: 0.5rem;
     }
     .table-content {
+        flex: 1;
         display: flex;
-        flex-direction: column;
-        gap: 1rem;
+        flex-direction: row;
+        align-items: center;
+        width: auto;
+        gap: 0;
     }
     .session-info {
-        padding: 1rem;
-        border-radius: 12px;
-        background: #f8f9fa;
-        border: 1px solid #e9ecef;
+        padding: 0;
+        border-radius: 0;
+        background: none !important;
+        border: none !important;
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        width: 100%;
+        gap: 1rem;
     }
-    .session-info.current {
-        background: #fff8f0;
-        border-color: #ffe8cc;
-    }
-    .session-info.next {
-        background: #f3f0ff;
-        border-color: #e5dbff;
+    .session-info.current, .session-info.next {
+        background: none;
+        border: none;
     }
     .session-header {
+        margin-bottom: 0;
         display: flex;
+        flex-direction: row;
         align-items: center;
-        margin-bottom: 0.75rem;
+        gap: 0.5rem;
+        min-width: 100px;
     }
     .session-header h4 {
         margin: 0;
-        font-size: 1rem;
-        color: #212529;
+        font-size: 0.9rem;
     }
-
+    .time-remaining {
+        font-weight: bold;
+        color: #e65100;
+    }
+    
     .game-reservations {
-        margin-top: 1rem;
-        padding-top: 0.75rem;
-        border-top: 1px dashed #e9ecef;
+        margin-top: 0;
+        padding-top: 0;
+        border-top: none;
         display: flex;
-        align-items: flex-start;
+        align-items: center;
         gap: 0.5rem;
+        flex-shrink: 0;
     }
     .res-label {
-        font-size: 0.8rem;
-        color: #868e96;
-        font-weight: 600;
-        white-space: nowrap;
-        margin-top: 0.2rem;
+        font-size: 0.75rem;
+        color: #888;
+        margin-top: 0;
     }
     .res-list {
         display: flex;
@@ -1220,9 +1281,9 @@
     .res-item {
         background: #fff;
         border: 1px solid #dee2e6;
-        padding: 0.2rem 0.5rem;
+        padding: 0.1rem 0.4rem;
         border-radius: 12px;
-        font-size: 0.8rem;
+        font-size: 0.75rem;
         display: flex;
         align-items: center;
         gap: 0.25rem;
@@ -1239,41 +1300,98 @@
         background: none;
         border: none;
         color: #adb5bd;
-        font-size: 1rem;
-        line-height: 1;
         padding: 0;
+        width: 14px;
+        height: 14px;
         cursor: pointer;
         display: flex;
         align-items: center;
         justify-content: center;
-        width: 16px;
-        height: 16px;
-        border-radius: 50%;
     }
     .btn-cancel-x:hover {
         background: #f1f3f5;
         color: #fa5252;
+        border-radius: 50%;
     }
 
     .start-time {
         font-size: 0.8rem;
-        font-weight: 700;
+        font-weight: 600;
         color: #4c6ef5;
     }
-    .players, .participants {
-        display: flex;
-        flex-direction: column;
-        gap: 0.5rem;
+    .end-time-label {
+        font-size: 0.85rem;
+        color: #888;
+        font-weight: normal;
     }
-    .player-tag {
-        background: white;
-        padding: 0.2rem 0.6rem;
-        border-radius: 6px;
+    .players, .participants {
+        flex-direction: row;
+        flex-wrap: wrap;
+        flex: 1;
+        gap: 0.25rem;
+        align-items: center;
+    }
+    .count {
         font-size: 0.8rem;
+        color: #888;
+        margin-right: 0.5rem;
+    }
+    .player-tag, .p-name {
+        margin-right: 0;
+        font-size: 0.75rem;
+        padding: 0.1rem 0.4rem;
+        background: white;
+        border-radius: 6px;
         color: #495057;
         border: 1px solid #dee2e6;
         display: inline-block;
-        margin-right: 0.4rem;
+        max-width: 80px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        vertical-align: middle;
+    }
+    .user-actions, .actions {
+        margin-top: 0;
+    }
+    .btn-reserve, .btn-join {
+        width: auto;
+        padding: 0.3rem 0.8rem;
+        font-size: 0.8rem;
+        border-radius: 6px;
+        background: #fab005;
+        color: white;
+        border: none;
+        cursor: pointer;
+    }
+    
+    @media (max-width: 768px) {
+        .table-card {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 0.35rem;
+        }
+        .table-header {
+            width: 100%;
+            flex: none;
+            justify-content: space-between;
+        }
+        .table-content {
+            width: 100%;
+        }
+        .session-info {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 0.35rem;
+        }
+        .end-time-label {
+            display: inline;
+        }
+        .game-reservations {
+            margin-top: 0.5rem;
+            margin-left: 0;
+            width: 100%;
+        }
     }
     .participant-list {
         display: flex;
@@ -1327,12 +1445,6 @@
         font-size: 0.9rem;
         color: #555;
     }
-    .res-name {
-        font-size: 1rem;
-        font-weight: 700;
-        color: #333;
-    }
-
     .reservations-grid {
         display: grid;
         grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
@@ -1360,24 +1472,37 @@
         color: #555;
     }
     .res-name {
-        font-size: 1rem;
-        font-weight: 700;
+        padding: 0.1rem;
         color: #333;
     }
-    .user-actions {
-        margin-top: 0.75rem;
-    }
+
     .btn-reserve {
         width: 100%;
         background: #fab005;
         color: white;
         border: none;
-        padding: 0.5rem;
         border-radius: 8px;
         font-weight: 700;
         cursor: pointer;
         transition: background 0.2s;
     }
+    
+    .highlight-orange {
+        color: #ef6c00;
+        font-weight: 700;
+        margin-right: 0.25rem;
+    }
+    .highlight-green {
+        color: #4caf50;
+        font-weight: 700;
+        margin-right: 0.25rem;
+    }
+    .sub-text {
+        font-weight: normal;
+        color: #888;
+        font-size: 0.75rem;
+    }
+
     .btn-reserve:hover {
         background: #f08c00;
     }
@@ -1665,5 +1790,36 @@
         color: #868e96;
         font-weight: normal;
         white-space: nowrap;
+    }
+
+    .show-more-container {
+        display: flex;
+        justify-content: center;
+        margin-top: 1rem;
+        padding-bottom: 1rem;
+    }
+
+    .btn-show-more {
+        background: white;
+        border: 1px solid #ddd;
+        padding: 0.5rem 1.5rem;
+        border-radius: 20px;
+        color: #666;
+        cursor: pointer;
+        font-size: 0.9rem;
+        transition: all 0.2s;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+
+    .btn-show-more:hover {
+        background: #f8f9fa;
+        color: #333;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    }
+
+    @media (max-width: 768px) {
+        .container {
+            padding-bottom: 80px;
+        }
     }
 </style>

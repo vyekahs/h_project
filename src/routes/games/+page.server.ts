@@ -3,7 +3,7 @@ import { fail } from '@sveltejs/kit';
 import type { PageServerLoad, Actions } from './$types';
 import { translate } from 'google-translate-api-x';
 import * as cheerio from 'cheerio';
-import { verifyAdminSession } from '$lib/server/auth';
+import { verifyAdminSession, verifyAttendeeSession } from '$lib/server/auth';
 
 const BGG_HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',

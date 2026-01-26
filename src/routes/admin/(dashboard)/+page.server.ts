@@ -510,6 +510,57 @@ export const actions: Actions = {
         return { success: true };
     },
 
+    joinGame: async ({ request, cookies }) => {
+        const data = await request.formData();
+        const sessionId = data.get('sessionId');
+        const attendeeId = data.get('attendeeId');
+
+        if (!sessionId || !attendeeId) return fail(400, { error: 'Invalid ID' });
+
+        const sessionToken = cookies.get('admin_session');
+        if (!sessionToken || !(await verifyAdminSession(sessionToken))) return fail(403, { error: 'Unauthorized' });
+
+        const finalAttendeeId = parseInt(attendeeId.toString());
+
+        // 0. Check if blacklisted or has too many penalties
+        const attendeeInfo = await query('SELECT is_blacklisted, penalty_points FROM attendees WHERE id = $1', [finalAttendeeId]);
+        if (attendeeInfo.rows.length > 0) {
+            const { is_blacklisted, penalty_points } = attendeeInfo.rows[0];
+            if (is_blacklisted) return fail(403, { error: '블랙리스트에 등록되어 예약이 불가능합니다.' });
+            if (penalty_points >= 3) return fail(403, { error: '페널티 누적으로 인해 예약이 불가능합니다.' });
+        }
+
+        // 1. Check if already joined THIS session
+        const existingParticipant = await query('SELECT 1 FROM session_participants WHERE session_id = $1 AND attendee_id = $2', [sessionId, finalAttendeeId]);
+        if (existingParticipant.rows.length > 0) {
+            return fail(400, { error: '이미 참여 중인 게임입니다.' });
+        }
+
+        // 2. Check if busy with OTHER games or reservations
+        const busyCheck = await query(`
+            SELECT 1 FROM session_participants sp
+            JOIN game_sessions gs ON sp.session_id = gs.id
+            WHERE sp.attendee_id = $1 AND (gs.status = 'playing' OR gs.status = 'scheduled') AND gs.id != $2
+            UNION
+            SELECT 1 FROM reservations WHERE attendee_id = $1 AND status IN ('pending', 'waitlisted', 'confirmed') AND session_id != $2
+        `, [finalAttendeeId, sessionId]);
+
+        if (busyCheck.rows.length > 0) {
+            return fail(400, { error: '이미 다른 게임에 참여 중이거나 예약된 내역이 있습니다.' });
+        }
+
+        // 3. Join session
+        await query('BEGIN');
+        try {
+            await query('INSERT INTO session_participants (session_id, attendee_id) VALUES ($1, $2)', [sessionId, finalAttendeeId]);
+            await query("UPDATE reservations SET status = 'confirmed' WHERE session_id = $1 AND attendee_id = $2 AND status != 'cancelled'", [sessionId, finalAttendeeId]);
+            await query('COMMIT');
+        } catch (e) {
+            await query('ROLLBACK');
+            return fail(500, { error: 'Failed to join game' });
+        }
+        return { success: true };
+    },
     addTable: async ({ request }) => {
         const data = await request.formData();
         const name = data.get('name')?.toString().trim();

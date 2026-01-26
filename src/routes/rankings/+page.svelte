@@ -7,7 +7,6 @@
 <div class="rankings-container">
     <div class="header">
         <h1>🏆 명예의 전당</h1>
-        <p>우리 동호회의 전설적인 플레이어들입니다.</p>
     </div>
 
     <div class="rankings-grid">
