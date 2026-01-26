@@ -912,9 +912,10 @@
     h2 {
         font-size: 1.2rem;
         color: #555;
-        margin-bottom: 1rem;
         border-bottom: 2px solid #e0e0e0;
         padding-bottom: 0.5rem;
+        margin: 0;
+        margin-bottom: 1rem;
     }
     .attendee-grid {
         display: grid;

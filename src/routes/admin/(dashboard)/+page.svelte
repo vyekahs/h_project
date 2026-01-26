@@ -1263,7 +1263,7 @@
         padding: 1rem;
         border-radius: 8px;
         box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        border-left: 4px solid #4c6ef5;
+        border-left: 6px solid #4caf50;
     }
     .duration-input {
         width: 60px;
@@ -1470,7 +1470,7 @@
         background: #e9ecef;
         color: #495057;
         border: 1px solid #ced4da;
-        padding: 0.25rem 0.5rem;
+        padding: 0rem 0.4rem;
         border-radius: 4px;
         font-size: 0.8rem;
         cursor: pointer;
