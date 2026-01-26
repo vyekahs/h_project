@@ -232,7 +232,7 @@
 <div class="container">
     <header>
         <div class="title-section">
-            <h1>🎲현황판</h1>
+            <h1>🎲현황판 <button class="btn-refresh" on:click={() => window.location.reload()} aria-label="새로고침">🔄</button></h1>
             <nav class="main-nav">
                 <a href="/games" class="nav-link">📚 보드게임 목록</a>
                 <!-- <a href="/rankings" class="nav-link">🏆 랭킹</a> -->
@@ -817,6 +817,9 @@
         font-size: 1.5rem;
         margin: 0;
         color: #1a1a1a;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
     }
     .title-section {
         display: flex;
@@ -1640,6 +1643,21 @@
     .manage-controls {
         display: flex;
         gap: 0.25rem;
+    }
+    .btn-refresh {
+        border: 0px solid #ddd;
+        display: flex;
+        align-items: center;
+        cursor: pointer;
+        padding: 0;
+    }
+    .btn-refresh:hover {
+        background: #f8f9fa;
+        transform: rotate(180deg);
+        box-shadow: 0 2px 4px rgba(0,0,0,0.15);
+    }
+    .btn-refresh:active {
+        transform: scale(0.95) rotate(180deg);
     }
     .btn-icon {
         background: none;
