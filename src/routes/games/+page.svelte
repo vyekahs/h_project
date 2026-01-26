@@ -57,6 +57,7 @@
     let bggQuery = '';
     let bggResults: any[] = [];
     let bggLoading = false;
+    let importingId: string | null = null;
     let alertVisible = false;
     let alertMessage = '';
 
@@ -76,6 +77,7 @@
 
 <div class="library-container">
     <div class="header">
+        <a href="/" class="btn-back">← 뒤로가기</a>
         <h1>🎲 보드게임 목록</h1>
         <p>보유한 보드게임 목록입니다.</p>
         {#if data.user && (data.user.can_manage_games)}
@@ -250,9 +252,11 @@
                                 <span class="bgg-year">{game.year}</span>
                             </div>
                             <form method="POST" action="?/importBgg" use:enhance={() => {
+                                importingId = game.id;
                                 return async ({ result, update }) => {
+                                    importingId = null;
                                     if (result.type === 'success') {
-                                        showAlert(`'${game.name}' 게임이 추가되었습니다! 🎲`);
+                                        showAlert(`'${game.name}' 게임이 추가되었습니다!`);
                                         showBggModal = false;
                                         await update(); // Refresh game list
                                     } else {
@@ -263,7 +267,9 @@
                             }}>
                                 <input type="hidden" name="bggId" value={game.id}>
                                 <input type="hidden" name="searchName" value={bggQuery}> <!-- Pass query as potential Korean name hint -->
-                                <button type="submit" class="btn-primary" style="font-size: 0.8rem; padding: 0.4rem 0.8rem;">가져오기</button>
+                                <button type="submit" class="btn-primary" style="font-size: 0.8rem; padding: 0.4rem 0.8rem;" disabled={importingId === game.id}>
+                                    {importingId === game.id ? '추가 중...' : '가져오기'}
+                                </button>
                             </form>
                         </div>
                     {/each}
@@ -282,10 +288,10 @@
     <!-- svelte-ignore a11y-click-events-have-key-events -->
     <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
     <div class="modal-backdrop" on:click={() => alertVisible = false} role="presentation">
-        <div class="modal-content alert-modal" on:click|stopPropagation role="alertdialog">
+        <div class="modal alert-modal" on:click|stopPropagation role="alertdialog">
             <h3>알림</h3>
             <p>{alertMessage}</p>
-            <div class="modal-actions">
+            <div class="modal-actions" style="justify-content: center;">
                 <button class="btn-primary" on:click={() => alertVisible = false}>확인</button>
             </div>
         </div>
@@ -617,6 +623,30 @@
     }
 
 
+    .btn-back {
+        position: absolute;
+        top: 0;
+        left: 0;
+        padding: 0.5rem 1rem;
+        background: none;
+        border: 1px solid transparent;
+        color: #666;
+        font-size: 0.95rem;
+        font-weight: 600;
+        text-decoration: none;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 0.25rem;
+        border-radius: 6px;
+        transition: all 0.2s;
+    }
+    .btn-back:hover {
+        color: #333;
+        background: #f8f9fa;
+        border-color: #dee2e6;
+    }
+
     .btn-create {
         position: absolute;
         top: 0;
@@ -655,7 +685,7 @@
         padding: 1rem;
         border: 1px solid #eee;
         border-radius: 8px;
-        background: #f8f9fa;
+        background: white;
         text-align: left;
     }
     .bgg-info h4 {
@@ -695,6 +725,12 @@
             position: static;
             margin-top: 0.5rem;
             width: 100%;
+        }
+        .btn-back {
+            position: static;
+            margin-bottom: 0.5rem;
+            width: auto;
+            align-self: flex-start;
         }
         .filters {
             flex-wrap: nowrap;
