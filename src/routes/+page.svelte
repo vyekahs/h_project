@@ -212,12 +212,17 @@
         const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
 
         let relativeStr = "";
-        if (diffMins < 60) {
-            relativeStr = `${diffMins}분 뒤`;
-        } else if (diffHours < 24) {
-            relativeStr = `${diffHours}시간 뒤`;
+        
+        if (isToday) {
+            if (diffMins < 60) {
+                relativeStr = `${diffMins}분 뒤`;
+            } else {
+                relativeStr = `${diffHours}시간 뒤`;
+            }
         } else {
-            relativeStr = `${diffDays}일 뒤`;
+            // If not today (even if within 24h), show as days
+            const days = diffDays < 1 ? 1 : diffDays;
+            relativeStr = `${days}일 뒤`;
         }
 
         return { relative: relativeStr, absolute: fullTimeStr };
