@@ -13,14 +13,9 @@ jobs:
       with:
         host: ${{ secrets.HOST }}
         username: ${{ secrets.USERNAME }}
-        key: ${{ secrets.KEY }}
+        password: ${{ secrets.PASSWORD }}
         port: ${{ secrets.PORT }}
         script: |
-          cd ~/boardgame-club
+          cd Documents/projects/hproject/h_project/
           git pull
-          # Create .env file if it doesn't exist or update it
-          echo "DOMAIN_NAME=${{ secrets.DOMAIN_NAME }}" > .env
-          echo "EMAIL=${{ secrets.EMAIL }}" >> .env
-          
-          docker compose down
           docker compose up -d --build
