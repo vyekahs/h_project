@@ -63,6 +63,10 @@ async function migrate() {
             );
         `);
 
+        // 5. Score in Session Participants
+        console.log('[5/5] Checking score column in session_participants...');
+        await pool.query('ALTER TABLE session_participants ADD COLUMN IF NOT EXISTS score INTEGER DEFAULT 0;');
+
         console.log('All migrations completed successfully!');
     } catch (err) {
         console.error('Migration failed:', err);

@@ -237,9 +237,9 @@
             </div>
             <div class="status-section">
                 {#if data.isOpen}
-                    <span class="status-pill open">🟢 오픈</span>
+                    <span class="status-pill open">오픈</span>
                 {:else}
-                    <span class="status-pill closed">🔴 마감</span>
+                    <span class="status-pill closed">마감</span>
                 {/if}
                 <span class="live-time">{lastUpdated.toLocaleTimeString()}</span>
             </div>
