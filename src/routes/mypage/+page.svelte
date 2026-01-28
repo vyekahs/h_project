@@ -126,11 +126,11 @@
 
                     <!-- Top Games -->
                     <div class="analysis-card">
-                        <h4>최애 게임</h4>
+                        <h4>🎲 최애 게임</h4>
                          <ul>
                             {#each topGames as [game, count]}
                                 <li>
-                                    <span class="name">{game}</span>
+                                    <span class="name text-truncate" title={game}>{game}</span>
                                     <span class="count">{count}회</span>
                                 </li>
                             {:else}
@@ -202,12 +202,12 @@
                     <div class="history-card" class:winner={game.is_winner}>
                         <div class="history-header">
                         <div class="game-info">
-                            <span class="game-name">{game.game_name}</span>
+                            <span class="game-name text-truncate" title={game.game_name}>{game.game_name}</span>
                             <div class="my-result">
                                 {#if game.is_winner}
                                     <span class="result-badge win">승리</span>
                                 {/if}
-                                {#if game.my_score !== null && game.my_score !== undefined}
+                                {#if game.my_score && game.my_score !== 0}
                                     <span class="score">{game.my_score}점</span>
                                 {/if}
                             </div>
@@ -220,6 +220,7 @@
                                 with 
                                 {#if game.opponents && game.opponents.length > 0}
                                     {#each game.opponents as opp, i}
+
                                         <span class="opp-name">
                                             {opp.name}
                                             {#if opp.score}({opp.score}){/if}
@@ -359,10 +360,25 @@
         font-weight: bold;
         color: #888;
         font-size: 0.8rem;
+        flex-shrink: 0;
     }
     .analysis-card .empty {
         color: #ccc;
         text-align: center;
+    }
+    .text-truncate {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        display: inline-block;
+        vertical-align: middle;
+        max-width: 110px; /* Mobile default */
+    }
+    
+    @media (min-width: 600px) {
+        .text-truncate {
+            max-width: 200px; /* PC/Tablet */
+        }
     }
 
 
