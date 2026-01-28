@@ -392,7 +392,7 @@
         padding: 1rem;
         flex: 1;
         display: flex;
-        flex-direction: column;
+        flex-direction: row;
     }
     .game-info h3 {
         margin: 0 0 0.5rem 0;

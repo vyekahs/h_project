@@ -230,33 +230,18 @@
 </script>
 
 <div class="container">
-    <header>
-        <div class="title-section">
-            <h1>🎲현황판 <button class="btn-refresh" on:click={() => window.location.reload()} aria-label="새로고침">🔄</button></h1>
-            <nav class="main-nav">
-                <a href="/games" class="nav-link">📚 보드게임 목록</a>
-                <!-- <a href="/rankings" class="nav-link">🏆 랭킹</a> -->
-            </nav>
-        </div>
-        <div class="header-info">
-            <div class="user-status">
-                {#if data.user}
-                    <span class="welcome-msg">👋 <strong>{data.user.name}</strong>님</span>
-                    <form method="POST" action="/logout" style="display:inline;">
-                        <button type="submit" class="btn-logout">로그아웃</button>
-                    </form>
-                {:else}
-                    <a href="/login" class="btn-login">로그인 / 회원가입</a>
-                {/if}
+    <header class="app-header">
+        <div class="app-bar">
+            <div class="brand-section">
+                <h1>혼놀 라운지</h1>
             </div>
-            <!-- <p class="last-updated">최근 </p> -->
-            <div class="status-indicators">
+            <div class="status-section">
                 {#if data.isOpen}
-                    <span class="status-badge open">🟢 오픈</span>
+                    <span class="status-pill open">🟢 오픈</span>
                 {:else}
-                    <span class="status-badge closed">🔴 마감</span>
+                    <span class="status-pill closed">🔴 마감</span>
                 {/if}
-                <p class="live-indicator">● 실시간 {lastUpdated.toLocaleTimeString()}</p>
+                <span class="live-time">{lastUpdated.toLocaleTimeString()}</span>
             </div>
         </div>
     </header>
@@ -270,7 +255,7 @@
     <main>
         {#if data.user && ((data.userPenaltyInfo && data.userPenaltyInfo.penalty_points > 0) || (data.userScheduledGames && data.userScheduledGames.length > 0) || data.userPlayingGame || data.userReservation)}
             <section class="my-status-section">
-                <h2>🎫 나의 예약 현황</h2>
+                <h2>나의 예약 현황</h2>
                 <div class="my-status-grid">
                     {#if data.userPenaltyInfo && data.userPenaltyInfo.penalty_points > 0}
                         <div class="status-card penalty-warning">
@@ -338,7 +323,7 @@
         {/if}
 
         <section class="attendees-section">
-            <h2>👥 현재 참여 인원 ({(data.attendees || []).length})</h2>
+            <h2>현재 참여 인원 ({(data.attendees || []).length})</h2>
             <div class="attendee-grid">
                 {#each (data.attendees || []) as attendee}
                     {@const a = attendee as Attendee}
@@ -364,7 +349,7 @@
 
         <section class="tables-section">
             <div class="section-header">
-                <h2>🎮 진행 중인 게임 ({games.length})</h2>
+                <h2>진행 중인 게임 ({games.length})</h2>
                 {#if data.user && (data.user.can_manage_games || data.isAdmin)}
                     <button class="btn-create" on:click={() => {
                         showModal = true; 
@@ -468,7 +453,7 @@
 
         <section class="tables-section">
             <div class="section-header">
-                <h2>📅 시작 예정 게임 ({scheduledGames.length})</h2>
+                <h2>시작 예정 게임 ({scheduledGames.length})</h2>
                  {#if data.user && (data.user.can_manage_games || data.isAdmin)}
                     <button class="btn-create" on:click={openScheduledGameModal}>+ 예정 생성</button>
                 {/if}
@@ -800,80 +785,102 @@
         margin: 0 auto;
         padding: 1rem;
     }
-    header {
+    /* App Header Styles */
+    header.app-header {
+        margin: -1rem -1rem 1.5rem -1rem; /* Negative margin to span full width */
+        background: rgba(255, 255, 255, 0.85); /* Translucent white */
+        backdrop-filter: blur(12px); /* Glassmorphism effect */
+        -webkit-backdrop-filter: blur(12px);
+        box-shadow: 0 4px 20px rgba(0,0,0,0.05);
+        position: sticky;
+        top: 0;
+        z-index: 100;
+        transition: background 0.3s ease;
+    }
+    .app-bar {
+        padding: 0.75rem 1rem;
         display: flex;
+        align-items: center;
         justify-content: space-between;
+    }
+    .top-bar {
+        border-bottom: none;
+        padding-bottom: 0;
+    }
+
+    /* Brand Section */
+    .brand-section {
+        display: flex;
         align-items: center;
-        margin-bottom: 2rem;
+        gap: 0.75rem;
     }
-    .header-info {
-        text-align: right;
-    }
-    .last-updated {
-        font-size: 0.8rem;
-        color: #888;
-        margin: 0 0 0.25rem 0;
-    }
-    h1 {
-        font-size: 1.5rem;
+    .brand-section h1 {
+        font-size: 1.25rem;
         margin: 0;
-        color: #1a1a1a;
+        font-weight: 800;
+        letter-spacing: -0.5px;
+        color: #333; /* Fallback */
+    }
+    
+
+
+    /* Status Bar Items */
+    /* Removed action-section and btn-action-pill */
+
+    .status-section {
         display: flex;
         align-items: center;
-        gap: 0.5rem;
+        gap: 0.75rem;
     }
-    .title-section {
-        display: flex;
-        flex-direction: column;
-        gap: 0.5rem;
-    }
-    .main-nav {
-        display: flex;
-        gap: 1rem;
-    }
-    .nav-link {
-        text-decoration: none;
-        color: #666;
-        font-size: 0.9rem;
-        font-weight: 500;
-        padding: 0.25rem 0.5rem;
-        border-radius: 4px;
-        background: #e0e0e0;
-        transition: background 0.2s;
-    }
-    .nav-link:hover {
-        background: #d0d0d0;
-        color: #333;
-    }
-    .status-indicators {
-        display: flex;
-        align-items: center;
-        justify-content: flex-end;
-        gap: 0.5rem;
-    }
-    .status-badge {
-        font-size: 0.85rem;
-        font-weight: bold;
-        padding: 0.2rem 0.5rem;
+    .status-pill {
+        font-size: 0.8rem;
+        font-weight: 700;
+        padding: 0.25rem 0.6rem;
         border-radius: 12px;
     }
-    .status-badge.open {
-        background: #e8f5e9;
-        color: #2e7d32;
-        border: 1px solid #c8e6c9;
+    .status-pill.open {
+        background: #e6fcf5;
+        color: #0ca678;
+        position: relative;
+        padding-left: 1.2rem;
     }
-    .status-badge.closed {
-        background: #ffebee;
-        color: #c62828;
-        border: 1px solid #ffcdd2;
+    .status-pill.open::before {
+        content: '';
+        position: absolute;
+        left: 0.4rem;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 6px;
+        height: 6px;
+        background-color: #0ca678;
+        border-radius: 50%;
+        box-shadow: 0 0 0 rgba(12, 166, 120, 0.4);
+        animation: pulse-ring 2s infinite;
     }
-    .live-indicator {
-        color: #00c853;
-        font-weight: bold;
-        font-size: 0.9rem;
-        animation: pulse 2s infinite;
-        margin: 0;
+    @keyframes pulse-ring {
+        0% {
+            box-shadow: 0 0 0 0 rgba(12, 166, 120, 0.7);
+        }
+        70% {
+            box-shadow: 0 0 0 6px rgba(12, 166, 120, 0);
+        }
+        100% {
+            box-shadow: 0 0 0 0 rgba(12, 166, 120, 0);
+        }
     }
+    .status-pill.closed {
+        background: #fff5f5;
+        color: #fa5252;
+    }
+    .live-time {
+        font-family: monospace;
+        font-size: 0.85rem;
+        color: #666;
+        background: #e9ecef;
+        padding: 0.1rem 0.4rem;
+        border-radius: 4px;
+    } 
+
     @keyframes pulse {
         0% { opacity: 1; }
         50% { opacity: 0.5; }
@@ -1645,21 +1652,7 @@
         display: flex;
         gap: 0.25rem;
     }
-    .btn-refresh {
-        border: 0px solid #ddd;
-        display: flex;
-        align-items: center;
-        cursor: pointer;
-        padding: 0;
-    }
-    .btn-refresh:hover {
-        background: #f8f9fa;
-        transform: rotate(180deg);
-        box-shadow: 0 2px 4px rgba(0,0,0,0.15);
-    }
-    .btn-refresh:active {
-        transform: scale(0.95) rotate(180deg);
-    }
+
     .btn-icon {
         background: none;
         border: none;
