@@ -131,7 +131,7 @@
                     <div class="meta">
                         <span class="badge players">👥 {game.min_players}-{game.max_players}인</span>
                         <span class="badge time">⏱ {game.playtime_min}분</span>
-                        <span class="badge complexity">: {game.complexity || '-'} / 5</span>
+                        <span class="badge complexity">난이도: {game.complexity || '-'} / 5</span>
                     </div>
                     {#if game.included_dlcs}
                         <p class="dlc-info">➕ 포함된 확장: {game.included_dlcs}</p>
