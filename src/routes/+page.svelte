@@ -463,7 +463,10 @@
                     {@const time = formatScheduledTime(game.scheduled_at)}
                     <div class="table-card available">
                         <div class="table-header">
-                            <h3>{game.game_name} <span class="sub-text">({(game.participants || []).length} / {game.max_players})</span></h3>
+                            <h3>
+                                <span class="game-title-text">{game.game_name}</span>
+                                <span class="sub-text">({(game.participants || []).length} / {game.max_players})</span>
+                            </h3>
                             <div class="header-meta-row">
                                 {#if canManageGame(game)}
                                     <div class="manage-controls">
@@ -1210,11 +1213,25 @@
         margin: 0;
         font-size: 1rem;
         color: #1a1a1a;
+        order: 0;
+        flex: 1; /* Allow it to take up space but shrink */
+        min-width: 0; /* Crucial for flex truncation */
+        display: flex;
+        align-items: center;
+        gap: 0.3rem;
+    }
+    .game-title-text {
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
-        order: 0;
-        width: auto;
+        flex: 0 1 auto;
+    }
+    .sub-text {
+        font-weight: normal;
+        color: #888;
+        font-size: 0.75rem;
+        white-space: nowrap;
+        flex-shrink: 0;
     }
     .status-badge {
         font-size: 0.65rem;
@@ -1380,6 +1397,8 @@
         color: white;
         border: none;
         cursor: pointer;
+        white-space: nowrap;
+        flex-shrink: 0;
     }
     
     @media (max-width: 768px) {
