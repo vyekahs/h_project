@@ -131,7 +131,7 @@
                     <div class="meta">
                         <span class="badge players">👥 {game.min_players}-{game.max_players}인</span>
                         <span class="badge time">⏱ {game.playtime_min}분</span>
-                        <span class="badge complexity">⚖️ {game.complexity || '-'} / 5</span>
+                        <span class="badge complexity">: {game.complexity || '-'} / 5</span>
                     </div>
                     {#if game.included_dlcs}
                         <p class="dlc-info">➕ 포함된 확장: {game.included_dlcs}</p>
@@ -430,9 +430,6 @@
         color: #333;
     }
     .meta {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 0.5rem;
         margin-bottom: 1rem;
     }
     .badge {
@@ -442,6 +439,7 @@
         background: #f0f0f0;
         color: #555;
         font-weight: 500;
+        margin-right: 0.5rem;
     }
     .badge.complexity { background: #f3e5f5; color: #7b1fa2; }
     
