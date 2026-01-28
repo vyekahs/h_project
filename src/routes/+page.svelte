@@ -492,6 +492,16 @@
                                         </form>
                                     </div>
                                 {/if}
+                                {#if data.user && (!data.userScheduledGames || data.userScheduledGames.length === 0) && !data.userReservation && !data.userPlayingGame}
+                                    <div class="actions">
+                                        <form method="POST" action="?/joinScheduledGame">
+                                            <input type="hidden" name="sessionId" value={game.id}>
+                                            <button type="submit" class="btn-join">
+                                                {(game.participants || []).length >= game.max_players ? '대기열 합류' : '참여하기'}
+                                            </button>
+                                        </form>
+                                    </div>
+                                {/if}
                             </div>
                         </div>
 
@@ -511,16 +521,7 @@
                                         {/each}
                                     </div>
                                 </div>
-                                <div class="actions">
-                                    {#if data.user && (!data.userScheduledGames || data.userScheduledGames.length === 0) && !data.userReservation && !data.userPlayingGame}
-                                        <form method="POST" action="?/joinScheduledGame">
-                                            <input type="hidden" name="sessionId" value={game.id}>
-                                            <button type="submit" class="btn-join">
-                                                {(game.participants || []).length >= game.max_players ? '대기열 합류' : '참여하기'}
-                                            </button>
-                                        </form>
-                                    {/if}
-                                </div>
+                                
                             </div>
                         </div>
                     </div>
