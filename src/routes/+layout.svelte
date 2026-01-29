@@ -13,20 +13,19 @@
     const threshold = 70; // px to trigger refresh
     let isTouching = false;
 
-    function handleTouchStart(e: TouchEvent) {
+    function handleStart(clientY: number) {
         if (window.scrollY === 0) {
-            startY = e.touches[0].clientY;
+            startY = clientY;
             isTouching = true;
         }
     }
 
-    function handleTouchMove(e: TouchEvent) {
+    function handleMove(clientY: number) {
         if (!isTouching) return;
         
         // Only pull if we started at the top and are pulling down
         if (window.scrollY === 0 && startY > 0 && !refreshing) {
-            const y = e.touches[0].clientY;
-            const diff = y - startY;
+            const diff = clientY - startY;
             
             if (diff > 0) {
                 // Resistance effect
@@ -40,7 +39,7 @@
         }
     }
 
-    function handleTouchEnd() {
+    function handleEnd() {
         isTouching = false;
         if (window.scrollY === 0 && startY > 0 && !refreshing) {
             if (pullDistance > threshold) {
@@ -59,6 +58,17 @@
         }
         startY = 0;
     }
+
+    // Touch Handlers
+    function handleTouchStart(e: TouchEvent) { handleStart(e.touches[0].clientY); }
+    function handleTouchMove(e: TouchEvent) { handleMove(e.touches[0].clientY); }
+    function handleTouchEnd() { handleEnd(); }
+
+    // Mouse Handlers (for PC testing)
+    function handleMouseDown(e: MouseEvent) { handleStart(e.clientY); }
+    function handleMouseMove(e: MouseEvent) { if(e.buttons === 1) handleMove(e.clientY); }
+    function handleMouseUp() { handleEnd(); }
+    function handleMouseLeave() { if(isTouching) handleEnd(); }
     
     function resetPull() {
         currentY = 0;
@@ -90,6 +100,10 @@
     ontouchstart={handleTouchStart} 
     ontouchmove={handleTouchMove} 
     ontouchend={handleTouchEnd}
+    onmousedown={handleMouseDown}
+    onmousemove={handleMouseMove}
+    onmouseup={handleMouseUp}
+    onmouseleave={handleMouseLeave}
 >
     <!-- Refresh Indicator -->
     <div class="refresh-indicator" style="transform: translateY({currentY}px); opacity: {pullDistance > 0 ? 1 : 0};">
@@ -128,11 +142,12 @@
 		padding: 0;
 		font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
 		background: #f8f9fa;
+        overscroll-behavior-y: none; /* Prevent native pull-to-refresh interference */
 	}
 	.app-layout {
 		min-height: 100vh;
 		position: relative;
-		padding-bottom: 70px; /* Space for bottom nav */
+		padding-bottom: calc(70px + env(safe-area-inset-bottom)); /* Space for bottom nav + safe area */
 	}
 	.bottom-nav {
 		position: fixed;
@@ -142,6 +157,7 @@
 		width: 100%;
         max-width: 600px; /* Constrain width for PC */
 		height: 60px;
+        box-sizing: content-box; /* Ensure padding doesn't eat into height */
 		background: white;
 		border-top: 1px solid #eee;
 		display: flex;
