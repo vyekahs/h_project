@@ -67,6 +67,20 @@ async function migrate() {
         console.log('[5/5] Checking score column in session_participants...');
         await pool.query('ALTER TABLE session_participants ADD COLUMN IF NOT EXISTS score INTEGER DEFAULT 0;');
 
+        // 6. User Devices (BLE IRK)
+        console.log('[6/6] Checking user_devices table...');
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS user_devices (
+                id SERIAL PRIMARY KEY,
+                attendee_id INTEGER REFERENCES attendees(id) ON DELETE CASCADE,
+                irk VARCHAR(32) NOT NULL, -- Hex string of 128-bit key
+                name VARCHAR(100), -- Friendly name e.g. "Arang's iPhone"
+                last_seen_at TIMESTAMP WITH TIME ZONE,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                CONSTRAINT unique_irk UNIQUE (irk)
+            );
+        `);
+
         console.log('All migrations completed successfully!');
     } catch (err) {
         console.error('Migration failed:', err);

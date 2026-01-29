@@ -71,6 +71,8 @@
         isMonthOpen = false;
     }
 
+    import { enhance } from '$app/forms';
+
     function closeDropdowns() {
         isYearOpen = false;
         isMonthOpen = false;
@@ -140,6 +142,39 @@
                     </div>
                 </div>
             {/if}
+        </div>
+
+        <!-- My Devices Section -->
+        <div class="devices-section">
+            <div class="section-header">
+                <h3>📱 내 기기 (블루투스 출입)</h3>
+            </div>
+
+            <div class="device-list">
+                {#if data.devices && data.devices.length > 0}
+                    {#each data.devices as device}
+                        <div class="device-card">
+                            <div class="device-info">
+                                <span class="device-name">{device.name}</span>
+                                <span class="device-meta">
+                                    IRK: {device.name === 'Test Device' ? 'Hidden' : '••••' + '••••'} 
+                                    {#if device.last_seen_at}
+                                        <span class="last-seen">Refreshed: {new Date(device.last_seen_at).toLocaleTimeString()}</span>
+                                    {/if}
+                                </span>
+                            </div>
+                            <form method="POST" action="?/deleteDevice" use:enhance>
+                                <input type="hidden" name="deviceId" value={device.id} />
+                                <button type="submit" class="btn-delete" aria-label="삭제">🗑️</button>
+                            </form>
+                        </div>
+                    {/each}
+                {:else}
+                    <div class="empty-state-small">
+                        등록된 기기가 없습니다.
+                    </div>
+                {/if}
+            </div>
         </div>
 
         <div class="history-section">
@@ -530,5 +565,116 @@
         text-align: center;
         padding: 3rem;
         color: #888;
+    }
+
+    /* Devices Section */
+    .devices-section {
+        margin-bottom: 2rem;
+        background: #fff;
+        padding: 1.5rem;
+        border-radius: 12px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.03);
+    }
+    .btn-add-device {
+        background: #4dabf7;
+        color: white;
+        border: none;
+        padding: 0.3rem 0.8rem;
+        border-radius: 6px;
+        font-size: 0.85rem;
+        cursor: pointer;
+        font-weight: 600;
+    }
+    .add-device-form {
+        background: #f8f9fa;
+        padding: 1rem;
+        border-radius: 8px;
+        margin-bottom: 1rem;
+        border: 1px solid #eee;
+    }
+    .form-group {
+        margin-bottom: 0.8rem;
+    }
+    .form-group label {
+        display: block;
+        font-size: 0.85rem;
+        color: #555;
+        margin-bottom: 0.25rem;
+        font-weight: 600;
+    }
+    .form-group input {
+        width: 100%;
+        padding: 0.5rem;
+        border: 1px solid #ddd;
+        border-radius: 6px;
+        font-size: 0.9rem;
+        box-sizing: border-box;
+    }
+    .help-text {
+        display: block;
+        font-size: 0.75rem;
+        color: #999;
+        margin-top: 0.2rem;
+    }
+    .btn-submit {
+        width: 100%;
+        background: #339af0;
+        color: white;
+        border: none;
+        padding: 0.6rem;
+        border-radius: 6px;
+        font-weight: bold;
+        cursor: pointer;
+    }
+    .device-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+    .device-card {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.8rem;
+        border: 1px solid #eee;
+        border-radius: 8px;
+        background: white;
+    }
+    .device-info {
+        display: flex;
+        flex-direction: column;
+    }
+    .device-name {
+        font-weight: 600;
+        font-size: 0.95rem;
+        color: #333;
+    }
+    .device-meta {
+        font-size: 0.75rem;
+        color: #888;
+        display: flex;
+        gap: 0.5rem;
+        align-items: center;
+    }
+    .last-seen {
+        color: #fab005;
+        font-weight: 600;
+    }
+    .btn-delete {
+        background: none;
+        border: none;
+        cursor: pointer;
+        font-size: 1rem;
+        opacity: 0.5;
+        transition: opacity 0.2s;
+    }
+    .btn-delete:hover {
+        opacity: 1;
+    }
+    .empty-state-small {
+        text-align: center;
+        padding: 1rem;
+        color: #adb5bd;
+        font-size: 0.9rem;
     }
 </style>
