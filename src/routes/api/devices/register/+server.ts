@@ -2,36 +2,25 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { query } from '$lib/server/db';
-import { verifyAttendeeSession } from '$lib/server/auth';
+import bcrypt from 'bcryptjs';
 
 // POST /api/devices/register
-// Called by Captive Portal to register a user's device
-export const POST: RequestHandler = async ({ request, cookies }) => {
-    // 1. Auth Check (User must be logged in via session cookie on the captive portal, 
-    //    or the captive portal passes a token. For now, assuming standard session cookie works if on same domain,
-    //    OR if Captive Portal is external, it might need a different auth mechanism. 
-    //    Standard assumption: Captive Portal is part of this app or bridges auth.)
-    
-    // If the User is using the Captive Portal on their phone, they are 'browsing' this web app?
-    // User said: "Captive Portal login/signup page... click connect button... send ID and IRK to server".
-    // This implies the user is authenticated on the "Captive Portal Web Page".
-    
-    const userSessionToken = cookies.get('user_session');
-    if (!userSessionToken) {
-        return json({ error: 'Unauthorized' }, { status: 401 });
-    }
-    
-    const user = await verifyAttendeeSession(userSessionToken);
-    if (!user) {
-        return json({ error: 'Unauthorized' }, { status: 401 });
-    }
+// Called by Captive Portal (ESP32-S3)
+// Logic: If user exists -> Login (verify password). If not -> Signup (create). Then register device.
+export const POST: RequestHandler = async ({ request }) => {
+    // Note: This endpoint is called by the ESP32, which acts as a proxy for the user.
+    // Security Note: We are allowing password transmission here. Ensure HTTPS in production if possible.
+    // For local dev/ESP32 AP, it might be HTTP.
 
     try {
         const body = await request.json();
-        const { irk, name } = body;
+        const { username, password, confirmPassword, irk, name: deviceName, mode } = body;
 
-        if (!irk || !name) {
-            return json({ error: 'Missing irk or name' }, { status: 400 });
+        // Default to 'login' if not specified, but UI should send it
+        const action = mode || 'login';
+
+        if (!username || !password || !irk || !deviceName) {
+            return json({ error: 'Missing required fields' }, { status: 400 });
         }
 
         // Validate IRK
@@ -39,17 +28,61 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
             return json({ error: 'Invalid IRK format' }, { status: 400 });
         }
 
+        let userId: number;
+
+        if (action === 'signup') {
+            // --- SIGNUP FLOW ---
+            if (!confirmPassword) {
+                return json({ error: 'Confirm Password is required' }, { status: 400 });
+            }
+            if (password !== confirmPassword) {
+                return json({ error: 'Passwords do not match' }, { status: 400 });
+            }
+
+            // Check if user exists
+            const existing = await query('SELECT id FROM attendees WHERE name = $1', [username]);
+            if (existing.rows.length > 0) {
+                return json({ error: 'Username already exists' }, { status: 409 });
+            }
+
+            // Create User
+            const hashedPassword = await bcrypt.hash(password, 10);
+            const createRes = await query(
+                'INSERT INTO attendees (name, password, status) VALUES ($1, $2, $3) RETURNING id',
+                [username, hashedPassword, 'left']
+            );
+            userId = createRes.rows[0].id;
+
+        } else {
+            // --- LOGIN FLOW ---
+            const userRes = await query('SELECT id, password FROM attendees WHERE name = $1', [username]);
+            
+            if (userRes.rows.length === 0) {
+                 return json({ error: 'User not found' }, { status: 404 });
+            }
+            
+            const user = userRes.rows[0];
+            if (!user.password) {
+                 return json({ error: 'Account has no password set' }, { status: 401 });
+            }
+            
+            const match = await bcrypt.compare(password, user.password);
+            if (!match) {
+                return json({ error: 'Incorrect password' }, { status: 401 });
+            }
+            userId = user.id;
+        }
+
+        // 2. Register Device
         await query(
-            'INSERT INTO user_devices (attendee_id, name, irk) VALUES ($1, $2, $3)', 
-            [user.id, name, irk]
+            'INSERT INTO user_devices (attendee_id, name, irk) VALUES ($1, $2, $3) ON CONFLICT (irk) DO UPDATE SET name = $2, attendee_id = $1', 
+            [userId, deviceName, irk]
         );
 
-        return json({ success: true });
+        return json({ success: true, userId });
+
     } catch (e: any) {
         console.error('[API] Device Register Error', e);
-        if (e.code === '23505') {
-             return json({ error: 'Already registered IRK' }, { status: 409 });
-        }
         return json({ error: 'Internal Server Error' }, { status: 500 });
     }
 };
