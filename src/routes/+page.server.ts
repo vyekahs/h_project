@@ -113,7 +113,7 @@ export const load: PageServerLoad = async ({ locals, cookies, request }) => {
                 }
     
                 const resResult = await query(`
-                    SELECT r.*, gs.game_name, gs.status as session_status
+                    SELECT r.*, gs.game_name, gs.status as session_status, gs.scheduled_at
                     FROM reservations r
                     JOIN game_sessions gs ON r.session_id = gs.id
                     WHERE r.attendee_id = $1 AND r.status IN ('pending', 'waitlisted', 'confirmed')

@@ -59,6 +59,7 @@
         status: string;
         attendee_name: string;
         game_name: string;
+        scheduled_at?: string;
     }
 
     interface Table {
@@ -480,15 +481,33 @@
                                         </form>
                                     </div>
                                 {/if}
-                                {#if data.user && (!data.userScheduledGames || data.userScheduledGames.length === 0) && !data.userReservation && !data.userPlayingGame}
-                                    <div class="actions">
-                                        <form method="POST" action="?/joinScheduledGame">
-                                            <input type="hidden" name="sessionId" value={game.id}>
-                                            <button type="submit" class="btn-join">
-                                                {(game.participants || []).length >= game.max_players ? '대기열 합류' : '참여하기'}
-                                            </button>
-                                        </form>
-                                    </div>
+                                {#if data.user && !(game.participants || []).some(p => p.id === data.user.id)}
+                                    {@const hasConflict = (() => {
+                                        const targetDate = new Date(game.scheduled_at).toDateString();
+                                        if (data.userPlayingGame) {
+                                            const today = new Date().toDateString();
+                                            if (targetDate === today) return true;
+                                        }
+                                        const conflicts = [
+                                            ...(data.userScheduledGames || []),
+                                            ...(data.userReservation ? [data.userReservation] : [])
+                                        ];
+                                        return conflicts.some(c => {
+                                            if (!c.scheduled_at) return false;
+                                            return new Date(c.scheduled_at).toDateString() === targetDate;
+                                        });
+                                    })()}
+                                    
+                                    {#if !hasConflict}
+                                        <div class="actions">
+                                            <form method="POST" action="?/joinScheduledGame">
+                                                <input type="hidden" name="sessionId" value={game.id}>
+                                                <button type="submit" class="btn-join">
+                                                    {(game.participants || []).length >= game.max_players ? '대기열 합류' : '참여하기'}
+                                                </button>
+                                            </form>
+                                        </div>
+                                    {/if}
                                 {/if}
                             </div>
                         </div>
