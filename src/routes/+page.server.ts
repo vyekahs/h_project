@@ -301,24 +301,51 @@ export const actions: Actions = {
         }
 
         // 1. Check if busy
+        // 0.5. Get target session info to check date
+        const targetSession = await query('SELECT scheduled_at FROM game_sessions WHERE id = $1', [sessionId]);
+        if (targetSession.rows.length === 0) {
+            return fail(404, { error: '세션을 찾을 수 없습니다.' });
+        }
+        const targetDate = targetSession.rows[0].scheduled_at;
+
         // 1. Check if already joined THIS session
         const existingParticipant = await query('SELECT 1 FROM session_participants WHERE session_id = $1 AND attendee_id = $2', [sessionId, finalAttendeeId]);
         if (existingParticipant.rows.length > 0) {
             return fail(400, { error: '이미 참여 중인 게임입니다.' });
         }
 
-        // 2. Check if busy with OTHER games or reservations
-        // Crucial Fix: effectively ignore reservations for THIS session ID here, treated as "modifying my status"
+        // 2. Check if busy with OTHER games or reservations ON THE SAME DAY
+        // Logic:
+        // - If I am PLAYING a game (status='playing'), that counts as TODAY.
+        // - If target game is TODAY, and I am playing, then CONFLICT.
+        // - If target game is FUTURE, and I am playing today, NO CONFLICT.
+        // - If I have a scheduled game/reservation, check if it falls on the SAME DATE as targetDate.
+        
         const busyCheck = await query(`
             SELECT 1 FROM session_participants sp
             JOIN game_sessions gs ON sp.session_id = gs.id
-            WHERE sp.attendee_id = $1 AND (gs.status = 'playing' OR gs.status = 'scheduled') AND gs.id != $2
+            WHERE sp.attendee_id = $1 
+            AND gs.id != $2
+            AND (
+                (gs.status = 'playing' AND $3::date = CURRENT_DATE) -- Conflict if playing AND target is today
+                OR 
+                (gs.status = 'scheduled' AND gs.scheduled_at::date = $3::date) -- Conflict if scheduled on same date
+            )
             UNION
-            SELECT 1 FROM reservations WHERE attendee_id = $1 AND status IN ('pending', 'waitlisted', 'confirmed') AND session_id != $2
-        `, [finalAttendeeId, sessionId]);
+            SELECT 1 FROM reservations r
+            JOIN game_sessions gs ON r.session_id = gs.id
+            WHERE r.attendee_id = $1 
+            AND r.status IN ('pending', 'waitlisted', 'confirmed') 
+            AND r.session_id != $2
+            AND (
+                (gs.status = 'playing' AND $3::date = CURRENT_DATE)
+                OR
+                (gs.status = 'scheduled' AND gs.scheduled_at::date = $3::date)
+            )
+        `, [finalAttendeeId, sessionId, targetDate]);
 
         if (busyCheck.rows.length > 0) {
-            return fail(400, { error: '이미 다른 게임에 참여 중이거나 예약된 내역이 있습니다.' });
+            return fail(400, { error: '해당 날짜에 이미 다른 게임에 참여 중이거나 예약된 내역이 있습니다.' });
         }
 
         // 2. Check if session is full
