@@ -210,7 +210,14 @@
 
         const diffMins = Math.floor(diffMs / (1000 * 60));
         const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-        const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+        // Calculate calendar days difference
+        const todayMidnight = new Date(now);
+        todayMidnight.setHours(0, 0, 0, 0);
+        const targetMidnight = new Date(date);
+        targetMidnight.setHours(0, 0, 0, 0);
+        const diffValidMs = targetMidnight.getTime() - todayMidnight.getTime();
+        const calendarDays = Math.round(diffValidMs / (1000 * 60 * 60 * 24));
 
         let relativeStr = "";
         
@@ -221,9 +228,7 @@
                 relativeStr = `${diffHours}시간 뒤`;
             }
         } else {
-            // If not today (even if within 24h), show as days
-            const days = diffDays < 1 ? 1 : diffDays;
-            relativeStr = `${days}일 뒤`;
+            relativeStr = `${calendarDays}일 뒤`;
         }
 
         return { relative: relativeStr, absolute: fullTimeStr };
