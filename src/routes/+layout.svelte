@@ -120,6 +120,7 @@
 		{@render children()}
 	</main>
 
+	{#if !$page.url.pathname.startsWith('/admin')}
 	<nav class="bottom-nav">
 		<a href="/" class="nav-item home" class:active={$page.url.pathname === '/'}>
 			<span class="icon">🏠</span>
@@ -134,6 +135,7 @@
 			<span class="label">마이페이지</span>
 		</a>
 	</nav>
+	{/if}
 </div>
 
 <style>

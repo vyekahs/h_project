@@ -83,8 +83,12 @@
     <header class="page-header">
         <h1>마이페이지</h1>
         {#if data.user}
-            <div class="user-simple">
                 <span class="user-name"><strong>{data.user.name}</strong> 님</span>
+                
+                {#if data.user.is_admin}
+                    <a href="/admin/games" class="btn-admin-link">⚙️</a>
+                {/if}
+
                 <form method="POST" action="/logout">
                     <button type="submit" class="btn-logout-text">로그아웃</button>
                 </form>
@@ -290,6 +294,12 @@
         text-decoration: none;
         font-weight: bold;
     }
+    .btn-admin-link {
+        text-decoration: none;
+        font-size: 1.2rem;
+        padding: 0 5px;
+    }
+
 
     /* Stats */
     .stats-overview {
