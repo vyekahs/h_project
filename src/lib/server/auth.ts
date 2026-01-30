@@ -56,7 +56,7 @@ export async function createAttendeeSession(attendeeId: number): Promise<string>
 export async function verifyAttendeeSession(token: string): Promise<any | null> {
     // Join with attendees to get permissions
     const result = await query(`
-        SELECT a.id, a.name, a.can_manage_games, a.penalty_points, a.is_blacklisted
+        SELECT a.id, a.name, a.can_manage_games, a.is_admin, a.penalty_points, a.is_blacklisted
         FROM attendee_sessions s
         JOIN attendees a ON s.attendee_id = a.id
         WHERE s.session_token = $1 AND s.expires_at > NOW()
