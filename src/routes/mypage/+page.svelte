@@ -83,6 +83,7 @@
     <header class="page-header">
         <h1>마이페이지</h1>
         {#if data.user}
+            <div class="user-simple">
                 <span class="user-name"><strong>{data.user.name}</strong> 님</span>
                 
                 {#if data.user.is_admin}
