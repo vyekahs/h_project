@@ -262,6 +262,11 @@
                 <h1>혼놀 라운지</h1>
             </div>
             <div class="status-section">
+                {#if data.isAdmin}
+                    <a href="/admin" class="status-pill admin-panel">관리자 페이지</a>
+                {:else if data.user && data.user.can_manage_games}
+                    <a href="/admin" class="status-pill admin-panel">관리자 로그인</a>
+                {/if}
                 {#if data.isOpen}
                     <span class="status-pill open">오픈</span>
                 {:else}
@@ -961,6 +966,17 @@
         background: #fff5f5;
         color: #fa5252;
     }
+    .status-pill.admin-panel {
+        background: #e7f5ff;
+        color: #1971c2;
+        text-decoration: none;
+        cursor: pointer;
+        transition: background 0.2s;
+        border: 1px solid #d0ebff;
+    }
+    .status-pill.admin-panel:hover {
+        background: #d0ebff;
+    }
     .live-time {
         font-family: monospace;
         font-size: 0.85rem;
@@ -1218,6 +1234,36 @@
     .status-tag.pending { background: #fff3bf; color: #f08c00; }
     .status-tag.waitlisted { background: #e9ecef; color: #495057; }
     .status-tag.confirmed { background: #d3f9d8; color: #2b8a3e; }
+
+    .btn-action-text {
+        background: none;
+        border: none;
+        padding: 0.2rem 0.5rem;
+        cursor: pointer;
+        font-size: 0.85rem;
+        color: #495057;
+        border-radius: 4px;
+        transition: all 0.2s;
+        font-weight: 600;
+    }
+    .btn-action-text:hover {
+        background-color: #f1f3f5;
+        color: #212529;
+    }
+    .btn-action-text.danger {
+        color: #fa5252;
+    }
+    .btn-action-text.danger:hover {
+        background-color: #fff5f5;
+        color: #c92a2a;
+    }
+    .btn-action-text.primary {
+        color: #339af0;
+    }
+    .btn-action-text.primary:hover {
+        background-color: #e7f5ff;
+        color: #1864ab;
+    }
 
     .btn-cancel-small {
         background: none;

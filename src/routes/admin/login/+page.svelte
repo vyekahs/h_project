@@ -15,7 +15,7 @@
             {/if}
             <button type="submit" class="btn-dark">로그인</button>
         </form>
-        <a href="/" class="back-link">← 메인으로 돌아가기</a>
+        <a href="/" class="btn-secondary">← 메인으로 돌아가기</a>
     </div>
 </div>
 
@@ -76,14 +76,21 @@
         margin-bottom: 1rem;
         font-size: 0.9rem;
     }
-    .back-link {
+    .btn-secondary {
         display: block;
-        margin-top: 1.5rem;
-        color: #666;
+        margin-top: 1rem;
+        width: 100%;
+        padding: 0.75rem;
+        background: #f1f3f5;
+        color: #495057;
         text-decoration: none;
-        font-size: 0.9rem;
+        border-radius: 6px;
+        font-size: 1rem;
+        font-weight: bold;
+        box-sizing: border-box;
+        transition: background 0.2s;
     }
-    .back-link:hover {
-        text-decoration: underline;
+    .btn-secondary:hover {
+        background: #e9ecef;
     }
 </style>

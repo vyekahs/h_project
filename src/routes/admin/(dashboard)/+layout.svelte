@@ -47,6 +47,7 @@
                 {/if}
             </div>
             <div class="header-actions">
+                <a href="/" class="btn-secondary">🏠 메인으로</a>
                 {#if data.settings.is_open === 'false'}
                     <button class="btn-primary" on:click={() => openDayModalVisible = true}>☀️ 오픈 하기</button>
                 {:else}
