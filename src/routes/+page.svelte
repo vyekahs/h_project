@@ -1,7 +1,8 @@
 <script lang="ts">
     import type { PageData } from './$types';
     import { onMount } from 'svelte';
-    import { enhance } from '$app/forms';
+    import { enhance, applyAction } from '$app/forms';
+    import { invalidateAll } from '$app/navigation';
 
 
 
@@ -76,22 +77,6 @@
     $: userReservation = data.userReservation as Reservation | null;
     $: userScheduledGames = (data.userScheduledGames || []) as GameSession[]; // Change to array
 
-    function getTimeRemaining(endTime: string) {
-        const end = new Date(endTime).getTime();
-        const now = new Date().getTime();
-        const diff = end - now;
-        if (diff <= 0) return '종료됨';
-        
-        const totalMins = Math.floor(diff / 60000);
-        if (totalMins < 60) {
-            return `${totalMins}분 남음`;
-        } else {
-            const hours = Math.floor(totalMins / 60);
-            const mins = totalMins % 60;
-            return `${hours}시간 ${mins}분 남음`;
-        }
-    }
-
     function getGameReservations(gameId: number) {
         return (data.reservations || []).filter((r: any) => r.session_id === gameId);
     }
@@ -155,6 +140,18 @@
         scheduledAt = `${year}-${month}-${day}T${hours}:${minutes}`;
     }
 
+    const handleJoinRequest: import('@sveltejs/kit').SubmitFunction = () => {
+        return async ({ result }) => {
+            if (result.type === 'failure') {
+                showAlert((result.data?.error as string) || '요청 실패');
+            } else if (result.type === 'success') {
+                showAlert('참여 요청이 전송되었습니다.');
+                await invalidateAll(); 
+            }
+            await applyAction(result);
+        };
+    };
+
     $: filteredGames = (data.allGames as any[])?.filter((g: any) => 
         g.name.toLowerCase().includes(selectedGameName.toLowerCase())
     ) || [];
@@ -196,6 +193,29 @@
         // Note: game.created_by comes from server now
         return data.user.can_manage_games && (game as any).created_by === data.user.id;
     }
+    function getTimeRemaining(endTime: string) {
+        const end = new Date(endTime).getTime();
+        const now = new Date().getTime();
+        const diff = end - now;
+        
+        // Show "X mins past" if expired
+        if (diff <= 0) {
+            const pastMins = Math.floor(Math.abs(diff) / 60000);
+            return `${pastMins}분 지남`;
+        }
+        
+        const totalMins = Math.floor(diff / 60000);
+        if (totalMins < 60) {
+            return `${totalMins}분 남음`;
+        } else {
+            const hours = Math.floor(totalMins / 60);
+            const mins = totalMins % 60;
+            return `${hours}시간 ${mins}분 남음`;
+        }
+    }
+    
+    // ... (rest of functions)
+
     function formatScheduledTime(dateString: string) {
         const date = new Date(dateString);
         const now = new Date();
@@ -369,6 +389,9 @@
             <div class="tables-grid">
                 {#each games.slice(0, limitGames) as game}
                     {@const gameReservations = getGameReservations(game.id)}
+                    {@const isParticipant = data.user && (game.players || []).some(p => p.id === data.user.id)}
+                    {@const myReservation = data.user && gameReservations.find((r: any) => r.attendee_id === data.user?.id)}
+                    
                     <div class="table-card playing">
                         <div class="table-header">
                             <h3>{game.game_name}</h3>
@@ -383,23 +406,28 @@
                                         </form>
                                     </div>
                                 {/if}
-                                 {#if data.user && !data.userPlayingGame}
+                                 
+                                {#if data.user}
                                     <div class="user-actions">
-                                        <form method="POST" action="?/reserveGame" use:enhance={() => {
-                                            return async ({ result, update }) => {
-                                                if (result.type === 'failure') {
-                                                    alert(result.data?.error || '예약에 실패했습니다.');
-                                                } else if (result.type === 'success') {
-                                                    alert('예약되었습니다.');
-                                                    await update();
-                                                } else {
-                                                    await update();
-                                                }
-                                            };
-                                        }}>
-                                            <input type="hidden" name="sessionId" value={game.id}>
-                                            <button type="submit" class="btn-reserve">예약하기</button>
-                                        </form>
+                                        {#if isParticipant}
+                                             <form method="POST" action="?/leavePlayingGame" on:submit|preventDefault={(e) => {
+                                                  if ((game.players || []).length <= 2) {
+                                                      alert('게임을 진행하기 위한 최소 인원(2명)이므로 나갈 수 없습니다.');
+                                                      return;
+                                                  }
+                                                  if(confirm('정말 게임에서 나가시겠습니까?')) e.currentTarget.submit();
+                                              }}>
+                                                <input type="hidden" name="sessionId" value={game.id}>
+                                                <button class="btn-cancel-small">나가기</button>
+                                            </form>
+                                        {:else if myReservation && myReservation.status === 'pending_approval'}
+                                            <span class="status-text">요청 대기 중...</span>
+                                        {:else if !myReservation}
+                                            <form method="POST" action="?/reserveGame" use:enhance={handleJoinRequest}>
+                                                <input type="hidden" name="sessionId" value={game.id}>
+                                                <button class="btn-reserve">참여 요청</button>
+                                            </form>
+                                        {/if}
                                     </div>
                                 {/if}
                             </div>
@@ -408,23 +436,57 @@
                         <div class="table-content">
                             <div class="session-info current">
                                 <div class="session-header">
-                                    <span class="time-remaining">{getTimeRemaining(game.end_time)}</span>
-                                    <span class="end-time-label">({new Date(game.end_time).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} 종료)</span>
+                                    <span class="time-remaining highlight-orange">{getTimeRemaining(game.end_time)}</span>
+                                    <span class="end-time-label">({new Date(game.end_time).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} 종료 예정)</span>
                                 </div>
-                                <div class="players">
-                                    {#each (game.players || []) as player}
-                                        <span class="player-tag">{player.name}</span>
-                                    {/each}
+                                <div class="participants">
+                                    <div class="participant-list">
+                                        {#each (game.players || []) as player}
+                                            <span class="player-tag">{player.name}</span>
+                                        {/each}
+                                    </div>
                                 </div>
-                                
-                                
                             </div>
                         </div>
-                    {#if gameReservations.length > 0}
+
+
+                    {#if canManageGame(game) || isParticipant}
+                        {@const pendingRequests = gameReservations.filter((r: any) => r.status === 'pending_approval')}
+                        {#if pendingRequests.length > 0}
+                             <div class="game-reservations pending-requests">
+                                <span class="res-label">참여 요청 ({pendingRequests.length}):</span>
+                                <div class="res-list">
+                                    {#each pendingRequests as req}
+                                        <div class="res-item request-item">
+                                            <span class="res-name">{req.attendee_name}</span>
+                                            {#if data.user && req.attendee_id !== data.user.id}
+                                                <div class="request-actions">
+                                                    <form method="POST" action="?/approveJoinRequest" use:enhance class="inline-form">
+                                                        <input type="hidden" name="reservationId" value={req.id}>
+                                                        <button class="btn-icon check" aria-label="승인">
+                                                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                                                        </button>
+                                                    </form>
+                                                    <form method="POST" action="?/rejectJoinRequest" use:enhance class="inline-form">
+                                                        <input type="hidden" name="reservationId" value={req.id}>
+                                                        <button class="btn-icon cross" aria-label="거절">
+                                                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                                                        </button>
+                                                    </form>
+                                                </div>
+                                            {/if}
+                                        </div>
+                                    {/each}
+                                </div>
+                            </div>
+                        {/if}
+                    {/if}
+
+                    {#if gameReservations.filter((r: any) => r.status !== 'pending_approval').length > 0}
                         <div class="game-reservations">
                             <span class="res-label">대기열:</span>
                             <div class="res-list">
-                                {#each gameReservations as res}
+                                {#each gameReservations.filter((r: any) => r.status !== 'pending_approval') as res}
                                     <div class="res-item">
                                         <span class="res-name">{res.attendee_name}</span>
                                         {#if data.user && data.userReservation && data.userReservation.id === res.id}
@@ -1696,50 +1758,93 @@
         gap: 0.25rem;
     }
 
+    .res-item.request-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0rem 0.8rem;
+        background: #fff;
+        border: 1px solid #f1f3f5;
+        border-radius: 12px;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+        transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .res-item.request-item:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.06);
+    }
+    
+    .res-name {
+        font-weight: 600;
+        color: #343a40;
+        font-size: 0.95rem;
+    }
+
     .btn-icon {
-        background: none;
+        background: transparent;
         border: none;
         cursor: pointer;
-        font-size: 1.1rem;
-        padding: 0.2rem;
-        transition: transform 0.1s;
-    }
-    .btn-icon:hover {
-        transform: scale(1.2);
-    }
-    .btn-action-text {
-        background: white;
-        border: 1px solid #ddd;
-        padding: 0.25rem 0.6rem;
+        width: 28px; /* Visually smaller */
+        height: 28px;
         border-radius: 6px;
-        font-size: 0.8rem;
-        font-weight: 600;
-        cursor: pointer;
-        color: #555;
-        transition: all 0.2s;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.2s ease;
+        margin-left: 0.3rem;
+        color: #adb5bd;
+        position: relative; /* For touch target expansion */
     }
-    .btn-action-text:hover {
+    
+    /* Invisible touch target expansion (creates ~44px tappable area) */
+    .btn-icon::after {
+        content: '';
+        position: absolute;
+        top: -8px;
+        bottom: -8px;
+        left: -8px;
+        right: -8px;
+    }
+    
+    .btn-icon:hover {
         background: #f8f9fa;
-        color: #333;
-        border-color: #ccc;
+        color: #495057;
     }
-    .btn-action-text.primary {
-        background: #e7f5ff;
-        color: #1971c2;
-        border-color: #d0ebff;
+
+    .btn-icon svg {
+        width: 16px; /* Adjusted icon size */
+        height: 16px;
+        stroke-width: 2;
     }
-    .btn-action-text.primary:hover {
-        background: #d0ebff;
-        color: #1864ab;
+
+    .request-actions {
+        display: flex;
+        align-items: center;
+        gap: 0.1rem;
+        padding-left: 0.2rem;
+        margin-left: 0.4rem;
+        border-left: 1px solid #e9ecef; /* Thin vertical bar */
+        height: 24px; /* Height of the bar */
     }
-    .btn-action-text.danger {
-        background: #fff5f5;
-        color: #e03131;
-        border-color: #ffe3e3;
+
+    /* Check Button */
+    .btn-icon.check {
+        color: #b2b2b2;
     }
-    .btn-action-text.danger:hover {
-        background: #ffe3e3;
-        color: #c92a2a;
+    .btn-icon.check:hover {
+        background-color: #e6fcf5;
+        color: #20c997; 
+        transform: translateY(-1px);
+    }
+
+    /* Cross Button */
+    .btn-icon.cross {
+        color: #b2b2b2;
+    }
+    .btn-icon.cross:hover {
+        background-color: #fff5f5;
+        color: #ff6b6b;
+        transform: translateY(-1px);
     }
     .btn-create {
         background: #4c6ef5;

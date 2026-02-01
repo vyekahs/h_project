@@ -31,8 +31,8 @@ export const load: PageServerLoad = async ({ locals, cookies, request }) => {
 // I will just Insert canModifyGame before load.
 
     // ... (rest of load function remains the same)
-    // Auto-finish expired games
-    await query("UPDATE game_sessions SET status = 'finished' WHERE status = 'playing' AND end_time < NOW()");
+    // Auto-finish removed as per request
+    // await query("UPDATE game_sessions SET status = 'finished' WHERE status = 'playing' AND end_time < NOW()");
 
     const attendeesResult = await query(`
         SELECT a.id, a.name, v.arrival_time,
@@ -160,70 +160,92 @@ export const load: PageServerLoad = async ({ locals, cookies, request }) => {
 
 export const actions: Actions = {
     reserveGame: async ({ request, cookies }) => {
-        const data = await request.formData();
-        const sessionId = data.get('sessionId');
-        let attendeeId = data.get('attendeeId');
-        const sessionToken = cookies.get('admin_session');
-        const isAdmin = sessionToken ? await verifyAdminSession(sessionToken) : false;
-        const userSessionToken = cookies.get('user_session');
-        
-        // Determine attendeeId based on auth
-        if (isAdmin && attendeeId) {
-            // Admin reserving for specific user
-        } else if (userSessionToken) {
-            const user = await verifyAttendeeSession(userSessionToken);
-            if (user) {
-                attendeeId = user.id;
+        try {
+            const data = await request.formData();
+            const sessionId = data.get('sessionId');
+            let attendeeId = data.get('attendeeId');
+            const sessionToken = cookies.get('admin_session');
+            const isAdmin = sessionToken ? await verifyAdminSession(sessionToken) : false;
+            const userSessionToken = cookies.get('user_session');
+            
+            // Determine attendeeId based on auth
+            if (isAdmin && attendeeId) {
+                // Admin reserving for specific user
+            } else if (userSessionToken) {
+                const user = await verifyAttendeeSession(userSessionToken);
+                if (user) {
+                    attendeeId = user.id.toString();
+                } else {
+                    return fail(401, { error: 'Invalid session' });
+                }
             } else {
-                return fail(401, { error: 'Invalid session' });
+                if (isAdmin) return fail(400, { error: '예약할 사용자를 선택해주세요.' });
+                return fail(401, { error: '로그인이 필요합니다.' });
             }
-        } else {
-            if (isAdmin) return fail(400, { error: '예약할 사용자를 선택해주세요.' });
-            return fail(401, { error: '로그인이 필요합니다.' });
+
+            if (!sessionId) return fail(400, { error: '게임 세션을 선택해주세요.' });
+
+            // 0. Check if blacklisted or has too many penalties
+            const attendeeInfo = await query('SELECT is_blacklisted, penalty_points FROM attendees WHERE id = $1', [attendeeId]);
+            if (attendeeInfo.rows.length > 0) {
+                const { is_blacklisted, penalty_points } = attendeeInfo.rows[0];
+                if (is_blacklisted) return fail(403, { error: '블랙리스트에 등록되어 예약이 불가능합니다.' });
+                if (penalty_points >= 3) return fail(403, { error: '페널티 누적으로 인해 예약이 불가능합니다.' });
+            }
+
+            // Get game info to determine status default
+            const gameInfo = await query('SELECT status FROM game_sessions WHERE id = $1', [sessionId]);
+            if (gameInfo.rows.length === 0) return fail(404, { error: '게임을 찾을 수 없습니다.' });
+            const gameStatus = gameInfo.rows[0].status;
+
+            // 1. Check if already playing or reserved OR Requested
+            const busyCheck = await query(`
+                SELECT 1 FROM session_participants sp
+                JOIN game_sessions gs ON sp.session_id = gs.id
+                WHERE sp.attendee_id = $1 
+                AND (
+                    gs.status = 'playing' 
+                    OR (gs.status = 'scheduled' AND gs.scheduled_at::date = CURRENT_DATE)
+                )
+                UNION
+                SELECT 1 FROM reservations r
+                JOIN game_sessions gs ON r.session_id = gs.id
+                WHERE r.attendee_id = $1 
+                AND r.status IN ('pending', 'waitlisted', 'confirmed', 'pending_approval')
+                AND (
+                    gs.status = 'playing' 
+                    OR (gs.status = 'scheduled' AND gs.scheduled_at::date = CURRENT_DATE)
+                )
+            `, [attendeeId]);
+
+            if (busyCheck.rows.length > 0) {
+                 // If trying to join the SAME game, show specific error
+                 const sameGameCheck = await query(`
+                    SELECT 1 FROM session_participants WHERE session_id = $1 AND attendee_id = $2
+                    UNION
+                    SELECT 1 FROM reservations WHERE session_id = $1 AND attendee_id = $2 AND status IN ('pending_approval', 'confirmed')
+                 `, [sessionId, attendeeId]);
+                 
+                 if (sameGameCheck.rows.length > 0) {
+                     return fail(400, { error: '이미 참여 중이거나 요청을 보냈습니다.' });
+                 }
+
+                return fail(400, { error: '오늘 진행 중이거나 예약된 게임이 있어 예약(요청)할 수 없습니다.' });
+            }
+
+            // 2. Create reservation
+            const status = gameStatus === 'playing' ? 'pending_approval' : 'confirmed';
+
+            await query(
+                'INSERT INTO reservations (session_id, attendee_id, status) VALUES ($1, $2, $3)',
+                [sessionId, attendeeId, status]
+            );
+
+            return { success: true };
+        } catch (e: any) {
+            console.error('reserveGame Error:', e);
+            return fail(500, { error: e.message || '예약 처리 중 오류가 발생했습니다.' });
         }
-
-        if (!sessionId) return fail(400, { error: '게임 세션을 선택해주세요.' });
-
-        // 0. Check if blacklisted or has too many penalties
-        const attendeeInfo = await query('SELECT is_blacklisted, penalty_points FROM attendees WHERE id = $1', [attendeeId]);
-        if (attendeeInfo.rows.length > 0) {
-            const { is_blacklisted, penalty_points } = attendeeInfo.rows[0];
-            if (is_blacklisted) return fail(403, { error: '블랙리스트에 등록되어 예약이 불가능합니다.' });
-            if (penalty_points >= 3) return fail(403, { error: '페널티 누적으로 인해 예약이 불가능합니다.' });
-        }
-
-        // 1. Check if already playing or reserved
-        // 1. Check if already playing or reserved (for TODAY)
-        const busyCheck = await query(`
-            SELECT 1 FROM session_participants sp
-            JOIN game_sessions gs ON sp.session_id = gs.id
-            WHERE sp.attendee_id = $1 
-            AND (
-                gs.status = 'playing' 
-                OR (gs.status = 'scheduled' AND gs.scheduled_at::date = CURRENT_DATE)
-            )
-            UNION
-            SELECT 1 FROM reservations r
-            JOIN game_sessions gs ON r.session_id = gs.id
-            WHERE r.attendee_id = $1 
-            AND r.status IN ('pending', 'waitlisted', 'confirmed')
-            AND (
-                gs.status = 'playing' 
-                OR (gs.status = 'scheduled' AND gs.scheduled_at::date = CURRENT_DATE)
-            )
-        `, [attendeeId]);
-
-        if (busyCheck.rows.length > 0) {
-            return fail(400, { error: '오늘 진행 중이거나 예약된 게임이 있어 예약할 수 없습니다.' });
-        }
-
-        // 2. Create reservation
-        await query(
-            'INSERT INTO reservations (session_id, attendee_id, status) VALUES ($1, $2, $3)',
-            [sessionId, attendeeId, 'confirmed']
-        );
-
-        return { success: true };
     },
 
     createScheduledGame: async ({ request, cookies }) => {
@@ -606,6 +628,135 @@ export const actions: Actions = {
             await query('ROLLBACK');
             return fail(500, { error: 'Failed to start game' });
         }
+    },
+
+
+
+    approveJoinRequest: async ({ request, cookies }) => {
+        const data = await request.formData();
+        const reservationId = data.get('reservationId');
+        const userSessionToken = cookies.get('user_session');
+
+        if (!userSessionToken) return fail(401, { error: '로그인이 필요합니다.' });
+        const user = await verifyAttendeeSession(userSessionToken);
+        if (!user) return fail(401, { error: 'Invalid session' });
+        
+        // 1. Get Reservation Info
+        const resInfo = await query('SELECT session_id, status FROM reservations WHERE id = $1', [reservationId]);
+        if (resInfo.rows.length === 0) return fail(404, { error: '요청을 찾을 수 없습니다.' });
+        const { session_id, status } = resInfo.rows[0];
+
+        // 2. Concurrency Check: Status must be 'pending_approval'
+        if (status !== 'pending_approval') {
+             return fail(400, { error: '이미 처리된 요청입니다.' });
+        }
+
+        // 3. Authorization: Host OR Participant
+        // Check if user is Host (Manager and Creator check inside canModifyGame logic usually, but here manually)
+        // OR check if user is in session_participants
+        const isParticipant = await query('SELECT 1 FROM session_participants WHERE session_id = $1 AND attendee_id = $2', [session_id, user.id]);
+        
+        let authorized = false;
+        if (isParticipant.rows.length > 0) {
+            authorized = true;
+        } else {
+             // Fallback to canModifyGame logic manually or use the helper if it fits. 
+             // canModifyGame uses `request` via `locals` usually but our verifyAttendeeSession returns user.
+             // We can check if user is admin (assuming verifyAttendeeSession doesn't return admin flags directly unless we changed it).
+             // Let's assume admins can also approve.
+             // Simplest check: Is this user the creator? (We need to fetch game creator)
+             const gameInfo = await query('SELECT created_by FROM game_sessions WHERE id = $1', [session_id]);
+             if (gameInfo.rows.length > 0 && gameInfo.rows[0].created_by === user.id && user.can_manage_games) {
+                 authorized = true;
+             }
+             // Admin check might need extra info, but participants cover 99% of cases for "Peer Approval".
+             // If we really want "Admins" too, we need that info. 
+             // But the requirement specifically asked for "Participants".
+        }
+
+        if (!authorized) return fail(403, { error: '승인 권한이 없습니다. 게임 참여자만 승인할 수 있습니다.' });
+
+        await query('BEGIN');
+        try {
+            // Re-check status inside transaction to be safe? 
+            // Or rely on UPDATE returning rows.
+            const r = await query("UPDATE reservations SET status = 'confirmed' WHERE id = $1 AND status = 'pending_approval' RETURNING attendee_id, session_id", [reservationId]);
+            if (r.rows.length > 0) {
+                const { attendee_id, session_id } = r.rows[0];
+                await query('INSERT INTO session_participants (session_id, attendee_id) VALUES ($1, $2)', [session_id, attendee_id]);
+                await query('COMMIT');
+                return { success: true };
+            } else {
+                await query('ROLLBACK');
+                return fail(400, { error: '이미 처리되었거나 유효하지 않은 요청입니다.' });
+            }
+        } catch (e) {
+            await query('ROLLBACK');
+            return fail(500, { error: 'Failed' });
+        }
+    },
+
+    rejectJoinRequest: async ({ request, cookies }) => {
+        const data = await request.formData();
+        const reservationId = data.get('reservationId');
+        const sessionToken = cookies.get('admin_session');
+        const isAdmin = sessionToken ? await verifyAdminSession(sessionToken) : false;
+        const userSessionToken = cookies.get('user_session');
+
+        // Check perms
+        const resInfo = await query('SELECT session_id, status FROM reservations WHERE id = $1', [reservationId]);
+        if (resInfo.rows.length === 0) return fail(404, { error: '요청을 찾을 수 없습니다.' });
+        const { session_id, status } = resInfo.rows[0];
+
+        // Concurrency Check
+        if (status !== 'pending_approval') {
+             return fail(400, { error: '이미 처리된 요청입니다.' });
+        }
+
+        let authorized = false;
+        if (isAdmin) {
+             authorized = true;
+        } else if (userSessionToken) {
+             const user = await verifyAttendeeSession(userSessionToken);
+             if (user) {
+                  // Check if host
+                  if (await canModifyGame(request, session_id)) {
+                       authorized = true;
+                  } else {
+                       // Check if participant
+                       const isParticipant = await query('SELECT 1 FROM session_participants WHERE session_id = $1 AND attendee_id = $2', [session_id, user.id]);
+                       if (isParticipant.rows.length > 0) {
+                            authorized = true;
+                       }
+                  }
+             }
+        }
+
+        if (!authorized) return fail(403, { error: '권한이 없습니다.' });
+
+        await query("UPDATE reservations SET status = 'cancelled' WHERE id = $1 AND status = 'pending_approval'", [reservationId]);
+        return { success: true };
+    },
+
+    leavePlayingGame: async ({ request, cookies }) => {
+        const data = await request.formData();
+        const sessionId = data.get('sessionId');
+        const userSessionToken = cookies.get('user_session');
+
+        if (!userSessionToken) return fail(401, { error: '로그인이 필요합니다.' });
+        const user = await verifyAttendeeSession(userSessionToken);
+        if (!user) return fail(401, { error: 'Invalid session' });
+
+        // Check verification (min 2 players)
+        const countRes = await query('SELECT COUNT(*) as cnt FROM session_participants WHERE session_id = $1', [sessionId]);
+        const playerCount = parseInt(countRes.rows[0].cnt, 10);
+
+        if (playerCount <= 2) {
+            return fail(400, { error: '게임 최소 인원(2명) 유지를 위해 나갈 수 없습니다.' });
+        }
+
+        await query('DELETE FROM session_participants WHERE session_id = $1 AND attendee_id = $2', [sessionId, user.id]);
+        return { success: true };
     },
 
 
