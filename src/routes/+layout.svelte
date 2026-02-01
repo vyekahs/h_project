@@ -126,9 +126,13 @@
 			<span class="icon">🏠</span>
 			<span class="label">홈</span>
 		</a>
-		<a href="/games" class="nav-item games" class:active={$page.url.pathname.startsWith('/games')}>
+		<a href="/games" class="nav-item games" class:active={$page.url.pathname.startsWith('/games') && !$page.url.pathname.startsWith('/games/sudoku')}>
 			<span class="icon">📚</span>
-			<span class="label">게임 목록</span>
+			<span class="label">보드게임</span>
+		</a>
+		<a href="/minigames" class="nav-item ranking" class:active={$page.url.pathname.startsWith('/minigames') || $page.url.pathname.startsWith('/games/sudoku')}>
+			<span class="icon">🕹️</span>
+			<span class="label">오락실</span>
 		</a>
 		<a href="/mypage" class="nav-item mypage" class:active={$page.url.pathname.startsWith('/mypage')}>
 			<span class="icon">👤</span>
