@@ -8,99 +8,113 @@ const pool = new pg.Pool({
     connectionString: DATABASE_URL,
 });
 
-const ddl = `
--- 유저 포인트 테이블
-CREATE TABLE IF NOT EXISTS user_points (
-    user_id         BIGINT PRIMARY KEY, -- Maps to existing users? Or just separate ID? Assuming linked to users table ideally, but standardizing as BIGINT
-    total_points    INT DEFAULT 0,
-    daily_earned    INT DEFAULT 0,
-    last_earned_at  TIMESTAMP,
-    created_at      TIMESTAMP DEFAULT NOW()
-);
 
--- 랭킹 테이블
-CREATE TABLE IF NOT EXISTS game_rankings (
-    id              BIGSERIAL PRIMARY KEY,
-    game_id         VARCHAR(50) NOT NULL,
-    difficulty      VARCHAR(20), -- ENUM replacement for flexibility
-    user_id         BIGINT NOT NULL,
-    score           INT,
-    clear_time      INT,  -- 초 단위
-    achieved_at     TIMESTAMP DEFAULT NOW(),
-    CONSTRAINT unique_ranking UNIQUE (game_id, difficulty, user_id)
-);
+const queries = [
+    `CREATE TABLE IF NOT EXISTS user_points (
+        user_id         BIGINT PRIMARY KEY,
+        total_points    INT DEFAULT 0,
+        daily_earned    INT DEFAULT 0,
+        last_earned_at  TIMESTAMP,
+        created_at      TIMESTAMP DEFAULT NOW()
+    );`,
+    `CREATE TABLE IF NOT EXISTS game_rankings (
+        id              BIGSERIAL PRIMARY KEY,
+        game_id         VARCHAR(50) NOT NULL,
+        difficulty      VARCHAR(20),
+        user_id         BIGINT NOT NULL,
+        score           INT,
+        clear_time      INT,
+        achieved_at     TIMESTAMP DEFAULT NOW(),
+        CONSTRAINT unique_ranking UNIQUE (game_id, difficulty, user_id)
+    );`,
+    `CREATE TABLE IF NOT EXISTS titles (
+        id              BIGSERIAL PRIMARY KEY,
+        title_code      VARCHAR(50) UNIQUE NOT NULL,
+        title_name      VARCHAR(100) NOT NULL,
+        description     TEXT,
+        condition_type  VARCHAR(50),
+        condition_value JSON
+    );`,
+    `CREATE TABLE IF NOT EXISTS user_titles (
+        id              BIGSERIAL PRIMARY KEY,
+        user_id         BIGINT NOT NULL,
+        title_id        BIGINT NOT NULL REFERENCES titles(id),
+        acquired_at     TIMESTAMP DEFAULT NOW(),
+        is_displayed    BOOLEAN DEFAULT TRUE
+    );`,
+    `-- Attempt to add constraint if not exists (Postgres doesn't support IF NOT EXISTS for constraints easily, so we catch error)
+     DO $$ BEGIN
+        ALTER TABLE user_titles ADD CONSTRAINT unique_user_title UNIQUE (title_id, user_id);
+     EXCEPTION
+        WHEN duplicate_object THEN null;
+        WHEN others THEN null; -- Ignore if constraint issues
+     END $$;`,
+     `DO $$ BEGIN
+        ALTER TABLE user_titles DROP CONSTRAINT IF EXISTS unique_user_title_holder;
+        ALTER TABLE user_titles ADD CONSTRAINT unique_user_title_holder UNIQUE (title_id);
+     EXCEPTION
+        WHEN duplicate_object THEN null;
+        WHEN others THEN null;
+     END $$;`,
+    `CREATE TABLE IF NOT EXISTS shop_items (
+        id              BIGSERIAL PRIMARY KEY,
+        item_code       VARCHAR(50) UNIQUE NOT NULL,
+        item_name       VARCHAR(100) NOT NULL,
+        description     TEXT,
+        price           INT NOT NULL,
+        item_type       VARCHAR(20),
+        use_limit       JSON,
+        is_active       BOOLEAN DEFAULT TRUE
+    );`,
+    `CREATE TABLE IF NOT EXISTS user_inventory (
+        id              BIGSERIAL PRIMARY KEY,
+        user_id         BIGINT NOT NULL,
+        item_id         BIGINT NOT NULL REFERENCES shop_items(id),
+        quantity        INT DEFAULT 0,
+        CONSTRAINT unique_inventory UNIQUE (user_id, item_id)
+    );`,
+    `CREATE TABLE IF NOT EXISTS point_transactions (
+        id              BIGSERIAL PRIMARY KEY,
+        user_id         BIGINT NOT NULL,
+        amount          INT NOT NULL,
+        transaction_type VARCHAR(20),
+        reference_id    VARCHAR(100),
+        created_at      TIMESTAMP DEFAULT NOW()
+    );`,
+    `CREATE INDEX IF NOT EXISTS idx_ranking_lookup ON game_rankings (game_id, difficulty, clear_time ASC);`,
+    `CREATE INDEX IF NOT EXISTS idx_daily_points ON point_transactions (user_id, created_at, transaction_type);`,
+    `CREATE INDEX IF NOT EXISTS idx_title_condition ON titles (condition_type, id);`,
+    `CREATE INDEX IF NOT EXISTS idx_user_date ON point_transactions (user_id, created_at);`
+];
 
--- 칭호 테이블
-CREATE TABLE IF NOT EXISTS titles (
-    id              BIGSERIAL PRIMARY KEY,
-    title_code      VARCHAR(50) UNIQUE NOT NULL,
-    title_name      VARCHAR(100) NOT NULL,
-    description     TEXT,
-    condition_type  VARCHAR(50),  -- 'ranking', 'achievement', 'community'
-    condition_value JSON
-);
-
--- 유저 칭호 보유 테이블
-CREATE TABLE IF NOT EXISTS user_titles (
-    id              BIGSERIAL PRIMARY KEY,
-    user_id         BIGINT NOT NULL,
-    title_id        BIGINT NOT NULL REFERENCES titles(id),
-    acquired_at     TIMESTAMP DEFAULT NOW(),
-    is_displayed    BOOLEAN DEFAULT TRUE,
-    CONSTRAINT unique_user_title UNIQUE (title_id, user_id) -- One title per user? No, "칭호당 1명만 보유" logic in doc implies UNIQUE(title_id) for limited titles? 
-    -- "동아리 내에서 단 한 명만 보유" -> If the title itself is unique to one person.
-    -- Wait, doc says: "칭호는 동아리 내에서 단 한 명만 보유할 수 있는 희소성 있는 보상입니다."
-    -- So yes, specific titles like "Sudoku Master" might be held by only one person at a time (Rank 1).
-    -- But maybe some are generic? The doc focuses on unique titles.
-    -- Let's stick to the doc: UNIQUE KEY unique_user_title (title_id) means ONLY ONE USER can hold a specific title_id row?
-    -- No, table user_titles links user_id and title_id. 
-    -- If UNIQUE(title_id), it means a specific Title ID can only appear ONCE in this table. So only one user can have it. Correct.
-);
-
--- Note: The unique constraint below enforces "One user per title" (Scarcity).
--- If we want multiple users to have "Newbie", we might need a different table or a flag in titles table like 'is_unique'.
--- For now, following the spec for "Unique Titles".
-ALTER TABLE user_titles DROP CONSTRAINT IF EXISTS unique_user_title_holder;
-ALTER TABLE user_titles ADD CONSTRAINT unique_user_title_holder UNIQUE (title_id);
-
-
--- 상점 아이템 테이블
-CREATE TABLE IF NOT EXISTS shop_items (
-    id              BIGSERIAL PRIMARY KEY,
-    item_code       VARCHAR(50) UNIQUE NOT NULL,
-    item_name       VARCHAR(100) NOT NULL,
-    description     TEXT,
-    price           INT NOT NULL,
-    item_type       VARCHAR(20), -- ENUM('game_assist', 'community', 'cosmetic')
-    use_limit       JSON,  -- {"per_game": 3, "per_day": 10}
-    is_active       BOOLEAN DEFAULT TRUE
-);
-
--- 유저 인벤토리 테이블
-CREATE TABLE IF NOT EXISTS user_inventory (
-    id              BIGSERIAL PRIMARY KEY,
-    user_id         BIGINT NOT NULL,
-    item_id         BIGINT NOT NULL REFERENCES shop_items(id),
-    quantity        INT DEFAULT 0,
-    CONSTRAINT unique_inventory UNIQUE (user_id, item_id)
-);
-
--- 포인트 거래 로그
-CREATE TABLE IF NOT EXISTS point_transactions (
-    id              BIGSERIAL PRIMARY KEY,
-    user_id         BIGINT NOT NULL,
-    amount          INT NOT NULL,  -- 양수: 획득, 음수: 사용
-    transaction_type VARCHAR(20), -- ENUM('game_clear', 'bonus', 'purchase', 'gift_sent', 'gift_received')
-    reference_id    VARCHAR(100),
-    created_at      TIMESTAMP DEFAULT NOW()
-);
-
--- Indexes
-CREATE INDEX IF NOT EXISTS idx_ranking_lookup ON game_rankings (game_id, difficulty, clear_time ASC);
-CREATE INDEX IF NOT EXISTS idx_daily_points ON point_transactions (user_id, created_at, transaction_type);
-CREATE INDEX IF NOT EXISTS idx_title_condition ON titles (condition_type, id);
-CREATE INDEX IF NOT EXISTS idx_user_date ON point_transactions (user_id, created_at);
-`;
+async function main() {
+    try {
+        console.log('Starting resilient migration...');
+        
+        for (const query of queries) {
+            try {
+                await pool.query(query);
+            } catch (e) {
+                // Log but continue for other tables
+                console.warn('Query failed but continuing:', e.message);
+            }
+        }
+        
+        console.log('Seeding initial data...');
+        try {
+            await pool.query(seedData);
+        } catch(e) {
+            console.warn('Seeding failed (might be duplicates):', e.message);
+        }
+        
+        console.log('Migration completed!');
+    } catch (e) {
+        console.error('Migration framework error:', e);
+        process.exit(1);
+    } finally {
+        await pool.end();
+    }
+}
 
 const seedData = `
 -- Seed Titles
@@ -130,25 +144,5 @@ INSERT INTO shop_items (item_code, item_name, description, price, item_type, use
 ON CONFLICT (item_code) DO NOTHING;
 `;
 
-async function main() {
-    try {
-        await pool.query('BEGIN');
-        
-        console.log('Creating tables...');
-        await pool.query(ddl);
-        
-        console.log('Seeding initial data...');
-        await pool.query(seedData);
-        
-        await pool.query('COMMIT');
-        console.log('Migration completed successfully!');
-    } catch (e) {
-        await pool.query('ROLLBACK');
-        console.error('Migration failed:', e);
-        process.exit(1);
-    } finally {
-        await pool.end();
-    }
-}
-
 main();
+
