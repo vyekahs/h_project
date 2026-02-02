@@ -4,9 +4,25 @@
 	import BoardComponent from './Board.svelte';
 	import Controls from './Controls.svelte';
     import { goto } from '$app/navigation';
+    import RankingBoard from '$lib/components/gamification/RankingBoard.svelte';
+    import RewardedAd from '$lib/components/ads/RewardedAd.svelte';
+    import { user } from '$lib/stores/user';
 
     // Game States: 'start', 'playing', 'paused', 'finished'
     type GameState = 'start' | 'playing' | 'paused' | 'finished';
+
+    async function handleAdReward() {
+         try {
+            await fetch('/api/points/reward', { 
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ amount: 20, source: 'rewarded_ad' })
+            });
+            alert('보너스 포인트 20P를 획득했습니다!');
+         } catch (e) {
+             console.error('Reward failed', e);
+         }
+    }
 
 	let gameState: GameState = $state('start');
 	let difficulty: 'easy' | 'medium' | 'hard' | 'expert' | 'master' = $state('medium');
@@ -19,10 +35,116 @@
     let timer = $state(0);
     let timerInterval: any;
     
+    // View state for Start Screen
+    let view: 'game' | 'ranking' = $state('game');
+    
     // Simple history stack: stores JSON string of board state
     let history: string[] = $state([]);
     
     let showTutorial = $state(false);
+    let earnedPointsResult = $state(0);
+    let isTimeFrozen = $state(false); // For Time Stop item
+
+    let hasSavedGame = $state(false);
+    let startMode: 'initial' | 'diff_select' = $state('initial');
+
+    // Load game on mount
+    onMount(() => {
+        // Ensure user data (inventory) is up to date
+        user.refresh();
+        
+        const saved = localStorage.getItem('sudoku_save');
+        if (saved) {
+            try {
+                const data = JSON.parse(saved);
+                // Simple valid check
+                if (data.board && data.solution && data.difficulty) {
+                    hasSavedGame = true;
+                }
+            } catch (e) {
+                console.error('Failed to load save', e);
+            }
+        }
+    });
+
+    function loadSavedGame() {
+        const saved = localStorage.getItem('sudoku_save');
+        if (saved) {
+             try {
+                const data = JSON.parse(saved);
+                board = data.board;
+                solution = data.solution;
+                timer = data.timer;
+                mistakes = data.mistakes;
+                difficulty = data.difficulty;
+                history = data.history || [];
+                gameState = 'playing';
+                startTimer();
+            } catch (e) {
+                console.error('Failed to load save', e);
+                showAlert('저장된 게임을 불러오는데 실패했습니다.');
+            }
+        }
+    }
+
+    // Save game state
+    function saveGame() {
+        if (gameState !== 'playing') return;
+        const data = {
+            board,
+            solution,
+            timer,
+            mistakes,
+            difficulty,
+            history
+        };
+        localStorage.setItem('sudoku_save', JSON.stringify(data));
+    }
+
+    // Auto-save on relevant actions
+    $effect(() => {
+        if (gameState === 'playing') {
+            saveGame();
+        } else if (gameState === 'finished') {
+            localStorage.removeItem('sudoku_save');
+        }
+    });
+
+    // Alert Modal State
+    let alertMessage: string | null = $state(null);
+    let confirmMessage: string | null = $state(null);
+    let confirmCallback: (() => void) | null = null;
+
+    function showAlert(msg: string) {
+        alertMessage = msg;
+    }
+
+    function showConfirm(msg: string, callback: () => void) {
+        confirmMessage = msg;
+        confirmCallback = callback;
+    }
+
+    function handleConfirm(yes: boolean) {
+        if (yes && confirmCallback) {
+            confirmCallback();
+        }
+        confirmMessage = null;
+        confirmCallback = null;
+    }
+
+    async function useItem(code: string): Promise<boolean> {
+        try {
+            const res = await fetch('/api/shop/use', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ itemCode: code })
+            });
+            const data = await res.json();
+            return data.success;
+        } catch(e) {
+            return false;
+        }
+    }
 
     let completedNumbers = $derived.by(() => {
         const counts = Array(10).fill(0);
@@ -71,8 +193,11 @@
     function startTimer() {
         clearInterval(timerInterval);
         timerInterval = setInterval(() => {
-            if (gameState === 'playing') {
+            // Pause timer if any modal is open
+            if (gameState === 'playing' && !isTimeFrozen && !alertMessage && !confirmMessage) {
                 timer++;
+                // Auto-save every 5s if active
+                if (timer % 5 === 0) saveGame();
             }
         }, 1000);
     }
@@ -90,11 +215,10 @@
     function quitGame() {
         clearInterval(timerInterval);
         gameState = 'start';
-        // Optional: goto('/minigames');
     }
 
 	function handleCellSelect(cell: Cell) {
-		if (gameState !== 'playing') return;
+		if (gameState !== 'playing' || alertMessage || confirmMessage) return;
 		selectedCell = cell;
 	}
 
@@ -122,7 +246,7 @@
     }
 
 	function handleNumberInput(num: number) {
-		if (gameState !== 'playing' || !selectedCell || selectedCell.isFixed) return;
+		if (gameState !== 'playing' || !selectedCell || selectedCell.isFixed || alertMessage || confirmMessage) return;
 
         // Save state before modification
         addToHistory();
@@ -140,7 +264,6 @@
 		}
 
 		// Normal mode
-		if (selectedCell.value === num) return; 
 
         // If completed, ignore (though UI hides it)
         if (completedNumbers.includes(num)) return;
@@ -180,9 +303,13 @@
         clearInterval(timerInterval);
         isWon = won;
         gameState = 'finished';
+        
+        if (won) {
+            submitScore();
+        }
     }
-
-    function handleAction(action: 'undo' | 'erase' | 'hint') {
+    
+    async function handleAction(action: 'undo' | 'erase' | 'hint' | 'time_stop' | 'refresh_prob') {
         if (gameState !== 'playing') return;
         
         if (action === 'erase') {
@@ -192,26 +319,92 @@
                 selectedCell.notes = [];
             }
         } else if (action === 'undo') {
-            if (history.length > 0) {
-                const previousState = history.pop();
-                if (previousState) {
-                    // Restore board
-                    const parsed = JSON.parse(previousState);
-                    // We need to match valid object structure if needed, or just replace
-                    // Since we use Svelte 5 runes, reassigning 'board' might lose references if not careful?
-                    // But 'board' is a $state variable, so updating it should trigger reactivity.
-                    // However, we need to ensure selectedCell reference is still valid or re-select.
-                    
-                    // Reconstruct board to preserve reactivity if needed, or simply assign
-                    // With $state, reassignment is fine.
-                    board = parsed;
-                    
-                    // Fix selectedCell reference to point to new board object
-                    if (selectedCell) {
-                        selectedCell = board[selectedCell.row][selectedCell.col];
+            const ok = await useItem('undo_shield');
+            if (ok) {
+                if (history.length > 0) {
+                    const previousState = history.pop();
+                    if (previousState) {
+                        const parsed = JSON.parse(previousState);
+                        board = parsed;
+                        if (selectedCell) {
+                            selectedCell = board[selectedCell.row][selectedCell.col];
+                        }
                     }
                 }
+            } else {
+                showAlert('실수 방패 아이템이 부족합니다! 🛡️');
             }
+        } else if (action === 'hint') {
+            const ok = await useItem('hint_ticket');
+            if (ok) {
+                // Find empty cells
+                const emptyCells = [];
+                for(let r=0; r<9; r++) {
+                    for(let c=0; c<9; c++) {
+                        if (board[r][c].value === null) {
+                            emptyCells.push({r, c});
+                        }
+                    }
+                }
+                
+                if (emptyCells.length > 0) {
+                    addToHistory();
+                    const target = emptyCells[Math.floor(Math.random() * emptyCells.length)];
+                    const correctVal = solution[target.r][target.c];
+                    
+                    board[target.r][target.c].value = correctVal;
+                    board[target.r][target.c].notes = [];
+                    board[target.r][target.c].isFixed = true; // Treat as fixed/given
+                    
+                    checkWin();
+                }
+            } else {
+                showAlert('힌트 티켓이 부족합니다! 🎫');
+            }
+        } else if (action === 'time_stop') {
+            if (isTimeFrozen) {
+                showAlert('이미 시간이 정지된 상태입니다! ❄️');
+                return;
+            }
+            const ok = await useItem('time_stop');
+            if (ok) {
+                isTimeFrozen = true;
+                setTimeout(() => {
+                    isTimeFrozen = false;
+                }, 30000);
+            } else {
+                showAlert('타임 스톱 아이템이 부족합니다! 😅');
+            }
+        } else if (action === 'refresh_prob') {
+            showConfirm('현재 게임을 포기하고 새로운 문제를 시작하시겠습니까? (문제 교체 아이템 소모)', async () => {
+                const ok = await useItem('refresh_prob');
+                if (ok) {
+                    startGame(true); 
+                } else {
+                    showAlert('문제 교체 아이템이 부족합니다! 😅');
+                }
+            });
+        }
+    }
+    
+    async function submitScore() {
+        try {
+            const res = await fetch('/api/game/record', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    gameId: 'sudoku',
+                    difficulty: difficulty,
+                    clearTime: timer,
+                    score: 0 
+                })
+            });
+            if (res.ok) {
+                const data = await res.json();
+                earnedPointsResult = data.earnedPoints;
+            }
+        } catch (e) {
+            console.error('Failed to submit score', e);
         }
     }
     
@@ -251,33 +444,64 @@
     {:else if gameState === 'start'}
         <div class="screen start-screen">
             <h1>Sudoku</h1>
-            <div class="difficulty-select">
-                <h2>난이도 선택</h2>
-                <div class="options">
-                    <label class:selected={difficulty === 'easy'}>
-                        <input type="radio" name="difficulty" value="easy" bind:group={difficulty}>
-                    쉬움
-                    </label>
-                    <label class:selected={difficulty === 'medium'}>
-                        <input type="radio" name="difficulty" value="medium" bind:group={difficulty}>
-                    보통
-                    </label>
-                    <label class:selected={difficulty === 'hard'}>
-                        <input type="radio" name="difficulty" value="hard" bind:group={difficulty}>
-                    어려움
-                    </label>
-                    <label class:selected={difficulty === 'expert'}>
-                        <input type="radio" name="difficulty" value="expert" bind:group={difficulty}>
-                    전문가
-                    </label>
-                    <label class:selected={difficulty === 'master'}>
-                        <input type="radio" name="difficulty" value="master" bind:group={difficulty}>
-                    마스터
-                    </label>
+            
+            {#if hasSavedGame && view === 'game' && startMode === 'initial'}
+                <button class="btn-primary huge" onclick={loadSavedGame}>
+                    📂 이어하기
+                </button>
+                <div class="divider">OR</div>
+                <button class="btn-secondary huge" onclick={() => startMode = 'diff_select'}>
+                    🆕 새 게임 시작
+                </button>
+                
+                <div class="sub-actions">
+                     <button class="btn-secondary" onclick={() => view = 'ranking'}>🏆 랭킹 보기</button>
+                     <a href="/minigames" class="btn-text">오락실로 돌아가기</a>
                 </div>
-            </div>
-            <button class="btn-primary huge" onclick={() => startGame()}>게임 시작</button>
-            <a href="/minigames" class="btn-text">오락실로 돌아가기</a>
+            {/if}
+            
+            {#if view === 'game' && (!hasSavedGame || startMode === 'diff_select')}
+                <div class="difficulty-select">
+                    <h2>난이도 선택</h2>
+                    <div class="options">
+                        <label class:selected={difficulty === 'easy'}>
+                            <input type="radio" name="difficulty" value="easy" bind:group={difficulty}>
+                        쉬움
+                        </label>
+                        <label class:selected={difficulty === 'medium'}>
+                            <input type="radio" name="difficulty" value="medium" bind:group={difficulty}>
+                        보통
+                        </label>
+                        <label class:selected={difficulty === 'hard'}>
+                            <input type="radio" name="difficulty" value="hard" bind:group={difficulty}>
+                        어려움
+                        </label>
+                        <label class:selected={difficulty === 'expert'}>
+                            <input type="radio" name="difficulty" value="expert" bind:group={difficulty}>
+                        전문가
+                        </label>
+                        <label class:selected={difficulty === 'master'}>
+                            <input type="radio" name="difficulty" value="master" bind:group={difficulty}>
+                        마스터
+                        </label>
+                    </div>
+                </div>
+                <button class="btn-primary huge" onclick={() => startGame()}>게임 시작</button>
+                
+                {#if hasSavedGame}
+                    <button class="btn-text" onclick={() => startMode = 'initial'}>취소하고 돌아가기</button>
+                {/if}
+
+                <div class="sub-actions">
+                    <button class="btn-secondary" onclick={() => view = 'ranking'}>🏆 랭킹 보기</button>
+                    <a href="/minigames" class="btn-text">오락실로 돌아가기</a>
+                </div>
+            {/if}
+
+            {#if view === 'ranking'}
+                <RankingBoard gameId="sudoku" />
+                <button class="btn-text" onclick={() => view = 'game'}>뒤로 가기</button>
+            {/if}
         </div>
     
     {:else}
@@ -289,22 +513,30 @@
             </div>
             
             <div class="timer-controls">
-                <div class="timer">{formatTime(timer)}</div>
+                <!-- Item Buttons -->
+                <div class="header-items">
+                    {#if $user.inventory.some((i: any) => i.item_code === 'time_stop')}
+                        <button class="icon-btn theme-btn" onclick={() => handleAction('time_stop')} title="타임 스톱 (시간 정지)">
+                             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="2" x2="22" y1="12" y2="12"/><line x1="12" x2="12" y1="2" y2="22"/><path d="m20 16-4-4 4-4"/><path d="m4 8 4 4-4 4"/><path d="m16 4-4 4-4-4"/><path d="m8 20 4-4 4 4"/></svg>
+                        </button>
+                    {/if}
+                    {#if $user.inventory.some((i: any) => i.item_code === 'refresh_prob')}
+                        <button class="icon-btn theme-btn" onclick={() => handleAction('refresh_prob')} title="문제 교체">
+                             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5"/></svg>
+                        </button>
+                    {/if}
+                </div>
+
+                <div class="timer" class:frozen={isTimeFrozen}>
+                    {#if isTimeFrozen}❄️ {/if}{formatTime(timer)}
+                </div>
                 <button class="icon-btn" onclick={pauseGame} aria-label="Pause">
                     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><rect x="9" y="9" width="2" height="6"/><rect x="13" y="9" width="2" height="6"/></svg>
                 </button>
             </div>
         </header>
 
-        <!-- Game Board -->
-        <div class="game-area" class:blurred={gameState === 'paused'}>
-            <BoardComponent
-                {board}
-                {selectedCell}
-                isGameOver={gameState !== 'playing'}
-                onselect={handleCellSelect}
-            />
-        </div>
+
 
         <!-- Controls -->
         <div class="controls-area" class:hidden={gameState !== 'playing'}>
@@ -329,6 +561,10 @@
         </div>
     {/if}
 
+
+
+<!-- ... -->
+
     <!-- Game Over / Win Overlay -->
     {#if gameState === 'finished'}
         <div class="overlay">
@@ -338,15 +574,94 @@
                      <p>시간: {formatTime(timer)}</p>
                      <p>난이도: {difficultyLabels[difficulty]}</p>
                      <p>실수: {mistakes}</p>
+                     {#if isWon && earnedPointsResult > 0}
+                        <p class="earned-points">✨ 획득 포인트: +{earnedPointsResult} P</p>
+                     {/if}
                 </div>
+                
+                {#if isWon}
+                     <RewardedAd onReward={handleAdReward} />
+                {/if}
+                
                 <button class="btn-primary" onclick={() => gameState = 'start'}>다시 하기</button>
                 <button class="btn-text" onclick={quitGame}>나가기</button>
+            </div>
+        </div>
+    {/if}
+    <!-- Confirmation Modal -->
+    {#if confirmMessage}
+        <div class="overlay" onclick={() => handleConfirm(false)}>
+            <div class="modal alert-modal" onclick={(e) => e.stopPropagation()}>
+                <h3>확인 🤔</h3>
+                <p>{confirmMessage}</p>
+                <div class="modal-actions">
+                    <button class="btn-secondary" onclick={() => handleConfirm(false)}>취소</button>
+                    <button class="btn-primary" onclick={() => handleConfirm(true)}>확인</button>
+                </div>
+            </div>
+        </div>
+    {/if}
+
+    <!-- Simple Alert Modal -->
+    {#if alertMessage}
+        <div class="overlay" onclick={() => alertMessage = null}>
+            <div class="modal alert-modal" onclick={(e) => e.stopPropagation()}>
+                <h3>알림 🔔</h3>
+                <p>{alertMessage}</p>
+                <button class="btn-primary" onclick={() => alertMessage = null}>확인</button>
             </div>
         </div>
     {/if}
 </div>
 
 <style>
+    .modal-actions {
+        display: flex;
+        gap: 1rem;
+        justify-content: center;
+        width: 100%;
+        margin-top: 1rem;
+    }
+    .modal-actions button {
+        flex: 1;
+        padding: 0.8rem;
+    }
+
+    .divider {
+        font-weight: bold;
+        color: #bbb;
+        margin: 0.5rem 0;
+        font-size: 0.9rem;
+        letter-spacing: 1px;
+    }
+    .btn-secondary.huge {
+        width: 100%;
+        justify-content: center;
+        padding: 1rem;
+        background: #fff;
+        border: 2px solid #eee;
+        font-size: 1.1rem;
+        margin-bottom: 0.5rem;
+    }
+    .btn-secondary.huge:hover {
+        border-color: #ddd;
+        background: #fafafa;
+    }
+    .alert-modal {
+        max-width: 320px;
+        padding: 2rem;
+    }
+    .alert-modal h3 {
+        margin: 0;
+        font-size: 1.4rem;
+        color: #333;
+    }
+    .alert-modal p {
+        font-size: 1.05rem;
+        color: #555;
+        line-height: 1.4;
+    }
+
 	/* Wrapper for the whole page */
     .game-container {
 		display: flex;
@@ -405,6 +720,7 @@
         .options {
             flex-direction: column;
             align-items: stretch;
+            padding: 0 1rem;
             gap: 0.5rem;
         }
         
@@ -448,7 +764,7 @@
 	header {
 		width: 100%;
 		display: flex;
-        flex-direction: row; /* Single row header */
+		flex-direction: row; 
         justify-content: space-between;
         align-items: flex-end;
 		gap: 0.5rem;
@@ -479,6 +795,23 @@
         display: flex;
         align-items: center;
         gap: 1rem;
+    }
+
+    .header-items {
+        display: flex;
+        gap: 0.5rem;
+        margin-right: 0.5rem;
+    }
+    
+    .theme-btn {
+        background: #f0f0f0;
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1rem;
     }
     
     .timer {
@@ -528,12 +861,13 @@
     }
     
     .overlay {
-        position: absolute;
+        position: fixed;
         top:0; left:0; right:0; bottom:0;
-        z-index: 100;
+        z-index: 1000;
         display: flex;
         align-items: center;
         justify-content: center;
+        background: rgba(0,0,0,0.2); /* Added slight bg dimming for better contrast */
     }
     
     .modal {
@@ -598,10 +932,41 @@
     .start-screen .btn-primary {
         margin-top: 1rem;
     }
+    
+    .sub-actions {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 1rem;
+        margin-top: 1rem;
+    }
+    
+    .btn-secondary {
+        background: #f0f0f0;
+        color: #333;
+        border: none;
+        padding: 0.8rem 2rem;
+        border-radius: 50px;
+        font-weight: 600;
+        cursor: pointer;
+        font-size: 1rem;
+        transition: all 0.2s;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    
+    .btn-secondary:hover {
+        background: #e0e0e0;
+    }
 
     @media (max-width: 600px) {
         .start-screen .btn-primary {
             width: 100%; /* Match the width of stretched difficulty buttons */
+        }
+        .btn-secondary {
+            width: 100%;
+            justify-content: center;
         }
     }
     
@@ -652,5 +1017,17 @@
         margin-top: 0.5rem;
         font-size: 0.95rem;
     }
+
+    .earned-points {
+        font-size: 1.2rem;
+        font-weight: 700;
+        color: #007aff;
+        margin-top: 0.5rem;
+        animation: pop 0.5s cubic-bezier(0.18, 0.89, 0.32, 1.28);
+    }
     
+    @keyframes pop {
+        0% { transform: scale(0.8); opacity: 0; }
+        100% { transform: scale(1); opacity: 1; }
+    }
 </style>

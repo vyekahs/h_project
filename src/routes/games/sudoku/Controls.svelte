@@ -5,7 +5,7 @@
         isNoteMode: boolean;
         completedNumbers?: number[];
         onnumber: (n: number) => void;
-        onaction: (a: 'undo' | 'erase' | 'hint') => void;
+        onaction: (a: 'undo' | 'erase' | 'hint' | 'time_stop' | 'refresh_prob') => void;
         onnewgame: () => void;
     }>();
 </script>
@@ -43,6 +43,7 @@
             <span class="label">메모 {isNoteMode ? 'ON' : 'OFF'}</span>
         </button>
     </div>
+    
 </div>
 
 <style>
