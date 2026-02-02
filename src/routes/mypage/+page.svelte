@@ -1,6 +1,13 @@
 <script lang="ts">
+    import { onMount } from 'svelte';
     import type { PageData } from './$types';
     export let data: PageData;
+
+    onMount(() => {
+        if(data.user) {
+            loadTitles();
+        }
+    });
 
     let selectedYear: string = 'all';
     let selectedMonth: string = 'all';
@@ -51,6 +58,49 @@
     let isYearOpen = false;
     let isMonthOpen = false;
 
+    // Title Management
+    let myTitles: any[] = [];
+    let loadingTitles = true;
+
+    async function loadTitles() {
+        loadingTitles = true;
+        try {
+            const res = await fetch('/api/user/titles');
+            if(res.ok) {
+                myTitles = await res.json();
+            }
+        } catch(e) {
+            console.error(e);
+        } finally {
+            loadingTitles = false;
+        }
+    }
+
+    async function equipTitle(titleId: number) {
+        if(!confirm('이 칭호를 장착하시겠습니까?')) return;
+        try {
+            const res = await fetch('/api/user/titles/equip', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ titleId })
+            });
+            if (res.ok) {
+                // Determine the titleName for local application if needed, OR just reload titles/page
+                // Ideally refresh data to update the equipped state globally
+                await loadTitles(); 
+                alert('칭호가 변경되었습니다.');
+                window.location.reload(); // Refresh to update Header title display
+            } else {
+                alert('변경 실패');
+            }
+        } catch(e) {
+            console.error(e);
+            alert('오류가 발생했습니다.');
+        }
+    }
+
+    // Load titles on mount
+    
     function toggleYear() {
         isYearOpen = !isYearOpen;
         isMonthOpen = false;
@@ -142,7 +192,35 @@
                                 <li class="empty">-</li>
                             {/each}
                         </ul>
-                    </div>
+                </div>
+                </div>
+            {/if}
+        </div>
+
+        <!-- My Titles Section -->
+        <div class="titles-section">
+            <h3>🎖 나의 칭호</h3>
+            {#if loadingTitles}
+                <div class="loading">불러오는 중...</div>
+            {:else if myTitles.length === 0}
+                <div class="empty-titles">보유한 칭호가 없습니다. 게임을 플레이하고 칭호를 획득해보세요!</div>
+            {:else}
+                <div class="titles-grid">
+                    {#each myTitles as title}
+                        <div class="title-card" class:equipped={title.is_equipped}>
+                            <div class="title-header">
+                                <span class="title-name">{title.title_name}</span>
+                                {#if title.is_equipped}
+                                    <span class="badge-equipped">장착 중</span>
+                                {/if}
+                            </div>
+                            <p class="title-desc">{title.description || '특별한 칭호입니다.'}</p>
+                            
+                            {#if !title.is_equipped}
+                                <button class="btn-equip" on:click={() => equipTitle(title.id)}>장착하기</button>
+                            {/if}
+                        </div>
+                    {/each}
                 </div>
             {/if}
         </div>
@@ -246,6 +324,7 @@
             {/if}
         </div>
         </div>
+
     {/if}
 </div>
 
@@ -541,5 +620,81 @@
         text-align: center;
         padding: 3rem;
         color: #888;
+    }
+    
+    /* Title Section Styles */
+    .titles-section {
+        margin-bottom: 2rem;
+    }
+    .titles-section h3 {
+        font-size: 1.1rem;
+        color: #444;
+        margin-bottom: 1rem;
+    }
+    .titles-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+        gap: 0.8rem;
+    }
+    .title-card {
+        background: white;
+        border: 1px solid #eee;
+        border-radius: 12px;
+        padding: 1rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        transition: all 0.2s;
+    }
+    .title-card.equipped {
+        border-color: #333;
+        background: #fdfdfd;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+    }
+    .title-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .title-name {
+        font-weight: 700;
+        color: #333;
+    }
+    .title-desc {
+        font-size: 0.85rem;
+        color: #666;
+        margin: 0;
+        flex-grow: 1;
+    }
+    .badge-equipped {
+        font-size: 0.75rem;
+        background: #333;
+        color: white;
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-weight: 600;
+    }
+    .btn-equip {
+        background: #f0f0f0;
+        border: none;
+        padding: 0.4rem;
+        border-radius: 6px;
+        font-size: 0.85rem;
+        cursor: pointer;
+        color: #555;
+        font-weight: 600;
+        margin-top: 0.5rem;
+    }
+    .btn-equip:hover {
+        background: #e0e0e0;
+        color: #333;
+    }
+    .loading, .empty-titles {
+        text-align: center;
+        padding: 2rem;
+        color: #888;
+        font-size: 0.9rem;
+        background: white;
+        border-radius: 12px;
     }
 </style>

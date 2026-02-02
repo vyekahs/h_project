@@ -29,6 +29,7 @@
 	"dependencies": {
 		"bcryptjs": "^3.0.3",
 		"cheerio": "^1.1.2",
+		"dotenv": "^17.2.3",
 		"fast-xml-parser": "^5.3.3",
 		"google-translate-api-x": "^10.7.2",
 		"pg": "^8.16.3",

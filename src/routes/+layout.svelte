@@ -2,6 +2,8 @@
 	import favicon from '$lib/assets/favicon.svg';
     import { page } from '$app/stores';
     import { onMount } from 'svelte';
+    import PointDisplay from '$lib/components/gamification/PointDisplay.svelte';
+    import AdBanner from '$lib/components/ads/AdBanner.svelte';
 
 	let { children } = $props();
 
@@ -14,6 +16,7 @@
     let isTouching = false;
 
     function handleStart(clientY: number) {
+        if (typeof window === 'undefined') return;
         if (window.scrollY === 0) {
             startY = clientY;
             isTouching = true;
@@ -21,6 +24,7 @@
     }
 
     function handleMove(clientY: number) {
+        if (typeof window === 'undefined') return;
         if (!isTouching) return;
         
         // Only pull if we started at the top and are pulling down
@@ -40,6 +44,7 @@
     }
 
     function handleEnd() {
+        if (typeof window === 'undefined') return;
         isTouching = false;
         if (window.scrollY === 0 && startY > 0 && !refreshing) {
             if (pullDistance > threshold) {
@@ -105,6 +110,14 @@
     onmouseup={handleMouseUp}
     onmouseleave={handleMouseLeave}
 >
+    <!-- Top Bar for Points (Shop Button) - Only show on Arcade page as requested -->
+    {#if $page.url.pathname === '/minigames'}
+        <div class="top-bar">
+            <div class="spacer"></div>
+            <PointDisplay />
+        </div>
+    {/if}
+
     <!-- Refresh Indicator -->
     <div class="refresh-indicator" style="transform: translateY({currentY}px); opacity: {pullDistance > 0 ? 1 : 0};">
         <div class="spinner" class:spinning={refreshing}>
@@ -118,6 +131,9 @@
 
 	<main class="content" style={mainStyle}>
 		{@render children()}
+        {#if !$page.url.pathname.startsWith('/admin') && !$page.url.pathname.includes('/games/')}
+             <AdBanner adSlot="footer-banner" />
+        {/if}
 	</main>
 
 	{#if !$page.url.pathname.startsWith('/admin')}
@@ -150,11 +166,32 @@
 		background: #f8f9fa;
         overscroll-behavior-y: none; /* Prevent native pull-to-refresh interference */
 	}
+    :global(*), :global(*::before), :global(*::after) {
+        box-sizing: border-box;
+    }
 	.app-layout {
 		min-height: 100vh;
 		position: relative;
 		padding-bottom: calc(70px + env(safe-area-inset-bottom)); /* Space for bottom nav + safe area */
 	}
+
+    .top-bar {
+        position: absolute;
+        top: env(safe-area-inset-top);
+        left: 0;
+        width: 100%;
+        padding: 1rem;
+        display: flex;
+        justify-content: space-between;
+        pointer-events: none; /* Let clicks pass through except buttons */
+        z-index: 100;
+        box-sizing: border-box;
+    }
+    
+    .top-bar > :global(*) {
+        pointer-events: auto;
+    }
+
 	.bottom-nav {
 		position: fixed;
 		bottom: 0;
