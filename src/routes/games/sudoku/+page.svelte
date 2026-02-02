@@ -44,6 +44,7 @@
     
     let showTutorial = $state(false);
     let earnedPointsResult = $state(0);
+    let calculatedScore = $state(0);
     let isTimeFrozen = $state(false); // For Time Stop item
 
     let hasSavedGame = $state(false);
@@ -438,7 +439,11 @@
         }
     }
     
+    import { GAME_CONFIG } from '$lib/config';
+
     async function submitScore() {
+        // if (!GAME_CONFIG.ENABLE_REWARDS) return; // Allow recording even if rewards disabled
+
         try {
             const res = await fetch('/api/game/record', {
                 method: 'POST',
@@ -447,12 +452,14 @@
                     gameId: 'sudoku',
                     difficulty: difficulty,
                     clearTime: timerValue,
-                    score: 0 
+                    score: 0,
+                    skipReward: !GAME_CONFIG.ENABLE_REWARDS
                 })
             });
             if (res.ok) {
                 const data = await res.json();
                 earnedPointsResult = data.earnedPoints;
+                calculatedScore = data.score;
             }
         } catch (e) {
             console.error('Failed to submit score', e);
@@ -627,12 +634,13 @@
                      <p>시간: {formatTime(displayTimer)}</p>
                      <p>난이도: {difficultyLabels[difficulty]}</p>
                      <p>실수: {mistakes}</p>
+                     <p class="score">🏆 점수: {calculatedScore}</p>
                      {#if isWon && earnedPointsResult > 0}
                         <p class="earned-points">✨ 획득 포인트: +{earnedPointsResult} P</p>
                      {/if}
                 </div>
                 
-                {#if isWon}
+                {#if isWon && GAME_CONFIG.ENABLE_ADS}
                      <RewardedAd onReward={handleAdReward} />
                 {/if}
                 
@@ -680,10 +688,7 @@
         padding: 0.8rem;
     }
 
-    /* Hide bottom navigation while playing */
-    :global(.bottom-nav) {
-        display: none !important;
-    }
+
 
     .divider {
         font-weight: bold;
