@@ -19,21 +19,25 @@ export async function POST({ request, locals, cookies }) {
         }
     }
 
-    const { gameId, difficulty, clearTime, score } = await request.json();
+    const { gameId, difficulty, clearTime, score, skipReward } = await request.json();
     
     if (!gameId || !difficulty || clearTime === undefined) {
         return json({ error: 'Missing required fields' }, { status: 400 });
     }
 
     try {
-        const result = await RankingService.submitScore(userId, gameId, difficulty, clearTime, score);
+        const result = await RankingService.submitScore(userId, gameId, difficulty, clearTime, score, skipReward);
         
-        // Trigger Title Check
-        await TitleService.checkAndAssignTitles(userId);
+        // Trigger Title Check (Safely)
+        try {
+            await TitleService.checkAndAssignTitles(userId);
+        } catch (e) {
+            console.error('[API] Title check failed:', e);
+        }
 
         return json(result);
-    } catch (e) {
+    } catch (e: any) {
         console.error(e);
-        return json({ error: 'Internal Server Error' }, { status: 500 });
+        return json({ error: e.message, stack: e.stack }, { status: 500 });
     }
 }

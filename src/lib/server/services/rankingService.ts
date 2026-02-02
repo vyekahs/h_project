@@ -7,7 +7,7 @@ export const RankingService = {
      * Updates ranking if it's a new personal best (Highest Score).
      * Unified Score = Base (Difficulty) + Time Bonus
      */
-    async submitScore(userId: number, gameId: string, difficulty: string, clearTime: number, score?: number) {
+    async submitScore(userId: number, gameId: string, difficulty: string, clearTime: number, score?: number, skipReward: boolean = false) {
         
         // 1. Calculate Unified Score
         let calculatedScore = 0;
@@ -46,50 +46,70 @@ export const RankingService = {
         `, [userId, gameId, monthKey, calculatedScore]);
 
         // 3. Keep Existing "Best Record" Logic (All Time Fame)
-        // Store best individual run for record keeping
-        const existingRes = await query(`
-            SELECT score FROM minigame_rankings
-            WHERE game_id = $1 AND user_id = $2
-        `, [gameId, userId]);
+        // 3. Update All-time Cumulative Ranking (minigame_rankings)
+        // User requested: "Sum of scores of ALL games" (Cumulative)
         
-        let isNewRecord = false;
-        const currentBest = existingRes.rows[0];
+        await query(`
+            INSERT INTO minigame_rankings (game_id, difficulty, user_id, clear_time, score, achieved_at)
+            VALUES ($1, $2, $3, $4, $5, NOW())
+            ON CONFLICT (game_id, difficulty, user_id)
+            DO UPDATE SET 
+                clear_time = EXCLUDED.clear_time, -- Store latest clear time
+                score = minigame_rankings.score + EXCLUDED.score, -- Accumulate Score
+                achieved_at = NOW()
+        `, [gameId, difficulty, userId, clearTime, calculatedScore]);
         
-        if (!currentBest || calculatedScore > currentBest.score) {
-            isNewRecord = true;
+        // 4. Update Game History (For My Page)
+        // Wrap in try-catch because session_participants might refer to linked attendees,
+        // and Admin(User 1) might not be in attendees table.
+        try {
+            // Create a finished game session log
+            const sessionRes = await query(`
+                INSERT INTO game_sessions (game_name, start_time, end_time, status)
+                VALUES ($1, NOW() - ($2 || ' seconds')::interval, NOW(), 'finished')
+                RETURNING id
+            `, [gameId, clearTime]);
+            
+            const sessionId = sessionRes.rows[0].id;
+            
+            // Add user as participant
             await query(`
-                INSERT INTO minigame_rankings (game_id, difficulty, user_id, clear_time, score, achieved_at)
-                VALUES ($1, $2, $3, $4, $5, NOW())
-                ON CONFLICT (game_id, difficulty, user_id)
-                DO UPDATE SET 
-                    clear_time = EXCLUDED.clear_time,
-                    score = EXCLUDED.score,
-                    achieved_at = NOW()
-            `, [gameId, difficulty, userId, clearTime, calculatedScore]);
+                INSERT INTO session_participants (session_id, attendee_id, score, is_winner)
+                VALUES ($1, $2, $3, true)
+            `, [sessionId, userId, calculatedScore]);
+        } catch (e) {
+            console.error('[RankingService] Session History Log failed (Likely ID mismatch for Admin):', e);
         }
         
         // 4. Calculate Rewards (Points)
         let earnedPoints = 0;
-        let basePoints = 10;
-        if (difficulty === 'normal' || difficulty === 'medium') basePoints = 25;
-        if (difficulty === 'hard') basePoints = 50;
-        if (difficulty === 'expert') basePoints = 100;
-        if (difficulty === 'master') basePoints = 150; 
-        
-        earnedPoints += basePoints;
-        
-        if (isNewRecord) {
-            earnedPoints += Math.floor(basePoints * 0.5); // +50% Bonus
+        let finalPoints = 0; // Current balance or just earned? Usually current balance.
+
+        if (!skipReward) {
+            let basePoints = 10;
+            if (difficulty === 'normal' || difficulty === 'medium') basePoints = 25;
+            if (difficulty === 'hard') basePoints = 50;
+            if (difficulty === 'expert') basePoints = 100;
+            if (difficulty === 'master') basePoints = 150; 
+            
+            earnedPoints += basePoints;
+            
+            try {
+                finalPoints = await PointService.addPoints(userId, earnedPoints, 'game_clear', `${gameId}:${difficulty}`);
+            } catch (e) {
+                console.error('[RankingService] Points update failed:', e);
+            }
         }
         
-        const finalPoints = await PointService.addPoints(userId, earnedPoints, 'game_clear', `${gameId}:${difficulty}`);
-        
-        // Check for new titles
-        await import('./titleService').then(({ TitleService }) => TitleService.checkAndAssignTitles(userId));
+        // Check for new titles (Safely)
+        try {
+             await import('./titleService').then(({ TitleService }) => TitleService.checkAndAssignTitles(userId));
+        } catch (e) {
+            console.error('[RankingService] Title check failed:', e);
+        }
         
         return {
-            isNewRecord,
-            earnedPoints: finalPoints, 
+            earnedPoints: skipReward ? 0 : finalPoints, 
             score: calculatedScore
         };
     },
@@ -99,24 +119,23 @@ export const RankingService = {
      * NOW DEFAULTS TO MONTHLY RANKING
      */
     async getLeaderboard(gameId: string, limit = 100) {
-        const now = new Date();
-        const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-
+        // Fetch All-Time Cumulative Ranking (Sum of all difficulties)
          const sql = `
             SELECT 
                 r.user_id,
-                u.username as nickname, 
+                a.name as nickname, 
                 'Total' as difficulty,
                 0 as clear_time,
-                r.total_score as score,
-                r.score_updated_at as achieved_at,
-                RANK() OVER (ORDER BY r.total_score DESC) as rank
-            FROM minigame_monthly_rankings r
-            LEFT JOIN users u ON r.user_id = u.id
-            WHERE r.game_id = $1 AND r.month_key = $2
-            ORDER BY r.total_score DESC
-            LIMIT $3
+                SUM(r.score) as score,
+                MAX(r.achieved_at) as achieved_at,
+                RANK() OVER (ORDER BY SUM(r.score) DESC) as rank
+            FROM minigame_rankings r
+            LEFT JOIN attendees a ON r.user_id = a.id
+            WHERE r.game_id = $1
+            GROUP BY r.user_id, a.name
+            ORDER BY score DESC
+            LIMIT $2
         `;
-        return (await query(sql, [gameId, monthKey, limit])).rows;
+        return (await query(sql, [gameId, limit])).rows;
     }
 };
