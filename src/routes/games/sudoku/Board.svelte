@@ -8,15 +8,21 @@
 		onselect: (cell: Cell) => void 
 	}>();
 
+    // Optimize selection logic: Pre-calculate indices
+    let sRow = $derived(selectedCell?.row ?? -1);
+    let sCol = $derived(selectedCell?.col ?? -1);
+    let sBoxR = $derived(selectedCell ? Math.floor(selectedCell.row/3) : -1);
+    let sBoxC = $derived(selectedCell ? Math.floor(selectedCell.col/3) : -1);
+    
     // Determine which number to highlight based on selection
     let highlightNum = $derived(selectedCell?.value ? selectedCell.value : null);
 
     function isRelated(cell: Cell) {
         if (!selectedCell) return false;
-        return cell.row === selectedCell.row || 
-               cell.col === selectedCell.col || 
-               (Math.floor(cell.row/3) === Math.floor(selectedCell.row/3) && 
-                Math.floor(cell.col/3) === Math.floor(selectedCell.col/3));
+        return cell.row === sRow || 
+               cell.col === sCol || 
+               (Math.floor(cell.row/3) === sBoxR && 
+                Math.floor(cell.col/3) === sBoxC);
     }
 
     function isSameValue(cell: Cell) {
@@ -91,7 +97,9 @@
 		user-select: none;
         position: relative;
         color: #333;
-        transition: background 0.1s;
+        /* transition: background 0.1s; */
+        transition: none; /* Instant response */
+        touch-action: manipulation; /* Prevent mobile tap delay */
 	}
     
     /* Responsive sizing tweak if needed */
