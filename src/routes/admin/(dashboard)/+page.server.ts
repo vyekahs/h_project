@@ -541,8 +541,6 @@ export const actions: Actions = {
             SELECT 1 FROM session_participants sp
             JOIN game_sessions gs ON sp.session_id = gs.id
             WHERE sp.attendee_id = $1 AND (gs.status = 'playing' OR gs.status = 'scheduled') AND gs.id != $2
-            UNION
-            SELECT 1 FROM reservations WHERE attendee_id = $1 AND status IN ('pending', 'waitlisted', 'confirmed') AND session_id != $2
         `, [finalAttendeeId, sessionId]);
 
         if (busyCheck.rows.length > 0) {
