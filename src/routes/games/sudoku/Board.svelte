@@ -84,10 +84,8 @@
 		align-items: center;
 		justify-content: center;
         /* Dynamic font size based on container width */
-		font-size: container(5cqw); 
         /* Fallback */
         font-size: clamp(1rem, 5vw, 1.6rem);
-        
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 		cursor: pointer;
 		user-select: none;
@@ -106,16 +104,21 @@
         }
     }
 
-    .note-item.highlight {
-        color: #d32f2f !important; /* Red highlight */
+    .note-item.highlight { 
+        color: #1a73e8 !important; /* Blue highlight */
         font-weight: bold !important;
-        background: rgba(211, 47, 47, 0.05) !important;
     }
     
+    /* User input - gray color */
+    .cell:not(.fixed) {
+        color: #666;
+    }
+    
+    /* Fixed/system numbers - black, slightly bolder */
     .cell.fixed {
-        font-weight: 500;
-        color: #000;
-        background: #fafafa;
+        font-weight: 600;
+        color: #333;
+        background: #fff;
     }
     
     .cell.selected {
@@ -126,12 +129,11 @@
     }
     
     .cell.related {
-        background: #f5f5f7;
+        background: #e8f4fd;
     }
     
     .cell.same-value {
         background: #bbdefb !important;
-        font-weight: 600;
     }
 
     .cell.error {
@@ -160,7 +162,7 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        font-size: 0.6em; /* relative to cell font size */
+        font-size: 0.5em; /* relative to cell font size */
         line-height: 1;
         width: 100%;
         height: 100%;

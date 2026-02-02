@@ -32,7 +32,8 @@
 	let isNoteMode = $state(false);
 	let mistakes = $state(0);
 	let isWon = $state(false);
-    let timer = $state(0);
+    let timerValue = 0; // Non-reactive timer value
+    let displayTimer = $state(0); // Reactive display value
     let timerInterval: any;
     
     // View state for Start Screen
@@ -65,6 +66,11 @@
                 console.error('Failed to load save', e);
             }
         }
+        
+        // Cleanup on unmount - critical for preventing multiple intervals
+        return () => {
+            clearInterval(timerInterval);
+        };
     });
 
     function loadSavedGame() {
@@ -72,17 +78,28 @@
         if (saved) {
              try {
                 const data = JSON.parse(saved);
+                
+                // Validate Data Integrity
+                if (!Array.isArray(data.board) || data.board.length !== 9) {
+                    throw new Error('Invalid board data');
+                }
+
                 board = data.board;
                 solution = data.solution;
-                timer = data.timer;
+                timerValue = data.timer;
+                displayTimer = data.timer;
                 mistakes = data.mistakes;
                 difficulty = data.difficulty;
                 history = data.history || [];
-                gameState = 'playing';
-                startTimer();
+                
+                gameState = 'paused'; // Start paused, user must click resume
             } catch (e) {
                 console.error('Failed to load save', e);
-                showAlert('저장된 게임을 불러오는데 실패했습니다.');
+                showAlert('저장된 게임 데이터가 손상되어 이어할 수 없습니다. 새 게임을 시작합니다.');
+                localStorage.removeItem('sudoku_save');
+                hasSavedGame = false;
+                startMode = 'diff_select'; // Go to difficulty selection
+                view = 'game';
             }
         }
     }
@@ -93,7 +110,7 @@
         const data = {
             board,
             solution,
-            timer,
+            timer: timerValue,
             mistakes,
             difficulty,
             history
@@ -101,14 +118,25 @@
         localStorage.setItem('sudoku_save', JSON.stringify(data));
     }
 
-    // Auto-save on relevant actions
-    $effect(() => {
-        if (gameState === 'playing') {
-            saveGame();
-        } else if (gameState === 'finished') {
-            localStorage.removeItem('sudoku_save');
-        }
-    });
+    // Save game with explicit timer value (to avoid reactivity issues)
+    function saveGameWithTimer(currentTimer: number) {
+        if (gameState !== 'playing') return;
+        const data = {
+            board,
+            solution,
+            timer: currentTimer,
+            mistakes,
+            difficulty,
+            history
+        };
+        localStorage.setItem('sudoku_save', JSON.stringify(data));
+    }
+
+    // Clear save when game is finished
+    function clearSave() {
+        localStorage.removeItem('sudoku_save');
+        hasSavedGame = false;
+    }
 
     // Alert Modal State
     let alertMessage: string | null = $state(null);
@@ -169,6 +197,9 @@
             return;
         }
         
+        // Clear any old save first
+        localStorage.removeItem('sudoku_save');
+        
         showTutorial = false;
         const result = generateSudoku(difficulty);
 		board = result.initialBoard;
@@ -176,10 +207,24 @@
 		mistakes = 0;
 		isWon = false;
 		selectedCell = null;
-        timer = 0;
+        timerValue = 0;
+        displayTimer = 0;
         history = []; // Reset history
         
         gameState = 'playing';
+        
+        // Force save BEFORE starting timer to ensure timer=0 is saved
+        const data = {
+            board,
+            solution,
+            timer: 0, // Explicitly set to 0
+            mistakes,
+            difficulty,
+            history
+        };
+        localStorage.setItem('sudoku_save', JSON.stringify(data));
+        hasSavedGame = true;
+        
         startTimer();
     }
     
@@ -195,9 +240,12 @@
         timerInterval = setInterval(() => {
             // Pause timer if any modal is open
             if (gameState === 'playing' && !isTimeFrozen && !alertMessage && !confirmMessage) {
-                timer++;
+                timerValue++;
+                displayTimer = timerValue;
                 // Auto-save every 5s if active
-                if (timer % 5 === 0) saveGame();
+                if (timerValue % 5 === 0) {
+                    saveGameWithTimer(timerValue);
+                }
             }
         }, 1000);
     }
@@ -214,6 +262,8 @@
 
     function quitGame() {
         clearInterval(timerInterval);
+        localStorage.removeItem('sudoku_save');
+        hasSavedGame = false;
         gameState = 'start';
     }
 
@@ -303,6 +353,7 @@
         clearInterval(timerInterval);
         isWon = won;
         gameState = 'finished';
+        clearSave(); // Remove saved game when finished
         
         if (won) {
             submitScore();
@@ -395,7 +446,7 @@
                 body: JSON.stringify({
                     gameId: 'sudoku',
                     difficulty: difficulty,
-                    clearTime: timer,
+                    clearTime: timerValue,
                     score: 0 
                 })
             });
@@ -508,7 +559,7 @@
         <!-- Game Header -->
         <header>
             <div class="header-info">
-                <span class="difficulty-badge">{difficultyLabels[difficulty]} MODE</span>
+                <span class="difficulty-badge">{difficultyLabels[difficulty]}</span>
                 <span class="mistakes">{mistakes}/3 실수</span>
             </div>
             
@@ -528,7 +579,7 @@
                 </div>
 
                 <div class="timer" class:frozen={isTimeFrozen}>
-                    {#if isTimeFrozen}❄️ {/if}{formatTime(timer)}
+                    {#if isTimeFrozen}❄️ {/if}{formatTime(displayTimer)}
                 </div>
                 <button class="icon-btn" onclick={pauseGame} aria-label="Pause">
                     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><rect x="9" y="9" width="2" height="6"/><rect x="13" y="9" width="2" height="6"/></svg>
@@ -536,7 +587,15 @@
             </div>
         </header>
 
-
+        <!-- Game Board -->
+        <div class="game-area" class:blurred={alertMessage || confirmMessage || gameState === 'paused'}>
+             <BoardComponent 
+                 {board} 
+                 {selectedCell} 
+                 isGameOver={gameState === 'finished'}
+                 onselect={handleCellSelect}
+             />
+        </div>
 
         <!-- Controls -->
         <div class="controls-area" class:hidden={gameState !== 'playing'}>
@@ -571,7 +630,7 @@
             <div class="modal">
                 <h2>{isWon ? '승리! 🎉' : '게임 오버 💀'}</h2>
                 <div class="result-stats">
-                     <p>시간: {formatTime(timer)}</p>
+                     <p>시간: {formatTime(displayTimer)}</p>
                      <p>난이도: {difficultyLabels[difficulty]}</p>
                      <p>실수: {mistakes}</p>
                      {#if isWon && earnedPointsResult > 0}
@@ -627,6 +686,11 @@
         padding: 0.8rem;
     }
 
+    /* Hide bottom navigation while playing */
+    :global(.bottom-nav) {
+        display: none !important;
+    }
+
     .divider {
         font-weight: bold;
         color: #bbb;
@@ -668,7 +732,7 @@
 		flex-direction: column;
 		align-items: center;
 		padding: 2rem 1rem;
-		gap: 2rem;
+		gap: 0.5rem;
 		max-width: 500px; /* Tighter width for focus */
 		margin: 0 auto;
         min-height: 100vh;
@@ -766,31 +830,35 @@
 		display: flex;
 		flex-direction: row; 
         justify-content: space-between;
-        align-items: flex-end;
+        align-items: center;
 		gap: 0.5rem;
-        padding-bottom: 1rem;
+        padding: 1rem 0;
 	}
     
     .header-info {
         display: flex;
         flex-direction: column;
-        gap: 0.2rem;
+        gap: 0.3rem;
     }
     
     .difficulty-badge {
-        font-size: 0.85rem;
+        font-size: 0.75rem;
         font-weight: 600;
-        color: #8e8e93;
+        color: #555;
         text-transform: uppercase;
-        letter-spacing: 0.5px;
+        letter-spacing: 1px;
+        border-radius: 20px;
     }
     
     .mistakes {
-        font-size: 0.9rem;
-        font-weight: 500;
-        color: #d32f2f; /* Red for errors */
+        font-size: 0.85rem;
+        font-weight: 600;
+        color: #333;
+        display: flex;
+        align-items: center;
+        gap: 0.3rem;
     }
-    
+ 
     .timer-controls {
         display: flex;
         align-items: center;
@@ -815,10 +883,20 @@
     }
     
     .timer {
-        font-size: 1.5rem;
-        font-weight: 300;
+        font-size: 1.6rem;
+        font-weight: 400;
         font-variant-numeric: tabular-nums;
         color: #333;
+        background: #f5f5f7;
+        padding: 0.4rem 1rem;
+        border-radius: 30px;
+        min-width: 80px;
+        text-align: center;
+    }
+    
+    .timer.frozen {
+        background: linear-gradient(135deg, #e0f7fa, #b2ebf2);
+        color: #00838f;
     }
     
     /* Pause Button Icon */
@@ -842,6 +920,7 @@
 		display: flex;
 		justify-content: center;
         width: 100%;
+        padding: 1rem 0;
         transition: filter 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 	}
     
@@ -1029,5 +1108,130 @@
     @keyframes pop {
         0% { transform: scale(0.8); opacity: 0; }
         100% { transform: scale(1); opacity: 1; }
+    }
+
+    /* Sudoku Board Styles */
+    .sudoku-board {
+        display: flex;
+        flex-direction: column;
+        border: 3px solid #333;
+        border-radius: 12px;
+        background: #333;
+        gap: 1px;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.08);
+        user-select: none;
+        overflow: hidden;
+    }
+
+    .row {
+        display: flex;
+        gap: 2px;
+    }
+
+    .row:nth-child(3n) {
+        margin-bottom: 2px; /* Thicker gap for 3x3 boxes */
+    }
+    .row:last-child {
+        margin-bottom: 0;
+    }
+
+    .cell {
+        width: 40px;
+        height: 40px;
+        background: #fafafa;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.4rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: background 0.15s, transform 0.1s;
+        position: relative;
+        color: #1a73e8; /* User-entered numbers in blue */
+    }
+
+    .cell:nth-child(3n) {
+        margin-right: 2px;
+    }
+    .cell:last-child {
+        margin-right: 0;
+    }
+    
+    .cell:active {
+        transform: scale(0.95);
+    }
+
+    .cell.fixed {
+        font-weight: 700;
+        color: #333;
+        background-color: #fff;
+    }
+
+    .cell.selected {
+        background-color: #e8f0fe;
+        box-shadow: inset 0 0 0 2px #1a73e8;
+        z-index: 2;
+    }
+
+    /* Related cells (same row/col/box) */
+    .cell.related {
+        background-color: #f8f9fa;
+    }
+
+    /* Highlighted number (same value as selected) */
+    .cell.highlighted {
+        background-color: #c8e6ff;
+        color: #0d47a1;
+        font-weight: 700;
+    }
+
+    .cell.error {
+        color: #d32f2f !important;
+        background-color: #ffcdd2 !important;
+        animation: shake 0.3s;
+    }
+
+    .cell .value {
+        line-height: 1;
+    }
+
+    .cell .notes {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        width: 100%;
+        height: 100%;
+        padding: 2px;
+    }
+
+    .note {
+        font-size: 9px;
+        color: #666;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    @keyframes shake {
+        0%, 100% { transform: translateX(0); }
+        25% { transform: translateX(-2px); }
+        75% { transform: translateX(2px); }
+    }
+
+    @media (max-width: 450px) {
+        .cell {
+            width: 36px;
+            height: 36px;
+            font-size: 1.3rem;
+        }
+        .start-screen h1 {
+            font-size: 2.5rem;
+        }
+    }
+    @media (max-width: 350px) {
+        .cell {
+            width: 32px;
+            height: 32px;
+            font-size: 1.1rem;
+        }
     }
 </style>

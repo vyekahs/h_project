@@ -11,17 +11,6 @@
 </script>
 
 <div class="controls">
-    <div class="numpad">
-        {#each [1, 2, 3, 4, 5, 6, 7, 8, 9] as num}
-            <button 
-                class="num-btn" 
-                class:hidden={completedNumbers.includes(num)}
-                onclick={() => onnumber(num)}
-            >
-                {num}
-            </button>
-        {/each}
-    </div>
 
     <div class="tools">
         <button class="tool-btn" onclick={() => onaction('undo')} aria-label="Undo" title="실행 취소">
@@ -43,6 +32,18 @@
             <span class="label">메모 {isNoteMode ? 'ON' : 'OFF'}</span>
         </button>
     </div>
+    <div class="numpad">
+        {#each [1, 2, 3, 4, 5, 6, 7, 8, 9] as num}
+            <button 
+                class="num-btn" 
+                class:hidden={completedNumbers.includes(num)}
+                onclick={() => onnumber(num)}
+            >
+                {num}
+            </button>
+        {/each}
+    </div>
+
     
 </div>
 
@@ -50,7 +51,7 @@
     .controls {
         display: flex;
         flex-direction: column;
-        gap: 1.5rem;
+        gap: 0.5rem;
         align-items: center;
         width: 100%;
     }
@@ -58,46 +59,43 @@
     .numpad {
         display: flex;
         justify-content: center;
-        gap: 0.5rem;
+        gap: 0.4rem;
         width: 100%;
-        max-width: 500px;
-        flex-wrap: wrap; /* Wrap if needed on tiny screens, but try to keep row */
+        max-width: 400px;
     }
     
     .num-btn {
-        flex: 1; /* Grow to fill space */
-        min-width: 30px; /* Minimum touch target */
-        max-width: 48px; /* Standard size */
-        aspect-ratio: 0.8; /* Maintain shape */
-        height: auto;
-        
-        font-size: 1.5rem;
+        flex: 1;
+        min-width: 28px;
+        max-width: 42px;
+        height: 48px;
+        font-size: 1.4rem;
         border: none;
         background: transparent;
-        color: #007aff; 
         cursor: pointer;
-        transition: all 0.2s;
-        font-weight: 300;
+        transition: all 0.15s;
+        font-weight: 500;
         display: flex;
         align-items: center;
         justify-content: center;
         border-radius: 12px;
     }
     
-    /* Responsive adjustment for very small screens */
     @media (max-width: 360px) {
         .num-btn {
             font-size: 1.2rem;
-            border-radius: 8px;
+            height: 42px;
+            border-radius: 10px;
         }
     }
 
     .num-btn:hover {
-        background: rgba(0, 122, 255, 0.1);
+        background: #e8f0fe;
     }
 
     .num-btn:active {
-        transform: scale(0.95);
+        transform: scale(0.92);
+        background: #d2e3fc;
     }
     
     .num-btn.hidden {
@@ -107,8 +105,9 @@
     
     .tools {
         display: flex;
-        gap: 2rem;
+        gap: 1.5rem;
         justify-content: center;
+        border-radius: 20px;
     }
     
     .tool-btn {
@@ -120,8 +119,6 @@
         border: none;
         cursor: pointer;
         color: #8e8e93; /* IOS Gray */
-        padding: 0.5rem;
-        border-radius: 8px;
         transition: color 0.2s;
     }
     
