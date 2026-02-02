@@ -494,7 +494,11 @@
         
     {:else if gameState === 'start'}
         <div class="screen start-screen">
-            <h1>Sudoku</h1>
+            <div class="start-header">
+                <a href="/minigames" class="header-link left">← 오락실</a>
+                <h1>Sudoku</h1>
+                <button class="header-link right" onclick={() => view = 'ranking'}>랭킹 🏆</button>
+            </div>
             
             {#if hasSavedGame && view === 'game' && startMode === 'initial'}
                 <button class="btn-primary huge" onclick={loadSavedGame}>
@@ -504,11 +508,6 @@
                 <button class="btn-secondary huge" onclick={() => startMode = 'diff_select'}>
                     🆕 새 게임 시작
                 </button>
-                
-                <div class="sub-actions">
-                     <button class="btn-secondary" onclick={() => view = 'ranking'}>🏆 랭킹 보기</button>
-                     <a href="/minigames" class="btn-text">오락실로 돌아가기</a>
-                </div>
             {/if}
             
             {#if view === 'game' && (!hasSavedGame || startMode === 'diff_select')}
@@ -542,16 +541,11 @@
                 {#if hasSavedGame}
                     <button class="btn-text" onclick={() => startMode = 'initial'}>취소하고 돌아가기</button>
                 {/if}
-
-                <div class="sub-actions">
-                    <button class="btn-secondary" onclick={() => view = 'ranking'}>🏆 랭킹 보기</button>
-                    <a href="/minigames" class="btn-text">오락실로 돌아가기</a>
-                </div>
             {/if}
 
             {#if view === 'ranking'}
                 <RankingBoard gameId="sudoku" />
-                <button class="btn-text" onclick={() => view = 'game'}>뒤로 가기</button>
+                <button class="btn-text" onclick={() => view = 'game'}></button>
             {/if}
         </div>
     
@@ -733,7 +727,7 @@
 		align-items: center;
 		padding: 2rem 1rem;
 		gap: 0.5rem;
-		max-width: 500px; /* Tighter width for focus */
+		max-width: 800px; /* Tighter width for focus */
 		margin: 0 auto;
         min-height: 100vh;
         color: #333;
@@ -744,11 +738,40 @@
     .screen {
         display: flex;
         flex-direction: column;
-        align-items: center;
-        justify-content: center;
+        justify-content: space-between;
         gap: 2.5rem;
-        height: 80vh;
+        height: 90vh;
         width: 100%;
+    }
+    
+    .start-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        width: 100%;
+        padding: 0 1rem;
+    }
+    
+    .start-header h1 {
+        font-size: 2.5rem;
+        font-weight: 200;
+        color: #333;
+        margin: 0;
+    }
+    
+    .header-link {
+        font-size: 0.85rem;
+        color: #666;
+        text-decoration: none;
+        background: none;
+        border: none;
+        cursor: pointer;
+        padding: 0.5rem;
+        transition: color 0.2s;
+    }
+    
+    .header-link:hover {
+        color: #333;
     }
     
     .start-screen h1 {
@@ -781,11 +804,18 @@
     }
 
     @media (max-width: 600px) {
+        .screen {
+            gap: 1rem;
+            padding: 1rem 0;
+        }
+        .start-screen h1 {
+            font-size: 2.2rem;
+            margin-bottom: 0.5rem;
+        }
         .options {
             flex-direction: column;
             align-items: stretch;
             padding: 0 1rem;
-            gap: 0.5rem;
         }
         
         .options label {
@@ -1224,7 +1254,17 @@
             font-size: 1.3rem;
         }
         .start-screen h1 {
-            font-size: 2.5rem;
+            font-size: 2.3rem;
+        }
+        .difficulty-select h2 {
+            font-size: 0.85rem;
+            margin-bottom: 0.4rem;
+        }
+  
+        .btn-primary {
+            padding: 0.7rem 1.5rem;
+            font-size: 0.95rem;
+            margin-top: 0.5rem;
         }
     }
     @media (max-width: 350px) {
@@ -1232,6 +1272,9 @@
             width: 32px;
             height: 32px;
             font-size: 1.1rem;
+        }
+        .start-screen h1 {
+            font-size: 1.8rem;
         }
     }
 </style>
