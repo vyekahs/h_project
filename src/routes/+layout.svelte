@@ -111,12 +111,13 @@
     onmouseleave={handleMouseLeave}
 >
     <!-- Top Bar for Points (Shop Button) - Only show on Arcade page as requested -->
-    {#if $page.url.pathname === '/minigames'}
+    <!-- Top Bar for Points (Shop Button) - Temporarily hidden for initial release -->
+    <!-- {#if $page.url.pathname === '/minigames'}
         <div class="top-bar">
             <div class="spacer"></div>
             <PointDisplay />
         </div>
-    {/if}
+    {/if} -->
 
     <!-- Refresh Indicator -->
     <div class="refresh-indicator" style="transform: translateY({currentY}px); opacity: {pullDistance > 0 ? 1 : 0};">
@@ -136,7 +137,7 @@
         {/if}
 	</main>
 
-	{#if !$page.url.pathname.startsWith('/admin')}
+	{#if !$page.url.pathname.startsWith('/admin') && !$page.url.pathname.startsWith('/games/')}
 	<nav class="bottom-nav">
 		<a href="/" class="nav-item home" class:active={$page.url.pathname === '/'}>
 			<span class="icon">🏠</span>

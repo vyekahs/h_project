@@ -16,12 +16,12 @@
         client = 'ca-pub-XXXXXXXXXXXXXXXX' // Placeholder
     }: Props = $props();
 
+    import { GAME_CONFIG } from '$lib/config';
+
     let isPremium = $derived($user.inventory.some((i: any) => 
         (i.item_code === 'ad_remove' || i.item_code === 'premium_pass') && 
-        (i.expires_at ? new Date(i.expires_at) > new Date() : true) // Simplification, need backend expiry check usually
-    )); // Actually, simple check: does user have 'ad_remove' in inventory? 
-        // Backend should handle expiry and remove it, OR use_limit has duration. 
-        // For now, let's assume if it's in inventory map, it's active.
+        (i.expires_at ? new Date(i.expires_at) > new Date() : true)
+    ));
     
     // Better check: The backend 'ad_remove' item might be a consumable that applies a status, 
     // OR it sits in inventory and expires. 
@@ -29,7 +29,7 @@
     // If it's in inventory, let's assume it's active for now.
     
     // Actually, simpler logic: check if user has 'ad_remove' item in inventory.
-    let showAd = $derived(!isPremium);
+    let showAd = $derived(GAME_CONFIG.ENABLE_ADS && !isPremium);
     
     onMount(() => {
         if (showAd && typeof window !== 'undefined') {

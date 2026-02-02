@@ -114,16 +114,25 @@
     function selectYear(year: any) {
         selectedYear = year;
         isYearOpen = false;
+        visibleCount = 10; // Reset pagination
     }
 
     function selectMonth(month: any) {
         selectedMonth = month;
         isMonthOpen = false;
+        visibleCount = 10; // Reset pagination
     }
 
     function closeDropdowns() {
         isYearOpen = false;
         isMonthOpen = false;
+    }
+    
+    // Pagination
+    let visibleCount = 10;
+    
+    function loadMore() {
+        visibleCount += 10;
     }
 </script>
 
@@ -281,7 +290,7 @@
             
             <div class="history-list">
                 {#if filteredHistory.length > 0}
-                    {#each filteredHistory as game}
+                    {#each filteredHistory.slice(0, visibleCount) as game}
                     <div class="history-card" class:winner={game.is_winner}>
                         <div class="history-header">
                         <div class="game-info">
@@ -317,6 +326,10 @@
                         </div>
                     </div>
                 {/each}
+
+                {#if filteredHistory.length > visibleCount}
+                    <button class="btn-load-more" on:click={loadMore}>더보기 ({filteredHistory.length - visibleCount}개 남음)</button>
+                {/if}
             {:else}
                 <div class="empty-state">
                     <p>아직 플레이 기록이 없습니다.</p>
@@ -329,6 +342,27 @@
 </div>
 
 <style>
+    /* ... existing styles ... */
+    
+    .btn-load-more {
+        width: 100%;
+        padding: 0.9rem;
+        background: white;
+        border: 1px solid #ddd;
+        border-radius: 12px;
+        color: #555;
+        font-weight: 600;
+        cursor: pointer;
+        margin-top: 0.5rem;
+        transition: all 0.2s;
+    }
+    
+    .btn-load-more:hover {
+        background: #f8f9fa;
+        color: #333;
+        border-color: #ccc;
+    }
+
     .mypage-container {
         max-width: 600px;
         margin: 0 auto;
