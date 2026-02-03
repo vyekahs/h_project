@@ -3,6 +3,7 @@ import { fail } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { promoteWaitlist } from '$lib/server/reservations';
 import { verifyAdminSession, verifyAttendeeSession } from '$lib/server/auth';
+import { TitleService } from '$lib/server/services/titleService';
 
 async function canModifyGame(request: Request, gameId: string | number): Promise<boolean> {
     const sessionToken = request.headers.get('cookie')?.match(/admin_session=([^;]+)/)?.[1];
@@ -36,9 +37,12 @@ export const load: PageServerLoad = async ({ locals, cookies, request }) => {
 
     const attendeesResult = await query(`
         SELECT a.id, a.name, v.arrival_time,
+               t.title_name,
                EXISTS(SELECT 1 FROM session_participants sp JOIN game_sessions gs ON sp.session_id = gs.id WHERE sp.attendee_id = a.id AND gs.status = 'playing') as is_playing
         FROM visits v
         JOIN attendees a ON v.attendee_id = a.id
+        LEFT JOIN minigame_user_points up ON a.id = up.user_id
+        LEFT JOIN minigame_titles t ON up.equipped_title_id = t.id
         WHERE v.departure_time IS NULL
         ORDER BY v.arrival_time DESC
     `);
@@ -46,10 +50,12 @@ export const load: PageServerLoad = async ({ locals, cookies, request }) => {
 
     const gamesResult = await query(`
         SELECT gs.id, gs.game_name, gs.end_time, gs.created_by, 
-               COALESCE(json_agg(json_build_object('id', a.id, 'name', a.name)) FILTER (WHERE a.id IS NOT NULL), '[]') as players
+               COALESCE(json_agg(json_build_object('id', a.id, 'name', a.name, 'title_name', t.title_name)) FILTER (WHERE a.id IS NOT NULL), '[]') as players
         FROM game_sessions gs
         LEFT JOIN session_participants sp ON gs.id = sp.session_id
         LEFT JOIN attendees a ON sp.attendee_id = a.id
+        LEFT JOIN minigame_user_points up ON a.id = up.user_id
+        LEFT JOIN minigame_titles t ON up.equipped_title_id = t.id
         WHERE gs.status = 'playing'
         GROUP BY gs.id, gs.game_name, gs.end_time, gs.created_by
         ORDER BY gs.end_time ASC
@@ -57,11 +63,13 @@ export const load: PageServerLoad = async ({ locals, cookies, request }) => {
 
     const scheduledGamesResult = await query(`
         SELECT gs.id, gs.game_name, gs.game_id, gs.min_players, gs.max_players, gs.scheduled_at, gs.created_by, g.image_url,
-               COALESCE(json_agg(json_build_object('id', a.id, 'name', a.name)) FILTER (WHERE a.id IS NOT NULL), '[]') as participants
+               COALESCE(json_agg(json_build_object('id', a.id, 'name', a.name, 'title_name', t.title_name)) FILTER (WHERE a.id IS NOT NULL), '[]') as participants
         FROM game_sessions gs
         LEFT JOIN session_participants sp ON gs.id = sp.session_id
         LEFT JOIN attendees a ON sp.attendee_id = a.id
         LEFT JOIN games g ON gs.game_id = g.id
+        LEFT JOIN minigame_user_points up ON a.id = up.user_id
+        LEFT JOIN minigame_titles t ON up.equipped_title_id = t.id
         WHERE gs.status = 'scheduled'
         GROUP BY gs.id, gs.game_name, gs.game_id, gs.min_players, gs.max_players, gs.scheduled_at, gs.created_by, g.image_url
         ORDER BY gs.scheduled_at ASC
@@ -108,8 +116,13 @@ export const load: PageServerLoad = async ({ locals, cookies, request }) => {
                 if (userStatus.rows.length > 0) {
                      user.can_manage_games = userStatus.rows[0].can_manage_games;
                      userPenaltyInfo = userStatus.rows[0];
-                } else {
                      userPenaltyInfo = null; // User might have been deleted?
+                }
+
+                // Fetch Title
+                const title = await TitleService.getUserTitle(user.id);
+                if (title) {
+                    (user as any).title = title;
                 }
     
                 const resResult = await query(`

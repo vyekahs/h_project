@@ -11,6 +11,7 @@
         id: number;
         name: string;
         can_manage_games: boolean;
+        title?: { title_name: string };
     }
     
     export let data: {
@@ -34,6 +35,7 @@
         name: string;
         arrival_time: string;
         is_playing: boolean;
+        title_name?: string;
     }
 
     interface GameSession {
@@ -239,7 +241,15 @@
     <header class="app-header">
         <div class="app-bar">
             <div class="brand-section">
-                <h1>혼놀 라운지</h1>
+                <h1>혼놀 라운지</h1> 
+                {#if data.user}
+                    <div class="user-greeting">
+                        {#if data.user.title}
+                            <span class="user-title">[{data.user.title.title_name}]</span>
+                        {/if}
+                        <span class="user-name">{data.user.name}님</span>
+                    </div>
+                {/if}
             </div>
             <div class="status-section">
                 {#if data.isOpen}
@@ -334,7 +344,12 @@
                 {#each (data.attendees || []) as attendee}
                     {@const a = attendee as Attendee}
                     <div class="attendee-card {a.is_playing ? 'playing' : ''}">
-                        <span class="name">{a.name}</span>
+                        <div class="attendee-info">
+                            {#if a.title_name}
+                                <span class="mini-title">[{a.title_name}]</span>
+                            {/if}
+                            <span class="name">{a.name}</span>
+                        </div>
                         <span class="time">
                             {new Date(a.arrival_time).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
                             {#if a.is_playing}
@@ -413,7 +428,12 @@
                                 </div>
                                 <div class="players">
                                     {#each (game.players || []) as player}
-                                        <span class="player-tag">{player.name}</span>
+                                        <div class="player-tag">
+                                            {#if player.title_name}
+                                                <span class="tag-title">[{player.title_name}]</span>
+                                            {/if}
+                                            {player.name}
+                                        </div>
                                     {/each}
                                 </div>
                                 
@@ -529,7 +549,12 @@
                                     <div class="participant-list">
                                         {#each (game.participants || []) as p}
                                             {@const participant = p as Attendee}
-                                            <span class="p-name">{participant.name}</span>
+                                            <span class="p-name">
+                                                {#if participant.title_name}
+                                                    <span class="p-title">[{participant.title_name}]</span>
+                                                {/if}
+                                                {participant.name}
+                                            </span>
                                         {/each}
                                     </div>
                                 </div>
@@ -839,14 +864,13 @@
     .brand-section {
         display: flex;
         align-items: center;
-        gap: 0.75rem;
     }
     .brand-section h1 {
-        font-size: 1.25rem;
         margin: 0;
+        font-size: 1.25rem;
+        color: #e67700;
         font-weight: 800;
         letter-spacing: -0.5px;
-        color: #333; /* Fallback */
     }
     
 
@@ -1403,10 +1427,10 @@
         color: #495057;
         border: 1px solid #dee2e6;
         display: inline-block;
-        max-width: 80px;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
+        /* max-width removed to allow full name display */
+        /* white-space: nowrap; removed */
+        /* overflow: hidden; removed */
+        /* text-overflow: ellipsis; removed */
         vertical-align: middle;
     }
     .user-actions, .actions {
@@ -1882,5 +1906,77 @@
         .container {
             padding-bottom: 80px;
         }
+    }
+    /* User Greeting in Header */
+    .user-greeting {
+        font-size: 0.9rem;
+        color: #555;
+        margin-left: 0.8rem;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+    }
+    .user-greeting .user-title {
+        color: #e67700;
+        font-weight: 700;
+        font-size: 0.85em;
+    }
+    .user-greeting .user-name {
+        font-weight: 600;
+    }
+
+    @media (max-width: 480px) {
+        .brand-section {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 2px;
+        }
+        .user-greeting {
+            margin-left: 0;
+            font-size: 0.8rem;
+        }
+    }
+    /* Mini Titles */
+    .mini-title {
+        font-size: 0.75rem;
+        color: #e67700;
+        font-weight: 700;
+        margin-right: 2px;
+        display: block; /* Stack on mobile */
+    }
+    .attendee-info {
+        display: flex;
+        flex-direction: column; 
+        justify-content: center;
+    }
+    
+    .tag-title {
+        font-size: 0.7rem;
+        color: #e67700;
+        font-weight: 700;
+        display: inline-block;
+        margin-right: 2px;
+    }
+    .player-tag {
+        display: inline-flex;
+        align-items: center;
+        gap: 2px;
+        background: #f1f3f5;
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-size: 0.85rem;
+        margin-right: 4px;
+        margin-bottom: 4px;
+    }
+
+    .p-name {
+        display: inline-flex;
+        align-items: center;
+        gap: 2px;
+    }
+    .p-title {
+        font-size: 0.75rem;
+        color: #e67700;
+        font-weight: 700;
     }
 </style>
