@@ -508,13 +508,16 @@
             </div>
             
             {#if hasSavedGame && view === 'game' && startMode === 'initial'}
-                <button class="btn-primary huge" onclick={loadSavedGame}>
-                    📂 이어하기
-                </button>
-                <div class="divider">OR</div>
-                <button class="btn-secondary huge" onclick={() => startMode = 'diff_select'}>
-                    🆕 새 게임 시작
-                </button>
+                <div class="difficulty-select options">
+                    <button class="btn-primary huge" onclick={loadSavedGame}>
+                        이어하기
+                    </button>
+                    <div class="divider">OR</div>
+                    <button class="btn-secondary huge" onclick={() => startMode = 'diff_select'}>
+                        새 게임 시작
+                    </button>
+                </div>
+                <div></div><!-- 정렬맞추기 위해 존재 -->
             {/if}
             
             {#if view === 'game' && (!hasSavedGame || startMode === 'diff_select')}

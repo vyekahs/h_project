@@ -13,18 +13,22 @@ export const RankingService = {
         let calculatedScore = 0;
         
         if (gameId === 'sudoku') {
-            const timeLimit = difficulty === 'easy' ? 300 :
+             const timeLimit = difficulty === 'easy' ? 300 :
                               difficulty === 'medium' ? 600 :
                               difficulty === 'hard' ? 900 : 
                               difficulty === 'expert' ? 1200 : 1500;
                               
-             const baseScore = difficulty === 'easy' ? 100 :
-                               difficulty === 'medium' ? 500 :
-                               difficulty === 'hard' ? 1200 :
-                               difficulty === 'expert' ? 2500 : 4000;
+             // Adjusted Base Score (10% of previous)
+             const baseScore = difficulty === 'easy' ? 10 :
+                               difficulty === 'medium' ? 50 :
+                               difficulty === 'hard' ? 120 :
+                               difficulty === 'expert' ? 250 : 400;
                                
-             const timeMultiplier = difficulty === 'easy' ? 5 :
-                                    difficulty === 'medium' ? 10 : 15;
+             // Progressive Time Multiplier (1, 2, 3, 4, 5)
+             const timeMultiplier = difficulty === 'easy' ? 1 :
+                                    difficulty === 'medium' ? 2 :
+                                    difficulty === 'hard' ? 3 :
+                                    difficulty === 'expert' ? 4 : 5;
                                     
              const bonus = Math.max(0, (timeLimit - clearTime) * timeMultiplier);
              calculatedScore = baseScore + bonus;
@@ -60,26 +64,9 @@ export const RankingService = {
         `, [gameId, difficulty, userId, clearTime, calculatedScore]);
         
         // 4. Update Game History (For My Page)
-        // Wrap in try-catch because session_participants might refer to linked attendees,
-        // and Admin(User 1) might not be in attendees table.
-        try {
-            // Create a finished game session log
-            const sessionRes = await query(`
-                INSERT INTO game_sessions (game_name, start_time, end_time, status)
-                VALUES ($1, NOW() - ($2 || ' seconds')::interval, NOW(), 'finished')
-                RETURNING id
-            `, [gameId, clearTime]);
-            
-            const sessionId = sessionRes.rows[0].id;
-            
-            // Add user as participant
-            await query(`
-                INSERT INTO session_participants (session_id, attendee_id, score, is_winner)
-                VALUES ($1, $2, $3, true)
-            `, [sessionId, userId, calculatedScore]);
-        } catch (e) {
-            console.error('[RankingService] Session History Log failed (Likely ID mismatch for Admin):', e);
-        }
+        // REQUEST: Arcade games should NOT appear in My Page activity log.
+        // Logic removed.
+
         
         // 4. Calculate Rewards (Points)
         let earnedPoints = 0;
