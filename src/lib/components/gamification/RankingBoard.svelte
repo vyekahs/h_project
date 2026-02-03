@@ -93,6 +93,7 @@
         </table>
     {/if}
 </div>
+<div></div>
 
 <style>
     /* ... existing styles ... */

@@ -84,7 +84,14 @@ const queries = [
     `CREATE INDEX IF NOT EXISTS idx_ranking_lookup ON game_rankings (game_id, difficulty, clear_time ASC);`,
     `CREATE INDEX IF NOT EXISTS idx_daily_points ON point_transactions (user_id, created_at, transaction_type);`,
     `CREATE INDEX IF NOT EXISTS idx_title_condition ON titles (condition_type, id);`,
-    `CREATE INDEX IF NOT EXISTS idx_user_date ON point_transactions (user_id, created_at);`
+    `CREATE INDEX IF NOT EXISTS idx_user_date ON point_transactions (user_id, created_at);`,
+    `CREATE TABLE IF NOT EXISTS tutorial_progress (
+        id              BIGSERIAL PRIMARY KEY,
+        user_id         BIGINT NOT NULL,
+        tutorial_id     VARCHAR(50) NOT NULL,
+        completed_at    TIMESTAMP DEFAULT NOW(),
+        CONSTRAINT unique_user_tutorial UNIQUE (user_id, tutorial_id)
+    );`
 ];
 
 async function main() {
