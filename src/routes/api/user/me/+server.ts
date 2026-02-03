@@ -2,6 +2,7 @@ import { json } from '@sveltejs/kit';
 import { PointService } from '$lib/server/services/pointService';
 import { ShopService } from '$lib/server/services/shopService';
 import { TitleService } from '$lib/server/services/titleService';
+import { TutorialService } from '$lib/server/services/tutorialService';
 import { verifyAttendeeSession } from '$lib/server/auth';
 
 export async function GET({ cookies }) {
@@ -18,17 +19,19 @@ export async function GET({ cookies }) {
     }
     
     try {
-        const [points, inventory, title] = await Promise.all([
+        const [points, inventory, title, completedTutorials] = await Promise.all([
             PointService.getUserPoints(userId),
             ShopService.getInventory(userId),
-            TitleService.getUserTitle(userId)
+            TitleService.getUserTitle(userId),
+            TutorialService.getCompletedTutorials(userId)
         ]);
         
         return json({
             points,
             inventory,
             title,
-            name
+            name,
+            completedTutorials
         });
     } catch (e) {
         console.error(e);
