@@ -89,6 +89,28 @@ export const TitleService = {
                         
                         qualified = rankCheckRes.rows.length > 0;
                     } 
+                    else if (cond.type === 'monthly_play_count') {
+                        // Monthly Play Count Ranking
+                         const monthlyRes = await query(`
+                            SELECT rnk, play_count FROM (
+                                SELECT user_id, COUNT(*) as play_count, RANK() OVER (ORDER BY COUNT(*) DESC) as rnk
+                                FROM point_transactions
+                                WHERE transaction_type = 'game_clear'
+                                AND created_at >= date_trunc('month', CURRENT_DATE)
+                                GROUP BY user_id
+                            ) as ranked
+                            WHERE user_id = $1
+                        `, [userId]);
+                        
+                        if (monthlyRes.rows.length > 0) {
+                            const { rnk, play_count } = monthlyRes.rows[0];
+                            const targetRank = cond.rank || 1;
+                            const minCount = cond.min_count || 1;
+                            qualified = (parseInt(rnk) <= targetRank) && (parseInt(play_count) >= minCount);
+                        } else {
+                            qualified = false;
+                        }
+                    }
                     else if (cond.type === 'total_points' || title.title_code === 'rich_person' || title.title_code === 'high_scorer' || title.title_code === 'puzzle_god') {
                         // Total Point Ranking
                         const targetRank = cond.rank || (title.title_code === 'high_scorer' ? 5 : 1);
