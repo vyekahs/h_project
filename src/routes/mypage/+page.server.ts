@@ -46,6 +46,13 @@ export const load: PageServerLoad = async ({ parent }) => {
 
     const stats = statsResult.rows[0];
 
+    // Trigger Title Check (Background)
+    try {
+        import('$lib/server/services/titleService').then(({ TitleService }) => TitleService.checkAndAssignTitles(user.id)).catch(e => console.error('[MyPage] Title check failed', e));
+    } catch(e) {
+        console.error(e);
+    }
+
     return {
         user,
         history: historyResult.rows,

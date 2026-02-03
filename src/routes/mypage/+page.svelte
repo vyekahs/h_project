@@ -69,8 +69,8 @@
     let myTitles: Title[] = [];
     let loadingTitles = true;
 
-    async function loadTitles() {
-        loadingTitles = true;
+    async function loadTitles(silent = false) {
+        if (!silent) loadingTitles = true;
         try {
             const res = await fetch('/api/user/titles');
             if(res.ok) {
@@ -79,7 +79,7 @@
         } catch(e) {
             console.error(e);
         } finally {
-            loadingTitles = false;
+            if (!silent) loadingTitles = false;
         }
     }
 
@@ -97,7 +97,7 @@
                 body: JSON.stringify({ titleId })
             });
             if (res.ok) {
-                await loadTitles(); 
+                await loadTitles(true); 
                 await invalidateAll(); 
             } else {
                 // Silent fail or toast? For now just log
@@ -231,26 +231,33 @@
                 <div class="empty-titles">보유한 칭호가 없습니다. 게임을 플레이하고 칭호를 획득해보세요!</div>
             {:else}
                 <div class="titles-grid">
-                    {#each myTitles as title}
+                    {#each myTitles as title (title.id)}
                         <div class="title-card" class:equipped={title.is_equipped}>
                             <div class="title-header">
                                 <span class="title-name">{title.title_name}</span>
-                                {#if title.is_equipped}
-                                    <span class="badge-equipped">장착 중</span>
-                                {/if}
+                                <div class="actions">
+                                    {#if title.is_equipped}
+                                        <button 
+                                            class="btn-action unequip"
+                                            class:processing={equippingId === title.id}
+                                            on:click={() => equipTitle(null)} 
+                                            disabled={equippingId !== null}
+                                        >
+                                            해제
+                                        </button>
+                                    {:else}
+                                        <button 
+                                            class="btn-action equip" 
+                                            class:processing={equippingId === title.id}
+                                            on:click={() => equipTitle(title.id)}
+                                            disabled={equippingId !== null}
+                                        >
+                                            장착
+                                        </button>
+                                    {/if}
+                                </div>
                             </div>
                             <p class="title-desc">{title.description || '특별한 칭호입니다.'}</p>
-                            
-                            {#if !title.is_equipped}
-                                <button 
-                                    class="btn-equip" 
-                                    class:loading={equippingId === title.id}
-                                    on:click={() => equipTitle(title.id)}
-                                    disabled={equippingId !== null}
-                                >
-                                    {equippingId === title.id ? '장착 중...' : '장착하기'}
-                                </button>
-                            {/if}
                         </div>
                     {/each}
                 </div>
@@ -737,28 +744,48 @@
         border-radius: 4px;
         font-weight: 600;
     }
-    .btn-equip {
-        background: #f0f0f0;
-        border: none;
-        padding: 0.4rem;
+    .actions {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    .btn-action {
+        border: 1px solid transparent; /* Ensure constant border width */
+        padding: 0.25rem 0.6rem;
         border-radius: 6px;
-        font-size: 0.85rem;
+        font-size: 0.8rem;
         cursor: pointer;
-        color: #555;
         font-weight: 600;
-        margin-top: 0.5rem;
+        min-width: 60px;
+        text-align: center;
+        box-sizing: border-box; /* Prevent padding/border from affecting width */
     }
-    .btn-equip:hover {
-        background: #e0e0e0;
-        color: #333;
-    }
-    .btn-equip:disabled {
+    .btn-action:disabled {
         opacity: 0.6;
         cursor: not-allowed;
     }
-    .btn-equip.loading {
-        background: #f8f9fa;
-        color: #999;
+    .btn-action.equip {
+        background: #f0f0f0;
+        color: #555;
+    }
+    .btn-action.equip:hover {
+        background: #e0e0e0;
+        color: #333;
+    }
+    .btn-action.unequip {
+        background: white;
+        border-color: #ff6b6b; /* Change color only */
+        color: #ff6b6b;
+    }
+    .btn-action.unequip:hover {
+        background: #fff5f5;
+        color: #fa5252;
+    }
+    .btn-action.processing {
+        background: #f8f9fa !important;
+        color: #ccc !important;
+        border-color: #ddd !important;
+        cursor: wait;
     }
     .loading, .empty-titles {
         text-align: center;

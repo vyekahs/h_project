@@ -9,8 +9,17 @@ export const TitleService = {
 
         // 1. Fetch User Stats
         // 1. Fetch User Stats & Rankings
-        const pointRes = await query('SELECT total_points FROM minigame_user_points WHERE user_id = $1', [userId]);
+        const pointRes = await query(`
+            SELECT 
+                p.total_points,
+                a.arrival_time
+            FROM minigame_user_points p
+            RIGHT JOIN attendees a ON p.user_id = a.id
+            WHERE a.id = $1
+        `, [userId]);
+        
         const totalPoints = pointRes.rows[0]?.total_points || 0;
+        const arrivalTime = new Date(pointRes.rows[0]?.arrival_time || Date.now());
 
         const gameRes = await query('SELECT COUNT(*) as play_count FROM minigame_rankings WHERE user_id = $1', [userId]);
         const playCount = parseInt(gameRes.rows[0]?.play_count || '0');
@@ -28,35 +37,99 @@ export const TitleService = {
         `, [userId]);
         const isSudokuMaster = sudokuTotalRankRes.rows[0]?.rank === '1';
 
-        // 2. Define Criteria
-        const checks = [
-            { code: 'beginner', check: () => playCount >= 1 },
-            { code: 'point_collector', check: () => totalPoints >= 1000 },
-            { code: 'rich_person', check: () => totalPoints >= 5000 },
-            { code: 'sudoku_master', check: () => isSudokuMaster }
-            // 'speed_demon' removed as Easy Rank is not visible to users
-        ];
+        // 2. Fetch User Ranks (Optimization: pre-fetch ranks)
+        const rankRes = await query(`
+            SELECT 
+                (SELECT COUNT(*) + 1 FROM minigame_user_points WHERE total_points > $1) as point_rank,
+                (SELECT COUNT(*) + 1 FROM (SELECT user_id FROM minigame_rankings GROUP BY user_id HAVING COUNT(*) > $2) as p) as play_rank
+        `, [totalPoints, playCount]);
+        const myPointRank = parseInt(rankRes.rows[0].point_rank);
+        
+        // 3. Fetch All Titles
+        const titlesResult = await query('SELECT id, title_code, condition_type, condition_value FROM minigame_titles');
+        
+        // 4. Fetch Owned Titles (For optimization & revocation)
+        const ownedRes = await query('SELECT title_id FROM minigame_user_titles WHERE user_id = $1', [userId]);
+        const ownedTitleIds = new Set(ownedRes.rows.map(r => r.title_id));
 
-        // 3. Assign Titles
-        for (const { code, check } of checks) {
-            if (check()) {
-                const titleRes = await query('SELECT id FROM minigame_titles WHERE title_code = $1', [code]);
-                if (titleRes.rows.length > 0) {
-                    const titleId = titleRes.rows[0].id;
+        // 5. Evaluate & Sync (Assign or Revoke)
+        for (const title of titlesResult.rows) {
+            let qualified = false;
+            const cond = title.condition_value;
+
+            try {
+                // Check Value Threshold
+                if (cond.value !== undefined) {
+                    if (cond.type === 'total_points') qualified = totalPoints >= cond.value;
+                    else if (cond.type === 'play_count') qualified = playCount >= cond.value;
+                    else if (cond.type === 'gift_count') qualified = false; // Not implemented
+                    else if (cond.type === 'account_age') {
+                         // Check if account is NEWER than X days
+                         const diffTime = Math.abs(Date.now() - arrivalTime.getTime());
+                         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+                         qualified = diffDays <= cond.value;
+                    }
+                } 
+                // Check Ranking Threshold
+                else if (cond.rank !== undefined) {
+                    if (cond.gameId) {
+                        // Game-Specific Ranking
+                        const diffClause = cond.difficulty ? "AND difficulty = $4" : "";
+                        const params = [userId, cond.gameId, cond.rank];
+                        if (cond.difficulty) params.push(cond.difficulty);
+                        
+                        const rankCheckRes = await query(`
+                            SELECT 1 FROM (
+                                SELECT user_id, RANK() OVER (ORDER BY score DESC) as rnk
+                                FROM minigame_rankings
+                                WHERE game_id = $2 ${diffClause}
+                            ) as ranked
+                            WHERE user_id = $1 AND rnk <= $3
+                        `, params);
+                        
+                        qualified = rankCheckRes.rows.length > 0;
+                    } 
+                    else if (cond.type === 'total_points' || title.title_code === 'rich_person' || title.title_code === 'high_scorer' || title.title_code === 'puzzle_god') {
+                        // Total Point Ranking
+                        const targetRank = cond.rank || (title.title_code === 'high_scorer' ? 5 : 1);
+                        qualified = myPointRank <= targetRank;
+                    } 
+                    else if (cond.type === 'clear_count' || title.title_code === 'challenger') {
+                         qualified = (parseInt(rankRes.rows[0].play_rank) <= cond.rank);
+                    }
+                    else if (cond.type === 'gift_count' || title.title_code === 'giver') {
+                         qualified = false; // Not implemented
+                    }
+                }
+            } catch (err) {
+                console.warn(`Error evaluating title ${title.title_code}`, err);
+            }
+
+            if (qualified) {
+                // Assign if not owned
+                if (!ownedTitleIds.has(title.id)) {
                     try {
-                        const result = await query(`
+                        await query(`
                             INSERT INTO minigame_user_titles (user_id, title_id, acquired_at)
                             VALUES ($1, $2, NOW())
                             ON CONFLICT DO NOTHING
-                            RETURNING id
-                        `, [userId, titleId]);
-
-                        if (result.rows.length > 0) {
-                             assignedTitles.push(code);
-                             // If it's a "Ranking 1" title, potentially trigger an alert or notification here
-                        }
+                        `, [userId, title.id]);
+                        assignedTitles.push(title.title_code);
                     } catch (e) {
-                        console.error(`Failed to assign title ${code}`, e);
+                        console.error(`Failed to assign title ${title.title_code}`, e);
+                    }
+                }
+            } else {
+                // Revoke if owned
+                if (ownedTitleIds.has(title.id)) {
+                    try {
+                        await query(`
+                            DELETE FROM minigame_user_titles 
+                            WHERE user_id = $1 AND title_id = $2
+                        `, [userId, title.id]);
+                        // console.log(`Revoked title ${title.title_code} from user ${userId}`);
+                    } catch (e) {
+                        console.error(`Failed to revoke title ${title.title_code}`, e);
                     }
                 }
             }
@@ -99,11 +172,13 @@ export const TitleService = {
     /**
      * Equip a title
      */
-    async equipTitle(userId: number, titleId: number) {
-        // Verify ownership
-        const check = await query('SELECT 1 FROM minigame_user_titles WHERE user_id = $1 AND title_id = $2', [userId, titleId]);
-        if (check.rows.length === 0) {
-            throw new Error('User does not own this title');
+    async equipTitle(userId: number, titleId: number | null) {
+        if (titleId !== null) {
+            // Verify ownership
+            const check = await query('SELECT 1 FROM minigame_user_titles WHERE user_id = $1 AND title_id = $2', [userId, titleId]);
+            if (check.rows.length === 0) {
+                throw new Error('User does not own this title');
+            }
         }
 
         await query('UPDATE minigame_user_points SET equipped_title_id = $1 WHERE user_id = $2', [titleId, userId]);

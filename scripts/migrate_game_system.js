@@ -127,11 +127,7 @@ const seedData = `
 -- Seed Titles
 INSERT INTO titles (title_code, title_name, description, condition_type, condition_value) VALUES
 ('sudoku_master', '스도쿠 깎는', '스도쿠(하드) 최단 클리어 1위', 'ranking', '{"gameId": "sudoku", "difficulty": "hard", "rank": 1}'),
-('speed_demon', '번개손', '스도쿠(이지) 최단 클리어 1위', 'ranking', '{"gameId": "sudoku", "difficulty": "easy", "rank": 1}'),
-('puzzle_god', '퍼즐의 신', '퍼즐게임 종합 점수 1위', 'ranking', '{"gameId": "puzzle", "rank": 1}'),
-('challenger', '불굴의 도전자', '최다 게임 클리어 1위', 'achievement', '{"type": "clear_count", "rank": 1}'),
-('rich_person', '포인트 부자', '누적 포인트 획득 1위', 'achievement', '{"type": "total_points", "rank": 1}'),
-('giver', '나눔의 손길', '선물 횟수 1위', 'community', '{"type": "gift_count", "rank": 1}')
+('beginner', '새내기', '가입 후 30일 이내', 'account', '{"type": "account_age", "value": 30}')
 ON CONFLICT (title_code) DO NOTHING;
 
 -- Seed Shop Items

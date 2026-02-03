@@ -7,7 +7,7 @@ export async function POST({ request, locals }) {
     }
     
     const { titleId } = await request.json();
-    if (!titleId) {
+    if (titleId === undefined) {
         return json({ error: 'Missing titleId' }, { status: 400 });
     }
     

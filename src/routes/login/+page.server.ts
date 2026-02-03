@@ -55,9 +55,16 @@ export const actions: Actions = {
             // Clean up old insecure cookie
             cookies.delete('user_auth', { path: '/' });
 
-            // Feature 6: Clear Admin Session to enforce mutual exclusion
             cookies.delete('admin_session', { path: '/' });
             cookies.delete('admin_auth', { path: '/' });
+
+            // Trigger Title Check (e.g. for login-related titles or sync)
+            try {
+                // Dynamic import to avoid circular dependency if any
+                await import('$lib/server/services/titleService').then(({ TitleService }) => TitleService.checkAndAssignTitles(user.id));
+            } catch (e) {
+                console.error('[Login] Title check failed:', e);
+            }
 
         } catch (err) {
             console.error(err);
