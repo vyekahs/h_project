@@ -262,84 +262,83 @@
     }
 
     // Start Screen Logic
-    function startGame(force = false, skipTutorialCheck = false) {
+    let isLoading = $state(false);
+
+    async function startGame(force = false, skipTutorialCheck = false) {
         // 1. Tutorial Check
         if (!skipTutorialCheck && !force) { 
-             // Note: !force means we are likely starting normally.
-             // But valid `force` usage in code includes:
-             // - "New Game" button (force=true? No, traditionally just calls startGame())
-             // Wait, original startGame had `force` for skipping "Resume" check.
-             // My previous logic had `checkAndShowTutorial` *inside*.
-             
-             // If difficulty is Easy, original code showed tutorial unconditionally.
-             // New logic: Check progressive systems.
              const shouldShow = checkAndShowTutorial(difficulty);
              if (shouldShow) return;
         }
 
-        // 2. Play Count & Unlock Logic (Only for new games)
-        if (force || !hasSavedGame) {
-             if (browser) {
-                const playCounts = JSON.parse(localStorage.getItem('sudoku_play_counts') || '{}');
-                playCounts[difficulty] = (playCounts[difficulty] || 0) + 1;
-                localStorage.setItem('sudoku_play_counts', JSON.stringify(playCounts));
-                
-                // Track unlocked tutorials
-                // Only unlock if we just finished showing it (showTutorial is true)
-                if (showTutorial && activeTutorialId) {
-                     const unlocked = JSON.parse(localStorage.getItem('sudoku_unlocked_tutorials') || '[]');
-                     if (!unlocked.includes(activeTutorialId)) {
-                         unlocked.push(activeTutorialId);
-                         localStorage.setItem('sudoku_unlocked_tutorials', JSON.stringify(unlocked));
-                         
-                         // Sync to DB
-                         fetch('/api/user/tutorials/complete', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ tutorialId: activeTutorialId })
-                         }).then(async (res) => {
-                             if (res.ok) {
-                                  // Refresh user data to get updated list
-                                  await user.refresh();
-                             }
-                         });
-                     }
-                     // Force UI update
-                     hasUnlockedTutorials = true;
+        isLoading = true;
+        // Allow UI to update before heavy calculation
+        await new Promise(resolve => setTimeout(resolve, 50));
+
+        try {
+            // 2. Play Count & Unlock Logic (Only for new games)
+            if (force || !hasSavedGame) {
+                if (browser) {
+                    const playCounts = JSON.parse(localStorage.getItem('sudoku_play_counts') || '{}');
+                    playCounts[difficulty] = (playCounts[difficulty] || 0) + 1;
+                    localStorage.setItem('sudoku_play_counts', JSON.stringify(playCounts));
+                    
+                    // Track unlocked tutorials
+                    if (showTutorial && activeTutorialId) {
+                        const unlocked = JSON.parse(localStorage.getItem('sudoku_unlocked_tutorials') || '[]');
+                        if (!unlocked.includes(activeTutorialId)) {
+                            unlocked.push(activeTutorialId);
+                            localStorage.setItem('sudoku_unlocked_tutorials', JSON.stringify(unlocked));
+                            
+                            // Sync to DB
+                            fetch('/api/user/tutorials/complete', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ tutorialId: activeTutorialId })
+                            }).then(async (res) => {
+                                if (res.ok) {
+                                    await user.refresh();
+                                }
+                            });
+                        }
+                        hasUnlockedTutorials = true;
+                    }
                 }
-             }
+            }
+            
+            showTutorial = false;
+            
+            // Clear any old save first
+            localStorage.removeItem('sudoku_save');
+            
+            const result = generateSudoku(difficulty);
+            board = result.initialBoard;
+            solution = result.solution;
+            mistakes = 0;
+            isWon = false;
+            selectedCell = null;
+            timerValue = 0;
+            displayTimer = 0;
+            history = []; // Reset history
+            
+            gameState = 'playing';
+            
+            // Force save BEFORE starting timer to ensure timer=0 is saved
+            const data = {
+                board,
+                solution,
+                timer: 0, 
+                mistakes,
+                difficulty,
+                history
+            };
+            localStorage.setItem('sudoku_save', JSON.stringify(data));
+            hasSavedGame = true;
+            
+            startTimer();
+        } finally {
+            isLoading = false;
         }
-        
-        showTutorial = false;
-        
-        // Clear any old save first
-        localStorage.removeItem('sudoku_save');
-        
-        const result = generateSudoku(difficulty);
-		board = result.initialBoard;
-		solution = result.solution;
-		mistakes = 0;
-		isWon = false;
-		selectedCell = null;
-        timerValue = 0;
-        displayTimer = 0;
-        history = []; // Reset history
-        
-        gameState = 'playing';
-        
-        // Force save BEFORE starting timer to ensure timer=0 is saved
-        const data = {
-            board,
-            solution,
-            timer: 0, 
-            mistakes,
-            difficulty,
-            history
-        };
-        localStorage.setItem('sudoku_save', JSON.stringify(data));
-        hasSavedGame = true;
-        
-        startTimer();
     }
     
     function addToHistory() {
@@ -819,9 +818,42 @@
             </div>
         </div>
     {/if}
+    {#if isLoading}
+        <div class="loading-overlay">
+            <div class="spinner"></div>
+            <p>게임 생성 중...</p>
+        </div>
+    {/if}
 </div>
 
 <style>
+    .loading-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.7);
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        z-index: 2000;
+        color: white;
+        backdrop-filter: blur(5px);
+    }
+    .spinner {
+        width: 40px;
+        height: 40px;
+        border: 4px solid rgba(255, 255, 255, 0.3);
+        border-top-color: #fff;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        margin-bottom: 1rem;
+    }
+    @keyframes spin {
+        to { transform: rotate(360deg); }
+    }
     .modal-actions {
         display: flex;
         gap: 1rem;

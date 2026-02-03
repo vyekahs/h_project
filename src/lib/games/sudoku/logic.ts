@@ -241,6 +241,81 @@ function analyzeDifficulty(boardInput: number[][]): number {
     return maxTechnique;
 }
 
+import { EASY_SEEDS, MEDIUM_SEEDS, HARD_SEEDS, EXPERT_SEEDS, MASTER_SEEDS } from './seeds';
+
+const VALID_SEEDS_BY_DIFF = {
+    easy: EASY_SEEDS,
+    medium: MEDIUM_SEEDS,
+    hard: HARD_SEEDS,
+    expert: EXPERT_SEEDS,
+    master: MASTER_SEEDS
+};
+
+/**
+ * Transforms a board to create variety
+ */
+function transformBoard(board: number[][]): number[][] {
+    let newBoard = board.map(row => [...row]);
+
+    // 1. Relabeling (Map 1-9 to random 1-9)
+    const map = [1,2,3,4,5,6,7,8,9].sort(() => Math.random() - 0.5);
+    for(let r=0; r<9; r++) {
+        for(let c=0; c<9; c++) {
+            if (newBoard[r][c] !== 0) {
+                newBoard[r][c] = map[newBoard[r][c] - 1];
+            }
+        }
+    }
+
+    // 2. Rotation (0, 90, 180, 270)
+    const rotations = Math.floor(Math.random() * 4);
+    for(let i=0; i<rotations; i++) {
+        const rotated = Array.from({length: 9}, () => Array(9).fill(0));
+        for(let r=0; r<9; r++) {
+            for(let c=0; c<9; c++) {
+                rotated[c][8-r] = newBoard[r][c];
+            }
+        }
+        newBoard = rotated;
+    }
+
+    // 3. Mirroring (Horizontal / Vertical)
+    if (Math.random() > 0.5) {
+        newBoard.reverse(); // Vertical flip
+    }
+    if (Math.random() > 0.5) {
+        newBoard.forEach(row => row.reverse()); // Horizontal flip
+    }
+
+    // 4. Band/Stack Shuffling
+    for (let b=0; b<3; b++) {
+        if (Math.random() > 0.5) { // Shuffle rows in band
+            const rows = [0,1,2].sort(() => Math.random() - 0.5);
+            const bandStart = b * 3;
+            const bandRows = [newBoard[bandStart], newBoard[bandStart+1], newBoard[bandStart+2]];
+            newBoard[bandStart] = bandRows[rows[0]];
+            newBoard[bandStart+1] = bandRows[rows[1]];
+            newBoard[bandStart+2] = bandRows[rows[2]];
+        }
+    }
+    
+    // Shuffle columns in stack
+    for (let s=0; s<3; s++) {
+        if (Math.random() > 0.5) {
+             const cols = [0,1,2].sort(() => Math.random() - 0.5);
+             const stackStart = s * 3;
+             const oldBoard = newBoard.map(row => [...row]);
+             for(let r=0; r<9; r++) {
+                 newBoard[r][stackStart] = oldBoard[r][stackStart + cols[0]];
+                 newBoard[r][stackStart+1] = oldBoard[r][stackStart + cols[1]];
+                 newBoard[r][stackStart+2] = oldBoard[r][stackStart + cols[2]];
+             }
+        }
+    }
+
+    return newBoard;
+}
+
 /**
  * Generates a playable Sudoku board
  * difficulty: 'easy' | 'medium' | 'hard' | 'expert' | 'master'
@@ -249,112 +324,39 @@ export function generateSudoku(difficulty: 'easy' | 'medium' | 'hard' | 'expert'
 	initialBoard: Board;
 	solution: number[][];
 } {
-	// 1. Generate full solved board
-	const fullBoard = createEmptyBoard();
-	solve(fullBoard);
-	const solution = fullBoard.map((row) => [...row]); 
+    // 1. Select a Seed
+    const seeds = VALID_SEEDS_BY_DIFF[difficulty] || MEDIUM_SEEDS;
+    const seedString = seeds[Math.floor(Math.random() * seeds.length)];
 
-    // Target Logic Level:
-    // Easy: Level 1 (Naked Singles)
-    // Medium: Level 2 (Hidden Singles)
-    // Hard/Expert/Master: Level 3 (Stuck)
-    
-    let targetLevel = 2;
-    if (difficulty === 'easy') targetLevel = 1;
-    if (difficulty === 'hard' || difficulty === 'expert' || difficulty === 'master') targetLevel = 3;
-
-    // Retry loop to find a board with desired difficulty logic
-    
-    let bestPuzzle = null;
-    let attempts = 0;
-    
-    // Standard clues count to aim for initially
-    let targetClues = 40; // baseline
-    if(difficulty === 'easy') targetClues = 45; 
-    if(difficulty === 'medium') targetClues = 35;
-    if(difficulty === 'hard') targetClues = 28;
-    if(difficulty === 'expert') targetClues = 22;
-    if(difficulty === 'master') targetClues = 17; // Minimum possible
-
-    // Increase max attempts for harder puzzles as they are harder to generate
-    let maxAttempts = 20;
-    if (difficulty === 'expert') maxAttempts = 50;
-    if (difficulty === 'master') maxAttempts = 100;
-
-    while (attempts < maxAttempts) {
-        const puzzle = fullBoard.map(row => [...row]);
-        const positions = [];
-        for(let r=0; r<9; r++) for(let c=0; c<9; c++) positions.push([r,c]);
-        positions.sort(() => Math.random() - 0.5);
-        
-        // Carve
-        for (const [r, c] of positions) {
-            let filledCount = 0;
-            for(let i=0; i<9; i++) for(let j=0; j<9; j++) if(puzzle[i][j] !== 0) filledCount++;
-            if (filledCount <= targetClues) break; 
-            
-            const saved = puzzle[r][c];
-            puzzle[r][c] = 0;
-            
-            // Check uniqueness (basic validity)
-            if (countSolutions(puzzle, 2) !== 1) {
-                puzzle[r][c] = saved; // put back
-                continue;
+    // 2. Convert Seed String (or array) to 2D Array
+    let seedBoard: number[][] = [];
+    if (typeof seedString === 'string') {
+        // Handle "000...000" or simple strings
+        const cleaned = seedString.replace(/[^0-9]/g, '').replace(/\./g, '0');
+        for(let i=0; i<9; i++) {
+            const row: number[] = [];
+            for(let j=0; j<9; j++) {
+                row.push(parseInt(cleaned[i*9 + j] || '0'));
             }
-            
-            if (targetLevel <= 2) { 
-                 const currentLevel = analyzeDifficulty(puzzle);
-                 if (currentLevel > targetLevel) {
-                     // Too hard!
-                     puzzle[r][c] = saved; // Put back
-                 }
-            }
+            seedBoard.push(row);
         }
-        
-        // Final check
-        const level = analyzeDifficulty(puzzle);
-        
-        let valid = false;
-        if (targetLevel === 3) valid = (level === 3);
-        else valid = (level <= targetLevel);
-        
-        // Relax validation for Master/Expert if we are close enough to target clues
-        // because finding exactly 17 with strictly Level 3 is hard.
-        // If we found a valid 17-clue puzzle, it's probably hard enough.
-        if (difficulty === 'master') {
-             let clues = 0;
-             for(let r=0; r<9; r++) for(let c=0; c<9; c++) if(puzzle[r][c]!==0) clues++;
-             if (clues <= 19) valid = true; // Accept up to 19 for Master
+    } else {
+        // Fallback if we added array seeds
+        const flat = seedString as number[];
+        for(let i=0; i<9; i++) {
+            seedBoard.push(flat.slice(i*9, (i+1)*9));
         }
-
-        if (valid) {
-            bestPuzzle = puzzle;
-            break;
-        }
-        attempts++;
-    }
-    
-    // Fallback
-    if (!bestPuzzle) {
-         // Naive fallback
-         const puzzle = fullBoard.map(row => [...row]);
-         const positions = [];
-         for(let r=0; r<9; r++) for(let c=0; c<9; c++) positions.push([r,c]);
-         positions.sort(() => Math.random() - 0.5);
-         for(const [r,c] of positions) {
-             let filled = 0; 
-             for(let rows of puzzle) for(let v of rows) if(v!==0) filled++;
-             if(filled <= targetClues + 2) break; // Relaxed fallback target
-             const s = puzzle[r][c];
-             puzzle[r][c] = 0;
-             if(countSolutions(puzzle, 2) !== 1) puzzle[r][c] = s;
-         }
-         bestPuzzle = puzzle;
     }
 
+    // 3. Transform to create variety
+    const puzzle = transformBoard(seedBoard);
+    
+    // 4. Solve to get the full solution
+    const solutionBoard = puzzle.map(row => [...row]);
+    solve(solutionBoard);
 
-	// Convert to Cell objects
-	const initialBoard: Board = bestPuzzle.map((row, rIdx) =>
+	// 5. Convert to Cell objects
+	const initialBoard: Board = puzzle.map((row, rIdx) =>
 		row.map((val, cIdx) => ({
 			row: rIdx,
 			col: cIdx,
@@ -364,5 +366,5 @@ export function generateSudoku(difficulty: 'easy' | 'medium' | 'hard' | 'expert'
 		}))
 	);
 
-	return { initialBoard, solution };
+	return { initialBoard, solution: solutionBoard };
 }
