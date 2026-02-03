@@ -16,33 +16,25 @@ export const TitleService = {
         const playCount = parseInt(gameRes.rows[0]?.play_count || '0');
 
         // Check Ranking #1 for specific categories
-        // Sudoku Hard #1
-        const sudokuHardRankRes = await query(`
+        
+        // Sudoku Master: Total Score Ranking #1 (Matches Leaderboard)
+        const sudokuTotalRankRes = await query(`
             SELECT rank FROM (
-                SELECT user_id, RANK() OVER (ORDER BY clear_time ASC) as rank
+                SELECT user_id, RANK() OVER (ORDER BY SUM(score) DESC) as rank
                 FROM minigame_rankings
-                WHERE game_id = 'sudoku' AND difficulty = 'hard'
+                WHERE game_id = 'sudoku'
+                GROUP BY user_id
             ) as r WHERE user_id = $1
         `, [userId]);
-        const isSudokuHardRank1 = sudokuHardRankRes.rows[0]?.rank === '1';
-
-        // Sudoku Easy #1 (Speed Demon)
-        const sudokuEasyRankRes = await query(`
-            SELECT rank FROM (
-                SELECT user_id, RANK() OVER (ORDER BY clear_time ASC) as rank
-                FROM minigame_rankings
-                WHERE game_id = 'sudoku' AND difficulty = 'easy'
-            ) as r WHERE user_id = $1
-        `, [userId]);
-        const isSudokuEasyRank1 = sudokuEasyRankRes.rows[0]?.rank === '1';
+        const isSudokuMaster = sudokuTotalRankRes.rows[0]?.rank === '1';
 
         // 2. Define Criteria
         const checks = [
             { code: 'beginner', check: () => playCount >= 1 },
             { code: 'point_collector', check: () => totalPoints >= 1000 },
             { code: 'rich_person', check: () => totalPoints >= 5000 },
-            { code: 'sudoku_master', check: () => isSudokuHardRank1 },
-            { code: 'speed_demon', check: () => isSudokuEasyRank1 }
+            { code: 'sudoku_master', check: () => isSudokuMaster }
+            // 'speed_demon' removed as Easy Rank is not visible to users
         ];
 
         // 3. Assign Titles

@@ -3,13 +3,9 @@ import { verifyAttendeeSession } from '$lib/server/auth';
 import type { PageServerLoad } from './$types';
 import { redirect } from '@sveltejs/kit';
 
-export const load: PageServerLoad = async ({ cookies }) => {
-    const userSessionToken = cookies.get('user_session');
-    if (!userSessionToken) {
-        throw redirect(302, '/login');
-    }
+export const load: PageServerLoad = async ({ parent }) => {
+    const { user } = await parent();
 
-    const user = await verifyAttendeeSession(userSessionToken);
     if (!user) {
         throw redirect(302, '/login');
     }

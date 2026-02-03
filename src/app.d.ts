@@ -3,7 +3,22 @@
 declare global {
 	namespace App {
 		// interface Error {}
-		// interface Locals {}
+		interface Locals {
+            user?: {
+                id: number;
+                name: string;
+                is_admin: boolean;
+                can_manage_games: boolean;
+                penalty_points: number;
+                is_blacklisted: boolean;
+                title?: {
+                    id: number;
+                    title_name: string;
+                    description?: string;
+                    is_equipped: boolean;
+                };
+            }
+        }
 		// interface PageData {}
 		// interface PageState {}
 		// interface Platform {}

@@ -1,4 +1,5 @@
 <script lang="ts">
+    import { invalidateAll } from '$app/navigation';
     import { onMount } from 'svelte';
     import type { PageData } from './$types';
     export let data: PageData;
@@ -59,7 +60,13 @@
     let isMonthOpen = false;
 
     // Title Management
-    let myTitles: any[] = [];
+    interface Title {
+        id: number;
+        title_name: string;
+        description: string;
+        is_equipped: boolean;
+    }
+    let myTitles: Title[] = [];
     let loadingTitles = true;
 
     async function loadTitles() {
@@ -76,8 +83,13 @@
         }
     }
 
+    let equippingId: number | null = null;
+
     async function equipTitle(titleId: number) {
-        if(!confirm('이 칭호를 장착하시겠습니까?')) return;
+        if (equippingId) return; // Prevent double clicks
+        // Removed native confirm for smoother UX
+        equippingId = titleId;
+        
         try {
             const res = await fetch('/api/user/titles/equip', {
                 method: 'POST',
@@ -85,17 +97,16 @@
                 body: JSON.stringify({ titleId })
             });
             if (res.ok) {
-                // Determine the titleName for local application if needed, OR just reload titles/page
-                // Ideally refresh data to update the equipped state globally
                 await loadTitles(); 
-                alert('칭호가 변경되었습니다.');
-                window.location.reload(); // Refresh to update Header title display
+                await invalidateAll(); 
             } else {
-                alert('변경 실패');
+                // Silent fail or toast? For now just log
+                console.error('Failed to equip');
             }
         } catch(e) {
             console.error(e);
-            alert('오류가 발생했습니다.');
+        } finally {
+            equippingId = null;
         }
     }
 
@@ -143,7 +154,12 @@
         <h1>마이페이지</h1>
         {#if data.user}
             <div class="user-simple">
-                <span class="user-name"><strong>{data.user.name}</strong> 님</span>
+                <span class="user-name">
+                    {#if data.user.title}
+                        <span class="user-title">[{data.user.title.title_name}]</span>
+                    {/if}
+                    <strong>{data.user.name}</strong> 님
+                </span>
                 
                 {#if data.user.is_admin}
                     <a href="/admin/games" class="btn-admin-link">⚙️</a>
@@ -226,7 +242,14 @@
                             <p class="title-desc">{title.description || '특별한 칭호입니다.'}</p>
                             
                             {#if !title.is_equipped}
-                                <button class="btn-equip" on:click={() => equipTitle(title.id)}>장착하기</button>
+                                <button 
+                                    class="btn-equip" 
+                                    class:loading={equippingId === title.id}
+                                    on:click={() => equipTitle(title.id)}
+                                    disabled={equippingId !== null}
+                                >
+                                    {equippingId === title.id ? '장착 중...' : '장착하기'}
+                                </button>
                             {/if}
                         </div>
                     {/each}
@@ -390,6 +413,12 @@
     }
     .user-name {
         color: #555;
+    }
+    .user-title {
+        color: #e67700;
+        font-weight: 700;
+        margin-right: 4px;
+        font-size: 0.9em;
     }
     .btn-logout-text {
         background: none;
@@ -722,6 +751,14 @@
     .btn-equip:hover {
         background: #e0e0e0;
         color: #333;
+    }
+    .btn-equip:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+    }
+    .btn-equip.loading {
+        background: #f8f9fa;
+        color: #999;
     }
     .loading, .empty-titles {
         text-align: center;
