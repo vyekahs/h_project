@@ -4,9 +4,12 @@
 	import BoardComponent from './Board.svelte';
 	import Controls from './Controls.svelte';
     import { goto } from '$app/navigation';
+    import { browser } from '$app/environment';
     import RankingBoard from '$lib/components/gamification/RankingBoard.svelte';
     import RewardedAd from '$lib/components/ads/RewardedAd.svelte';
     import { user } from '$lib/stores/user';
+    import TutorialModal from './TutorialModal.svelte';
+    import { TUTORIAL_ORDER, TUTORIALS } from './tutorialData';
 
     // Game States: 'start', 'playing', 'paused', 'finished'
     type GameState = 'start' | 'playing' | 'paused' | 'finished';
@@ -37,18 +40,27 @@
     let timerInterval: any;
     
     // View state for Start Screen
-    let view: 'game' | 'ranking' = $state('game');
+    let view: 'game' | 'ranking' | 'tutorials_list' = $state('game');
     
     // Simple history stack: stores JSON string of board state
     let history: string[] = $state([]);
     
     let showTutorial = $state(false);
+    let activeTutorialId = $state('easy_1'); // Default
     let earnedPointsResult = $state(0);
     let calculatedScore = $state(0);
     let isTimeFrozen = $state(false); // For Time Stop item
 
     let hasSavedGame = $state(false);
     let startMode: 'initial' | 'diff_select' = $state('initial');
+    let hasUnlockedTutorials = $state(false);
+
+    // Derived unlocked list for UI
+    let unlockedTutorialIDs = $derived.by(() => {
+        const db = ($user as any)?.completedTutorials || [];
+        const local = browser ? JSON.parse(localStorage.getItem('sudoku_unlocked_tutorials') || '[]') : [];
+        return new Set([...db, ...local]);
+    });
 
     // Load game on mount
     onMount(() => {
@@ -72,6 +84,17 @@
         return () => {
             clearInterval(timerInterval);
         };
+    });
+
+    $effect(() => {
+        if (browser) {
+            const unlockedLocal = JSON.parse(localStorage.getItem('sudoku_unlocked_tutorials') || '[]');
+            const unlockedDB = $user.completedTutorials || [];
+            
+            if (unlockedLocal.length > 0 || unlockedDB.length > 0) {
+                hasUnlockedTutorials = true;
+            }
+        }
     });
 
     function loadSavedGame() {
@@ -191,17 +214,107 @@
         return completed;
     });
 
-    // Start Screen Logic
-    function startGame(force = false) {
-        if (!force && difficulty === 'easy') {
-            showTutorial = true;
-            return;
+    // Tutorial Logic
+    function checkAndShowTutorial(diff: string) {
+        if (!browser) return false;
+        
+        const unlocked = JSON.parse(localStorage.getItem('sudoku_unlocked_tutorials') || '[]');
+        
+        // Determine which tutorial to show based on difficulty
+        let targetId: string | null = null;
+        
+        if (diff === 'easy') {
+            // Show first uncompleted easy tutorial
+            if (!unlocked.includes('easy_1')) targetId = 'easy_1';
+            else if (!unlocked.includes('easy_2')) targetId = 'easy_2';
+            else if (!unlocked.includes('easy_3')) targetId = 'easy_3';
+        } else if (diff === 'medium') {
+            // Require easy_3 to be completed
+            if (unlocked.includes('easy_3')) {
+                if (!unlocked.includes('medium_1')) targetId = 'medium_1';
+                else if (!unlocked.includes('medium_2')) targetId = 'medium_2';
+            }
+        } else if (diff === 'hard') {
+            // Require medium_2 to be completed
+            if (unlocked.includes('medium_2')) {
+                if (!unlocked.includes('hard_1')) targetId = 'hard_1';
+                else if (!unlocked.includes('hard_2')) targetId = 'hard_2';
+            }
+        } else if (diff === 'expert' || diff === 'master') {
+            // Require hard_2 to be completed
+            if (unlocked.includes('hard_2')) {
+                if (!unlocked.includes('expert_1')) targetId = 'expert_1';
+                else if (!unlocked.includes('expert_2')) targetId = 'expert_2';
+                else if (!unlocked.includes('expert_3')) targetId = 'expert_3';
+            }
         }
+        
+        if (targetId) {
+            openTutorial(targetId);
+            return true;
+        }
+        return false;
+    }
+    
+    function openTutorial(id: string) {
+        activeTutorialId = id;
+        showTutorial = true;
+    }
+
+    // Start Screen Logic
+    function startGame(force = false, skipTutorialCheck = false) {
+        // 1. Tutorial Check
+        if (!skipTutorialCheck && !force) { 
+             // Note: !force means we are likely starting normally.
+             // But valid `force` usage in code includes:
+             // - "New Game" button (force=true? No, traditionally just calls startGame())
+             // Wait, original startGame had `force` for skipping "Resume" check.
+             // My previous logic had `checkAndShowTutorial` *inside*.
+             
+             // If difficulty is Easy, original code showed tutorial unconditionally.
+             // New logic: Check progressive systems.
+             const shouldShow = checkAndShowTutorial(difficulty);
+             if (shouldShow) return;
+        }
+
+        // 2. Play Count & Unlock Logic (Only for new games)
+        if (force || !hasSavedGame) {
+             if (browser) {
+                const playCounts = JSON.parse(localStorage.getItem('sudoku_play_counts') || '{}');
+                playCounts[difficulty] = (playCounts[difficulty] || 0) + 1;
+                localStorage.setItem('sudoku_play_counts', JSON.stringify(playCounts));
+                
+                // Track unlocked tutorials
+                // Only unlock if we just finished showing it (showTutorial is true)
+                if (showTutorial && activeTutorialId) {
+                     const unlocked = JSON.parse(localStorage.getItem('sudoku_unlocked_tutorials') || '[]');
+                     if (!unlocked.includes(activeTutorialId)) {
+                         unlocked.push(activeTutorialId);
+                         localStorage.setItem('sudoku_unlocked_tutorials', JSON.stringify(unlocked));
+                         
+                         // Sync to DB
+                         fetch('/api/user/tutorials/complete', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ tutorialId: activeTutorialId })
+                         }).then(async (res) => {
+                             if (res.ok) {
+                                  // Refresh user data to get updated list
+                                  await user.refresh();
+                             }
+                         });
+                     }
+                     // Force UI update
+                     hasUnlockedTutorials = true;
+                }
+             }
+        }
+        
+        showTutorial = false;
         
         // Clear any old save first
         localStorage.removeItem('sudoku_save');
         
-        showTutorial = false;
         const result = generateSudoku(difficulty);
 		board = result.initialBoard;
 		solution = result.solution;
@@ -218,7 +331,7 @@
         const data = {
             board,
             solution,
-            timer: 0, // Explicitly set to 0
+            timer: 0, 
             mistakes,
             difficulty,
             history
@@ -479,32 +592,42 @@
         expert: '전문가',
         master: '마스터'
     };
+
+
 </script>
 
 <div class="game-container">
     {#if showTutorial}
-        <div class="overlay">
-            <div class="modal tutorial-modal">
-                <h2>스도쿠 배우기 🎓</h2>
-                <div class="tutorial-content">
-                    <p>스도쿠는 논리 퍼즐입니다. 다음 규칙을 따라 빈칸을 채워보세요!</p>
-                    <ul>
-                        <li>👉 <strong>가로줄</strong>에 1부터 9까지 중복 없이 채우기</li>
-                        <li>👉 <strong>세로줄</strong>에 1부터 9까지 중복 없이 채우기</li>
-                        <li>👉 <strong>3x3 박스</strong> 안에 1부터 9까지 중복 없이 채우기</li>
-                    </ul>
-                    <p class="tip">💡 <strong>팁:</strong> 확실한 숫자부터 채워나가세요!</p>
-                </div>
-                <button class="btn-primary" onclick={() => startGame(true)}>알겠어요! 시작하기</button>
-            </div>
-        </div>
+        <TutorialModal tutorialId={activeTutorialId} onclose={(shouldStart: boolean) => {
+            if (shouldStart) {
+                // startGame will mark tutorial as complete and then set showTutorial = false
+                startGame(true);
+            } else {
+                showTutorial = false;
+            }
+        }} />
         
     {:else if gameState === 'start'}
         <div class="screen start-screen">
             <div class="start-header">
-                <a href="/minigames" class="header-link left">← 오락실</a>
-                <h1>Sudoku</h1>
-                <button class="header-link right" onclick={() => view = 'ranking'}>랭킹 🏆</button>
+                {#if view === 'tutorials_list'}
+                    <button class="header-link left" onclick={() => view = 'game'}>← 뒤로</button>
+                    <h1>공략집 📖</h1>
+                    <div class="header-links"></div>
+                {:else if view === 'ranking'}
+                    <button class="header-link left" onclick={() => view = 'game'}>← 뒤로</button>
+                    <h1>랭킹 🏆</h1>
+                    <div class="header-links"></div>
+                {:else}
+                    <a href="/minigames" class="header-link left">← 오락실</a>
+                    <h1>Sudoku</h1>
+                    <div class="header-links">
+                        <button class="header-link" onclick={() => view = 'ranking'}>랭킹 🏆</button>
+                        {#if hasUnlockedTutorials}
+                            <button class="header-link" onclick={() => view = 'tutorials_list'}>공략집 📖</button>
+                        {/if}
+                    </div>
+                {/if}
             </div>
             
             {#if hasSavedGame && view === 'game' && startMode === 'initial'}
@@ -555,8 +678,28 @@
 
             {#if view === 'ranking'}
                 <RankingBoard gameId="sudoku" />
-                <button class="btn-text" onclick={() => view = 'game'}></button>
             {/if}
+
+            {#if view === 'tutorials_list'}
+                <div class="tutorial-list-container">
+                    <div class="tutorial-list">
+                        {#each TUTORIAL_ORDER as tid}
+                            {@const t = TUTORIALS[tid]}
+                            {#if unlockedTutorialIDs.has(tid)}
+                                <button class="tutorial-list-item" onclick={() => openTutorial(tid)}>
+                                    <div class="t-info">
+                                        <span class="t-badge {t.difficulty}">{t.difficulty.toUpperCase()}</span>
+                                        <span class="t-title">{t.title}</span>
+                                    </div>
+                                    <span class="t-arrow">›</span>
+                                </button>
+                            {/if}
+                        {/each}
+                    </div>
+                </div>
+                <div></div>
+            {/if}
+
         </div>
     
     {:else}
@@ -1285,4 +1428,86 @@
             font-size: 1.8rem;
         }
     }
+
+    /* Tutorial List Styles */
+    .tutorial-list-container {
+        width: 100%;
+        max-width: 500px;
+        margin: 0 auto;
+    }
+    
+    .tutorial-list {
+        display: flex;
+        flex-direction: column;
+        width: 100%;
+        background: #fff;
+        border-radius: 12px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+        overflow: hidden;
+    }
+    
+    .tutorial-list-item {
+        background: white;
+        border: none;
+        border-bottom: 1px solid #f0f0f0;
+        padding: 1rem 1.2rem;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        width: 100%;
+        text-align: left;
+        cursor: pointer;
+        transition: background 0.2s;
+    }
+    
+    .tutorial-list-item:hover {
+        background: #f5f5f7;
+    }
+    
+    .tutorial-list-item:last-child {
+        border-bottom: none;
+    }
+    
+    .t-info {
+        display: flex;
+        align-items: center;
+        gap: 0.8rem;
+    }
+    
+    .t-badge {
+        font-size: 0.65rem;
+        font-weight: 700;
+        padding: 0.25rem 0.5rem;
+        border-radius: 4px;
+        background: #eee;
+        color: #666;
+        min-width: 50px;
+        text-align: center;
+    }
+    .t-badge.easy { background: #e8f5e9; color: #2e7d32; }
+    .t-badge.medium { background: #fff3e0; color: #ef6c00; }
+    .t-badge.hard { background: #ffebee; color: #c62828; }
+    
+    .t-title {
+        font-size: 1rem;
+        font-weight: 600;
+        color: #333;
+    }
+    
+    .t-arrow {
+        color: #ccc;
+        font-size: 1.5rem;
+        font-weight: 300;
+    }
+    
+    .empty-state {
+        text-align: center;
+        padding: 3rem 1rem;
+        color: #888;
+    }
+    
+    .empty-state p {
+        margin: 0.5rem 0;
+    }
+
 </style>
