@@ -23,7 +23,7 @@ describe('Admin Stats', () => {
         (query as any).mockResolvedValueOnce({ rows: [{ hour: 14, count: 5 }] }); // peakHours
         (query as any).mockResolvedValueOnce({ rows: [] }); // popularGames
 
-        const result = await load({} as any);
+        const result = await load({} as any) as any;
 
         expect(result.kpis).toEqual({
             totalVisits: 100,

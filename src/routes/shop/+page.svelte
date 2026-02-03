@@ -5,7 +5,7 @@
 
     let shopItems: any[] = $state([]);
     let loading = $state(true);
-    let error = $state(null);
+    let error: string | null = $state(null);
     let purchasing: string | null = $state(null);
     let activeTab: 'shop' | 'inventory' = $state('shop');
 

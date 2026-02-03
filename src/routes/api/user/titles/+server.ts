@@ -7,7 +7,7 @@ export async function GET({ locals }) {
     }
     
     try {
-        const titles = await TitleService.getOwnedTitles(parseInt(locals.user.id));
+        const titles = await TitleService.getOwnedTitles(locals.user.id);
         return json(titles);
     } catch (e) {
         console.error('Failed to fetch titles', e);

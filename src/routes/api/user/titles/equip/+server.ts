@@ -12,7 +12,7 @@ export async function POST({ request, locals }) {
     }
     
     try {
-        await TitleService.equipTitle(parseInt(locals.user.id), titleId);
+        await TitleService.equipTitle(locals.user.id, titleId);
         return json({ success: true });
     } catch (e: any) {
         console.error('Failed to equip title', e);

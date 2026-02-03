@@ -293,13 +293,14 @@
                                 <form method="POST" action="?/leaveScheduledGame" on:submit|preventDefault={(e) => {
                                     const scheduledAt = new Date(game.scheduled_at).getTime();
                                     const now = Date.now();
+                                    const form = e.target as HTMLFormElement;
                                     if (scheduledAt - now < 10 * 60 * 1000) {
                                         if (confirm('⚠️ 시작 10분 전입니다. 지금 취소하면 페널티가 부여됩니다. 정말 취소하시겠습니까?')) {
-                                            e.target.submit();
+                                            form.submit();
                                         }
                                     } else {
                                         if (confirm('정말 참여를 취소하시겠습니까?')) {
-                                            e.target.submit();
+                                            form.submit();
                                         }
                                     }
                                 }}>
@@ -428,11 +429,12 @@
                                 </div>
                                 <div class="players">
                                     {#each (game.players || []) as player}
+                                        {@const p = player as any}
                                         <div class="player-tag">
-                                            {#if player.title_name}
-                                                <span class="tag-title">[{player.title_name}]</span>
+                                            {#if p.title_name}
+                                                <span class="tag-title">[{p.title_name}]</span>
                                             {/if}
-                                            {player.name}
+                                            {p.name}
                                         </div>
                                     {/each}
                                 </div>
@@ -506,7 +508,7 @@
                                         </form>
                                     </div>
                                 {/if}
-                                {#if data.user && !(game.participants || []).some(p => p.id === data.user.id)}
+                                {#if data.user && !(game.participants || []).some((p: any) => p.id === data.user!.id)}
                                     {@const hasConflict = (() => {
                                         const targetDate = new Date(game.scheduled_at).toDateString();
                                         if (data.userPlayingGame) {
