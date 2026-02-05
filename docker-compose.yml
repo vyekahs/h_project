@@ -8,6 +8,7 @@ services:
       - ORIGIN=${ORIGIN:-https://damonpyo.mooo.com}
       - BODY_SIZE_LIMIT=Infinity
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin1234}
+      - SCANNER_API_KEY=${SCANNER_API_KEY:-hproject_scanner_secret_2026}
       - TZ=Asia/Seoul
     depends_on:
       - db

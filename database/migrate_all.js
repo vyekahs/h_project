@@ -67,7 +67,6 @@ async function migrate() {
         console.log('[5/5] Checking score column in session_participants...');
         await pool.query('ALTER TABLE session_participants ADD COLUMN IF NOT EXISTS score INTEGER DEFAULT 0;');
 
-
         // 6. User Devices (BLE IRK)
         console.log('[6/6] Checking user_devices table...');
         await pool.query(`
@@ -82,46 +81,6 @@ async function migrate() {
             );
         `);
 
-        // 7. Device Clusters
-        console.log('[7/7] Checking device_clusters table...');
-        await pool.query(`
-            CREATE TABLE IF NOT EXISTS device_clusters (
-                id SERIAL PRIMARY KEY,
-                main_mac TEXT NOT NULL,
-                sub_macs TEXT[] DEFAULT '{}',
-                attendee_id INTEGER REFERENCES attendees(id),
-                tracking_id TEXT, -- For RPA tracing
-                current_location TEXT, -- Zone Name
-                nearest_scanner_id TEXT, -- Scanner ID
-                updated_at TIMESTAMPTZ DEFAULT NOW(),
-                UNIQUE(main_mac)
-            );
-        `);
-
-        // 8. Desk Fingerprints
-        console.log('[8/8] Checking desk_fingerprints table...');
-        await pool.query(`
-            CREATE TABLE IF NOT EXISTS desk_fingerprints (
-                id SERIAL PRIMARY KEY,
-                desk_id TEXT NOT NULL,
-                anchor_id TEXT NOT NULL,
-                avg_rssi INTEGER NOT NULL,
-                created_at TIMESTAMPTZ DEFAULT NOW()
-            );
-        `);
-
-        // 9. Add Coordinates to Fingerprints
-        console.log('[9/9] Adding x, y to desk_fingerprints...');
-        await pool.query('ALTER TABLE desk_fingerprints ADD COLUMN IF NOT EXISTS x FLOAT;');
-        await pool.query('ALTER TABLE desk_fingerprints ADD COLUMN IF NOT EXISTS y FLOAT;');
-
-        // 10. Add is_moving to Clusters
-        console.log('[10/10] Adding is_moving to device_clusters...');
-        await pool.query('ALTER TABLE device_clusters ADD COLUMN IF NOT EXISTS is_moving BOOLEAN DEFAULT FALSE;');
-
-        // 11. Add is_admin to Attendees
-        console.log('[11/11] Adding is_admin to attendees...');
-        await pool.query('ALTER TABLE attendees ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT FALSE;');
         console.log('All migrations completed successfully!');
     } catch (err) {
         console.error('Migration failed:', err);

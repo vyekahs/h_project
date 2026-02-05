@@ -50,9 +50,34 @@ export const load: PageServerLoad = async ({ cookies }) => {
 
     const stats = statsResult.rows[0];
 
+    // Fetch Registered Devices
+    const devicesResult = await query('SELECT id, name, created_at, last_seen_at FROM user_devices WHERE attendee_id = $1 ORDER BY created_at DESC', [user.id]);
+
     return {
         user,
         history: historyResult.rows,
-        stats
+        stats,
+        devices: devicesResult.rows
     };
+};
+
+export const actions = {
+    deleteDevice: async ({ request, cookies }) => {
+        const userSessionToken = cookies.get('user_session');
+        if (!userSessionToken) return redirect(302, '/login');
+        const user = await verifyAttendeeSession(userSessionToken);
+        if (!user) return redirect(302, '/login');
+
+        const data = await request.formData();
+        const deviceId = data.get('deviceId');
+
+        if (!deviceId) return { error: 'Invalid ID' };
+
+        try {
+            await query('DELETE FROM user_devices WHERE id = $1 AND attendee_id = $2', [deviceId, user.id]);
+            return { success: true };
+        } catch (e) {
+            return { error: '기기 삭제에 실패했습니다.' };
+        }
+    }
 };
