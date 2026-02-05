@@ -80,6 +80,10 @@ async function migrate() {
                 CONSTRAINT unique_irk UNIQUE (irk)
             );
         `);
+
+        // 7. Season Pass
+        console.log('[7/7] Checking season_pass_expires_at column...');
+        await pool.query('ALTER TABLE attendees ADD COLUMN IF NOT EXISTS season_pass_expires_at TIMESTAMP WITH TIME ZONE;');
         // 11. Add is_admin to Attendees
         console.log('[11/11] Adding is_admin to attendees...');
         await pool.query('ALTER TABLE attendees ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT FALSE;');
