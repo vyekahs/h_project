@@ -15,6 +15,10 @@
         <form method="POST" action="?/updateSettings" use:enhance class="settings-card">
             <h3>🕒 운영 시간 설정</h3>
             <div class="setting-item">
+                <label>평일 오픈 시간</label>
+                <input type="time" name="opening_time" value={data.settings.opening_time} />
+            </div>
+            <div class="setting-item">
                 <label>평일 마감 시간</label>
                 <input type="time" name="closing_time_weekday" value={data.settings.closing_time_weekday} />
             </div>

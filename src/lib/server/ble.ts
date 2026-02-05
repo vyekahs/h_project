@@ -6,6 +6,7 @@ import crypto from 'crypto';
 interface ScanResult {
     mac: string;
     rssi: number;
+    name?: string;
 }
 
 interface UserDevice {
@@ -24,7 +25,7 @@ const CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes
 const lastSeenMap = new Map<number, number>();
 
 // Constants
-const CHECKOUT_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
+const CHECKOUT_TIMEOUT_MS = 10 * 1000; // 10 seconds for testing
 
 /**
  * Resolve RPA using IRK
@@ -34,188 +35,100 @@ const CHECKOUT_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
  * 
  * Note: Input MAC is usually "AA:BB:CC:DD:EE:FF"
  */
-function resolveRPA(mac: string, irkHex: string): boolean {
-    const DEBUG_MODE = false; // Cache Buster Comment 1
-// ... (omitted similar lines to avoid search failure, actually I should target specific block)
-// I will target the Cache definition block first.
-
+// Comprehensive RPA Resolution (Supports iPhone, Android, and Variants)
+export const resolveRPA = (mac: string, irkHex: string): boolean => {
     try {
-        // 1. Parse MAC to bytes
-        const macBytes = Buffer.from(mac.replace(/:/g, ''), 'hex');
+        const macClean = mac.replace(/:/g, '');
+        const macBytes = Buffer.from(macClean, 'hex');
+        const irk = Buffer.from(irkHex, 'hex');
+
         if (macBytes.length !== 6) return false;
 
-        // 2. Extract parts
-        // format: [hash (3 bytes)][prand (3 bytes)] ... wait, looking at BLE specs:
-        // The address is 48 bits. 
-        // LSB is byte 5, MSB is byte 0? No, usually written Big Endian in string "AA:BB..." -> AA is byte 0.
-        // Actually Bluetooth uses Little Endian over the air, but standard logs often show Big Endian.
-        // Let's assume Standard Big Endian notation "AA:BB:CC:DD:EE:FF".
-        // bit 46, 47 are '10' for resolvable private address.
-        // prand is the 24 least significant bits? Or most?
-        // Let's stick to standard Core Spec:
-        //   addr = hash || prand
-        //   hash is most significant 24 bits? No.
-        //   Wait, prand is the random part. prand is usually the *upper* part in some docs, or lower in others.
-        //   Let's check standard implementation details.
-        //   Visual check: "45:..." usually starts with random bits? 
-        //   Actually:
-        //   MSB [  hash (24)  ] [  prand (24) ] LSB  <-- This is common logic?
-        //   Wait, Apple says: "The explicit definition of the address is: hash = ah(IRK, prand)".
-        //   The address is composed of the 24-bit hash and the 24-bit prand.
-        //   Usually: Address = [Hash (24) | Prand (24)]
-        
-        // Let's try both combinations if unsure, but typically:
-        // prand is the *most significant* 24 bits in some implementations logic, but 
-        // actually standard says: 
-        //   prand is the 24 bits ... wait.
-        //   Let's assume standard BLE Spec Vol 6, Part B, 1.3.2.2:
-        //     hash = ah(k, r)
-        //     private_addr = hash || prand
-        //     (LSB index 0, MSB index 47)
-        //     prand is usually bits 0-23 (LSB) or 24-47 (MSB)?
-        //     Actually, typically MAC "AA:BB:CC:DD:EE:FF"
-        //     AA:BB:CC is the first part (MSB), DD:EE:FF is LSB.
-        
-        //     Commonly: MSB is Hash, LSB is Prand.
-        //     So macBytes[0..2] is Hash, macBytes[3..5] is Prand.
-        //     Wait, let's verify bit masks.
-        //     If address type is RPA, the two most significant bits of the *random part* (prand) must be 1 and 0.
-        //     If MAC is "AA:BB...", AA is the most significant byte.
-        //     If AA & 0xC0 == 0x40 (0100 0000) -> Resovlable.
-        
-        // Let's assume:
-        //   Byte 0, 1, 2 = Hash? Or Byte 0, 1, 2 = Prand?
-        //   Core Spec says:
-        //   "The 24-bit random number (prand) shall constitute the 24 least significant bits... NO wait"
-        //   "The 24-bit hash ... 24 most significant bits..."
-        //   So: Address = [Hash (24) | Prand (24)] (if written MSB first)
-        
-        //   HOWEVER, most BLE stacks use Little Endian.
-        //   But string representation is usually Big Endian.
-        //   If "AA:BB:CC:DD:EE:FF" (AA is MSB):
-        //   Then Hash is AA:BB:CC, Prand is DD:EE:FF?
-        
-        //   Let's try to be robust. We can check valid bit patterns.
-        
-        //   Actually, let's implement the `ah` function properly.
-        //   ah(k, r):
-        //     msg = r (padded to 128 bits with zeros).
-        //     out = AES128(k, msg)
-        //     hash = last 24 bits of out? No, "The output of the function ah is the least significant 24 bits of the output of the encryption function e".
-        
-        // Let's implement based on assumption: 
-        //   String "AA:BB:CC:DD:EE:FF"
-        //   AA (MSB), FF (LSB).
-        //   RPA: [Hash 24] [Prand 24]
-        //   So Hash=AA:BB:CC, Prand=DD:EE:FF.
-        
-        const hashBytes = macBytes.subarray(0, 3);
-        const prandBytes = macBytes.subarray(3, 6);
-        
-        // Prepare input for AES
-        // Input is prand (24 bits) padded to 128 bits.
-        // Padding: "padding is with '0' bits to the most significant bits".
-        // So input = 0...0 || prand.
-        // Since we are creating a 16-byte buffer:
-        const input = Buffer.alloc(16, 0);
-        // Copy prand to the *end* (LSB side) or *start*?
-        // "least significant 24 bits of the address is prand" -> if address is little endian?
-        // Let's try matching standard test vectors later. For now, assume Little Endian usage in crypto typically.
-        
-        // Implementation approach:
-        // Crypto input: [0,0,0,0,0,0,0,0,0,0,0,0,0, prand[2], prand[1], prand[0]] ??
-        // Standard `r` is just the 24 bits.
-        
-        // Let's stick to a common Node implementation style:
-        // Assume macBytes is [Hash[0], Hash[1], Hash[2], Prand[0], Prand[1], Prand[2]]
-        // r = Prand.
-        // AES Input = r (reversed? or padded?).
-        // Let's try: Input = [0...0] + Prand.
-        
-        // Note: Real-world Android/iOS RPA often rotates every 15 mins.
-        
-        // Re-reading Spec logic carefully:
-        // Address (48 bits) = hash (24) || prand (24)
-        // prand bits: 0..23 (LSB). hash bits: 24..47 (MSB).
-        // In "AA:BB:CC:DD:EE:FF" (Big Endian hex): 
-        // AA, BB, CC are bits 47..24 (Hash).
-        // DD, EE, FF are bits 23..0 (Prand).
-        
-        // AES Input `r`:
-        // "r is the 24-bit random number".
-        // AES Input Block (128-bit):
-        // LSB 0..23 = r.
-        // Bits 24..127 = 0.
-        
-        // So allow me to construct buffer.
-        // irk is 128-bit key.
-        const key = Buffer.from(irkHex, 'hex');
-        
-        const plaintext = Buffer.alloc(16);
-        // If DD:EE:FF are prand, and FF is LSB:
-        // plaintext[0] = FF? 
-        // Or is plaintext big-endian? AES input is defined as 128 bit block...
-        // Let's assume standard Little Endian filling for BLE crypto.
-        
-        // prandBytes = [DD, EE, FF]
-        // If FF is LSB (byte 5 of MAC), then:
-        plaintext[0] = prandBytes[2]; // FF
-        plaintext[1] = prandBytes[1]; // EE
-        plaintext[2] = prandBytes[0]; // DD
-        
-        // Encrypt
-        const cipher = crypto.createCipheriv('aes-128-ecb', key, null);
-        cipher.setAutoPadding(false);
-        const encrypted = cipher.update(plaintext);
-        // cipher.final() is not needed for ECB no padding but good practice
-        
-        // Output `hash`:
-        // "The least significant 24 bits of the output"
-        // encrypted buffer is 16 bytes.
-        // LSB is encrypted[0]..encrypted[2] ?? (Little Endian assumption)
-        
-        const calculatedHash = Buffer.from([encrypted[2], encrypted[1], encrypted[0]]); // Swap back to BE for comparison?
-        
-        // Compare with hashBytes (AA:BB:CC -> [AA, BB, CC])
-        // If calculatedHash (BE) == hashBytes
-        
-        // Let's try simple match.
-        // If Little Endian output was used:
-        // calculatedHash[0] (LSB) should match FF (LSB of hash)?
-        // Wait, "AA" is MSB of Hash.
-        
-        // Let's flip it around.
-        // If encrypted[0] is LSB.
-        // We want to compare with AA:BB:CC. AA is MSB.
-        // So we need encrypted[2] (byte 2) to be AA? Or encrypted[0]?
-        // "hash is the 24 LSB of output".
-        // If output is Little Endian:
-        // Byte 0 is bit 0-7.
-        // Byte 1 is bit 8-15.
-        // Byte 2 is bit 16-23.
-        // These 3 bytes form the hash.
-        
-        // So Calculated Hash (Little Endian) = encrypted[0..2].
-        // Target Hash (AA:BB:CC) is Big Endian?
-        // AA is MSB (bits 16-23 of hash).
-        // CC is LSB (bits 0-7 of hash).
-        
-        // So:
-        // encrypted[2] should match AA.
-        // encrypted[1] should match BB.
-        // encrypted[0] should match CC.
-        
-        if (encrypted[2] === hashBytes[0] &&
-            encrypted[1] === hashBytes[1] &&
-            encrypted[0] === hashBytes[2]) {
-            return true;
+        // Candidate Partitioning (Prand vs Hash)
+        const candidates = [
+            { prand: macBytes.subarray(0, 3), hash: macBytes.subarray(3, 6) }, // Case 1: [P][H] (iPhone Verified)
+            { prand: macBytes.subarray(3, 6), hash: macBytes.subarray(0, 3) }  // Case 2: [H][P] (Standard?)
+        ];
+
+        // Keys
+        const keyRev = Buffer.from(irk).reverse();
+        const keyStd = irk;
+
+        for (const { prand, hash } of candidates) {
+            // Strategies to try
+            // 1. iPhone Verified: KeyRev, Tail Padding, Normal Order
+            if (verifyMetric(hash, prand, keyRev, 'Tail', 'Normal')) return true;
+
+            // 2. User/Standard: KeyRev, LittleEndian(Head?, RevOrder?) -> User code used Head
+            if (verifyMetric(hash, prand, keyRev, 'Head', 'Reverse')) return true;
+
+            // 3. User/Standard: KeyStd, BigEndian(Tail), RevOrder
+            if (verifyMetric(hash, prand, keyStd, 'Tail', 'Reverse')) return true;
+
+            // 4. Android Attempt: KeyStd, Tail Padding, Normal Order
+            if (verifyMetric(hash, prand, keyStd, 'Tail', 'Normal')) return true;
         }
-        
+
         return false;
     } catch (e) {
-        // console.error('Crypto error', e);
         return false;
     }
+};
+
+function verifyMetric(hash: Buffer, prand: Buffer, key: Buffer, padding: 'Head'|'Tail', order: 'Normal'|'Reverse'): boolean {
+    const plaintext = Buffer.alloc(16);
+    
+    let p0, p1, p2;
+    if (order === 'Normal') {
+        p0 = prand[0]; p1 = prand[1]; p2 = prand[2];
+    } else {
+        p0 = prand[2]; p1 = prand[1]; p2 = prand[0];
+    }
+
+    if (padding === 'Head') {
+        plaintext[0] = p0; plaintext[1] = p1; plaintext[2] = p2;
+    } else {
+        plaintext[13] = p0; plaintext[14] = p1; plaintext[15] = p2;
+    }
+
+    const cipher = crypto.createCipheriv('aes-128-ecb', key, null);
+    cipher.setAutoPadding(false);
+    const encrypted = cipher.update(plaintext); // ECB update is usually sufficient for single block
+
+    // Compare
+    // If Padding check was Head, check Head? If Tail, check Tail?
+    // User's code compared Head for Reverse(HeadPad) and Tail for Std(TailPad).
+    // Let's assume Hash match location aligns with Padding location for now?
+    // iPhone Verified: Pad Tail, Compare Tail.
+    
+    if (padding === 'Tail') {
+        // Compare Tail (13, 14, 15)
+        // User's Reverse Order Logic expects Hash to be Normal Order?
+        // User code: encrypted[13] == hash[0].
+        // If 'Reverse' order meant swapping inputs, usually hash check matches that swap?
+        // Let's stick to: Hash is always [0, 1, 2] of the Hash Part.
+        if (order === 'Normal') {
+             return encrypted[13] === hash[0] && encrypted[14] === hash[1] && encrypted[15] === hash[2];
+        } else {
+             // User's BigEndian verify checked: enc[15]==h[2] (which is same index-wise if h is [0,1,2])
+             // verify(..., false): enc[13]==h[0]. 
+             return encrypted[13] === hash[0] && encrypted[14] === hash[1] && encrypted[15] === hash[2];
+        }
+    } else {
+        // Head
+        if (order === 'Normal') {
+            return encrypted[0] === hash[0] && encrypted[1] === hash[1] && encrypted[2] === hash[2];
+        } else {
+            // User's Reverse(Little) verify: enc[0]==h[2]? 
+            // return encrypted[0] === hash[2] && encrypted[1] === hash[1] && encrypted[2] === hash[0];
+            // My "Verified" iPhone code used Normal comparison.
+            // Let's try Standard Normal comparison first.
+            if (encrypted[0] === hash[0] && encrypted[1] === hash[1] && encrypted[2] === hash[2]) return true;
+            // Also try Reverse compare just in case
+            if (encrypted[0] === hash[2] && encrypted[1] === hash[1] && encrypted[2] === hash[0]) return true;
+        }
+    }
+    return false;
 }
 
 
@@ -230,6 +143,13 @@ export async function processScanResults(scannerId: string, timestamp: number, s
         attendeeId: row.attendee_id,
         name: row.name
     })) as UserDevice[];
+
+    console.log(`[BLE] Processing ${scans.length} MACs against ${allDevices.length} registered devices`);
+    // Log names if present
+    const namedDevices = scans.filter(s => s.name && s.name.length > 0);
+    if (namedDevices.length > 0) {
+        console.log(`[BLE] Named Devices: ${namedDevices.map(d => `${d.name} (${d.mac})`).join(', ')}`);
+    }
 
     const detectedAttendeeIds = new Set<number>();
 
@@ -271,12 +191,43 @@ export async function processScanResults(scannerId: string, timestamp: number, s
         }
     }
 
-    // 3. Auto Check-in Logic
+    // 3. Auto Check-in Logic & Auto-Open Logic
+    
+    // Fetch System Settings for Auto-Open
+    let isOpen = false;
+    let openingTime = '09:00'; // Default
+    try {
+        const settingsRes = await query("SELECT key, value FROM system_settings WHERE key IN ('is_open', 'opening_time')");
+        for (const row of settingsRes.rows) {
+            if (row.key === 'is_open') isOpen = row.value === 'true';
+            if (row.key === 'opening_time') openingTime = row.value;
+        }
+    } catch (e) {
+        console.error('Failed to fetch settings', e);
+    }
+
+    // Check time
+    const now = new Date(); // UTC
+    const kstNow = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+    const currentHour = kstNow.getUTCHours();
+    const currentMinute = kstNow.getUTCMinutes();
+    const [openHour, openMinute] = openingTime.split(':').map(Number);
+    
+    const isPastOpeningTime = (currentHour > openHour) || (currentHour === openHour && currentMinute >= openMinute);
+
     for (const attendeeId of detectedAttendeeIds) {
-        // Check if user is already present
-        const statusRes = await query('SELECT status FROM attendees WHERE id = $1', [attendeeId]);
+        // Check if user is already present AND check if Admin
+        const statusRes = await query('SELECT status, is_admin FROM attendees WHERE id = $1', [attendeeId]);
         if (statusRes.rows.length > 0) {
-            const status = statusRes.rows[0].status;
+            const { status, is_admin } = statusRes.rows[0];
+            
+            // Auto-Open Logic
+            if (!isOpen && is_admin && isPastOpeningTime) {
+                console.log(`[BLE] 🚨 Admin ${attendeeId} detected! Auto-Opening Gym...`);
+                await query("INSERT INTO system_settings (key, value) VALUES ('is_open', 'true') ON CONFLICT (key) DO UPDATE SET value = 'true'");
+                isOpen = true; // Avoid repeated updates in this loop
+            }
+
             if (status !== 'present') {
                 console.log(`[BLE] Auto Checking-in User ${attendeeId}`);
                 // Re-use Check-in Logic

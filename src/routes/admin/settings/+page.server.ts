@@ -12,6 +12,7 @@ export const load: PageServerLoad = async () => {
         closing_time_weekend: '23:00',
         weekend_days: '5,6',
         is_open: 'true',
+        opening_time: '09:00',
         no_show_limit_minutes: '10',
         auto_dissolve_limit_minutes: '10',
         penalty_threshold: '3'
@@ -28,6 +29,7 @@ export const actions: Actions = {
         const updates = [
             'closing_time_weekday',
             'closing_time_weekend',
+            'opening_time',
             'weekend_days',
             'no_show_limit_minutes',
             'auto_dissolve_limit_minutes',

@@ -3,7 +3,7 @@ import type { RequestHandler } from './$types';
 import { processScanResults } from '$lib/server/ble';
 import { query } from '$lib/server/db';
 
-const SCANNER_API_KEY = process.env.SCANNER_API_KEY || 'test-scanner-key';
+const SCANNER_API_KEY = process.env.SCANNER_API_KEY || 'hproject_scanner_secret_2026';
 
 export const POST: RequestHandler = async ({ request }) => {
     // 1. Auth Check
@@ -15,6 +15,10 @@ export const POST: RequestHandler = async ({ request }) => {
     try {
         const body = await request.json();
         const { scanner_id, timestamp, devices } = body;
+        
+        console.log(`[BLE] Report from ${scanner_id}: ${devices?.length || 0} devices`);
+        // Log MACs with RSSI to identify close devices
+        console.log(`[BLE] Devices: ${devices?.map((d: any) => `${d.mac} (${d.rssi}dBm)`).join(', ')}`);
         
         // Support fallback ID
         const actualScannerId = scanner_id || 'unknown_scanner';
