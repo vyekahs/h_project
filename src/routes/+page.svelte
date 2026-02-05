@@ -289,7 +289,8 @@
 
     {#if data.notice}
         <div class="notice-banner">
-            📢 {data.notice}
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px; vertical-align:text-bottom;"><path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg>
+            {data.notice}
         </div>
     {/if}
 
@@ -300,7 +301,10 @@
                 <div class="my-status-grid">
                     {#if data.userPenaltyInfo && data.userPenaltyInfo.penalty_points > 0}
                         <div class="status-card penalty-warning">
-                            <span class="label">⚠️ 누적 페널티</span>
+                            <span class="label">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px; margin-bottom:-2px;"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                                누적 페널티
+                            </span>
                             <span class="value">{data.userPenaltyInfo.penalty_points} / 3</span>
                             {#if data.userPenaltyInfo.penalty_points >= 3}
                                 <p class="warning-text">예약이 제한되었습니다.</p>
@@ -312,7 +316,10 @@
                         {#each data.userScheduledGames as game}
                             {@const time = formatScheduledTime(game.scheduled_at)}
                             <div class="status-card scheduled">
-                                <span class="label">📅 참여 예정 게임</span>
+                                <span class="label">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px; margin-bottom:-2px;"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                                    참여 예정 게임
+                                </span>
                                 <span class="value">{game.game_name}</span>
                                 <span class="sub-value"><span class="highlight-orange">{time.relative}</span> ({time.absolute} 시작)</span>
                                 <form method="POST" action="?/leaveScheduledGame" on:submit|preventDefault={(e) => {
@@ -320,7 +327,7 @@
                                     const now = Date.now();
                                     const form = e.target as HTMLFormElement;
                                     if (scheduledAt - now < 10 * 60 * 1000) {
-                                        if (confirm('⚠️ 시작 10분 전입니다. 지금 취소하면 페널티가 부여됩니다. 정말 취소하시겠습니까?')) {
+                                        if (confirm('시작 10분 전입니다. 지금 취소하면 페널티가 부여됩니다. 정말 취소하시겠습니까?')) {
                                             form.submit();
                                         }
                                     } else {
@@ -336,14 +343,20 @@
                         {/each}
                     {:else if data.userPlayingGame}
                         <div class="status-card playing">
-                            <span class="label">🎮 참여 중인 게임</span>
+                            <span class="label">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px; margin-bottom:-2px;"><line x1="6" y1="12" x2="10" y2="12"/><line x1="8" y1="10" x2="8" y2="14"/><line x1="15" y1="13" x2="15.01" y2="13"/><line x1="18" y1="11" x2="18.01" y2="11"/><rect x="2" y="6" width="20" height="12" rx="2"/></svg>
+                                참여 중인 게임
+                            </span>
                             <span class="value">{data.userPlayingGame.game_name}</span>
                         </div>
                     {/if}
 
                     {#if data.userReservation}
                         <div class="status-card reservation">
-                            <span class="label">🎟️ 예약 내역</span>
+                            <span class="label">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px; margin-bottom:-2px;"><path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/><path d="M13 5v2"/><path d="M13 17v2"/><path d="M13 11v2"/></svg>
+                                예약 내역
+                            </span>
                             <span class="value">{data.userReservation.game_name}</span>
                             <span class="status-tag {data.userReservation.status}">
                                 {data.userReservation.status === 'pending' ? '대기 중' : 
@@ -386,7 +399,10 @@
                 {/each}
                 {#if (data.attendees || []).length === 0}
                     {#if !data.isOpen}
-                        <p class="empty-state closed-state">🌙 금일 마감되었습니다. 오픈 전입니다.</p>
+                        <p class="empty-state closed-state">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px; vertical-align:middle; display: inline-block; position: relative; top: -1px;"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+                            금일 마감되었습니다. 오픈 전입니다.
+                        </p>
                     {:else}
                         <p class="empty-state">아직 아무도 없어요. 첫 번째로 오세요!</p>
                     {/if}
@@ -692,7 +708,10 @@
                                         {/if}
                                         <div class="game-option-info">
                                             <span class="name">{game.name}</span>
-                                            <span class="meta">👥 {game.min_players}-{game.max_players}인 | ⏱ {game.playtime_min}분</span>
+                                            <span class="meta">
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:2px; vertical-align:middle;"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg> {game.min_players}-{game.max_players}인 | 
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:2px; margin-left:4px; vertical-align:middle;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> {game.playtime_min}분
+                                            </span>
                                         </div>
                                     </button>
                                 </li>
@@ -743,7 +762,10 @@
     <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
     <div class="modal-backdrop" on:click={() => endGameModalVisible = false} role="presentation">
         <div class="modal-content" on:click|stopPropagation role="dialog">
-            <h2>🏆 게임 종료 및 승자 선택</h2>
+            <h2>
+                <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px; vertical-align:bottom; color:#fab005;"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>
+                게임 종료 및 승자 선택
+            </h2>
             <p><strong>{selectedEndGame.game_name}</strong> 게임을 종료합니다.</p>
             <p>승리한 플레이어를 선택해주세요 (복수 선택 가능):</p>
             
@@ -754,7 +776,7 @@
                         showAlert(data?.error || '오류가 발생했습니다.');
                     } else {
                         endGameModalVisible = false;
-                        showAlert('게임이 종료되고 승자가 기록되었습니다! 🏆');
+                        showAlert('게임이 종료되고 승자가 기록되었습니다!');
                     }
                     await update();
                 };
@@ -769,7 +791,9 @@
                                     <input type="checkbox" name="winnerIds" value={player.id}>
                                     <span class="p-name">{player.name}</span>
                                     {#if player.id === selectedEndGame.created_by}
-                                        <span class="owner-badge">👑</span>
+                                        <span class="owner-badge">
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m2 4 3 12h14l3-12-6 7-4-7-4 7-6-7zm3 16h14"/></svg>
+                                        </span>
                                     {/if}
                                 </label>
                                 <input 
@@ -799,7 +823,10 @@
     <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
     <div class="modal-backdrop" on:click={() => showScheduledGameModal = false} role="presentation">
         <div class="modal-content" on:click={handleModalClick} role="dialog">
-            <h2>📅 시작 예정 게임 생성</h2>
+            <h2>
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px; vertical-align:text-bottom;"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                시작 예정 게임 생성
+            </h2>
 
             <form method="POST" action="?/createScheduledGame" use:enhance={() => {
                 return async ({ result, update }) => {
@@ -839,7 +866,10 @@
                                         {/if}
                                         <div class="game-option-info">
                                             <span class="name">{game.name}</span>
-                                            <span class="meta">👥 {game.min_players}-{game.max_players}인 | ⏱ {game.playtime_min}분</span>
+                                            <span class="meta">
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:2px; vertical-align:middle;"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg> {game.min_players}-{game.max_players}인 | 
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:2px; margin-left:4px; vertical-align:middle;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> {game.playtime_min}분
+                                            </span>
                                         </div>
                                     </button>
                                 </li>
@@ -1071,6 +1101,7 @@
         display: flex;
         flex-direction: column;
         align-items: center;
+        overflow: hidden; /* Ensure content stays inside */
     }
     .name {
         font-weight: 600;
@@ -2099,6 +2130,14 @@
         display: flex;
         flex-direction: column; 
         justify-content: center;
+        width: 100%; /* Force full width to trigger truncation */
+        min-width: 0;
+        flex: 1;
+    }
+    .attendee-info .name {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
     }
     
     .tag-title {
