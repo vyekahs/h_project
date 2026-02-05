@@ -12,6 +12,7 @@ export async function POST({ request, locals }) {
     }
     
     try {
+        console.log(`Equipping title ${titleId} for user ${locals.user.id}`);
         await TitleService.equipTitle(locals.user.id, titleId);
         return json({ success: true });
     } catch (e: any) {

@@ -203,6 +203,7 @@ export const TitleService = {
             }
         }
 
+        console.log(`Executing update for user ${userId}, title ${titleId}`);
         await query('UPDATE minigame_user_points SET equipped_title_id = $1 WHERE user_id = $2', [titleId, userId]);
         return true;
     }
