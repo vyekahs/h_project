@@ -1,6 +1,14 @@
 <script lang="ts">
+    import { invalidateAll } from '$app/navigation';
+    import { onMount } from 'svelte';
     import type { PageData } from './$types';
     export let data: PageData;
+
+    onMount(() => {
+        if(data.user) {
+            loadTitles();
+        }
+    });
 
     let selectedYear: string = 'all';
     let selectedMonth: string = 'all';
@@ -59,6 +67,59 @@
     let isMonthOpen = false;
     let showGuideModal = false;
 
+    // Title Management
+    interface Title {
+        id: number;
+        title_name: string;
+        description: string;
+        is_equipped: boolean;
+    }
+    let myTitles: Title[] = [];
+    let loadingTitles = true;
+
+    async function loadTitles(silent = false) {
+        if (!silent) loadingTitles = true;
+        try {
+            const res = await fetch('/api/user/titles');
+            if(res.ok) {
+                myTitles = await res.json();
+            }
+        } catch(e) {
+            console.error(e);
+        } finally {
+            if (!silent) loadingTitles = false;
+        }
+    }
+
+    let equippingId: number | null = null;
+
+    async function equipTitle(titleId: number) {
+        if (equippingId) return; // Prevent double clicks
+        // Removed native confirm for smoother UX
+        equippingId = titleId;
+        
+        try {
+            const res = await fetch('/api/user/titles/equip', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ titleId })
+            });
+            if (res.ok) {
+                await loadTitles(true); 
+                await invalidateAll(); 
+            } else {
+                // Silent fail or toast? For now just log
+                console.error('Failed to equip');
+            }
+        } catch(e) {
+            console.error(e);
+        } finally {
+            equippingId = null;
+        }
+    }
+
+    // Load titles on mount
+    
     function toggleYear() {
         isYearOpen = !isYearOpen;
         isMonthOpen = false;
@@ -72,11 +133,13 @@
     function selectYear(year: any) {
         selectedYear = year;
         isYearOpen = false;
+        visibleCount = 10; // Reset pagination
     }
 
     function selectMonth(month: any) {
         selectedMonth = month;
         isMonthOpen = false;
+        visibleCount = 10; // Reset pagination
     }
 
     import { enhance } from '$app/forms';
@@ -84,6 +147,13 @@
     function closeDropdowns() {
         isYearOpen = false;
         isMonthOpen = false;
+    }
+    
+    // Pagination
+    let visibleCount = 10;
+    
+    function loadMore() {
+        visibleCount += 10;
     }
 </script>
 
@@ -94,7 +164,12 @@
         <h1>마이페이지</h1>
         {#if data.user}
             <div class="user-simple">
-                <span class="user-name"><strong>{data.user.name}</strong> 님</span>
+                <span class="user-name">
+                    {#if data.user.title}
+                        <span class="user-title">[{data.user.title.title_name}]</span>
+                    {/if}
+                    <strong>{data.user.name}</strong> 님
+                </span>
                 
                 {#if data.user.is_admin}
                     <a href="/admin/games" class="btn-admin-link">⚙️</a>
@@ -164,7 +239,49 @@
                                 <li class="empty">-</li>
                             {/each}
                         </ul>
-                    </div>
+                </div>
+                </div>
+            {/if}
+        </div>
+
+        <!-- My Titles Section -->
+        <div class="titles-section">
+            <h3>🎖 나의 칭호</h3>
+            {#if loadingTitles}
+                <div class="loading">불러오는 중...</div>
+            {:else if myTitles.length === 0}
+                <div class="empty-titles">보유한 칭호가 없습니다. 게임을 플레이하고 칭호를 획득해보세요!</div>
+            {:else}
+                <div class="titles-grid">
+                    {#each myTitles as title (title.id)}
+                        <div class="title-card" class:equipped={title.is_equipped}>
+                            <div class="title-header">
+                                <span class="title-name">{title.title_name}</span>
+                                <div class="actions">
+                                    {#if title.is_equipped}
+                                        <button 
+                                            class="btn-action unequip"
+                                            class:processing={equippingId === title.id}
+                                            on:click={() => equipTitle(null)} 
+                                            disabled={equippingId !== null}
+                                        >
+                                            해제
+                                        </button>
+                                    {:else}
+                                        <button 
+                                            class="btn-action equip" 
+                                            class:processing={equippingId === title.id}
+                                            on:click={() => equipTitle(title.id)}
+                                            disabled={equippingId !== null}
+                                        >
+                                            장착
+                                        </button>
+                                    {/if}
+                                </div>
+                            </div>
+                            <p class="title-desc">{title.description || '특별한 칭호입니다.'}</p>
+                        </div>
+                    {/each}
                 </div>
             {/if}
         </div>
@@ -256,7 +373,7 @@
             
             <div class="history-list">
                 {#if filteredHistory.length > 0}
-                    {#each filteredHistory as game}
+                    {#each filteredHistory.slice(0, visibleCount) as game}
                     <div class="history-card" class:winner={game.is_winner}>
                         <div class="history-header">
                         <div class="game-info">
@@ -292,6 +409,10 @@
                         </div>
                     </div>
                 {/each}
+
+                {#if filteredHistory.length > visibleCount}
+                    <button class="btn-load-more" on:click={loadMore}>더보기 ({filteredHistory.length - visibleCount}개 남음)</button>
+                {/if}
             {:else}
                 <div class="empty-state">
                     <p>아직 플레이 기록이 없습니다.</p>
@@ -299,6 +420,7 @@
             {/if}
         </div>
         </div>
+
     {/if}
 </div>
 
@@ -333,6 +455,27 @@
 {/if}
 
 <style>
+    /* ... existing styles ... */
+    
+    .btn-load-more {
+        width: 100%;
+        padding: 0.9rem;
+        background: white;
+        border: 1px solid #ddd;
+        border-radius: 12px;
+        color: #555;
+        font-weight: 600;
+        cursor: pointer;
+        margin-top: 0.5rem;
+        transition: all 0.2s;
+    }
+    
+    .btn-load-more:hover {
+        background: #f8f9fa;
+        color: #333;
+        border-color: #ccc;
+    }
+
     .mypage-container {
         max-width: 600px;
         margin: 0 auto;
@@ -360,6 +503,12 @@
     }
     .user-name {
         color: #555;
+    }
+    .user-title {
+        color: #e67700;
+        font-weight: 700;
+        margin-right: 4px;
+        font-size: 0.9em;
     }
     .btn-logout-text {
         background: none;
@@ -858,5 +1007,108 @@
         font-weight: bold;
         font-size: 1rem;
         cursor: pointer;
+    
+    /* Title Section Styles */
+    .titles-section {
+        margin-bottom: 2rem;
+    }
+    .titles-section h3 {
+        font-size: 1.1rem;
+        color: #444;
+        margin-bottom: 1rem;
+    }
+    .titles-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+        gap: 0.8rem;
+    }
+    .title-card {
+        background: white;
+        border: 1px solid #eee;
+        border-radius: 12px;
+        padding: 1rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        transition: all 0.2s;
+    }
+    .title-card.equipped {
+        border-color: #333;
+        background: #fdfdfd;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+    }
+    .title-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .title-name {
+        font-weight: 700;
+        color: #333;
+    }
+    .title-desc {
+        font-size: 0.85rem;
+        color: #666;
+        margin: 0;
+        flex-grow: 1;
+    }
+    .badge-equipped {
+        font-size: 0.75rem;
+        background: #333;
+        color: white;
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-weight: 600;
+    }
+    .actions {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    .btn-action {
+        border: 1px solid transparent; /* Ensure constant border width */
+        padding: 0.25rem 0.6rem;
+        border-radius: 6px;
+        font-size: 0.8rem;
+        cursor: pointer;
+        font-weight: 600;
+        min-width: 60px;
+        text-align: center;
+        box-sizing: border-box; /* Prevent padding/border from affecting width */
+    }
+    .btn-action:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+    }
+    .btn-action.equip {
+        background: #f0f0f0;
+        color: #555;
+    }
+    .btn-action.equip:hover {
+        background: #e0e0e0;
+        color: #333;
+    }
+    .btn-action.unequip {
+        background: white;
+        border-color: #ff6b6b; /* Change color only */
+        color: #ff6b6b;
+    }
+    .btn-action.unequip:hover {
+        background: #fff5f5;
+        color: #fa5252;
+    }
+    .btn-action.processing {
+        background: #f8f9fa !important;
+        color: #ccc !important;
+        border-color: #ddd !important;
+        cursor: wait;
+    }
+    .loading, .empty-titles {
+        text-align: center;
+        padding: 2rem;
+        color: #888;
+        font-size: 0.9rem;
+        background: white;
+        border-radius: 12px;
     }
 </style>

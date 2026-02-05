@@ -3,13 +3,9 @@ import { verifyAttendeeSession } from '$lib/server/auth';
 import type { PageServerLoad } from './$types';
 import { redirect } from '@sveltejs/kit';
 
-export const load: PageServerLoad = async ({ cookies }) => {
-    const userSessionToken = cookies.get('user_session');
-    if (!userSessionToken) {
-        throw redirect(302, '/login');
-    }
+export const load: PageServerLoad = async ({ parent }) => {
+    const { user } = await parent();
 
-    const user = await verifyAttendeeSession(userSessionToken);
     if (!user) {
         throw redirect(302, '/login');
     }
@@ -52,6 +48,12 @@ export const load: PageServerLoad = async ({ cookies }) => {
 
     // Fetch Registered Devices
     const devicesResult = await query('SELECT id, name, created_at, last_seen_at FROM user_devices WHERE attendee_id = $1 ORDER BY created_at DESC', [user.id]);
+    // Trigger Title Check (Background)
+    try {
+        import('$lib/server/services/titleService').then(({ TitleService }) => TitleService.checkAndAssignTitles(user.id)).catch(e => console.error('[MyPage] Title check failed', e));
+    } catch(e) {
+        console.error(e);
+    }
 
     return {
         user,
