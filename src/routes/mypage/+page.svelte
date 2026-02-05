@@ -93,7 +93,7 @@
 
     let equippingId: number | null = null;
 
-    async function equipTitle(titleId: number) {
+    async function equipTitle(titleId: number | null) {
         if (equippingId) return; // Prevent double clicks
         // Removed native confirm for smoother UX
         equippingId = titleId;
@@ -273,9 +273,12 @@
                     <div class="section-header">
                         <h3>
                             내 기기
-                            <button class="btn-guide" on:click={() => showGuideModal = true} aria-label="기기 등록 방법">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
-                            </button>
+                            <div class="header-actions">
+                                <a href="/devices/register" class="btn-register">기기 등록</a>
+                                <button class="btn-guide" on:click={() => showGuideModal = true} aria-label="기기 등록 방법">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+                                </button>
+                            </div>
                         </h3>
                     </div>
 
@@ -475,22 +478,22 @@
             <ol class="guide-steps">
                 <li>
                     <span class="step-num">1</span>
-                    자리에 앉아 <strong>'BoardGame_Signup'</strong><br>
-                    와이파이에 연결합니다. (비밀번호 없음)
+                    마이페이지에서<br>
+                    <strong>'기기 등록'</strong> 버튼을 누릅니다.
                 </li>
                 <li>
                     <span class="step-num">2</span>
-                    자동으로 뜨는 창에서 <strong>로그인/회원가입</strong>을 합니다.<br>
-                    <small style="color: #e03131; display: block; margin-top: 4px;">※ 창이 안 뜨면 인터넷 주소창에<br><strong>192.168.4.1</strong>을 입력하세요!</small>
+                    <strong>'등록 시작'</strong>을 누르면<br>
+                    4자리 비밀번호가 표시됩니다.
                 </li>
                 <li>
                     <span class="step-num">3</span>
-                    화면 안내에 따라<br>
-                    <strong>블루투스</strong>를 연결합니다.
+                    폰 블루투스 설정에서<br>
+                    <strong>'HonNol'</strong>을 찾아 연결합니다.
                 </li>
                 <li>
                     <span class="step-num">4</span>
-                    등록 완료 메시지가 뜨면 <strong>성공!</strong>
+                    화면에 표시된 비밀번호를 입력하면 <strong>완료!</strong>
                     <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="color:#2b8a3e; vertical-align:text-bottom;"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
                 </li>
             </ol>
@@ -772,6 +775,29 @@
         font-size: 1.1rem;
         color: #444;
         margin: 0;
+        display: flex;
+        justify-content: space-between;
+        width: 100%;
+        align-items: center;
+    }
+    .header-actions {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    .btn-register {
+        display: inline-block;
+        background: #339af0;
+        color: white;
+        padding: 0.3rem 0.8rem;
+        border-radius: 8px;
+        font-size: 0.85rem;
+        text-decoration: none;
+        font-weight: 600;
+        transition: background 0.2s;
+    }
+    .btn-register:hover {
+        background: #228be6;
     }
     .filters {
         display: flex;
