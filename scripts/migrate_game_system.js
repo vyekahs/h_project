@@ -11,7 +11,7 @@ const pool = new pg.Pool({
 
 const queries = [
     `CREATE TABLE IF NOT EXISTS minigame_user_points (
-        user_id         BIGINT PRIMARY KEY,
+        user_id         INTEGER PRIMARY KEY REFERENCES attendees(id) ON DELETE CASCADE,
         total_points    INT DEFAULT 0,
         daily_earned    INT DEFAULT 0,
         last_earned_at  TIMESTAMP,
@@ -19,16 +19,26 @@ const queries = [
         created_at      TIMESTAMP DEFAULT NOW()
     );`,
     `ALTER TABLE minigame_user_points ADD COLUMN IF NOT EXISTS equipped_title_id BIGINT;`,
+    `DO $$ BEGIN
+        ALTER TABLE minigame_user_points DROP CONSTRAINT IF EXISTS fk_user_points_attendees;
+        ALTER TABLE minigame_user_points ADD CONSTRAINT fk_user_points_attendees FOREIGN KEY (user_id) REFERENCES attendees(id) ON DELETE CASCADE;
+     EXCEPTION WHEN others THEN null; END $$;`,
+
     `CREATE TABLE IF NOT EXISTS minigame_rankings (
         id              BIGSERIAL PRIMARY KEY,
         game_id         VARCHAR(50) NOT NULL,
         difficulty      VARCHAR(20),
-        user_id         BIGINT NOT NULL,
+        user_id         INTEGER NOT NULL REFERENCES attendees(id) ON DELETE CASCADE,
         score           INT,
         clear_time      INT,
         achieved_at     TIMESTAMP DEFAULT NOW(),
         CONSTRAINT unique_ranking UNIQUE (game_id, difficulty, user_id)
     );`,
+    `DO $$ BEGIN
+        ALTER TABLE minigame_rankings DROP CONSTRAINT IF EXISTS fk_rankings_attendees;
+        ALTER TABLE minigame_rankings ADD CONSTRAINT fk_rankings_attendees FOREIGN KEY (user_id) REFERENCES attendees(id) ON DELETE CASCADE;
+     EXCEPTION WHEN others THEN null; END $$;`,
+
     `CREATE TABLE IF NOT EXISTS minigame_titles (
         id              BIGSERIAL PRIMARY KEY,
         title_code      VARCHAR(50) UNIQUE NOT NULL,
@@ -39,11 +49,16 @@ const queries = [
     );`,
     `CREATE TABLE IF NOT EXISTS minigame_user_titles (
         id              BIGSERIAL PRIMARY KEY,
-        user_id         BIGINT NOT NULL,
+        user_id         INTEGER NOT NULL REFERENCES attendees(id) ON DELETE CASCADE,
         title_id        BIGINT NOT NULL REFERENCES minigame_titles(id),
         acquired_at     TIMESTAMP DEFAULT NOW(),
         is_displayed    BOOLEAN DEFAULT TRUE
     );`,
+    `DO $$ BEGIN
+        ALTER TABLE minigame_user_titles DROP CONSTRAINT IF EXISTS fk_user_titles_attendees;
+        ALTER TABLE minigame_user_titles ADD CONSTRAINT fk_user_titles_attendees FOREIGN KEY (user_id) REFERENCES attendees(id) ON DELETE CASCADE;
+     EXCEPTION WHEN others THEN null; END $$;`,
+
     `-- Attempt to add constraint if not exists (Postgres doesn't support IF NOT EXISTS for constraints easily, so we catch error)
      DO $$ BEGIN
         ALTER TABLE minigame_user_titles ADD CONSTRAINT unique_user_title UNIQUE (title_id, user_id);
@@ -70,30 +85,44 @@ const queries = [
     );`,
     `CREATE TABLE IF NOT EXISTS minigame_user_inventory (
         id              BIGSERIAL PRIMARY KEY,
-        user_id         BIGINT NOT NULL,
+        user_id         INTEGER NOT NULL REFERENCES attendees(id) ON DELETE CASCADE,
         item_id         BIGINT NOT NULL REFERENCES minigame_shop_items(id),
         quantity        INT DEFAULT 0,
         CONSTRAINT unique_inventory UNIQUE (user_id, item_id)
     );`,
+    `DO $$ BEGIN
+        ALTER TABLE minigame_user_inventory DROP CONSTRAINT IF EXISTS fk_inventory_attendees;
+        ALTER TABLE minigame_user_inventory ADD CONSTRAINT fk_inventory_attendees FOREIGN KEY (user_id) REFERENCES attendees(id) ON DELETE CASCADE;
+     EXCEPTION WHEN others THEN null; END $$;`,
+
     `CREATE TABLE IF NOT EXISTS point_transactions (
         id              BIGSERIAL PRIMARY KEY,
-        user_id         BIGINT NOT NULL,
+        user_id         INTEGER NOT NULL REFERENCES attendees(id) ON DELETE CASCADE,
         amount          INT NOT NULL,
         transaction_type VARCHAR(20),
         reference_id    VARCHAR(100),
         created_at      TIMESTAMP DEFAULT NOW()
     );`,
+    `DO $$ BEGIN
+        ALTER TABLE point_transactions DROP CONSTRAINT IF EXISTS fk_transactions_attendees;
+        ALTER TABLE point_transactions ADD CONSTRAINT fk_transactions_attendees FOREIGN KEY (user_id) REFERENCES attendees(id) ON DELETE CASCADE;
+     EXCEPTION WHEN others THEN null; END $$;`,
+
     `CREATE INDEX IF NOT EXISTS idx_ranking_lookup ON minigame_rankings (game_id, difficulty, clear_time ASC);`,
     `CREATE INDEX IF NOT EXISTS idx_daily_points ON point_transactions (user_id, created_at, transaction_type);`,
     `CREATE INDEX IF NOT EXISTS idx_title_condition ON minigame_titles (condition_type, id);`,
     `CREATE INDEX IF NOT EXISTS idx_user_date ON point_transactions (user_id, created_at);`,
     `CREATE TABLE IF NOT EXISTS tutorial_progress (
         id              BIGSERIAL PRIMARY KEY,
-        user_id         BIGINT NOT NULL,
+        user_id         INTEGER NOT NULL REFERENCES attendees(id) ON DELETE CASCADE,
         tutorial_id     VARCHAR(50) NOT NULL,
         completed_at    TIMESTAMP DEFAULT NOW(),
         CONSTRAINT unique_user_tutorial UNIQUE (user_id, tutorial_id)
-    );`
+    );`,
+    `DO $$ BEGIN
+        ALTER TABLE tutorial_progress DROP CONSTRAINT IF EXISTS fk_tutorial_attendees;
+        ALTER TABLE tutorial_progress ADD CONSTRAINT fk_tutorial_attendees FOREIGN KEY (user_id) REFERENCES attendees(id) ON DELETE CASCADE;
+     EXCEPTION WHEN others THEN null; END $$;`
 ];
 
 async function main() {
