@@ -204,7 +204,16 @@ export const TitleService = {
         }
 
         console.log(`Executing update for user ${userId}, title ${titleId}`);
-        await query('UPDATE minigame_user_points SET equipped_title_id = $1 WHERE user_id = $2', [titleId, userId]);
+        const result = await query('UPDATE minigame_user_points SET equipped_title_id = $1 WHERE user_id = $2', [titleId, userId]);
+        
+        if (result.rowCount === 0) {
+            console.log(`User ${userId} has no points row. Creating one.`);
+            // Create row if not exists
+            await query(`
+                INSERT INTO minigame_user_points (user_id, total_points, daily_earned, last_earned_at, equipped_title_id)
+                VALUES ($1, 0, 0, NOW(), $2)
+            `, [userId, titleId]);
+        }
         return true;
     }
 };
