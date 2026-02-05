@@ -233,8 +233,12 @@
 
 
 
+
 <section>
-    <h2>📢 공지사항 관리</h2>
+    <h2>
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg>
+        공지사항 관리
+    </h2>
     <div class="notice-manager">
         {#if data.notice}
             <div class="current-notice">
@@ -261,10 +265,16 @@
                     <div class="name-row">
                         <a href="/admin/attendees/{a.id}" class="attendee-link">{a.name}</a>
                         {#if a.is_blacklisted}
-                            <span class="badge blacklist">🚫 블랙</span>
+                            <span class="badge blacklist">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:2px; vertical-align:middle;"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
+                                블랙
+                            </span>
                         {/if}
                         {#if a.penalty_points > 0}
-                            <span class="badge penalty">⚠️ {a.penalty_points}</span>
+                            <span class="badge penalty">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:2px; vertical-align:middle;"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                                {a.penalty_points}
+                            </span>
                         {/if}
                     </div>
                     <span class="arrival-time">{formatTime(a.arrival_time)} 입장</span>
@@ -291,7 +301,11 @@
                     <form method="POST" action="?/toggleManager" use:enhance style="display:inline;">
                         <input type="hidden" name="attendeeId" value={a.id} />
                         <button type="submit" class="btn-manager-toggle {a.can_manage_games ? 'active' : ''}" title="게임 관리 권한 토글">
-                            {a.can_manage_games ? '👑 매니저' : '👤 유저'}
+                            {#if a.can_manage_games}
+                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px; vertical-align:middle;"><path d="m2 4 3 12h14l3-12-6 7-4-7-4 7-6-7zm3 16h14"/></svg> 매니저
+                            {:else}
+                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px; vertical-align:middle;"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg> 유저
+                            {/if}
                         </button>
                     </form>
                     <form method="POST" action="?/removeAttendee" use:enhance={({ cancel }) => {
@@ -338,8 +352,11 @@
 
 <section>
     <div class="section-header">
-        <h2>📅 시작 예정 게임 ({(scheduledGames || []).length})</h2>
-        <button class="btn-create-game" on:click={openScheduledGameModal}>+ 게임 생성</button>
+        <h2>
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            시작 예정 게임 ({(scheduledGames || []).length})
+        </h2>
+        <button class="btn-primary" on:click={openScheduledGameModal}>+ 게임 일정 등록</button>
     </div>
     <div class="scheduled-grid">
         {#each (scheduledGames || []) as game (game.id)}
@@ -349,7 +366,9 @@
                     {#if g.image_url}
                         <img src={g.image_url} alt={g.game_name} class="game-thumb" />
                     {:else}
-                        <div class="game-thumb placeholder">🎲</div>
+                        <div class="game-thumb placeholder">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:#adb5bd;"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
+                        </div>
                     {/if}
                     <div class="game-details">
                         <h3>{g.game_name}</h3>
@@ -400,7 +419,10 @@
 
 <!-- <section>
     <div class="section-header">
-        <h2>🎟️ 예약 및 대기열 ({(reservations || []).length})</h2>
+        <h2>
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:10px; vertical-align:text-bottom;"><path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/><path d="M13 5v2"/><path d="M13 17v2"/><path d="M13 11v2"/></svg>
+            예약 및 대기열 ({(reservations || []).length})
+        </h2>
         <form method="POST" action="/?/reserveGame" use:enhance class="inline-add-form">
             <select name="attendeeId" required class="attendee-select-mini">
                 <option value="">예약자 추가</option>
@@ -465,7 +487,9 @@
                     {#if game.image_url}
                         <img src={game.image_url} alt={game.game_name} class="game-thumb" />
                     {:else}
-                        <div class="game-thumb placeholder">🎲</div>
+                        <div class="game-thumb placeholder">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:#adb5bd;"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
+                        </div>
                     {/if}
                     <div class="game-details">
                         <h3>{game.game_name}</h3>
@@ -559,7 +583,12 @@
                                         {/if}
                                         <div class="game-option-info">
                                             <span class="name">{game.name}</span>
-                                            <span class="meta">👥 {game.min_players}-{game.max_players}인 | ⏱ {game.playtime_min}분</span>
+                                            <span class="meta">
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:2px; vertical-align:text-top;"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                                                {game.min_players}-{game.max_players}인 | 
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:2px; vertical-align:text-top;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                                                {game.playtime_min}분
+                                            </span>
                                         </div>
                                     </button>
                                 </li>
@@ -610,7 +639,11 @@
     <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
     <div class="modal-backdrop" on:click={() => endGameModalVisible = false} role="presentation">
         <div class="modal-content" on:click|stopPropagation role="dialog">
-            <h2>🏆 게임 종료 및 승자 선택</h2>
+
+            <h2>
+                <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:#fab005;"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>
+                게임 종료 및 승자 선택
+            </h2>
             <p><strong>{selectedEndGame.game_name}</strong> 게임을 종료합니다.</p>
             <p>승리한 플레이어를 선택해주세요 (복수 선택 가능):</p>
             
@@ -625,7 +658,8 @@
                         }
                     } else {
                         endGameModalVisible = false;
-                        showAlert('게임이 종료되고 승자가 기록되었습니다! 🏆');
+
+                        showAlert('게임이 종료되고 승자가 기록되었습니다!');
                     }
                     await update();
                 };
@@ -638,7 +672,9 @@
                             <label class="winner-option">
                                 <input type="checkbox" name="winnerIds" value={player.id} />
                                 <span class="player-name">{player.name}</span>
-                                <span class="medal">🏅</span>
+                                <span class="medal">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="7"/><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"/></svg>
+                                </span>
                             </label>
                             <input type="number" name="score_{player.id}" placeholder="점수" class="score-input" />
                         </div>
@@ -715,7 +751,11 @@
     <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
     <div class="modal-backdrop" on:click={() => showScheduledGameModal = false} role="presentation">
         <div class="modal-content" on:click={handleModalClick} role="dialog">
-            <h2>📅 시작 예정 게임 생성</h2>
+
+            <h2>
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                시작 예정 게임 생성
+            </h2>
             <form method="POST" action="/?/createScheduledGame" use:enhance={() => {
                 return async ({ result, update }: { result: any, update: (options?: { reset?: boolean }) => Promise<void> }) => {
                     if (result.type === 'failure') {
@@ -754,7 +794,12 @@
                                         {/if}
                                         <div class="game-option-info">
                                             <span class="name">{game.name}</span>
-                                            <span class="meta">👥 {game.min_players}-{game.max_players}인 | ⏱ {game.playtime_min}분</span>
+                                            <span class="meta">
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:2px; vertical-align:text-top;"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                                                {game.min_players}-{game.max_players}인 | 
+                                                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:2px; vertical-align:text-top;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                                                {game.playtime_min}분
+                                            </span>
                                         </div>
                                     </button>
                                 </li>
@@ -796,6 +841,11 @@
         border: 1px solid #eee;
         border-radius: 8px;
         background: #f9f9f9;
+    }
+    section h2 {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
     }
     .attendee-list {
         list-style: none;
@@ -994,11 +1044,18 @@
     .modal-content {
         background: white;
         padding: 2rem;
-        border-radius: 8px;
-        width: 90%;
+        border-radius: 12px;
+        width: 100%;
         max-width: 500px;
         max-height: 90vh;
         overflow-y: auto;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+    }
+    .modal-content h2 {
+        margin-top: 0;
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
     }
     .alert-modal {
         max-width: 400px;
@@ -1415,6 +1472,9 @@
     .settings-card h3 {
         margin-top: 0;
         margin-bottom: 1.5rem;
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
         font-size: 1.1rem;
         color: #333;
         border-bottom: 2px solid #f0f0f0;
@@ -1470,7 +1530,7 @@
         background: #e9ecef;
         color: #495057;
         border: 1px solid #ced4da;
-        padding: 0rem 0.4rem;
+        padding: 0.2rem 0.4rem;
         border-radius: 4px;
         font-size: 0.8rem;
         cursor: pointer;

@@ -24,56 +24,96 @@
             <h2>Admin Console</h2>
         </div>
         <nav class="sidebar-nav">
-            <a href="/admin" class="nav-item" class:active={$page.url.pathname === '/admin'}>🏠 대시보드</a>
-            <a href="/admin/games" class="nav-item" class:active={$page.url.pathname === '/admin/games'}>📚 게임 도감 관리</a>
-            <a href="/admin/stats" class="nav-item" class:active={$page.url.pathname === '/admin/stats'}>📊 통계 보기</a>
+            <a href="/admin" class="nav-item" class:active={$page.url.pathname === '/admin'}>
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px;"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>
+                대시보드
+            </a>
+            <a href="/admin/games" class="nav-item" class:active={$page.url.pathname === '/admin/games'}>
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px;"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></svg>
+                게임 도감 관리
+            </a>
+            <a href="/admin/stats" class="nav-item" class:active={$page.url.pathname === '/admin/stats'}>
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px;"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+                통계 보기
+            </a>
         </nav>
         <div class="sidebar-footer">
             <form method="POST" action="/logout">
-                <button type="submit" class="btn-sidebar">🚪 로그아웃</button>
+                <button type="submit" class="btn-sidebar">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px;"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                    로그아웃
+                </button>
             </form>
-            <a href="/admin/settings" class="btn-sidebar">⚙️ 설정</a>
+            <a href="/admin/settings" class="btn-sidebar">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px;"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.47a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+                설정
+            </a>
         </div>
     </aside>
 
     <main class="main-content">
+        {#if $page.url.pathname === '/admin'}
         <div class="header">
             <div>
                 <h1>관리자 대시보드</h1>
                 {#if data.settings.is_open === 'false'}
-                    <p class="closing-info">⛔️ 현재 <strong>마감</strong> 상태입니다.</p>
+                    <p class="closing-info">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px; vertical-align:middle; color:#fa5252;"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
+                        현재 <strong>마감</strong> 상태입니다.
+                    </p>
                 {:else}
-                    <p class="closing-info">🌙 오늘의 마감: <strong>{data.closingDisplay}</strong></p>
+                    <p class="closing-info">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px; vertical-align:middle; color:#4c6ef5;"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+                        오늘의 마감: <strong>{data.closingDisplay}</strong>
+                    </p>
                 {/if}
             </div>
             <div class="header-actions">
-                <a href="/" class="btn-secondary">🏠 메인으로</a>
+                <a href="/" class="btn-secondary">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:6px;"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                    메인으로
+                </a>
                 {#if data.settings.is_open === 'false'}
-                    <button class="btn-primary" on:click={() => openDayModalVisible = true}>☀️ 오픈 하기</button>
+                    <button class="btn-primary" on:click={() => openDayModalVisible = true}>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:6px;"><circle cx="12" cy="12" r="5"/><path d="M12 1v2"/><path d="M12 21v2"/><path d="M4.22 4.22l1.42 1.42"/><path d="M18.36 18.36l1.42 1.42"/><path d="M1 12h2"/><path d="M21 12h2"/><path d="M4.22 19.78l1.42-1.42"/><path d="M18.36 5.64l1.42-1.42"/></svg>
+                        오픈 하기
+                    </button>
                 {:else}
-                    <button class="btn-danger" on:click={() => closeDayModalVisible = true}>🌙 마감 하기</button>
+                    <button class="btn-danger" on:click={() => closeDayModalVisible = true}>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:6px;"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+                        마감 하기
+                    </button>
                 {/if}
             </div>
         </div>
+        {/if}
 
         <slot />
     </main>
 
     <nav class="mobile-bottom-nav">
         <a href="/admin" class="bottom-nav-item" class:active={$page.url.pathname === '/admin'}>
-            <span class="icon">🏠</span>
+            <span class="icon">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>
+            </span>
             <span class="label">대시보드</span>
         </a>
         <a href="/admin/games" class="bottom-nav-item" class:active={$page.url.pathname === '/admin/games'}>
-            <span class="icon">📚</span>
+            <span class="icon">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></svg>
+            </span>
             <span class="label">게임 관리</span>
         </a>
         <a href="/admin/stats" class="bottom-nav-item" class:active={$page.url.pathname === '/admin/stats'}>
-            <span class="icon">📊</span>
+            <span class="icon">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+            </span>
             <span class="label">통계</span>
         </a>
         <a href="/admin/settings" class="bottom-nav-item" class:active={$page.url.pathname === '/admin/settings'}>
-            <span class="icon">⚙️</span>
+            <span class="icon">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.47a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+            </span>
             <span class="label">설정</span>
         </a>
     </nav>
@@ -85,7 +125,10 @@
     <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
     <div class="modal-backdrop" on:click={() => closeDayModalVisible = false} role="presentation">
         <div class="modal-content confirm-modal" on:click|stopPropagation role="dialog">
-            <h3>🌙 마감 하기</h3>
+            <h3>
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px; vertical-align:text-bottom;"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+                마감 하기
+            </h3>
             <p>정말 마감하시겠습니까?</p>
             <p class="warning-text">모든 참가자가 퇴장 처리되고, 진행 중인 게임이 종료됩니다.</p>
             <div class="modal-actions">
@@ -97,7 +140,7 @@
                             showAlert(data?.error || '마감 실패');
                         } else {
                             closeDayModalVisible = false;
-                            showAlert('오늘 하루가 마감되었습니다. 수고하셨습니다! 🌙');
+                            showAlert('오늘 하루가 마감되었습니다. 수고하셨습니다!');
                         }
                         await update();
                     };
@@ -114,7 +157,10 @@
     <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
     <div class="modal-backdrop" on:click={() => openDayModalVisible = false} role="presentation">
         <div class="modal-content confirm-modal" on:click|stopPropagation role="dialog">
-            <h3>☀️ 오픈 하기</h3>
+            <h3>
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px; vertical-align:text-bottom;"><circle cx="12" cy="12" r="5"/><path d="M12 1v2"/><path d="M12 21v2"/><path d="M4.22 4.22l1.42 1.42"/><path d="M18.36 18.36l1.42 1.42"/><path d="M1 12h2"/><path d="M21 12h2"/><path d="M4.22 19.78l1.42-1.42"/><path d="M18.36 5.64l1.42-1.42"/></svg>
+                오픈 하기
+            </h3>
             <p>새로운 하루를 시작하시겠습니까?</p>
             <div class="modal-actions">
                 <button class="btn-secondary" on:click={() => openDayModalVisible = false}>취소</button>
@@ -125,7 +171,7 @@
                             showAlert(data?.error || '오픈 실패');
                         } else {
                             openDayModalVisible = false;
-                            showAlert('활기찬 하루 되세요! ☀️');
+                            showAlert('활기찬 하루 되세요!');
                         }
                         await update();
                     };
