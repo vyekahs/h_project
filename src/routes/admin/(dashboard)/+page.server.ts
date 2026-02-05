@@ -536,15 +536,23 @@ export const actions: Actions = {
             return fail(400, { error: '이미 참여 중인 게임입니다.' });
         }
 
-        // 2. Check if busy with OTHER games or reservations
+        // 1.5 Get Target Session Date
+        const targetSessionResult = await query('SELECT COALESCE(scheduled_at, start_time, NOW()) as session_date FROM game_sessions WHERE id = $1', [sessionId]);
+        if (targetSessionResult.rows.length === 0) return fail(404, { error: '세션을 찾을 수 없습니다.' });
+        const targetDate = targetSessionResult.rows[0].session_date;
+
+        // 2. Check if busy with OTHER games or reservations ON THE SAME DAY
         const busyCheck = await query(`
             SELECT 1 FROM session_participants sp
             JOIN game_sessions gs ON sp.session_id = gs.id
-            WHERE sp.attendee_id = $1 AND (gs.status = 'playing' OR gs.status = 'scheduled') AND gs.id != $2
-        `, [finalAttendeeId, sessionId]);
+            WHERE sp.attendee_id = $1 
+            AND (gs.status = 'playing' OR gs.status = 'scheduled') 
+            AND gs.id != $2
+            AND DATE(COALESCE(gs.scheduled_at, gs.start_time, NOW())) = DATE($3)
+        `, [finalAttendeeId, sessionId, targetDate]);
 
         if (busyCheck.rows.length > 0) {
-            return fail(400, { error: '이미 다른 게임에 참여 중이거나 예약된 내역이 있습니다.' });
+            return fail(400, { error: '해당 날짜에 이미 다른 게임에 참여 중이거나 예약된 내역이 있습니다.' });
         }
 
         // 3. Join session
