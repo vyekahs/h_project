@@ -82,9 +82,15 @@
 
 <div class="games-page">
     <div class="header">
-        <h1>📚 보드게임 도감 관리</h1>
+        <h1>
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:10px; vertical-align:text-bottom;"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></svg>
+            보드게임 도감 관리
+        </h1>
         <div class="header-actions">
-            <button class="btn-secondary" on:click={() => showBggModal = true}>🌍 BGG에서 가져오기</button>
+            <button class="btn-secondary" on:click={() => showBggModal = true}>
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px;"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+                BGG에서 가져오기
+            </button>
             <button class="btn-primary" on:click={openAddModal}>+ 게임 추가</button>
         </div>
     </div>
@@ -98,7 +104,9 @@
                     {#if game.image_url}
                         <img src={game.image_url} alt={game.name} />
                     {:else}
-                        <div class="placeholder">🎲</div>
+                        <div class="placeholder">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:#adb5bd;"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
+                        </div>
                     {/if}
                     {#if !game.is_active}
                         <div class="inactive-overlay">비활성화됨</div>
@@ -112,12 +120,18 @@
                         {/if}
                     </div>
                     <div class="meta">
-                        <span>👥 {game.min_players}-{game.max_players}인</span>
+                        <span>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:2px; vertical-align:text-top;"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                            {game.min_players}-{game.max_players}인
+                        </span>
                         <span>⏱ {game.playtime_min === 0 ? '무제한' : game.playtime_min + '분'}</span>
-                        <span class="complexity-badge">⚖️ {game.complexity || '-'} / 5</span>
+                        <span class="complexity-badge">{game.complexity || '-'} / 5</span>
                     </div>
                     {#if game.included_dlcs}
-                        <p class="dlc-info">➕ 포함된 확장: {game.included_dlcs}</p>
+                        <p class="dlc-info">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:2px; vertical-align:text-top;"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                            포함된 확장: {game.included_dlcs}
+                        </p>
                     {/if}
                     <p class="desc">{game.description || '설명이 없습니다.'}</p>
                     <div class="actions">
@@ -148,7 +162,9 @@
         <div class="modal detail-modal" on:click|stopPropagation>
             <div class="detail-header">
                 <h2>{selectedDetailGame.name}</h2>
-                <button class="btn-close" on:click={closeDetailModal}>✕</button>
+                <button class="btn-close" on:click={closeDetailModal}>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
             </div>
             
             <div class="detail-content">
@@ -156,7 +172,9 @@
                     {#if selectedDetailGame.image_url}
                         <img src={selectedDetailGame.image_url} alt={selectedDetailGame.name} />
                     {:else}
-                        <div class="placeholder">🎲</div>
+                        <div class="placeholder">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:#adb5bd;"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
+                        </div>
                     {/if}
                 </div>
                 
@@ -188,20 +206,29 @@
 
                     {#if selectedDetailGame.best_players}
                         <div class="best-players">
-                            <span class="label">👍 베스트 인원:</span>
+                            <span class="label">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px; vertical-align:middle;"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/></svg>
+                                베스트 인원:
+                            </span>
                             <span class="value">{selectedDetailGame.best_players}명</span>
                         </div>
                     {/if}
 
                     {#if selectedDetailGame.included_dlcs}
                         <div class="dlc-section">
-                            <h4>➕ 포함된 확장</h4>
+                            <h4>
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px; vertical-align:text-bottom;"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                                포함된 확장
+                            </h4>
                             <p>{selectedDetailGame.included_dlcs}</p>
                         </div>
                     {/if}
 
                     <div class="description-section">
-                        <h4>📝 게임 설명</h4>
+                        <h4>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px; vertical-align:text-bottom;"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>
+                            게임 설명
+                        </h4>
                         <p>{selectedDetailGame.description || '설명이 없습니다.'}</p>
                     </div>
                 </div>
@@ -292,7 +319,10 @@
 {#if showBggModal}
     <div class="modal-backdrop" on:click={closeBggModal} on:keydown={(e) => e.key === 'Escape' && closeBggModal()} role="button" tabindex="0" aria-label="Close modal">
         <div class="modal bgg-modal" on:click|stopPropagation role="presentation">
-            <h2>🌍 BGG 게임 검색</h2>
+            <h2>
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px; vertical-align:text-bottom;"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+                BGG 게임 검색
+            </h2>
             <form method="POST" action="?/searchBgg" use:enhance={() => {
                 isSearching = true;
                 return async ({ update }) => {
@@ -392,7 +422,7 @@
         padding: 1rem;
         flex: 1;
         display: flex;
-        flex-direction: row;
+        flex-direction: column;
     }
     .game-info h3 {
         margin: 0 0 0.5rem 0;
@@ -406,8 +436,6 @@
         margin-bottom: 0.5rem;
     }
     .complexity-badge {
-        background: #f3e5f5;
-        color: #7b1fa2;
         padding: 0 6px;
         border-radius: 4px;
         font-weight: bold;

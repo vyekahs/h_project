@@ -11,6 +11,7 @@ declare global {
                 can_manage_games: boolean;
                 penalty_points: number;
                 is_blacklisted: boolean;
+                season_pass_expires_at?: Date | string | null;
                 title?: {
                     id: number;
                     title_name: string;

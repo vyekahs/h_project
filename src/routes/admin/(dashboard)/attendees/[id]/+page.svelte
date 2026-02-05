@@ -213,7 +213,10 @@
 
         {:else if activeTab === 'account'}
             <div class="account-section">
-                <h3>🔑 비밀번호 변경</h3>
+                <h3>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px; vertical-align:text-bottom;"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                    비밀번호 변경
+                </h3>
                 <p class="description">사용자의 비밀번호를 강제로 재설정합니다.</p>
                 
                 <form method="POST" action="?/resetPassword" use:enhance>
@@ -225,9 +228,15 @@
                 </form>
                 
                 {#if form?.success && !form?.message} <!-- Check message to avoid conflict with season pass success -->
-                    <p class="success-msg">✅ 비밀번호가 성공적으로 변경되었습니다.</p>
+                    <p class="success-msg">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px; vertical-align:text-bottom; color:green;"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                        비밀번호가 성공적으로 변경되었습니다.
+                    </p>
                 {:else if form?.error}
-                    <p class="error-msg">❌ {form.error}</p>
+                    <p class="error-msg">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px; vertical-align:text-bottom; color:red;"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+                        {form.error}
+                    </p>
                 {/if}
             </div>
 
@@ -269,7 +278,10 @@
                 </div>
 
                 {#if form?.success && form?.message}
-                    <p class="success-msg">✅ {form.message}</p>
+                    <p class="success-msg">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px; vertical-align:text-bottom; color:green;"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                        {form.message}
+                    </p>
                 {/if}
             </div>
         {/if}
@@ -278,7 +290,10 @@
     {#if showSeasonPassModal}
         <div class="modal-overlay" on:click|self={() => showSeasonPassModal = false}>
             <div class="modal">
-                <h3>🎟️ 정기권 발급</h3>
+                <h3>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px; vertical-align:text-bottom;"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                    정기권 발급
+                </h3>
                 <p>시작일을 선택하면 30일간 유효한 정기권이 발급됩니다.</p>
                 
                 <form method="POST" action="?/updateSeasonPass" use:enhance={({ cancel }) => {
@@ -289,7 +304,7 @@
                     return async ({ result, update }) => {
                         if (result.type === 'success') {
                             showSeasonPassModal = false;
-                            alert('정기권이 성공적으로 발급되었습니다! 🎉');
+                            alert('정기권이 성공적으로 발급되었습니다!');
                             await update();
                         }
                     };

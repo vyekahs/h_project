@@ -19,7 +19,7 @@
 
 <div class="arcade-container">
     <header class="arcade-header">
-        <h1>🎮 GAME LOUNGE</h1>
+        <h1>GAME LOUNGE</h1>
     </header>
 
     <!-- Tab Navigation -->
@@ -48,7 +48,6 @@
     {#if activeTab === 'games'}
         <!-- Games Grid -->
         <section class="games-section">
-            <h2 class="section-title">게임 리스트</h2>
             <div class="games-grid">
                 {#each games as game}
                     <a href={game.url} class="game-card {game.id}">

@@ -7,7 +7,10 @@
 <div class="qr-container">
     <div class="header">
         <a href="/admin" class="back-link">← 관리자 대시보드</a>
-        <h1>📱 QR 체크인</h1>
+        <h1>
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
+            QR 체크인
+        </h1>
     </div>
 
     <div class="qr-card">
@@ -58,6 +61,10 @@
         margin: 0;
         color: #333;
         text-align: center;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.75rem;
     }
     .qr-card {
         background: white;

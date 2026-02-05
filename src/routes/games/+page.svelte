@@ -439,7 +439,6 @@
         background: #f0f0f0;
         color: #555;
         font-weight: 500;
-        margin-right: 0.5rem;
     }
     .badge.complexity { background: #f3e5f5; color: #7b1fa2; }
     
