@@ -5,8 +5,17 @@
     export let data: PageData;
     export let form;
 
-    let activeTab = 'history'; // 'history' | 'partners'
+    let activeTab = 'history'; // 'history' | 'partners' | 'visits' | 'account' | 'season_pass'
     let viewMode = 'list'; // 'list' | 'calendar'
+    
+    // Season Pass Logic
+    let showSeasonPassModal = false;
+    let seasonPassStartDate = new Date().toISOString().split('T')[0];
+
+    $: activeSeasonPass = data.attendee.season_pass_expires_at ? new Date(data.attendee.season_pass_expires_at) > new Date() : false;
+    $: seasonPassDaysLeft = data.attendee.season_pass_expires_at 
+        ? Math.ceil((new Date(data.attendee.season_pass_expires_at).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)) 
+        : 0;
 
     // Calendar Logic
     const today = new Date();
@@ -67,6 +76,7 @@
         <button class:active={activeTab === 'history'} on:click={() => activeTab = 'history'}>게임 이력</button>
         <button class:active={activeTab === 'partners'} on:click={() => activeTab = 'partners'}>함께한 파트너</button>
         <button class:active={activeTab === 'visits'} on:click={() => activeTab = 'visits'}>방문 기록</button>
+        <button class:active={activeTab === 'season_pass'} on:click={() => activeTab = 'season_pass'}>정기권 관리</button>
         <button class:active={activeTab === 'account'} on:click={() => activeTab = 'account'}>계정 관리</button>
     </div>
 
@@ -214,17 +224,215 @@
                     <button type="submit" class="btn-primary">비밀번호 변경</button>
                 </form>
                 
-                {#if form?.success}
+                {#if form?.success && !form?.message} <!-- Check message to avoid conflict with season pass success -->
                     <p class="success-msg">✅ 비밀번호가 성공적으로 변경되었습니다.</p>
                 {:else if form?.error}
                     <p class="error-msg">❌ {form.error}</p>
                 {/if}
             </div>
+
+        {:else if activeTab === 'season_pass'}
+            <div class="season-pass-section">
+                <div class="status-card {activeSeasonPass ? 'active' : 'inactive'}">
+                    <h3>정기권 상태</h3>
+                    {#if activeSeasonPass}
+                        <div class="status-badge active">사용 중</div>
+                        <p class="days-left">D-{seasonPassDaysLeft}</p>
+                        <p class="date">만료일: {new Date(data.attendee.season_pass_expires_at).toLocaleDateString()}</p>
+                    {:else}
+                        <div class="status-badge inactive">미보유</div>
+                        <p class="description">현재 유효한 정기권이 없습니다.</p>
+                    {/if}
+                </div>
+
+                <div class="actions-row">
+                    {#if activeSeasonPass}
+                        <form method="POST" action="?/cancelSeasonPass" use:enhance={({ cancel }) => {
+                            if (!confirm('정말로 정기권을 취소하시겠습니까?')) {
+                                cancel();
+                                return;
+                            }
+                            return async ({ result, update }) => {
+                                if (result.type === 'success') {
+                                    alert('정기권이 취소되었습니다.');
+                                    await update();
+                                }
+                            };
+                        }}>
+                            <button class="btn-cancel-pass">정기권 취소</button>
+                        </form>
+                    {/if}
+
+                    <button class="btn-grant" on:click={() => showSeasonPassModal = true}>
+                        {activeSeasonPass ? '정기권 연장/재발급' : '정기권 시작'}
+                    </button>
+                </div>
+
+                {#if form?.success && form?.message}
+                    <p class="success-msg">✅ {form.message}</p>
+                {/if}
+            </div>
         {/if}
     </div>
+
+    {#if showSeasonPassModal}
+        <div class="modal-overlay" on:click|self={() => showSeasonPassModal = false}>
+            <div class="modal">
+                <h3>🎟️ 정기권 발급</h3>
+                <p>시작일을 선택하면 30일간 유효한 정기권이 발급됩니다.</p>
+                
+                <form method="POST" action="?/updateSeasonPass" use:enhance={({ cancel }) => {
+                    if (!confirm(`${seasonPassStartDate}부터 30일간 정기권을 발급하시겠습니까?`)) {
+                        cancel();
+                        return;
+                    }
+                    return async ({ result, update }) => {
+                        if (result.type === 'success') {
+                            showSeasonPassModal = false;
+                            alert('정기권이 성공적으로 발급되었습니다! 🎉');
+                            await update();
+                        }
+                    };
+                }}>
+                    <div class="form-group">
+                        <label>시작일 선택</label>
+                        <input type="date" name="startDate" bind:value={seasonPassStartDate} required />
+                    </div>
+                    <div class="modal-actions">
+                        <button type="button" class="btn-cancel" on:click={() => showSeasonPassModal = false}>취소</button>
+                        <button type="submit" class="btn-primary">발급하기 (30일)</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    {/if}
 </div>
 
 <style>
+    /* ... existing styles ... */
+    
+    /* Season Pass Styles */
+    .season-pass-section {
+        max-width: 500px;
+        margin: 0 auto;
+        text-align: center;
+    }
+    .status-card {
+        padding: 2rem;
+        border-radius: 12px;
+        background: white;
+        border: 1px solid #eee;
+        margin-bottom: 2rem;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+    }
+    .status-card.active {
+        border-color: #2196f3;
+        background: #e3f2fd;
+    }
+    .status-badge {
+        display: inline-block;
+        padding: 0.5rem 1rem;
+        border-radius: 20px;
+        font-weight: bold;
+        margin-bottom: 1rem;
+    }
+    .status-badge.active {
+        background: #2196f3;
+        color: white;
+    }
+    .status-badge.inactive {
+        background: #9e9e9e;
+        color: white;
+    }
+    .days-left {
+        font-size: 2.5rem;
+        font-weight: bold;
+        color: #1976d2;
+        margin: 0.5rem 0;
+    }
+    .date {
+        color: #666;
+    }
+    
+    .actions-row {
+        display: flex;
+        gap: 1rem;
+        justify-content: center;
+    }
+
+    .btn-grant {
+        padding: 1rem 2rem;
+        font-size: 1.1rem;
+        font-weight: bold;
+        color: white;
+        background: #4caf50;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        flex: 1; /* Equal width */
+        transition: background 0.2s;
+    }
+    .btn-grant:hover {
+        background: #388e3c;
+    }
+
+    .btn-cancel-pass {
+        padding: 1rem 2rem;
+        font-size: 1.1rem;
+        font-weight: bold;
+        color: white;
+        background: #f44336;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        flex: 1; /* Equal width */
+        transition: background 0.2s;
+    }
+    .btn-cancel-pass:hover {
+        background: #d32f2f;
+    }
+
+    /* Modal Styles */
+    .modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0,0,0,0.5);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 1000;
+    }
+    .modal {
+        background: white;
+        padding: 2rem;
+        border-radius: 12px;
+        width: 90%;
+        max-width: 400px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    }
+    .modal h3 {
+        margin-top: 0;
+    }
+    .modal-actions {
+        display: flex;
+        gap: 1rem;
+        margin-top: 2rem;
+    }
+    .btn-cancel {
+        flex: 1;
+        padding: 0.75rem;
+        border: 1px solid #ddd;
+        background: white;
+        border-radius: 6px;
+        cursor: pointer;
+    }
+    .btn-cancel:hover {
+        background: #f5f5f5;
+    }
+
     .attendee-detail {
         /* Padding handled by layout */
     }

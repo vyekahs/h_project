@@ -21,6 +21,13 @@
     $: filteredTotalGames = filteredHistory.length;
     $: filteredTotalWins = filteredHistory.filter((g: any) => g.is_winner).length;
 
+    // Season Pass Logic
+    $: hasSeasonPass = data.user.season_pass_expires_at && new Date(data.user.season_pass_expires_at) > new Date();
+    $: seasonPassDaysLeft = hasSeasonPass 
+        ? Math.ceil((new Date(data.user.season_pass_expires_at).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)) 
+        : 0;
+    $: seasonPassEndDate = hasSeasonPass ? new Date(data.user.season_pass_expires_at).toLocaleDateString() : '';
+
     // Top Opponents
     $: topOpponents = (() => {
         const counts: Record<string, number> = {};
@@ -50,6 +57,7 @@
     // ... toggle functions ...
     let isYearOpen = false;
     let isMonthOpen = false;
+    let showGuideModal = false;
 
     function toggleYear() {
         isYearOpen = !isYearOpen;
@@ -95,6 +103,18 @@
              <a href="/login" class="btn-login-text">로그인</a>
         {/if}
     </header>
+
+    {#if hasSeasonPass}
+        <div class="season-pass-banner">
+            <div class="pass-info">
+                <span class="badge">🎫 정기권 사용 중</span>
+                <span class="d-day">D-{seasonPassDaysLeft}</span>
+            </div>
+            <div class="pass-date">
+                종료일: {seasonPassEndDate}
+            </div>
+        </div>
+    {/if}
 
     {#if data.user}
         <div class="stats-overview">
@@ -147,7 +167,10 @@
         <!-- My Devices Section -->
         <div class="devices-section">
             <div class="section-header">
-                <h3>📱 내 기기 (블루투스 출입)</h3>
+                <h3>
+                    📱 내 기기 (블루투스 출입)
+                    <button class="btn-guide" on:click={() => showGuideModal = true} aria-label="기기 등록 방법">ℹ️</button>
+                </h3>
             </div>
 
             <div class="device-list">
@@ -156,12 +179,7 @@
                         <div class="device-card">
                             <div class="device-info">
                                 <span class="device-name">{device.name}</span>
-                                <span class="device-meta">
-                                    IRK: {device.name === 'Test Device' ? 'Hidden' : '••••' + '••••'} 
-                                    {#if device.last_seen_at}
-                                        <span class="last-seen">Refreshed: {new Date(device.last_seen_at).toLocaleTimeString()}</span>
-                                    {/if}
-                                </span>
+
                             </div>
                             <form method="POST" action="?/deleteDevice" use:enhance>
                                 <input type="hidden" name="deviceId" value={device.id} />
@@ -279,6 +297,36 @@
     {/if}
 </div>
 
+{#if showGuideModal}
+    <div class="modal-backdrop" on:click|self={() => showGuideModal = false}>
+        <div class="modal-content">
+            <h3>📱 기기 등록 방법</h3>
+            <ol class="guide-steps">
+                <li>
+                    <span class="step-num">1</span>
+                    자리에 앉아 <strong>'BoardGame_Signup'</strong><br>
+                    와이파이에 연결합니다. (비밀번호 없음)
+                </li>
+                <li>
+                    <span class="step-num">2</span>
+                    자동으로 뜨는 창에서 <strong>로그인/회원가입</strong>을 합니다.<br>
+                    <small style="color: #e03131; display: block; margin-top: 4px;">※ 창이 안 뜨면 인터넷 주소창에<br><strong>192.168.4.1</strong>을 입력하세요!</small>
+                </li>
+                <li>
+                    <span class="step-num">3</span>
+                    화면 안내에 따라<br>
+                    <strong>블루투스</strong>를 연결합니다.
+                </li>
+                <li>
+                    <span class="step-num">4</span>
+                    등록 완료 메시지가 뜨면 <strong>성공!</strong> 🎉
+                </li>
+            </ol>
+            <button class="modal-close-btn" on:click={() => showGuideModal = false}>닫기</button>
+        </div>
+    </div>
+{/if}
+
 <style>
     .mypage-container {
         max-width: 600px;
@@ -324,6 +372,52 @@
         color: #333;
         text-decoration: none;
         font-weight: bold;
+    }
+
+    /* Season Pass Banner */
+    .season-pass-banner {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 1.5rem;
+        border-radius: 12px;
+        margin-bottom: 2rem;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .pass-info {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+    }
+    .pass-info .badge {
+        background: rgba(255,255,255,0.2);
+        padding: 0.4rem 0.8rem;
+        border-radius: 20px;
+        font-weight: bold;
+        font-size: 0.9rem;
+        backdrop-filter: blur(5px);
+    }
+    .pass-info .d-day {
+        font-size: 1.5rem;
+        font-weight: 800;
+        color: #fff;
+    }
+    .pass-date {
+        font-size: 0.9rem;
+        opacity: 0.9;
+    }
+    
+    @media (max-width: 480px) {
+        .season-pass-banner {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 0.5rem;
+        }
+        .pass-date {
+            align-self: flex-end;
+        }
     }
 
     /* Stats */
@@ -676,5 +770,82 @@
         padding: 1rem;
         color: #adb5bd;
         font-size: 0.9rem;
+    }
+    /* ... existing styles ... */
+    
+    /* Guide Modal */
+    .btn-guide {
+        background: none;
+        border: none;
+        cursor: pointer;
+        font-size: 1.1rem;
+        padding: 0;
+        margin-left: 0.5rem;
+        color: #339af0;
+        vertical-align: middle;
+    }
+    .modal-backdrop {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0,0,0,0.5);
+        z-index: 999;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 1rem;
+        box-sizing: border-box;
+    }
+    .modal-content {
+        background: white;
+        padding: 2rem;
+        border-radius: 16px;
+        max-width: 400px;
+        width: 100%;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+        position: relative;
+    }
+    .modal-content h3 {
+        margin: 0 0 1rem 0;
+        color: #333;
+        font-size: 1.2rem;
+        text-align: center;
+    }
+    .guide-steps {
+        padding: 0;
+        margin: 0 0 1.5rem 0;
+        list-style: none;
+    }
+    .guide-steps li {
+        margin-bottom: 1rem;
+        line-height: 1.5;
+        color: #555;
+        font-size: 0.95rem;
+    }
+    .step-num {
+        display: inline-block;
+        background: #e7f5ff;
+        color: #339af0;
+        font-weight: bold;
+        padding: 0.1rem 0.5rem;
+        border-radius: 6px;
+        margin-right: 0.5rem;
+    }
+    .emphasis {
+        color: #e03131;
+        font-weight: bold;
+    }
+    .modal-close-btn {
+        width: 100%;
+        padding: 0.8rem;
+        background: #339af0;
+        color: white;
+        border: none;
+        border-radius: 8px;
+        font-weight: bold;
+        font-size: 1rem;
+        cursor: pointer;
     }
 </style>

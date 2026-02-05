@@ -10,7 +10,7 @@ export const load: PageServerLoad = async ({ params }) => {
     }
 
     // 1. Fetch Attendee Info
-    const attendeeResult = await query('SELECT id, name, status, arrival_time FROM attendees WHERE id = $1', [attendeeId]);
+    const attendeeResult = await query('SELECT id, name, status, arrival_time, season_pass_expires_at FROM attendees WHERE id = $1', [attendeeId]);
     
     if (attendeeResult.rows.length === 0) {
         throw error(404, 'Attendee not found');
@@ -87,6 +87,43 @@ export const actions: Actions = {
         } catch (err) {
             console.error(err);
             return fail(500, { error: '비밀번호 변경 중 오류가 발생했습니다.' });
+        }
+    },
+
+    updateSeasonPass: async ({ request, params }) => {
+        const data = await request.formData();
+        const startDateStr = data.get('startDate') as string;
+        const attendeeId = params.id;
+
+        if (!startDateStr) {
+            return fail(400, { error: '시작일을 입력해주세요.' });
+        }
+
+        try {
+            const startDate = new Date(startDateStr);
+            // Add 30 days
+            const endDate = new Date(startDate);
+            endDate.setDate(endDate.getDate() + 30);
+            
+            // Set end of day (23:59:59)
+            endDate.setHours(23, 59, 59, 999);
+
+            await query('UPDATE attendees SET season_pass_expires_at = $1 WHERE id = $2', [endDate, attendeeId]);
+            return { success: true, message: '정기권이 발급되었습니다.' };
+        } catch (err) {
+            console.error(err);
+            return fail(500, { error: '정기권 발급 중 오류가 발생했습니다.' });
+        }
+    },
+
+    cancelSeasonPass: async ({ params }) => {
+        const attendeeId = params.id;
+        try {
+            await query('UPDATE attendees SET season_pass_expires_at = NULL WHERE id = $1', [attendeeId]);
+            return { success: true, message: '정기권이 취소되었습니다.' };
+        } catch (err) {
+            console.error(err);
+            return fail(500, { error: '정기권 취소 중 오류가 발생했습니다.' });
         }
     }
 };
