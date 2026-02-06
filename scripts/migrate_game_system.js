@@ -39,6 +39,17 @@ const queries = [
         ALTER TABLE minigame_rankings ADD CONSTRAINT fk_rankings_attendees FOREIGN KEY (user_id) REFERENCES attendees(id) ON DELETE CASCADE;
      EXCEPTION WHEN others THEN null; END $$;`,
 
+    `CREATE TABLE IF NOT EXISTS minigame_monthly_rankings (
+        id              SERIAL PRIMARY KEY,
+        user_id         INTEGER NOT NULL REFERENCES attendees(id) ON DELETE CASCADE,
+        game_id         VARCHAR(50) NOT NULL,
+        month_key       VARCHAR(7) NOT NULL,
+        total_score     INTEGER DEFAULT 0,
+        score_updated_at TIMESTAMP DEFAULT NOW(),
+        UNIQUE(user_id, game_id, month_key)
+    );`,
+    `CREATE INDEX IF NOT EXISTS idx_monthly_rankings_score ON minigame_monthly_rankings(game_id, month_key, total_score DESC);`,
+
     `CREATE TABLE IF NOT EXISTS minigame_titles (
         id              BIGSERIAL PRIMARY KEY,
         title_code      VARCHAR(50) UNIQUE NOT NULL,
