@@ -269,7 +269,7 @@
                 </div>
 
                 <!-- My Devices Section (Moved to Dashboard) -->
-                <div class="devices-section">
+                <!-- <div class="devices-section">
                     <div class="section-header">
                         <h3>
                             내 기기
@@ -307,7 +307,7 @@
                             </div>
                         {/if}
                     </div>
-                </div>
+                </div> -->
             </div>
         {/if}
 
