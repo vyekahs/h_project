@@ -24,19 +24,6 @@ export const TitleService = {
         const gameRes = await query('SELECT COUNT(*) as play_count FROM minigame_rankings WHERE user_id = $1', [userId]);
         const playCount = parseInt(gameRes.rows[0]?.play_count || '0');
 
-        // Check Ranking #1 for specific categories
-        
-        // Sudoku Master: Total Score Ranking #1 (Matches Leaderboard)
-        const sudokuTotalRankRes = await query(`
-            SELECT rank FROM (
-                SELECT user_id, RANK() OVER (ORDER BY SUM(score) DESC) as rank
-                FROM minigame_rankings
-                WHERE game_id = 'sudoku'
-                GROUP BY user_id
-            ) as r WHERE user_id = $1
-        `, [userId]);
-        const isSudokuMaster = sudokuTotalRankRes.rows[0]?.rank === '1';
-
         // 2. Fetch User Ranks (Optimization: pre-fetch ranks)
         const rankRes = await query(`
             SELECT 
@@ -74,21 +61,32 @@ export const TitleService = {
                 else if (cond.rank !== undefined) {
                     if (cond.gameId) {
                         // Game-Specific Ranking
-                        const diffClause = cond.difficulty ? "AND difficulty = $4" : "";
-                        const params = [userId, cond.gameId, cond.rank];
-                        if (cond.difficulty) params.push(cond.difficulty);
-                        
-                        const rankCheckRes = await query(`
-                            SELECT 1 FROM (
-                                SELECT user_id, RANK() OVER (ORDER BY score DESC) as rnk
-                                FROM minigame_rankings
-                                WHERE game_id = $2 ${diffClause}
-                            ) as ranked
-                            WHERE user_id = $1 AND rnk <= $3
-                        `, params);
-                        
+                        let rankCheckRes;
+                        if (cond.difficulty) {
+                            // Single difficulty ranking
+                            rankCheckRes = await query(`
+                                SELECT 1 FROM (
+                                    SELECT user_id, RANK() OVER (ORDER BY score DESC) as rnk
+                                    FROM minigame_rankings
+                                    WHERE game_id = $2 AND difficulty = $4
+                                ) as ranked
+                                WHERE user_id = $1 AND rnk <= $3
+                            `, [userId, cond.gameId, cond.rank, cond.difficulty]);
+                        } else {
+                            // Total score ranking (sum across all difficulties)
+                            rankCheckRes = await query(`
+                                SELECT 1 FROM (
+                                    SELECT user_id, RANK() OVER (ORDER BY SUM(score) DESC) as rnk
+                                    FROM minigame_rankings
+                                    WHERE game_id = $2
+                                    GROUP BY user_id
+                                ) as ranked
+                                WHERE user_id = $1 AND rnk <= $3
+                            `, [userId, cond.gameId, cond.rank]);
+                        }
+
                         qualified = rankCheckRes.rows.length > 0;
-                    } 
+                    }
                     else if (cond.type === 'monthly_play_count') {
                         // Monthly Play Count Ranking
                          const monthlyRes = await query(`

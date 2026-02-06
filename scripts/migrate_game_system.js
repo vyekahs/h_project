@@ -168,10 +168,12 @@ async function main() {
 const seedData = `
 -- Seed Titles
 INSERT INTO minigame_titles (title_code, title_name, description, condition_type, condition_value) VALUES
-('sudoku_master', '스도쿠 깎는', '스도쿠(하드) 최단 클리어 1위', 'ranking', '{"gameId": "sudoku", "difficulty": "hard", "rank": 1}'),
+('sudoku_master', '스도쿠 깎는', '스도쿠 총점 1위', 'ranking', '{"gameId": "sudoku", "rank": 1}'),
 ('monthly_king', '집에 안가는', '월간 최다 플레이 (최소 3회)', 'ranking', '{"type": "monthly_play_count", "rank": 1, "min_count": 3}'),
 ('beginner', '새내기', '가입 후 30일 이내', 'account', '{"type": "account_age", "value": 30}')
-ON CONFLICT (title_code) DO NOTHING;
+ON CONFLICT (title_code) DO UPDATE SET
+    description = EXCLUDED.description,
+    condition_value = EXCLUDED.condition_value;
 
 -- Seed Shop Items
 INSERT INTO minigame_shop_items (item_code, item_name, description, price, item_type, use_limit) VALUES
