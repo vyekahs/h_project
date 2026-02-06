@@ -568,10 +568,12 @@
                     skipReward: !GAME_CONFIG.ENABLE_REWARDS
                 })
             });
+            const data = await res.json();
             if (res.ok) {
-                const data = await res.json();
                 earnedPointsResult = data.earnedPoints;
                 calculatedScore = data.score;
+            } else {
+                console.error('Score submit failed:', res.status, data);
             }
         } catch (e) {
             console.error('Failed to submit score', e);
@@ -702,56 +704,57 @@
         </div>
     
     {:else}
-        <!-- Game Header -->
-        <header>
-            <div class="header-info">
-                <span class="difficulty-badge">{difficultyLabels[difficulty]}</span>
-                <span class="mistakes">{mistakes}/3 실수</span>
-            </div>
-            
-            <div class="timer-controls">
-                <!-- Item Buttons -->
-                <div class="header-items">
-                    {#if $user.inventory.some((i: any) => i.item_code === 'time_stop')}
-                        <button class="icon-btn theme-btn" onclick={() => handleAction('time_stop')} title="타임 스톱 (시간 정지)">
-                             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="2" x2="22" y1="12" y2="12"/><line x1="12" x2="12" y1="2" y2="22"/><path d="m20 16-4-4 4-4"/><path d="m4 8 4 4-4 4"/><path d="m16 4-4 4-4-4"/><path d="m8 20 4-4 4 4"/></svg>
-                        </button>
-                    {/if}
-                    {#if $user.inventory.some((i: any) => i.item_code === 'refresh_prob')}
-                        <button class="icon-btn theme-btn" onclick={() => handleAction('refresh_prob')} title="문제 교체">
-                             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5"/></svg>
-                        </button>
-                    {/if}
+        <div class="game-play-area" class:blurred={alertMessage || confirmMessage || gameState === 'paused'}>
+            <!-- Game Header -->
+            <header>
+                <div class="header-info">
+                    <span class="difficulty-badge">{difficultyLabels[difficulty]}</span>
+                    <span class="mistakes">{mistakes}/3 실수</span>
                 </div>
 
-                <div class="timer" class:frozen={isTimeFrozen}>
-                    {#if isTimeFrozen}❄️ {/if}{formatTime(displayTimer)}
+                <div class="timer-controls">
+                    <div class="header-items">
+                        {#if $user.inventory.some((i: any) => i.item_code === 'time_stop')}
+                            <button class="icon-btn theme-btn" onclick={() => handleAction('time_stop')} title="타임 스톱 (시간 정지)">
+                                 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="2" x2="22" y1="12" y2="12"/><line x1="12" x2="12" y1="2" y2="22"/><path d="m20 16-4-4 4-4"/><path d="m4 8 4 4-4 4"/><path d="m16 4-4 4-4-4"/><path d="m8 20 4-4 4 4"/></svg>
+                            </button>
+                        {/if}
+                        {#if $user.inventory.some((i: any) => i.item_code === 'refresh_prob')}
+                            <button class="icon-btn theme-btn" onclick={() => handleAction('refresh_prob')} title="문제 교체">
+                                 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5"/></svg>
+                            </button>
+                        {/if}
+                    </div>
+
+                    <div class="timer" class:frozen={isTimeFrozen}>
+                        {#if isTimeFrozen}❄️ {/if}{formatTime(displayTimer)}
+                    </div>
+                    <button class="icon-btn" onclick={pauseGame} aria-label="Pause">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><rect x="9" y="9" width="2" height="6"/><rect x="13" y="9" width="2" height="6"/></svg>
+                    </button>
                 </div>
-                <button class="icon-btn" onclick={pauseGame} aria-label="Pause">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><rect x="9" y="9" width="2" height="6"/><rect x="13" y="9" width="2" height="6"/></svg>
-                </button>
+            </header>
+
+            <!-- Game Board -->
+            <div class="game-area">
+                 <BoardComponent
+                     {board}
+                     {selectedCell}
+                     isGameOver={gameState === 'finished'}
+                     onselect={handleCellSelect}
+                 />
             </div>
-        </header>
 
-        <!-- Game Board -->
-        <div class="game-area" class:blurred={alertMessage || confirmMessage || gameState === 'paused'}>
-             <BoardComponent 
-                 {board} 
-                 {selectedCell} 
-                 isGameOver={gameState === 'finished'}
-                 onselect={handleCellSelect}
-             />
-        </div>
-
-        <!-- Controls -->
-        <div class="controls-area" class:hidden={gameState !== 'playing'}>
-            <Controls
-                bind:isNoteMode
-                {completedNumbers}
-                onnumber={handleNumberInput}
-                onaction={handleAction}
-                onnewgame={() => {}} 
-            />
+            <!-- Controls -->
+            <div class="controls-area" class:hidden={gameState !== 'playing'}>
+                <Controls
+                    bind:isNoteMode
+                    {completedNumbers}
+                    onnumber={handleNumberInput}
+                    onaction={handleAction}
+                    onnewgame={() => {}}
+                />
+            </div>
         </div>
     {/if}
 
@@ -904,15 +907,22 @@
     }
 
 	/* Wrapper for the whole page */
+    :global(.app-layout:has(.game-container)) {
+        min-height: 0 !important;
+        height: 100dvh;
+        padding-bottom: 0 !important;
+        overflow: hidden;
+    }
     .game-container {
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-		padding: 2rem 1rem;
-		gap: 0.5rem;
-		max-width: 800px; /* Tighter width for focus */
+		padding: 0 1rem;
+		gap: 0;
+		max-width: 800px;
 		margin: 0 auto;
-        min-height: 100vh;
+        height: 100dvh;
+        overflow: hidden;
         color: #333;
         position: relative;
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -921,10 +931,11 @@
     .screen {
         display: flex;
         flex-direction: column;
-        justify-content: space-between;
+        justify-content: center;
         gap: 2.5rem;
-        height: 90vh;
+        flex: 1;
         width: 100%;
+        overflow: hidden;
     }
     
     .start-header {
@@ -1041,11 +1052,12 @@
 	header {
 		width: 100%;
 		display: flex;
-		flex-direction: row; 
+		flex-direction: row;
         justify-content: space-between;
         align-items: center;
 		gap: 0.5rem;
-        padding: 1rem 0;
+        padding: 0.5rem 0;
+        flex-shrink: 0;
 	}
     
     .header-info {
@@ -1129,21 +1141,29 @@
         background: #f0f0f0;
     }
 
-	.game-area {
-		display: flex;
-		justify-content: center;
+    .game-play-area {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
         width: 100%;
-        padding: 1rem 0;
-        transition: filter 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-	}
-    
-    .game-area.blurred {
+        max-width: 500px;
+        flex: 1;
+        gap: 1rem;
+    }
+
+    .game-play-area.blurred {
         filter: blur(15px);
         opacity: 0.5;
     }
 
+	.game-area {
+		width: 100%;
+	}
+
 	.controls-area {
 		width: 100%;
+        padding-bottom: env(safe-area-inset-bottom, 0.5rem);
         transition: opacity 0.3s;
 	}
     

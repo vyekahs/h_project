@@ -74,7 +74,7 @@
         box-shadow: 0 4px 20px rgba(0,0,0,0.05);
         width: 100%;
         max-width: 500px;
-        aspect-ratio: 1 / 1; /* Force square */
+        aspect-ratio: 1 / 1;
 	}
 
 	.row {
