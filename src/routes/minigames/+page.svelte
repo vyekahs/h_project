@@ -1,6 +1,5 @@
 <script lang="ts">
     import AdBanner from '$lib/components/ads/AdBanner.svelte';
-    import { onMount } from 'svelte';
 
     const games = [
         {
@@ -33,6 +32,10 @@
             hofLoading = false;
         }
     }
+
+    const difficultyLabels: Record<string, string> = {
+        easy: '쉬움', medium: '보통', hard: '어려움', expert: '전문가', master: '마스터'
+    };
 
     function formatTime(seconds: number) {
         const m = Math.floor(seconds / 60);
@@ -144,6 +147,11 @@
                                         </div>
                                         <div class="hof-info">
                                             <span class="hof-name">{record.nickname || '익명'}</span>
+                                            <span class="hof-detail">
+                                                <span class="hof-diff">{difficultyLabels[record.difficulty] || record.difficulty}</span>
+                                                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                                                {formatTime(record.clear_time)}
+                                            </span>
                                         </div>
                                         <div class="hof-score">
                                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
@@ -462,6 +470,22 @@
         font-size: 0.95rem;
         font-weight: 700;
         color: #333;
+        display: block;
+    }
+    .hof-detail {
+        display: flex;
+        align-items: center;
+        gap: 0.3rem;
+        font-size: 0.75rem;
+        color: #aaa;
+        margin-top: 0.1rem;
+    }
+    .hof-detail svg {
+        opacity: 0.5;
+    }
+    .hof-diff {
+        font-weight: 600;
+        margin-right: 0.2rem;
     }
     .hof-score {
         display: flex;
