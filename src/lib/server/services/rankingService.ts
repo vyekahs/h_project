@@ -107,7 +107,7 @@ export const RankingService = {
      */
     async getHallOfFame(gameId: string) {
         const sql = `
-            SELECT DISTINCT ON (r.difficulty)
+            SELECT
                 r.difficulty,
                 r.user_id,
                 a.name as nickname,
@@ -118,7 +118,8 @@ export const RankingService = {
             FROM minigame_rankings r
             LEFT JOIN attendees a ON r.user_id = a.id
             WHERE r.game_id = $1
-            ORDER BY r.difficulty, r.score DESC, r.clear_time ASC
+            ORDER BY r.score DESC, r.clear_time ASC
+            LIMIT 10
         `;
         return (await query(sql, [gameId])).rows;
     },

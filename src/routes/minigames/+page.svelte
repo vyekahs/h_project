@@ -1,6 +1,6 @@
 <script lang="ts">
     import AdBanner from '$lib/components/ads/AdBanner.svelte';
-    import RankingBoard from '$lib/components/gamification/RankingBoard.svelte';
+    import { onMount } from 'svelte';
 
     const games = [
         {
@@ -15,6 +15,34 @@
     ];
 
     let activeTab = 'games'; // 'games' | 'ranking'
+
+    let hofData: any[] = [];
+    let hofLoading = true;
+
+    async function loadHallOfFame() {
+        hofLoading = true;
+        try {
+            const res = await fetch('/api/ranking/halloffame/sudoku');
+            if (res.ok) {
+                const all = await res.json();
+                hofData = all.slice(0, 3);
+            }
+        } catch (e) {
+            console.error(e);
+        } finally {
+            hofLoading = false;
+        }
+    }
+
+    function formatTime(seconds: number) {
+        const m = Math.floor(seconds / 60);
+        const s = seconds % 60;
+        return `${m}:${s.toString().padStart(2, '0')}`;
+    }
+
+    $: if (activeTab === 'ranking') {
+        loadHallOfFame();
+    }
 </script>
 
 <div class="arcade-container">
@@ -94,7 +122,6 @@
     {:else}
         <!-- Hall of Fame -->
         <section class="ranking-section">
-            <h2 class="section-title">🏆 명예의 전당</h2>
             <div class="ranking-grid">
                 {#each games as game}
                     <div class="ranking-card">
@@ -104,7 +131,28 @@
                             </div>
                             <a href={game.url} class="more-link">도전하기 &rarr;</a>
                         </div>
-                         <RankingBoard gameId={game.id} preview={true} />
+                        {#if hofLoading}
+                            <div class="hof-empty">불러오는 중...</div>
+                        {:else if hofData.length === 0}
+                            <div class="hof-empty">아직 기록이 없습니다.</div>
+                        {:else}
+                            <div class="hof-list">
+                                {#each hofData as record, i}
+                                    <div class="hof-row">
+                                        <div class="hof-rank" class:hof-rank-1={i === 0} class:hof-rank-2={i === 1} class:hof-rank-3={i === 2}>
+                                            {i + 1}
+                                        </div>
+                                        <div class="hof-info">
+                                            <span class="hof-name">{record.nickname || '익명'}</span>
+                                        </div>
+                                        <div class="hof-score">
+                                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                                            {record.score.toLocaleString()}
+                                        </div>
+                                    </div>
+                                {/each}
+                            </div>
+                        {/if}
                     </div>
                 {/each}
             </div>
@@ -376,6 +424,61 @@
     }
     .more-link:hover {
         background: #e5e5e7;
+    }
+
+    .hof-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.6rem;
+    }
+    .hof-row {
+        display: flex;
+        align-items: center;
+        gap: 0.8rem;
+        padding: 0.5rem 0;
+    }
+    .hof-rank {
+        font-size: 0.8rem;
+        font-weight: 800;
+        width: 26px;
+        height: 26px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 50%;
+        background: #f0f0f0;
+        color: #999;
+        flex-shrink: 0;
+        font-variant-numeric: tabular-nums;
+    }
+    .hof-rank-1 { background: #333; color: #fff; }
+    .hof-rank-2 { background: #777; color: #fff; }
+    .hof-rank-3 { background: #aaa; color: #fff; }
+    .hof-info {
+        flex: 1;
+        min-width: 0;
+    }
+    .hof-name {
+        font-size: 0.95rem;
+        font-weight: 700;
+        color: #333;
+    }
+    .hof-score {
+        display: flex;
+        align-items: center;
+        gap: 0.3rem;
+        font-size: 0.85rem;
+        font-weight: 600;
+        color: #888;
+    }
+    .hof-score svg {
+        opacity: 0.5;
+    }
+    .hof-empty {
+        text-align: center;
+        padding: 1.5rem;
+        color: #999;
+        font-size: 0.9rem;
     }
 
 </style>

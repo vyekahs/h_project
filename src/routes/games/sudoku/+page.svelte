@@ -708,18 +708,31 @@
                             {:else if hallOfFameData.length === 0}
                                 <div class="hof-empty">아직 기록이 없습니다.</div>
                             {:else}
-                                {#each hallOfFameData as record}
+                                {#each hallOfFameData as record, i}
                                     {@const diffLabel = difficultyLabels[record.difficulty as keyof typeof difficultyLabels] || record.difficulty}
-                                    <div class="hof-card">
-                                        <div class="hof-difficulty">{diffLabel}</div>
-                                        <div class="hof-player">
-                                            <span class="hof-crown">👑</span>
-                                            <span class="hof-name">{record.nickname || '익명'}</span>
+                                    <div class="hof-card" class:hof-top3={i < 3}>
+                                        <div class="hof-rank" class:hof-rank-1={i === 0} class:hof-rank-2={i === 1} class:hof-rank-3={i === 2}>
+                                            {i + 1}
                                         </div>
-                                        <div class="hof-stats">
-                                            <span>🏆 {record.score.toLocaleString()}점</span>
-                                            <span>⏱️ {formatTime(record.clear_time)}</span>
-                                            <span>❌ {record.mistakes}회 실수</span>
+                                        <div class="hof-body">
+                                            <div class="hof-player">
+                                                <span class="hof-name">{record.nickname || '익명'}</span>
+                                                <span class="hof-difficulty">{diffLabel}</span>
+                                            </div>
+                                            <div class="hof-stats">
+                                                <span class="hof-stat">
+                                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                                                    {record.score.toLocaleString()}
+                                                </span>
+                                                <span class="hof-stat">
+                                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                                                    {formatTime(record.clear_time)}
+                                                </span>
+                                                <span class="hof-stat">
+                                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 4H8l-7 8 7 8h13a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z"/><line x1="18" y1="9" x2="12" y2="15"/><line x1="12" y1="9" x2="18" y2="15"/></svg>
+                                                    {record.mistakes}
+                                                </span>
+                                            </div>
                                         </div>
                                     </div>
                                 {/each}
@@ -987,20 +1000,22 @@
     .screen {
         display: flex;
         flex-direction: column;
-        justify-content: center;
+        justify-content: flex-start;
         gap: 2.5rem;
         flex: 1;
         width: 100%;
         overflow: hidden;
+        padding-top: 2rem;
     }
     .subpage {
         display: flex;
         flex-direction: column;
-        justify-content: center;
+        justify-content: flex-start;
         width: 100%;
         flex: 1;
         gap: 2.5rem;
         overflow: hidden;
+        padding-top: 2rem;
     }
     .subpage-body {
         overflow-y: auto;
@@ -1672,39 +1687,79 @@
         flex: 1;
     }
     .hof-card {
+        display: flex;
+        align-items: center;
+        gap: 0.9rem;
         background: #fff;
-        border-radius: 12px;
-        padding: 1rem 1.2rem;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
-        border: 1px solid #f0f0f0;
+        border-radius: 10px;
+        padding: 0.7rem 1rem;
+        border: 1px solid #eee;
+    }
+    .hof-top3 {
+        background: #fafafa;
+        border-color: #ddd;
+    }
+    .hof-rank {
+        font-size: 0.85rem;
+        font-weight: 800;
+        width: 28px;
+        height: 28px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 50%;
+        background: #f0f0f0;
+        color: #999;
+        font-variant-numeric: tabular-nums;
+        flex-shrink: 0;
+    }
+    .hof-rank-1 {
+        background: #333;
+        color: #fff;
+    }
+    .hof-rank-2 {
+        background: #777;
+        color: #fff;
+    }
+    .hof-rank-3 {
+        background: #aaa;
+        color: #fff;
+    }
+    .hof-body {
+        flex: 1;
+        min-width: 0;
     }
     .hof-difficulty {
-        font-size: 0.75rem;
-        font-weight: 700;
-        color: #888;
+        font-size: 0.65rem;
+        font-weight: 600;
+        color: #bbb;
         text-transform: uppercase;
-        letter-spacing: 1px;
-        margin-bottom: 0.5rem;
+        letter-spacing: 0.5px;
     }
     .hof-player {
         display: flex;
         align-items: center;
-        gap: 0.5rem;
-        margin-bottom: 0.5rem;
-    }
-    .hof-crown {
-        font-size: 1.2rem;
+        gap: 0.4rem;
+        margin-bottom: 0.2rem;
     }
     .hof-name {
-        font-size: 1.1rem;
+        font-size: 0.95rem;
         font-weight: 700;
         color: #333;
     }
     .hof-stats {
         display: flex;
-        gap: 1rem;
-        font-size: 0.85rem;
-        color: #666;
+        gap: 0.7rem;
+        font-size: 0.78rem;
+        color: #888;
+    }
+    .hof-stat {
+        display: flex;
+        align-items: center;
+        gap: 0.25rem;
+    }
+    .hof-stat svg {
+        opacity: 0.5;
     }
     .hof-loading, .hof-empty {
         text-align: center;
