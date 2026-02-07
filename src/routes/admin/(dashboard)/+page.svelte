@@ -224,6 +224,7 @@
     let tables: Table[];
 
     $: attendees = data.attendees as Attendee[];
+    $: allUsers = (data as any).allUsers || [];
     $: games = data.games as GameSession[];
     $: scheduledGames = data.scheduledGames as GameSession[];
     $: reservations = data.reservations as Reservation[];
@@ -390,8 +391,8 @@
                         <input type="hidden" name="sessionId" value={g.id} />
                         <select name="attendeeId" required class="attendee-select-mini">
                             <option value="">참여자 추가</option>
-                            {#each (attendees || []) as attendee}
-                                <option value={attendee.id}>{attendee.name}</option>
+                            {#each (allUsers || []) as user}
+                                <option value={user.id}>{user.name}</option>
                             {/each}
                         </select>
                         <button type="submit" class="btn-mini">추가</button>

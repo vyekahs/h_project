@@ -110,6 +110,7 @@ export const load: PageServerLoad = async () => {
 
     return {
         attendees: attendeesResult.rows,
+        allUsers: historyResult.rows,
         savedMembers,
         games: gamesResult.rows,
         scheduledGames: scheduledGamesResult.rows,
