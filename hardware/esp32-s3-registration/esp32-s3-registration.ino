@@ -12,9 +12,9 @@
 #include "services/gap/ble_svc_gap.h"
 
 // --- CONFIGURATION ---
-const char* SERVER_URL = "http://192.168.219.120:3000";
-const char* WIFI_SSID = "U+NetE836";
-const char* WIFI_PASS = "7356361EM!";
+const char* SERVER_URL = "https://damonpyo.mooo.com";
+const char* WIFI_SSID = "KT_GiGA_3F81";
+const char* WIFI_PASS = "a4ke01fh66";
 
 // Custom GATT Service UUIDs for IRK retrieval (Web Bluetooth용)
 #define IRK_SERVICE_UUID        "12345678-1234-5678-1234-56789abcdef0"
@@ -27,7 +27,7 @@ uint16_t currentConnId = 0xFFFF;
 
 // Polling Globals
 unsigned long lastPollTime = 0;
-const unsigned long POLL_INTERVAL = 2000; // 2초마다 체크
+const unsigned long POLL_INTERVAL = 500; // 0.5초마다 체크 (iOS 연결 전에 isRegistering 활성화)
 bool isRegistering = false;
 String myMacAddress = "";
 
@@ -448,22 +448,17 @@ void loop() {
       disconnectTargetTime = millis() + 3000; // 3s delay
   }
 
-  // 5. Cleanup
+  // 5. Cleanup - 등록 완료 후 ESP32 재시작으로 완전 초기화
   if (pendingDisconnect && millis() > disconnectTargetTime) {
       pendingDisconnect = false;
-      Serial.println("Session Complete. Resetting.");
+      Serial.println("Session Complete. Rebooting...");
 
       if(currentConnId != 0xFFFF) {
           pServer->disconnect(currentConnId);
+          delay(500);
       }
 
-      isRegistering = false;
-
-        // Clear bonds again to be safe
-          if (NimBLEDevice::getNumBonds() > 0) {
-            clearAllBonds();
-          }
-      NimBLEDevice::startAdvertising(); // Ready for next person
+      ESP.restart();
   }
 
   delay(10);

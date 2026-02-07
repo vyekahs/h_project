@@ -7,19 +7,19 @@
 #include <BLEAdvertisedDevice.h>
 
 // WiFi 직접 입력
-const char* WIFI_SSID = "U+NetE836";
-const char* WIFI_PASS = "7356361EM!";
+const char* WIFI_SSID = "KT_GiGA_3F81";
+const char* WIFI_PASS = "a4ke01fh66";
 
 // Server Config
-const char* API_SERVER = "192.168.219.120";
-const int API_PORT = 5173;
+const char* API_SERVER = "https://damonpyo.mooo.com";
+// const int API_PORT = 8080;
 const char* API_KEY = "hproject_scanner_secret_2026";
-const char* SCANNER_ID = "scanner_main_hall";
+const char* SCANNER_ID = "scanner_sub_hall";
 
 // BLE
 BLEScan* pBLEScan;
 const int SCAN_TIME = 3;
-const int REPORT_INTERVAL = 10 * 1000;
+const unsigned long REPORT_INTERVAL = 60 * 1000;
 unsigned long lastReportTime = 0;
 
 // Buffer
@@ -76,7 +76,7 @@ void sendReport() {
   }
   
   HTTPClient http;
-  String url = String("http://") + API_SERVER + ":" + String(API_PORT) + "/api/ble/report";
+  String url = String(API_SERVER) + "/api/ble/report";
   Serial.println("URL: " + url);
   
   http.begin(url);
@@ -113,12 +113,12 @@ void sendReport() {
 void loop() {
   // Scan
   Serial.println("Scanning BLE...");
-  BLEScanResults foundDevices = pBLEScan->start(SCAN_TIME, false);
-  int count = foundDevices.getCount();
+  BLEScanResults* foundDevices = pBLEScan->start(SCAN_TIME, false);
+  int count = foundDevices->getCount();
   Serial.println("Found: " + String(count) + " devices");
-  
+
   for (int i = 0; i < count; i++) {
-    BLEAdvertisedDevice device = foundDevices.getDevice(i);
+    BLEAdvertisedDevice device = foundDevices->getDevice(i);
     String mac = device.getAddress().toString().c_str();
     int rssi = device.getRSSI();
 

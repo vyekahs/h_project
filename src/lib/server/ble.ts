@@ -25,7 +25,7 @@ const CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes
 const lastSeenMap = new Map<number, number>();
 
 // Constants
-const CHECKOUT_TIMEOUT_MS = 10 * 1000; // 10 seconds for testing
+const CHECKOUT_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
 
 /**
  * Resolve RPA using IRK
@@ -273,10 +273,12 @@ async function checkAutoCheckout() {
     `);
 
     for (const row of presentUsers.rows) {
-        const lastSeen = row.last_seen_at ? new Date(row.last_seen_at).getTime() : 0;
-        
+        // last_seen_at이 null이면 아직 스캐너가 감지 못한 상태 → 체크아웃하지 않음
+        if (!row.last_seen_at) continue;
+
+        const lastSeen = new Date(row.last_seen_at).getTime();
+
         // If last seen is older than 10 mins
-        // And we ensure they ACTUALLY rely on BLE (they have a device row, which we joined)
         if (lastSeen < TimeoutThreshold) {
             console.log(`[BLE] Auto Checking-out User ${row.id} (${row.name}). Last seen: ${row.last_seen_at}`);
             
