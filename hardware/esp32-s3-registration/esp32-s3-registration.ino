@@ -55,6 +55,11 @@ bool irkCaptured = false;
 bool isWebBtFlow = false;
 unsigned long webBtAuthTime = 0;
 
+// Deferred actions (콜백 내에서 BLE 스택 재진입 방지)
+bool pendingSecurityInit = false;
+uint16_t pendingSecurityConnId = 0;
+bool pendingAdvertisingRestart = false;
+
 // Bond store write 콜백 - IRK가 저장되는 순간 캡처
 int customStoreWriteCb(int obj_type, const union ble_store_value *val) {
     if (obj_type == BLE_STORE_OBJ_TYPE_PEER_SEC) {
@@ -148,8 +153,9 @@ class MyServerCallbacks: public NimBLEServerCallbacks {
             capturedIrk = "";
             ble_hs_cfg.sm_io_cap = BLE_HS_IO_NO_INPUT_OUTPUT;
             ble_hs_cfg.sm_mitm = 0;
-            // 서버 측에서 본딩 시작
-            ble_gap_security_initiate(connInfo.getConnHandle());
+            // loop에서 처리 (콜백 내 BLE 스택 재진입 방지)
+            pendingSecurityInit = true;
+            pendingSecurityConnId = connInfo.getConnHandle();
         }
 
         // IRK 캐릭터리스틱 초기화 (새 연결마다)
@@ -172,10 +178,9 @@ class MyServerCallbacks: public NimBLEServerCallbacks {
         // iOS 플로우를 위해 원래 보안 설정 복원
         ble_hs_cfg.sm_io_cap = BLE_HS_IO_DISPLAY_ONLY;
         ble_hs_cfg.sm_mitm = 1;
-        // 등록 중이 아닐 때만 광고 재시작 (등록 완료 후 끊길 때는 재시작 안 함)
+        // 등록 중이 아닐 때만 광고 재시작 (loop에서 처리)
         if (!pendingDisconnect) {
-            NimBLEDevice::startAdvertising();
-            Serial.println("Started advertising again...");
+            pendingAdvertisingRestart = true;
         }
     }
 
@@ -336,6 +341,10 @@ void setup() {
   pAdvertising->setAppearance(HID_KEYBOARD);
   pAdvertising->addServiceUUID(hid->getHidService()->getUUID());
   pAdvertising->addServiceUUID(IRK_SERVICE_UUID); // Web Bluetooth 필터용
+    // Scan Response에 이름 포함 (advertising 패킷 공간 부족 대응)
+    NimBLEAdvertisementData scanResp;
+    scanResp.setName("HN_SETUP");
+    pAdvertising->setScanResponseData(scanResp);
     NimBLEDevice::setPower(ESP_PWR_LVL_P9);
     NimBLEDevice::startAdvertising();
 
@@ -343,6 +352,17 @@ void setup() {
 }
 
 void loop() {
+  // 0. Deferred BLE actions (콜백에서 직접 호출하면 스택 오버플로우)
+  if (pendingSecurityInit) {
+      pendingSecurityInit = false;
+      ble_gap_security_initiate(pendingSecurityConnId);
+  }
+  if (pendingAdvertisingRestart) {
+      pendingAdvertisingRestart = false;
+      NimBLEDevice::startAdvertising();
+      Serial.println("Started advertising again...");
+  }
+
   // 1. Poll Server
   if (WiFi.status() == WL_CONNECTED && !isRegistering &&
       millis() - lastPollTime > POLL_INTERVAL) {
