@@ -500,21 +500,23 @@
                 selectedCell.notes = [];
             }
         } else if (action === 'undo') {
-            const ok = await useItem('undo_shield');
-            if (ok) {
+            // const ok = await useItem('undo_shield');
+            // if (ok) {
                 if (history.length > 0) {
                     const previousState = history.pop();
                     if (previousState) {
                         const parsed = JSON.parse(previousState);
+                        const currentTimer = timerValue;
                         board = parsed;
+                        displayTimer = currentTimer;
                         if (selectedCell) {
                             selectedCell = board[selectedCell.row][selectedCell.col];
                         }
                     }
                 }
-            } else {
-                showAlert('실수 방패 아이템이 부족합니다! 🛡️');
-            }
+            // } else {
+            //     showAlert('실수 방패 아이템이 부족합니다! 🛡️');
+            // }
         } else if (action === 'hint') {
             const ok = await useItem('hint_ticket');
             if (ok) {
