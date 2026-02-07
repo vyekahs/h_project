@@ -15,8 +15,8 @@ export async function handle({ event, resolve }) {
         }
     }
 
-    // 로그인 필요 경로 체크 (오락실)
-    if (event.url.pathname.startsWith('/games') && !event.locals.user) {
+    // 로그인 필요 경로 체크 (미니게임)
+    if (event.url.pathname.startsWith('/minigames') && !event.locals.user) {
         return new Response('Redirect', {
             status: 303,
             headers: { Location: '/login?redirectTo=' + encodeURIComponent(event.url.pathname) }
