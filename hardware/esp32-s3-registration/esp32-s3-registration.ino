@@ -1,636 +1,470 @@
-
 #include <WiFi.h>
-#include <DNSServer.h>
-#include <WebServer.h>
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
-#include <BLEDevice.h>
-#include <BLEServer.h>
-#include <BLEUtils.h>
-#include <BLE2902.h>
-#include <esp_bt_main.h>
-#include <esp_gap_ble_api.h>
-#include <BLEHIDDevice.h>
-#include <BLE2902.h>
-
-#include <WiFiManager.h> // https://github.com/tzapu/WiFiManager
-#include <ESPmDNS.h>
 #include <vector>
+#include <NimBLEDevice.h>
+#include <NimBLEHIDDevice.h>
+#include <esp_bt.h>
+#include <nvs_flash.h>
+// ESP-IDF NimBLE C API headers for direct access to security store
+#include "host/ble_hs.h"
+#include "host/ble_store.h"
+#include "services/gap/ble_svc_gap.h"
 
 // --- CONFIGURATION ---
-const char* SERVER_URL  = "http://192.168.219.120:5173";// Main Server
+const char* SERVER_URL = "http://192.168.219.120:3000";
+const char* WIFI_SSID = "U+NetE836";
+const char* WIFI_PASS = "7356361EM!";
 
-const char* AP_SSID     = "BoardGame_Signup";    // User connects here (Captive Portal)
-const char* AP_PASSWORD = "";                    // Open network for captive portal
-
-const byte DNS_PORT = 53;
-DNSServer dnsServer;
-WebServer server(80);
-
-// Types
-struct RegRequest {
-    String username;
-    String password;
-    String confirmPassword;
-    String deviceName;
-    String mode;
-    unsigned long timestamp;
-    String status; // "waiting", "processing", "success", "failed", "uploading"
-    String errorMsg;
-};
-
-std::vector<RegRequest> requestQueue;
-RegRequest* currentRequest = nullptr;
+// Custom GATT Service UUIDs for IRK retrieval (Web Bluetooth용)
+#define IRK_SERVICE_UUID        "12345678-1234-5678-1234-56789abcdef0"
+#define IRK_CHAR_UUID           "12345678-1234-5678-1234-56789abcdef1"
 
 // BLE globals
-BLEServer* pServer = NULL;
-BLESecurity *pSecurity = NULL;
-bool bondingInProgress = false;
-unsigned long bondingStartTime = 0;
-const unsigned long BONDING_TIMEOUT = 60000; // 60 sec timeout
-const unsigned long JOB_RETENTION_TIME = 100; // Fast clear!
-const int MAX_QUEUE_SIZE = 20;
+NimBLEServer* pServer = NULL;
+NimBLECharacteristic* pIrkCharacteristic = NULL;
 uint16_t currentConnId = 0xFFFF;
-bool pendingDisconnect = false;
-unsigned long disconnectTargetTime = 0;
-// Upload Queue
-String pendingIrk = "";
-bool uploadNeeded = false;
 
-// Buffer for the last finished job so user can see result even if queue moved on
-struct JobResult {
-    String username;
+// Polling Globals
+unsigned long lastPollTime = 0;
+const unsigned long POLL_INTERVAL = 2000; // 2초마다 체크
+bool isRegistering = false;
+String myMacAddress = "";
+
+struct RegistrationRequest {
+    int regId;
     String status;
     String errorMsg;
-    unsigned long finishTime;
 };
-JobResult lastFinishedJob = {"", "", "", 0};
 
-// HTML Content
-const char index_html[] PROGMEM = R"rawliteral(
-<!DOCTYPE HTML><html><head>
-  <meta charset="UTF-8">
-  <title>Hon-Nol Lounge Registration</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <style>
-    body { font-family: 'Apple SD Gothic Neo', sans-serif; text-align: center; padding: 20px; background: #f8f9fa; color: #333; }
-    .card { background: white; padding: 0; border-radius: 16px; max-width: 400px; margin: auto; box-shadow: 0 4px 15px rgba(0,0,0,0.08); overflow: hidden; }
-    .header { padding: 25px 25px 10px 25px; }
-    h2 { margin: 0 0 5px 0; color: #1a1a1a; font-size: 1.4em; }
-    p { color: #666; font-size: 0.9em; margin: 0; }
-    
-    .tabs { display: flex; border-bottom: 1px solid #eee; margin-top: 20px; }
-    .tab { flex: 1; padding: 15px; cursor: pointer; background: #f1f3f5; color: #888; font-weight: bold; border-bottom: 2px solid transparent; }
-    .tab.active { background: white; color: #339af0; border-bottom: 2px solid #339af0; }
-    
-    .form-content { padding: 25px; }
-    .input-group { text-align: left; margin-bottom: 15px; }
-    label { display: block; margin-bottom: 5px; font-weight: bold; font-size: 0.85em; color: #555; }
-    input { width: 100%; padding: 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 16px; box-sizing: border-box; transition: border 0.2s; }
-    input:focus { border-color: #339af0; outline: none; }
-    .hidden { display: none; }
-    
-    button { width: 100%; padding: 14px; background: #339af0; color: white; border: none; border-radius: 8px; cursor: pointer; font-size: 16px; font-weight: bold; transition: background 0.2s; margin-top: 10px; }
-    button:active { background: #1c7ed6; }
-    button:disabled { background: #ccc; cursor: not-allowed; }
-    
-    .status { margin-top: 20px; font-size: 14px; color: #555; min-height: 20px; line-height: 1.4; white-space: pre-wrap; }
-  </style>
-</head><body>
-  <div class="card">
-    <div class="header">
-        <h2>혼놀 라운지</h2>
-        <p>블루투스 출입증 발급</p>
-    </div>
-    <div class="tabs">
-        <div class="tab active" onclick="setMode('login')" id="tab-login">로그인</div>
-        <div class="tab" onclick="setMode('signup')" id="tab-signup">회원가입</div>
-    </div>
-    <div class="form-content">
-        <div id="form-inputs">
-            <div class="input-group">
-                <label>이름 (ID)</label>
-                <input type="text" id="username" placeholder="이름 입력">
-            </div>
-            <div class="input-group">
-                <label>비밀번호</label>
-                <input type="password" id="password" placeholder="비밀번호">
-            </div>
-            <div class="input-group hidden" id="group-confirm">
-                <label>비밀번호 확인</label>
-                <input type="password" id="confirm-password" placeholder="비밀번호 다시 입력">
-            </div>
-            <div class="input-group">
-                <label>기기 이름 (별칭)</label>
-                <input type="text" id="devName" placeholder="예: 내 아이폰">
-            </div>
-            <button onclick="startBonding()" id="btn-submit">대기열 등록 및 시작</button>
-        </div>
-        <div class="status" id="status"></div>
-    </div>
-  </div>
+RegistrationRequest* currentRequest = nullptr;
+bool uploadNeeded = false;
+String pendingIrk = "";
+bool pendingDisconnect = false;
+unsigned long disconnectTargetTime = 0;
+unsigned long authStartTime = 0;
+bool securityStarted = false;
+unsigned long connectTime = 0;
+uint32_t currentPasskey = 0; // 서버에서 받은 PIN
 
-  <script>
-    let currentMode = 'login';
-    let myUsername = '';
-    let statusInterval = null;
+// IRK variable
+String capturedIrk = "";
+bool irkCaptured = false;
 
-    function setMode(mode) {
-        currentMode = mode;
-        document.getElementById('tab-login').className = mode === 'login' ? 'tab active' : 'tab';
-        document.getElementById('tab-signup').className = mode === 'signup' ? 'tab active' : 'tab';
-        
-        const confirmGroup = document.getElementById('group-confirm');
-        const btn = document.getElementById('btn-submit');
-        if(mode === 'signup') {
-            confirmGroup.classList.remove('hidden');
-            btn.innerText = "회원가입 대기열 등록";
+// Web Bluetooth flow state
+bool isWebBtFlow = false;
+unsigned long webBtAuthTime = 0;
+
+// Bond store write 콜백 - IRK가 저장되는 순간 캡처
+int customStoreWriteCb(int obj_type, const union ble_store_value *val) {
+    if (obj_type == BLE_STORE_OBJ_TYPE_PEER_SEC) {
+        const struct ble_store_value_sec *sec = &val->sec;
+        if (sec->irk_present) {
+            char buf[33];
+            for (int i = 0; i < 16; i++) {
+                sprintf(&buf[i * 2], "%02x", sec->irk[i]);
+            }
+            capturedIrk = String(buf);
+            irkCaptured = true;
+            Serial.print("IRK intercepted from bond store write: ");
+            Serial.println(capturedIrk);
+
+            // IRK를 GATT 캐릭터리스틱에 즉시 세팅
+            if (pIrkCharacteristic != NULL) {
+                pIrkCharacteristic->setValue((uint8_t*)buf, 32);
+                Serial.println("IRK written to GATT characteristic (from store callback)");
+            }
+        }
+    }
+    // NimBLE 기본 저장 처리 (NVS에 본딩 정보 저장)
+    return 0;
+}
+
+// [NimBLE] 본딩 저장소에서 IRK 추출 시도
+bool tryCaptureIrkFromBondStore() {
+    if (currentConnId == 0xFFFF) return false;
+
+    struct ble_gap_conn_desc desc;
+    int rc = ble_gap_conn_find(currentConnId, &desc);
+    if (rc != 0) {
+        Serial.printf("Failed to find connection desc (rc=%d)\n", rc);
+        return false;
+    }
+
+    struct ble_store_key_sec key_sec;
+    memset(&key_sec, 0, sizeof(key_sec));
+    key_sec.peer_addr = desc.peer_id_addr; // Use Identity Address for lookup
+
+    struct ble_store_value_sec value_sec;
+    memset(&value_sec, 0, sizeof(value_sec));
+
+    // Query the security store
+    rc = ble_store_read_peer_sec(&key_sec, &value_sec);
+    if (rc == 0) {
+        if (value_sec.irk_present) {
+            char buf[33];
+            for(int i=0; i<16; i++) {
+                sprintf(&buf[i*2], "%02x", value_sec.irk[i]);
+            }
+            capturedIrk = String(buf);
+            Serial.print("IRK Captured: ");
+            Serial.println(capturedIrk);
+            irkCaptured = true;
+
+            // IRK를 GATT 캐릭터리스틱에도 세팅 (Web Bluetooth용)
+            if (pIrkCharacteristic != NULL) {
+                pIrkCharacteristic->setValue((uint8_t*)buf, 32);
+                Serial.println("IRK written to GATT characteristic");
+            }
+
+            return true;
         } else {
-            confirmGroup.classList.add('hidden');
-            btn.innerText = "로그인 대기열 등록";
+             Serial.println("Bond record found, but IRK not present.");
+        }
+    } else {
+        Serial.printf("No bond found in store for this peer (rc=%d)\n", rc);
+    }
+  return false;
+}
+
+void clearAllBonds() {
+  NimBLEDevice::deleteAllBonds();
+}
+
+class MyServerCallbacks: public NimBLEServerCallbacks {
+    void onConnect(NimBLEServer* pServer, NimBLEConnInfo& connInfo) override {
+        currentConnId = connInfo.getConnHandle();
+        connectTime = millis();
+        securityStarted = false;
+        Serial.println("Device connected. ConnID: " + String(currentConnId));
+
+        // Web Bluetooth 플로우 (서버 등록 없이 직접 연결된 경우)
+        // → Just Works 페어링 사용 (PIN 불필요)
+        if (!isRegistering) {
+            Serial.println("Web Bluetooth flow detected - switching to JustWorks pairing");
+            isWebBtFlow = true;
+            webBtAuthTime = 0;
+            irkCaptured = false;
+            capturedIrk = "";
+            ble_hs_cfg.sm_io_cap = BLE_HS_IO_NO_INPUT_OUTPUT;
+            ble_hs_cfg.sm_mitm = 0;
+            // 서버 측에서 본딩 시작
+            ble_gap_security_initiate(connInfo.getConnHandle());
+        }
+
+        // IRK 캐릭터리스틱 초기화 (새 연결마다)
+        if (pIrkCharacteristic != NULL) {
+            const char* empty = "00000000000000000000000000000000";
+            pIrkCharacteristic->setValue((uint8_t*)empty, 32);
         }
     }
 
-    function startBonding() {
-      var u = document.getElementById('username').value;
-      var p = document.getElementById('password').value;
-      var d = document.getElementById('devName').value;
-      
-      if(!u || !p || !d) { alert("모두 입력해주세요."); return; }
-      
-      var query = 'u=' + encodeURIComponent(u) + '&p=' + encodeURIComponent(p) + '&d=' + encodeURIComponent(d) + '&m=' + currentMode;
-      if(currentMode === 'signup') {
-          var cp = document.getElementById('confirm-password').value;
-          if(p !== cp) { alert("비밀번호 불일치!"); return; }
-          query += '&cp=' + encodeURIComponent(cp);
-      }
-      
-      myUsername = u;
-      document.getElementById('btn-submit').disabled = true;
-      document.getElementById('status').innerText = "대기열 등록 중...";
-      
-      fetch('/api/queue_add?' + query)
-        .then(res => res.json())
-        .then(data => {
-            if(data.success) {
-                document.getElementById('form-inputs').style.display = 'none'; // Hide form
-                checkStatus(u);
-            } else {
-                document.getElementById('status').innerText = "오류: " + data.error;
-                document.getElementById('btn-submit').disabled = false;
-            }
-        })
-        .catch(error => {
-            document.getElementById('status').innerText = "네트워크 오류: " + error;
-            document.getElementById('btn-submit').disabled = false;
-        });
-    }
+    void onDisconnect(NimBLEServer* pServer, NimBLEConnInfo& connInfo, int reason) override {
+        currentConnId = 0xFFFF;
+        connectTime = 0;
+        securityStarted = false;
+        Serial.println("Device disconnected, reason: " + String(reason));
 
-    function checkStatus(user) {
-        if (statusInterval) {
-            clearInterval(statusInterval);
+        // 상태 리셋
+        isWebBtFlow = false;
+        webBtAuthTime = 0;
+
+        // iOS 플로우를 위해 원래 보안 설정 복원
+        ble_hs_cfg.sm_io_cap = BLE_HS_IO_DISPLAY_ONLY;
+        ble_hs_cfg.sm_mitm = 1;
+        // 등록 중이 아닐 때만 광고 재시작 (등록 완료 후 끊길 때는 재시작 안 함)
+        if (!pendingDisconnect) {
+            NimBLEDevice::startAdvertising();
+            Serial.println("Started advertising again...");
         }
-        statusInterval = setInterval(() => {
-            fetch('/api/queue_status?u=' + encodeURIComponent(user))
-              .then(res => res.json())
-              .then(data => {
-                  if(data.error) {
-                      document.getElementById('status').innerText = data.error;
-                      clearInterval(statusInterval);
-                      statusInterval = null;
-                      document.getElementById('btn-submit').disabled = false;
-                      return;
-                  }
-                  
-                  if (data.status === 'processing') {
-                      document.getElementById('status').innerText = "🚀 내 차례입니다! \n블루투스 설정에서 'HonNol' 연결!\n'연결됨' 뜨면 1초 뒤에 이 화면으로 오세요.\n(자동으로 연결 해제됩니다)";
-                      document.getElementById('status').style.color = "#d63384";
-                      document.getElementById('status').style.fontWeight = "bold";
-                  } else if (data.status === 'waiting') {
-                      let msg = "⏳ 대기 중... " + data.position + "번째 (총 " + data.total + "명)";
-                      if(data.current_user && data.current_user !== "없음") {
-                          msg += "\n▶️ 현재 진행 중: " + data.current_user + "님";
-                      }
-                      document.getElementById('status').innerText = msg;
-                      document.getElementById('status').style.color = "#fd7e14";
-                  } else if (data.status === 'uploading') {
-                      document.getElementById('status').innerText = "📡 서버에 정보 전송 중...";
-                      document.getElementById('status').style.color = "#339af0";
-                  } else if (data.status === 'success') {
-                      document.getElementById('status').innerText = "✅ 등록 완료! 환영합니다.";
-                      document.getElementById('status').style.color = "green";
-                      clearInterval(statusInterval);
-                      statusInterval = null;
-                      document.getElementById('btn-submit').disabled = false;
-                      alert("등록 성공!");
-                  } else if (data.status === 'failed') {
-                      document.getElementById('status').innerText = "❌ 실패: " + data.msg;
-                      document.getElementById('status').style.color = "red";
-                      clearInterval(statusInterval);
-                      statusInterval = null;
-                      document.getElementById('form-inputs').style.display = 'block'; // Show form again
-                      document.getElementById('btn-submit').disabled = false;
-                  }
-              })
-              .catch(error => {
-                  document.getElementById('status').innerText = "네트워크 오류: " + error;
-                  clearInterval(statusInterval);
-                  statusInterval = null;
-                  document.getElementById('form-inputs').style.display = 'block'; // Show form again
-                  document.getElementById('btn-submit').disabled = false;
-              });
-        }, 1500);
-    }
-  </script>
-</body></html>
-)rawliteral";
-
-// Forward declarations
-
-// Forward declarations
-void uploadIrk(String irk);
-
-class MyServerCallbacks: public BLEServerCallbacks {
-    void onConnect(BLEServer* pServer) {
-      Serial.println("Device connected (No param)");
-    };
-
-    void onConnect(BLEServer* pServer, esp_ble_gatts_cb_param_t *param) {
-      currentConnId = param->connect.conn_id;
-      Serial.println("Device connected. ConnID: " + String(currentConnId));
     }
 
-    void onDisconnect(BLEServer* pServer) {
-      currentConnId = 0xFFFF;
-      pendingDisconnect = false; // Cancel pending disconnect if already gone
-      Serial.println("Device disconnected");
+    uint32_t onPassKeyDisplay() override {
+        Serial.printf("onPassKeyDisplay: %06d (iOS will ask user to enter this)\n", currentPasskey);
+        return currentPasskey;
     }
-};
 
-// Callback Class for Bonding
-class MySecurity : public BLESecurityCallbacks {
-  uint32_t onPassKeyRequest(){ return 123456; }
-  void onPassKeyNotify(uint32_t pass_key){}
-  bool onConfirmPIN(uint32_t pass_key){ return true; }
-  bool onSecurityRequest(){ return true; }
-  
-  void onAuthenticationComplete(esp_ble_auth_cmpl_t cmpl){
-        if(currentRequest == nullptr) {
-            Serial.println("Bonding complete but no current request.");
-            bondingInProgress = false;
-            return;
-        }
+    void onAuthenticationComplete(NimBLEConnInfo& connInfo) override {
+        Serial.println("=== Authentication Complete ===");
+        Serial.printf("  encrypted=%d, authenticated=%d, bonded=%d\n",
+                      connInfo.isEncrypted(), connInfo.isAuthenticated(), connInfo.isBonded());
 
-        if(cmpl.success){
+        if (connInfo.isEncrypted() && connInfo.isBonded()) {
             Serial.println("Bonding Success!");
-            currentRequest->status = "uploading";
-            
-            // Extract IRK logic...
-            esp_ble_bond_key_info_t key_info;
-            int dev_num = esp_ble_get_bond_device_num();
-            esp_ble_bond_dev_t *dev_list = (esp_ble_bond_dev_t *)malloc(sizeof(esp_ble_bond_dev_t) * dev_num);
-            esp_ble_get_bond_device_list(&dev_num, dev_list);
-            
-            String irkHex = "";
-            for(int i = 0; i < dev_num; i++) {
-                if (memcmp(dev_list[i].bd_addr, cmpl.bd_addr, 6) == 0) {
-                     for(int j=0; j<16; j++){
-                        if(dev_list[i].bond_key.pid_key.irk[j] < 16) irkHex += "0";
-                        irkHex += String(dev_list[i].bond_key.pid_key.irk[j], HEX);
-                     }
-                     break; // Found the device, no need to check others
+            if (!tryCaptureIrkFromBondStore()) {
+                Serial.println("IRK not found immediately. Will retry in loop...");
+                if (isWebBtFlow) {
+                    webBtAuthTime = millis();
+                } else if(currentRequest != nullptr) {
+                    currentRequest->status = "authenticated";
                 }
-            }
-            free(dev_list);
-            
-            if(irkHex.length() == 32) {
-                // DON'T upload here (Blocking!). Just save it.
-                pendingIrk = irkHex;
-                uploadNeeded = true;
-                // Disconnect will be scheduled AFTER upload in the loop
             } else {
-                currentRequest->status = "failed";
-                currentRequest->errorMsg = "IRK 추출 실패";
-                // Fail immediately
-                pendingDisconnect = true;
-                disconnectTargetTime = millis() + 1000;
+                if (isWebBtFlow) {
+                    Serial.println("Web BT: IRK ready in characteristic");
+                } else if(currentRequest != nullptr) {
+                    currentRequest->status = "irk_ready";
+                }
             }
         } else {
             Serial.println("Bonding Failed");
-            currentRequest->status = "failed";
-            currentRequest->errorMsg = "블루투스 연결 실패 (코드: " + String(cmpl.fail_reason) + ")";
+            if(currentRequest != nullptr) {
+                currentRequest->status = "failed";
+                pendingDisconnect = true;
+                disconnectTargetTime = millis() + 1000;
+            }
         }
-        // Finish current job
-        bondingInProgress = false;
-  }
+    }
 };
-
-// ... (Top of file unchanged)
 
 void uploadIrk(String irk) {
     if(currentRequest == nullptr) return;
-    
+
     if(WiFi.status() == WL_CONNECTED) {
         HTTPClient http;
-        String url = String(SERVER_URL) + "/api/devices/register";
+        String url = String(SERVER_URL) + "/api/devices/register/complete";
         http.begin(url);
         http.addHeader("Content-Type", "application/json");
-        
-        DynamicJsonDocument doc(1024);
-        doc["username"] = currentRequest->username;
-        doc["password"] = currentRequest->password;
-        if(currentRequest->mode == "signup") {
-             doc["confirmPassword"] = currentRequest->confirmPassword;
-        }
-        doc["name"] = currentRequest->deviceName;
-        doc["mode"] = currentRequest->mode;
+
+        DynamicJsonDocument doc(256);
+        doc["regId"] = currentRequest->regId;
         doc["irk"] = irk;
-        
+
         String json;
         serializeJson(doc, json);
-        
+
         int code = http.POST(json);
         Serial.printf("Upload Result: %d\n", code);
-        
+
         if(code == 200) {
+            Serial.println("IRK Uploaded Successfully!");
             currentRequest->status = "success";
         } else {
+            Serial.println("Upload Failed. Code: " + String(code));
+            String resp = http.getString();
+            Serial.println("Response: " + resp);
             currentRequest->status = "failed";
-            // Map common HTTP codes to Korean
-            if(code == 401) currentRequest->errorMsg = "비밀번호가 틀렸습니다. 다시 확인해주세요.";
-            else if(code == 404) currentRequest->errorMsg = "사용자를 찾을 수 없습니다. 아이디를 확인해주세요.";
-            else if(code == 409) currentRequest->errorMsg = "이미 존재하는 사용자입니다. 다른 아이디를 써보세요.";
-            else currentRequest->errorMsg = "서버 오류 (" + String(code) + "). 관리자에게 문의하세요.";
         }
         http.end();
-    } else {
-        currentRequest->status = "failed";
-        currentRequest->errorMsg = "인터넷 연결 끊김. 관리자에게 문의하세요.";
     }
 }
 
 void setup() {
   Serial.begin(115200);
-  delay(1000); 
+  delay(1000);
 
-  // 1. WiFiManager Setup
-  WiFiManager wm;
-  bool res = wm.autoConnect("HonNol_Kiosk_Setup", "12346789"); 
+  Serial.println("\n\n=== ESP32-S3 Registration Device ===");
 
-  if(!res) {
-      Serial.println("Failed to connect");
-      // ESP.restart(); 
-  } 
-  else {
-      Serial.println("Connected to Internet!");
-      Serial.println(WiFi.localIP());
+  // Initialize NVS
+  esp_err_t ret = nvs_flash_init();
+  if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+      nvs_flash_erase();
+      nvs_flash_init();
   }
 
-  // mDNS Setup
-  if (MDNS.begin("honnol")) {
-    Serial.println("MDNS started: http://honnol.local");
+  // WiFi Setup
+  Serial.println("Connecting to WiFi: " + String(WIFI_SSID));
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(WIFI_SSID, WIFI_PASS);
+
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
   }
+  Serial.println("\nWiFi Connected!");
+  Serial.println(WiFi.localIP());
 
-  // 2. Start Captive Portal AP
-  WiFi.mode(WIFI_AP_STA);
-  IPAddress apIP(192, 168, 4, 1);
-  IPAddress netMsk(255, 255, 255, 0);
-  WiFi.softAPConfig(apIP, apIP, netMsk); // Force standard IP
-  WiFi.softAP(AP_SSID, AP_PASSWORD);
-  delay(100); // Give it a moment to start
-  
-  dnsServer.setErrorReplyCode(DNSReplyCode::NoError);
-  dnsServer.start(DNS_PORT, "*", apIP);
+  // Get MAC
+  myMacAddress = WiFi.macAddress();
+  myMacAddress.replace(":", "");
+  Serial.println("MAC: " + myMacAddress);
 
-  // 3. Web Server
-  server.on("/", []() {
-      server.send(200, "text/html", index_html);
-  });
-  
-  // API: Add to Queue
-  server.on("/api/queue_add", []() {
-      if(server.hasArg("u") && server.hasArg("p") && server.hasArg("d") && server.hasArg("m")) {
-          RegRequest req;
-          req.username = server.arg("u");
-          req.password = server.arg("p");
-          req.deviceName = server.arg("d");
-          req.mode = server.arg("m");
-          if(server.hasArg("cp")) req.confirmPassword = server.arg("cp");
-          else req.confirmPassword = "";
-          req.status = "waiting";
-          req.timestamp = millis();
-          req.errorMsg = "";
-          
-          // Check for duplicate
-          for(const auto& r : requestQueue) {
-              if(r.username == req.username && (r.status == "waiting" || r.status == "processing" || r.status == "uploading")) {
-                  server.send(409, "application/json", "{\"success\":false, \"error\":\"이미 대기열에 있습니다! 잠시만 기다려주세요.\"}");
-                  // If already in queue, just say success so client resumes monitoring
-                  server.send(200, "application/json", "{\"success\":true, \"msg\":\"이미 대기열에 있습니다! 잠시만 기다려주세요.\"}");
-                  return;
-              }
-          }
-          if(currentRequest != nullptr && currentRequest->username == req.username && (currentRequest->status == "processing" || currentRequest->status == "uploading")) {
-              server.send(200, "application/json", "{\"success\":true, \"msg\":\"이미 처리 중입니다! 기기 연결을 시도해주세요.\"}");
-              return;
-          }
+    // BLE Init (NimBLE)
+    NimBLEDevice::init("HN_SETUP");
 
-          if(requestQueue.size() >= MAX_QUEUE_SIZE) {
-              server.send(503, "application/json", "{\"success\":false, \"error\":\"대기열이 꽉 찼습니다. 30초 후 다시 시도해주세요.\"}");
-              return;
-          }
+    // Bond store write 콜백 등록 (IRK를 저장 시점에 캡처)
+    ble_hs_cfg.store_write_cb = customStoreWriteCb;
 
-          requestQueue.push_back(req);
-          Serial.println("Added to queue: " + req.username);
-          server.send(200, "application/json", "{\"success\":true}");
-      } else {
-          server.send(400, "application/json", "{\"success\":false, \"error\":\"정보가 부족합니다! 빈칸을 모두 채워주세요.\"}");
-      }
-  });
+    // 보안 설정 (NimBLE) - DisplayOnly 방식 (iOS PIN 입력 가능)
+    NimBLEDevice::setSecurityAuth(true, true, true); // bonding, MITM, sc
+    NimBLEDevice::setSecurityIOCap(BLE_HS_IO_DISPLAY_ONLY);
+    NimBLEDevice::setSecurityInitKey(BLE_SM_PAIR_KEY_DIST_ENC | BLE_SM_PAIR_KEY_DIST_ID);
+    NimBLEDevice::setSecurityRespKey(BLE_SM_PAIR_KEY_DIST_ENC | BLE_SM_PAIR_KEY_DIST_ID);
 
-  // API: Check Status
-  server.on("/api/queue_status", []() {
-      if(!server.hasArg("u")) { server.send(400, "application/json", "{\"error\":\"사용자 정보가 없습니다.\"}"); return; }
-      String u = server.arg("u");
-      
-      if(currentRequest != nullptr && currentRequest->username == u) {
-          String json = "{\"status\":\"" + currentRequest->status + "\", \"msg\":\"" + currentRequest->errorMsg + "\"}";
-          server.send(200, "application/json", json);
-          return;
-      }
-      
-      int pos = 0;
-      bool found = false;
-      for(const auto& r : requestQueue) {
-          pos++;
-          if(r.username == u) {
-              found = true;
-              break;
-          }
-      }
-      
-      if(found) {
-          String currentUser = (currentRequest != nullptr) ? currentRequest->username : "없음";
-          String json = "{\"status\":\"waiting\", \"position\":" + String(pos) + ", \"total\":" + String(requestQueue.size()) + ", \"current_user\":\"" + currentUser + "\"}";
-          server.send(200, "application/json", json);
-      } else {
-          // Check if it was the recently finished job
-          if(lastFinishedJob.username == u && (millis() - lastFinishedJob.finishTime < 60000)) {
-               // Return the buffered result
-               String json = "{";
-               json += "\"status\":\"" + lastFinishedJob.status + "\",";
-               if(lastFinishedJob.status == "failed") {
-                   json += "\"msg\":\"" + lastFinishedJob.errorMsg + "\"";
-               } else {
-                   json += "\"msg\":\"Success\"";
-               }
-               json += "}";
-               server.send(200, "application/json", json);
-          } else {
-              server.send(200, "application/json", "{\"error\":\"대기열에서 찾을 수 없거나 이미 종료되었습니다.\"}");
-          }
-      }
-  });
-  
-  // Explicit Redirects for Captive Detection (Android/iOS)
-  // These URLs are used by phones to check for "Internet". We redirect them to our portal.
-  // Explicit Redirects for Captive Detection (Android/iOS)
-  
-  // 1. Redirect to Portal (for Catch-all / Browsing)
-  auto handleRedirect = []() {
-      server.sendHeader("Location", String("http://") + WiFi.softAPIP().toString(), true);
-      server.send(302, "text/plain", "");
-  };
+    Serial.printf("Security Config: io_cap=%d, bonding=%d, mitm=%d, sc=%d\n",
+        ble_hs_cfg.sm_io_cap, ble_hs_cfg.sm_bonding, ble_hs_cfg.sm_mitm, ble_hs_cfg.sm_sc);
 
-  // 2. Serve Portal Directly (for iOS/Windows specific checks)
-  auto servePortal = []() {
-      server.send(200, "text/html", index_html);
-  };
+    // Clear Bonds at Startup
+    if (NimBLEDevice::getNumBonds() > 0) {
+      Serial.println("Clearing old bonds...");
+      clearAllBonds();
+    }
 
-  // Android: Redirect is often more reliable to trigger the "Sign In" popup
-  server.on("/generate_204", handleRedirect); 
-  server.on("/gen_204", handleRedirect);
-  
-  // iOS/Windows: Serve directly
-  server.on("/hotspot-detect.html", servePortal); // iOS
-  server.on("/canonical.html", servePortal);
-  server.on("/ncsi.txt", servePortal); // Windows
-  server.on("/connecttest.txt", servePortal); // MS
-
-  // Catch-all (302 Method)
-  server.onNotFound(handleRedirect);
-  
-  server.begin();
-
-  // 4. BLE Setup (HID Mode)
-  BLEDevice::init("HonNol");
-  BLEDevice::setEncryptionLevel(ESP_BLE_SEC_ENCRYPT);
-  BLEDevice::setSecurityCallbacks(new MySecurity());
-  
-  pServer = BLEDevice::createServer();
+    pServer = NimBLEDevice::createServer();
   pServer->setCallbacks(new MyServerCallbacks());
-  
-  /* HID Setup: Emulate Keyboard to appear in Settings */
-  BLEHIDDevice* hid = new BLEHIDDevice(pServer);
-  hid->manufacturer()->setValue("HonNol_Corp");
-  hid->pnp(0x02, 0xe502, 0xa111, 0x0210);
-  hid->hidInfo(0x00, 0x01);
+
+    // HID Setup (가시성 복구)
+  static const uint8_t reportMap[] = {
+    0x05, 0x01,  0x09, 0x06,  0xA1, 0x01,  0x85, 0x01,  0x05, 0x07,
+    0x19, 0xE0,  0x29, 0xE7,  0x15, 0x00,  0x25, 0x01,  0x75, 0x01,
+    0x95, 0x08,  0x81, 0x02,  0x95, 0x01,  0x75, 0x08,  0x81, 0x01,
+    0x95, 0x06,  0x75, 0x08,  0x15, 0x00,  0x25, 0x65,  0x05, 0x07,
+    0x19, 0x00,  0x29, 0x65,  0x81, 0x00,  0xC0
+  };
+
+    NimBLEHIDDevice* hid = new NimBLEHIDDevice(pServer);
+  hid->setReportMap((uint8_t*)reportMap, sizeof(reportMap));
+  hid->setManufacturer("HonNol_Corp");
+  hid->setPnp(0x02, 0xe502, 0xa111, 0x0210);
+  hid->setHidInfo(0x00, 0x01);
+
+    NimBLECharacteristic* input = hid->getInputReport(1);
+
   hid->startServices();
 
-  BLEAdvertising *pAdvertising = BLEDevice::getAdvertising();
+    // Custom IRK Service (Web Bluetooth에서 접근 가능)
+    NimBLEService* pIrkService = pServer->createService(IRK_SERVICE_UUID);
+    pIrkCharacteristic = pIrkService->createCharacteristic(
+        IRK_CHAR_UUID,
+        NIMBLE_PROPERTY::READ
+    );
+    const char* emptyIrk = "00000000000000000000000000000000";
+    pIrkCharacteristic->setValue((uint8_t*)emptyIrk, 32);
+    pIrkService->start();
+    Serial.println("Custom IRK GATT Service started");
+
+    NimBLEAdvertising *pAdvertising = NimBLEDevice::getAdvertising();
   pAdvertising->setAppearance(HID_KEYBOARD);
-  pAdvertising->addServiceUUID(hid->hidService()->getUUID());
-  pAdvertising->setScanResponse(true);
-  pAdvertising->setMinPreferred(0x06);
-  pAdvertising->setMinPreferred(0x12);
+  pAdvertising->addServiceUUID(hid->getHidService()->getUUID());
+  pAdvertising->addServiceUUID(IRK_SERVICE_UUID); // Web Bluetooth 필터용
+    NimBLEDevice::setPower(ESP_PWR_LVL_P9);
+    NimBLEDevice::startAdvertising();
 
-  pSecurity = new BLESecurity();
-  pSecurity->setAuthenticationMode(ESP_LE_AUTH_REQ_SC_BOND); 
-  pSecurity->setCapability(ESP_IO_CAP_NONE);
-  pSecurity->setInitEncryptionKey(ESP_BLE_ENC_KEY_MASK | ESP_BLE_ID_KEY_MASK);
-}
-
-void processQueue() {
-    // If we are free and queue has items
-    if(currentRequest == nullptr && !requestQueue.empty()) {
-        // Take the first request from the queue
-        currentRequest = &requestQueue.front(); // currentRequest now points to the first element
-        currentRequest->status = "processing";
-        bondingInProgress = true;
-        bondingStartTime = millis();
-        
-        // CLEAR ALL BONDS before starting!
-        int dev_num = esp_ble_get_bond_device_num();
-        esp_ble_bond_dev_t *dev_list = (esp_ble_bond_dev_t *)malloc(sizeof(esp_ble_bond_dev_t) * dev_num);
-        esp_ble_get_bond_device_list(&dev_num, dev_list);
-        for (int i = 0; i < dev_num; i++) {
-            esp_ble_remove_bond_device(dev_list[i].bd_addr);
-        }
-        free(dev_list);
-        Serial.println("Cleared " + String(dev_num) + " old bonds.");
-
-        // Start Advertising for this user
-        // We can't target specifically without whitelist, so we just open the gate
-        BLEDevice::getAdvertising()->start();
-        Serial.println("Started processing for: " + currentRequest->username);
-    }
-    
-    // Timeout logic for current processing request
-    if(currentRequest != nullptr && bondingInProgress) {
-        if(millis() - bondingStartTime > BONDING_TIMEOUT) {
-             currentRequest->status = "failed";
-             currentRequest->errorMsg = "시간 초과 (30초)";
-             if(currentConnId != 0xFFFF) pServer->disconnect(currentConnId);
-             bondingInProgress = false; // Mark job finished
-        }
-        
-        // If status is final (success/failed), Copy to buffer and remove from queue
-        // We use a short delay (JOB_RETENTION_TIME) just to ensure state settles, then clear.
-        if(currentRequest->status == "success" || currentRequest->status == "failed") {
-            static unsigned long finishedTime = 0;
-            if(finishedTime == 0) finishedTime = millis();
-            
-            if(millis() - finishedTime > JOB_RETENTION_TIME) {
-                 // Copy to buffer
-                 lastFinishedJob.username = currentRequest->username;
-                 lastFinishedJob.status = currentRequest->status;
-                 lastFinishedJob.errorMsg = currentRequest->errorMsg;
-                 lastFinishedJob.finishTime = millis();
-                 
-                 requestQueue.erase(requestQueue.begin());
-                 currentRequest = nullptr;
-                 finishedTime = 0;
-                 Serial.println("Job Moved to Buffer & Cleared. Queue size: " + String(requestQueue.size()));
-            }
-        }
-    }
+  Serial.println("Setup Complete. Waiting for commands...");
 }
 
 void loop() {
-  dnsServer.processNextRequest();
-  server.handleClient();
-  
-  processQueue();
+  // 1. Poll Server
+  if (WiFi.status() == WL_CONNECTED && !isRegistering &&
+      millis() - lastPollTime > POLL_INTERVAL) {
+      lastPollTime = millis();
 
-  // 1. Handle Upload safely in Loop
-  if(uploadNeeded) {
-      uploadIrk(pendingIrk);
-      uploadNeeded = false;
-      pendingIrk = "";
-      
-      // Now schedule disconnect
-      pendingDisconnect = true;
-      disconnectTargetTime = millis() + 5000; // Wait 5s AFTER upload for user to read "Success"
+      HTTPClient http;
+      String shortId = myMacAddress.substring(myMacAddress.length() - 4);
+      http.begin(String(SERVER_URL) + "/api/devices/poll?deviceId=" + shortId);
+      int code = http.GET();
+
+      if(code == 200) {
+          String payload = http.getString();
+          DynamicJsonDocument doc(512);
+          deserializeJson(doc, payload);
+
+          if(doc["found"]) {
+              int regId = doc["regId"];
+              const char* pin = doc["pin"];
+
+              Serial.println("Registration detected! regId: " + String(regId));
+              Serial.println("Server PIN: " + String(pin));
+
+              // 서버 PIN을 BLE passkey로 설정 (iOS에서 이 번호 입력)
+              currentPasskey = atoi(pin);
+              NimBLEDevice::setSecurityPasskey(currentPasskey);
+              Serial.printf("BLE Passkey set to: %d\n", currentPasskey);
+
+              // Start Registration Session
+              isRegistering = true;
+
+              if(currentRequest != nullptr) delete currentRequest;
+              currentRequest = new RegistrationRequest();
+              currentRequest->regId = regId;
+              currentRequest->status = "waiting";
+
+              // Reset State
+              uploadNeeded = false;
+              pendingDisconnect = false;
+              irkCaptured = false;
+              capturedIrk = "";
+              authStartTime = 0;
+
+              // Clear Bonds
+              if (NimBLEDevice::getNumBonds() > 0) {
+                clearAllBonds();
+              }
+          }
+      }
+      http.end();
   }
 
-  // 2. Non-blocking disconnect logic
-  if(pendingDisconnect && millis() > disconnectTargetTime) {
+  // 2. Handle IRK Upload (iOS 플로우 - ESP32가 서버에 직접 업로드)
+  if (isRegistering && !pendingDisconnect && !uploadNeeded &&
+      (currentRequest && currentRequest->status != "success" && currentRequest->status != "failed") &&
+      (irkCaptured || (currentRequest && currentRequest->status == "irk_ready"))) {
+
+      if(capturedIrk.length() == 32) {
+          pendingIrk = capturedIrk;
+          uploadNeeded = true;
+          currentRequest->status = "uploading";
+      }
+  }
+
+  // 2.5. Web Bluetooth IRK Retry
+  if (isWebBtFlow && webBtAuthTime > 0 && !irkCaptured) {
+      if (millis() - webBtAuthTime > 500) {
+          Serial.println("Web BT: Retrying IRK capture...");
+          if (tryCaptureIrkFromBondStore()) {
+              Serial.println("Web BT: IRK captured and written to characteristic!");
+              webBtAuthTime = 0;
+          } else if (millis() - webBtAuthTime > 10000) {
+              Serial.println("Web BT: IRK capture timeout");
+              webBtAuthTime = 0;
+          }
+      }
+  }
+
+  // 3. Retry IRK Extraction (if needed)
+  if (isRegistering && currentRequest && currentRequest->status == "authenticated") {
+      if (authStartTime == 0) authStartTime = millis();
+      if (millis() - authStartTime > 2000) { // Wait 2s for storage
+          int dev_num = NimBLEDevice::getNumBonds();
+          if (millis() % 1000 < 50) {
+            Serial.printf("Retry Loop... Bonded Devices Count: %d\n", dev_num);
+          }
+          tryCaptureIrkFromBondStore();
+      }
+      if(millis() - authStartTime > 15000) {
+          Serial.println("Timeout waiting for IRK");
+          currentRequest->status = "failed";
+          pendingDisconnect = true;
+          disconnectTargetTime = millis();
+      }
+  }
+
+  // 4. Do Upload
+  if (uploadNeeded) {
+      uploadNeeded = false;
+      uploadIrk(pendingIrk);
+
+      // Done! Schedule disconnect
+      pendingDisconnect = true;
+      disconnectTargetTime = millis() + 3000; // 3s delay
+  }
+
+  // 5. Cleanup
+  if (pendingDisconnect && millis() > disconnectTargetTime) {
+      pendingDisconnect = false;
+      Serial.println("Session Complete. Resetting.");
+
       if(currentConnId != 0xFFFF) {
-          Serial.println("Disconnecting device via timer...");
           pServer->disconnect(currentConnId);
       }
-      pendingDisconnect = false;
+
+      isRegistering = false;
+
+        // Clear bonds again to be safe
+          if (NimBLEDevice::getNumBonds() > 0) {
+            clearAllBonds();
+          }
+      NimBLEDevice::startAdvertising(); // Ready for next person
   }
-  
-  delay(1); // Reduce delay for faster DNS response
+
+  delay(10);
 }

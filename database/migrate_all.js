@@ -88,6 +88,24 @@ async function migrate() {
         console.log('[11/11] Adding is_admin to attendees...');
         await pool.query('ALTER TABLE attendees ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT FALSE;');
 
+        // 12. Device Registrations (BLE pairing flow)
+        console.log('[12] Checking device_registrations table...');
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS device_registrations (
+                id SERIAL PRIMARY KEY,
+                device_id VARCHAR(50) NOT NULL,
+                pin VARCHAR(10) NOT NULL,
+                target_attendee_id INTEGER REFERENCES attendees(id) ON DELETE CASCADE,
+                step VARCHAR(20) DEFAULT 'pending',
+                irk VARCHAR(32),
+                expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            );
+        `);
+        // Add columns if table already exists without them
+        await pool.query('ALTER TABLE device_registrations ADD COLUMN IF NOT EXISTS irk VARCHAR(32);');
+        await pool.query("ALTER TABLE device_registrations ADD COLUMN IF NOT EXISTS device_name VARCHAR(100) DEFAULT 'Phone';");
+
     } catch (err) {
         console.error('Migration failed:', err);
         process.exit(1);

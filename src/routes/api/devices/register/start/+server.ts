@@ -11,19 +11,19 @@ export async function POST({ request, locals }) {
     // Let's require body: { deviceId, attendeeId }
     
     try {
-        const { deviceId, attendeeId } = await request.json();
+        const { deviceId, attendeeId, deviceName } = await request.json();
 
         if (!deviceId || !attendeeId) {
             return json({ error: 'Missing deviceId or attendeeId' }, { status: 400 });
         }
-        
+
         // Check if attendee exists
         const userCheck = await query('SELECT id FROM attendees WHERE id = $1', [attendeeId]);
         if (userCheck.rows.length === 0) {
             return json({ error: 'Invalid user' }, { status: 404 });
         }
 
-        const result = await DeviceRegistrationService.startRegistration(deviceId, attendeeId);
+        const result = await DeviceRegistrationService.startRegistration(deviceId, attendeeId, deviceName || 'Phone');
         
         return json({ 
             success: true, 
