@@ -119,6 +119,7 @@ const queries = [
         ALTER TABLE point_transactions ADD CONSTRAINT fk_transactions_attendees FOREIGN KEY (user_id) REFERENCES attendees(id) ON DELETE CASCADE;
      EXCEPTION WHEN others THEN null; END $$;`,
 
+    `ALTER TABLE minigame_rankings ADD COLUMN IF NOT EXISTS mistakes INT DEFAULT 0;`,
     `CREATE INDEX IF NOT EXISTS idx_ranking_lookup ON minigame_rankings (game_id, difficulty, clear_time ASC);`,
     `CREATE INDEX IF NOT EXISTS idx_daily_points ON point_transactions (user_id, created_at, transaction_type);`,
     `CREATE INDEX IF NOT EXISTS idx_title_condition ON minigame_titles (condition_type, id);`,

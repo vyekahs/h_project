@@ -19,14 +19,14 @@ export async function POST({ request, locals, cookies }) {
         }
     }
 
-    const { gameId, difficulty, clearTime, score, skipReward } = await request.json();
-    
+    const { gameId, difficulty, clearTime, score, skipReward, mistakes } = await request.json();
+
     if (!gameId || !difficulty || clearTime === undefined) {
         return json({ error: 'Missing required fields' }, { status: 400 });
     }
 
     try {
-        const result = await RankingService.submitScore(userId, gameId, difficulty, clearTime, score, skipReward);
+        const result = await RankingService.submitScore(userId, gameId, difficulty, clearTime, score, skipReward, mistakes || 0);
         
         // Trigger Title Check (Safely)
         try {

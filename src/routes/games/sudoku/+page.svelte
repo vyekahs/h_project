@@ -41,6 +41,23 @@
     
     // View state for Start Screen
     let view: 'game' | 'ranking' | 'tutorials_list' = $state('game');
+    let rankingTab: 'halloffame' | 'ranking' = $state('halloffame');
+    let hallOfFameData: any[] = $state([]);
+    let hallOfFameLoading = $state(false);
+
+    async function loadHallOfFame() {
+        hallOfFameLoading = true;
+        try {
+            const res = await fetch('/api/ranking/halloffame/sudoku');
+            if (res.ok) {
+                hallOfFameData = await res.json();
+            }
+        } catch (e) {
+            console.error('Failed to load hall of fame', e);
+        } finally {
+            hallOfFameLoading = false;
+        }
+    }
     
     // Simple history stack: stores JSON string of board state
     let history: string[] = $state([]);
@@ -565,6 +582,7 @@
                     difficulty: difficulty,
                     clearTime: timerValue,
                     score: 0,
+                    mistakes: mistakes,
                     skipReward: !GAME_CONFIG.ENABLE_REWARDS
                 })
             });
@@ -609,100 +627,136 @@
         }} />
         
     {:else if gameState === 'start'}
-        <div class="screen start-screen">
-            <div class="start-header">
-                {#if view === 'tutorials_list'}
-                    <button class="header-link left" onclick={() => view = 'game'}>← 뒤로</button>
-                    <h1>공략집 📖</h1>
-                    <div class="header-links"></div>
-                {:else if view === 'ranking'}
-                    <button class="header-link left" onclick={() => view = 'game'}>← 뒤로</button>
-                    <h1>랭킹 🏆</h1>
-                    <div class="header-links"></div>
-                {:else}
+        {#if view === 'game'}
+            <div class="screen start-screen">
+                <div class="start-header">
                     <a href="/minigames" class="header-link left">← 오락실</a>
                     <h1>Sudoku</h1>
                     <div class="header-links">
-                        <button class="header-link" onclick={() => view = 'ranking'}>랭킹 🏆</button>
+                        <button class="header-link" onclick={() => { view = 'ranking'; rankingTab = 'halloffame'; loadHallOfFame(); }}>랭킹 🏆</button>
                         {#if hasUnlockedTutorials}
                             <button class="header-link" onclick={() => view = 'tutorials_list'}>공략집 📖</button>
                         {/if}
                     </div>
+                </div>
+
+                {#if hasSavedGame && startMode === 'initial'}
+                    <div class="difficulty-select options">
+                        <button class="btn-primary huge" onclick={loadSavedGame}>
+                            이어하기
+                        </button>
+                        <div class="divider">OR</div>
+                        <button class="btn-secondary huge" onclick={() => startMode = 'diff_select'}>
+                            새 게임 시작
+                        </button>
+                    </div>
+                    <div></div><!-- 정렬맞추기 위해 존재 -->
+                {/if}
+
+                {#if !hasSavedGame || startMode === 'diff_select'}
+                    <div class="difficulty-select">
+                        <h2>난이도 선택</h2>
+                        <div class="options">
+                            <label class:selected={difficulty === 'easy'}>
+                                <input type="radio" name="difficulty" value="easy" bind:group={difficulty}>
+                            쉬움
+                            </label>
+                            <label class:selected={difficulty === 'medium'}>
+                                <input type="radio" name="difficulty" value="medium" bind:group={difficulty}>
+                            보통
+                            </label>
+                            <label class:selected={difficulty === 'hard'}>
+                                <input type="radio" name="difficulty" value="hard" bind:group={difficulty}>
+                            어려움
+                            </label>
+                            <label class:selected={difficulty === 'expert'}>
+                                <input type="radio" name="difficulty" value="expert" bind:group={difficulty}>
+                            전문가
+                            </label>
+                            <label class:selected={difficulty === 'master'}>
+                                <input type="radio" name="difficulty" value="master" bind:group={difficulty}>
+                            마스터
+                            </label>
+                        </div>
+                    </div>
+                    <button class="btn-primary huge" onclick={() => startGame()}>게임 시작</button>
+
+                    {#if hasSavedGame}
+                        <button class="btn-text" onclick={() => startMode = 'initial'}>취소하고 돌아가기</button>
+                    {/if}
                 {/if}
             </div>
-            
-            {#if hasSavedGame && view === 'game' && startMode === 'initial'}
-                <div class="difficulty-select options">
-                    <button class="btn-primary huge" onclick={loadSavedGame}>
-                        이어하기
-                    </button>
-                    <div class="divider">OR</div>
-                    <button class="btn-secondary huge" onclick={() => startMode = 'diff_select'}>
-                        새 게임 시작
-                    </button>
-                </div>
-                <div></div><!-- 정렬맞추기 위해 존재 -->
-            {/if}
-            
-            {#if view === 'game' && (!hasSavedGame || startMode === 'diff_select')}
-                <div class="difficulty-select">
-                    <h2>난이도 선택</h2>
-                    <div class="options">
-                        <label class:selected={difficulty === 'easy'}>
-                            <input type="radio" name="difficulty" value="easy" bind:group={difficulty}>
-                        쉬움
-                        </label>
-                        <label class:selected={difficulty === 'medium'}>
-                            <input type="radio" name="difficulty" value="medium" bind:group={difficulty}>
-                        보통
-                        </label>
-                        <label class:selected={difficulty === 'hard'}>
-                            <input type="radio" name="difficulty" value="hard" bind:group={difficulty}>
-                        어려움
-                        </label>
-                        <label class:selected={difficulty === 'expert'}>
-                            <input type="radio" name="difficulty" value="expert" bind:group={difficulty}>
-                        전문가
-                        </label>
-                        <label class:selected={difficulty === 'master'}>
-                            <input type="radio" name="difficulty" value="master" bind:group={difficulty}>
-                        마스터
-                        </label>
-                    </div>
-                </div>
-                <button class="btn-primary huge" onclick={() => startGame()}>게임 시작</button>
-                
-                {#if hasSavedGame}
-                    <button class="btn-text" onclick={() => startMode = 'initial'}>취소하고 돌아가기</button>
-                {/if}
-            {/if}
 
-            {#if view === 'ranking'}
-                <RankingBoard gameId="sudoku" />
-            {/if}
-
-            {#if view === 'tutorials_list'}
-                <div class="tutorial-list-container">
-                    <div class="tutorial-list">
-                        {#each TUTORIAL_ORDER as tid}
-                            {@const t = TUTORIALS[tid]}
-                            {#if unlockedTutorialIDs.has(tid)}
-                                <button class="tutorial-list-item" onclick={() => openTutorial(tid)}>
-                                    <div class="t-info">
-                                        <span class="t-badge {t.difficulty}">{t.difficulty.toUpperCase()}</span>
-                                        <span class="t-title">{t.title}</span>
+        {:else if view === 'ranking'}
+            <div class="subpage">
+                <div class="start-header">
+                    <button class="header-link left" onclick={() => view = 'game'}>← 뒤로</button>
+                    <h1>랭킹 🏆</h1>
+                    <div class="header-links"></div>
+                </div>
+                <div class="ranking-tabs">
+                    <button class="tab" class:active={rankingTab === 'halloffame'} onclick={() => { rankingTab = 'halloffame'; loadHallOfFame(); }}>명예의 전당</button>
+                    <button class="tab" class:active={rankingTab === 'ranking'} onclick={() => rankingTab = 'ranking'}>스도쿠 랭킹</button>
+                </div>
+                <div class="subpage-body">
+                    {#if rankingTab === 'halloffame'}
+                        <div class="hall-of-fame">
+                            {#if hallOfFameLoading}
+                                <div class="hof-loading">불러오는 중...</div>
+                            {:else if hallOfFameData.length === 0}
+                                <div class="hof-empty">아직 기록이 없습니다.</div>
+                            {:else}
+                                {#each hallOfFameData as record}
+                                    {@const diffLabel = difficultyLabels[record.difficulty as keyof typeof difficultyLabels] || record.difficulty}
+                                    <div class="hof-card">
+                                        <div class="hof-difficulty">{diffLabel}</div>
+                                        <div class="hof-player">
+                                            <span class="hof-crown">👑</span>
+                                            <span class="hof-name">{record.nickname || '익명'}</span>
+                                        </div>
+                                        <div class="hof-stats">
+                                            <span>🏆 {record.score.toLocaleString()}점</span>
+                                            <span>⏱️ {formatTime(record.clear_time)}</span>
+                                            <span>❌ {record.mistakes}회 실수</span>
+                                        </div>
                                     </div>
-                                    <span class="t-arrow">›</span>
-                                </button>
+                                {/each}
                             {/if}
-                        {/each}
+                        </div>
+                    {:else}
+                        <RankingBoard gameId="sudoku" />
+                    {/if}
+                </div>
+            </div>
+
+        {:else if view === 'tutorials_list'}
+            <div class="subpage">
+                <div class="start-header">
+                    <button class="header-link left" onclick={() => view = 'game'}>← 뒤로</button>
+                    <h1>공략집 📖</h1>
+                    <div class="header-links"></div>
+                </div>
+                <div class="subpage-body">
+                    <div class="tutorial-list-container">
+                        <div class="tutorial-list">
+                            {#each TUTORIAL_ORDER as tid}
+                                {@const t = TUTORIALS[tid]}
+                                {#if unlockedTutorialIDs.has(tid)}
+                                    <button class="tutorial-list-item" onclick={() => openTutorial(tid)}>
+                                        <div class="t-info">
+                                            <span class="t-badge {t.difficulty}">{t.difficulty.toUpperCase()}</span>
+                                            <span class="t-title">{t.title}</span>
+                                        </div>
+                                        <span class="t-arrow">›</span>
+                                    </button>
+                                {/if}
+                            {/each}
+                        </div>
                     </div>
                 </div>
-                <div></div>
-            {/if}
+            </div>
+        {/if}
 
-        </div>
-    
     {:else}
         <div class="game-play-area" class:blurred={alertMessage || confirmMessage || gameState === 'paused'}>
             <!-- Game Header -->
@@ -936,6 +990,19 @@
         flex: 1;
         width: 100%;
         overflow: hidden;
+    }
+    .subpage {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        width: 100%;
+        flex: 1;
+        gap: 2.5rem;
+        overflow: hidden;
+    }
+    .subpage-body {
+        overflow-y: auto;
+        width: 100%;
     }
     
     .start-header {
@@ -1557,9 +1624,90 @@
         padding: 3rem 1rem;
         color: #888;
     }
-    
+
     .empty-state p {
         margin: 0.5rem 0;
+    }
+
+    /* Ranking Tabs */
+    .ranking-tabs {
+        display: flex;
+        gap: 0;
+        width: 100%;
+        max-width: 500px;
+        margin: 0 auto;
+        background: #f0f0f0;
+        border-radius: 12px;
+        padding: 4px;
+    }
+    .tab {
+        flex: 1;
+        padding: 0.6rem 1rem;
+        border: none;
+        background: transparent;
+        border-radius: 10px;
+        font-weight: 600;
+        font-size: 0.9rem;
+        color: #888;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    .tab.active {
+        background: #fff;
+        color: #333;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    }
+
+    /* Hall of Fame */
+    .hall-of-fame {
+        width: 100%;
+        max-width: 500px;
+        margin: 0 auto;
+        display: flex;
+        flex-direction: column;
+        gap: 0.8rem;
+        overflow-y: auto;
+        flex: 1;
+    }
+    .hof-card {
+        background: #fff;
+        border-radius: 12px;
+        padding: 1rem 1.2rem;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        border: 1px solid #f0f0f0;
+    }
+    .hof-difficulty {
+        font-size: 0.75rem;
+        font-weight: 700;
+        color: #888;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        margin-bottom: 0.5rem;
+    }
+    .hof-player {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        margin-bottom: 0.5rem;
+    }
+    .hof-crown {
+        font-size: 1.2rem;
+    }
+    .hof-name {
+        font-size: 1.1rem;
+        font-weight: 700;
+        color: #333;
+    }
+    .hof-stats {
+        display: flex;
+        gap: 1rem;
+        font-size: 0.85rem;
+        color: #666;
+    }
+    .hof-loading, .hof-empty {
+        text-align: center;
+        padding: 2rem;
+        color: #888;
     }
 
 </style>
