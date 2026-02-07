@@ -41,6 +41,11 @@ export const actions: Actions = {
             const endDate = new Date(startDate);
             endDate.setDate(endDate.getDate() + 29);
 
+            // 마감일이 월요일(1) 또는 화요일(2)이면 수요일(3)로 연장
+            const dow = endDate.getDay();
+            if (dow === 1) endDate.setDate(endDate.getDate() + 2);
+            else if (dow === 2) endDate.setDate(endDate.getDate() + 1);
+
             await query('UPDATE attendees SET season_pass_expires_at = $1 WHERE id = $2', [endDate, attendeeId]);
             return { success: true };
         } catch (err) {
