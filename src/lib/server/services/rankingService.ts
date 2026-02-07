@@ -7,7 +7,7 @@ export const RankingService = {
      * Updates ranking if it's a new personal best (Highest Score).
      * Unified Score = Base (Difficulty) + Time Bonus
      */
-    async submitScore(userId: number, gameId: string, difficulty: string, clearTime: number, score?: number, skipReward: boolean = false) {
+    async submitScore(userId: number, gameId: string, difficulty: string, clearTime: number, score?: number, skipReward: boolean = false, mistakes: number = 0) {
         
         // 1. Calculate Unified Score
         let calculatedScore = 0;
@@ -54,14 +54,15 @@ export const RankingService = {
         // User requested: "Sum of scores of ALL games" (Cumulative)
         
         await query(`
-            INSERT INTO minigame_rankings (game_id, difficulty, user_id, clear_time, score, achieved_at)
-            VALUES ($1, $2, $3, $4, $5, NOW())
+            INSERT INTO minigame_rankings (game_id, difficulty, user_id, clear_time, score, mistakes, achieved_at)
+            VALUES ($1, $2, $3, $4, $5, $6, NOW())
             ON CONFLICT (game_id, difficulty, user_id)
-            DO UPDATE SET 
-                clear_time = EXCLUDED.clear_time, -- Store latest clear time
-                score = minigame_rankings.score + EXCLUDED.score, -- Accumulate Score
+            DO UPDATE SET
+                clear_time = EXCLUDED.clear_time,
+                score = minigame_rankings.score + EXCLUDED.score,
+                mistakes = EXCLUDED.mistakes,
                 achieved_at = NOW()
-        `, [gameId, difficulty, userId, clearTime, calculatedScore]);
+        `, [gameId, difficulty, userId, clearTime, calculatedScore, mistakes]);
         
         // 4. Update Game History (For My Page)
         // REQUEST: Arcade games should NOT appear in My Page activity log.
@@ -99,6 +100,27 @@ export const RankingService = {
             earnedPoints: skipReward ? 0 : finalPoints, 
             score: calculatedScore
         };
+    },
+
+    /**
+     * Get Hall of Fame: Best single-game score per difficulty
+     */
+    async getHallOfFame(gameId: string) {
+        const sql = `
+            SELECT DISTINCT ON (r.difficulty)
+                r.difficulty,
+                r.user_id,
+                a.name as nickname,
+                r.score,
+                r.clear_time,
+                r.mistakes,
+                r.achieved_at
+            FROM minigame_rankings r
+            LEFT JOIN attendees a ON r.user_id = a.id
+            WHERE r.game_id = $1
+            ORDER BY r.difficulty, r.score DESC, r.clear_time ASC
+        `;
+        return (await query(sql, [gameId])).rows;
     },
 
     /**
