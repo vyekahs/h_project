@@ -15,9 +15,17 @@ export async function handle({ event, resolve }) {
         }
     }
 
+    // 로그인 필요 경로 체크 (오락실)
+    if (event.url.pathname.startsWith('/games') && !event.locals.user) {
+        return new Response('Redirect', {
+            status: 303,
+            headers: { Location: '/login?redirectTo=' + encodeURIComponent(event.url.pathname) }
+        });
+    }
+
     if (event.url.pathname.startsWith('/admin') && !event.url.pathname.startsWith('/admin/login')) {
         const sessionToken = event.cookies.get('admin_session');
-        
+
         // Allow if:
         // 1. Is Admin (valid session)
         if (sessionToken && (await verifyAdminSession(sessionToken))) {
