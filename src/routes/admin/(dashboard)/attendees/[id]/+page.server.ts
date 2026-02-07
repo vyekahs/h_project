@@ -102,7 +102,7 @@ export const actions: Actions = {
         try {
             const startDate = new Date(startDateStr);
             const endDate = new Date(startDate);
-            endDate.setDate(endDate.getDate() + 30);
+            endDate.setDate(endDate.getDate() + 29);
 
             await query('UPDATE attendees SET season_pass_expires_at = $1 WHERE id = $2', [endDate, attendeeId]);
             return { success: true, message: '정기권이 발급되었습니다.' };
