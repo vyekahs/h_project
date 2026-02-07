@@ -277,6 +277,28 @@
                     </button>
                 </div>
 
+                {#if activeSeasonPass}
+                    <div class="adjust-row">
+                        <form method="POST" action="?/adjustSeasonPass" use:enhance={() => {
+                            return async ({ result, update }) => {
+                                if (result.type === 'success') await update();
+                            };
+                        }}>
+                            <input type="hidden" name="days" value="-1" />
+                            <button type="submit" class="btn-adjust minus">-1일</button>
+                        </form>
+                        <span class="adjust-label">만료일 조정</span>
+                        <form method="POST" action="?/adjustSeasonPass" use:enhance={() => {
+                            return async ({ result, update }) => {
+                                if (result.type === 'success') await update();
+                            };
+                        }}>
+                            <input type="hidden" name="days" value="1" />
+                            <button type="submit" class="btn-adjust plus">+1일</button>
+                        </form>
+                    </div>
+                {/if}
+
                 {#if form?.success && form?.message}
                     <p class="success-msg">
                         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px; vertical-align:text-bottom; color:green;"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
@@ -405,6 +427,42 @@
     }
     .btn-cancel-pass:hover {
         background: #d32f2f;
+    }
+
+    .adjust-row {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 1rem;
+        margin-top: 1rem;
+    }
+    .adjust-label {
+        font-size: 0.9rem;
+        color: #666;
+    }
+    .btn-adjust {
+        width: 60px;
+        height: 40px;
+        font-size: 1rem;
+        font-weight: bold;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    .btn-adjust.plus {
+        background: #e3f2fd;
+        color: #1976d2;
+    }
+    .btn-adjust.plus:hover {
+        background: #bbdefb;
+    }
+    .btn-adjust.minus {
+        background: #fce4ec;
+        color: #c62828;
+    }
+    .btn-adjust.minus:hover {
+        background: #f8bbd0;
     }
 
     /* Modal Styles */

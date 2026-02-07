@@ -58,6 +58,26 @@
                             <span class="days-badge" class:urgent={days <= 3}>
                                 D-{days}
                             </span>
+                            <form method="POST" action="?/adjustPass" use:enhance={() => {
+                                return async ({ result, update }) => {
+                                    if (result.type === 'failure') showAlert((result.data as any)?.error || '오류');
+                                    await update();
+                                };
+                            }}>
+                                <input type="hidden" name="attendeeId" value={holder.id} />
+                                <input type="hidden" name="days" value="-1" />
+                                <button type="submit" class="btn-sm btn-minus">-1</button>
+                            </form>
+                            <form method="POST" action="?/adjustPass" use:enhance={() => {
+                                return async ({ result, update }) => {
+                                    if (result.type === 'failure') showAlert((result.data as any)?.error || '오류');
+                                    await update();
+                                };
+                            }}>
+                                <input type="hidden" name="attendeeId" value={holder.id} />
+                                <input type="hidden" name="days" value="1" />
+                                <button type="submit" class="btn-sm btn-plus">+1</button>
+                            </form>
                             <form method="POST" action="?/grantPass" use:enhance={() => {
                                 return async ({ result, update }) => {
                                     if (result.type === 'failure') showAlert((result.data as any)?.error || '오류');
@@ -242,6 +262,10 @@
         cursor: pointer;
         font-weight: 600;
     }
+    .btn-minus { background: #fce4ec; color: #c62828; }
+    .btn-minus:hover { background: #f8bbd0; }
+    .btn-plus { background: #e3f2fd; color: #1976d2; }
+    .btn-plus:hover { background: #bbdefb; }
     .btn-extend { background: #e3f2fd; color: #1565c0; }
     .btn-extend:hover { background: #bbdefb; }
     .btn-cancel { background: #fce4ec; color: #c62828; }

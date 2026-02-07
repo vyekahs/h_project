@@ -54,6 +54,32 @@ export const actions: Actions = {
         }
     },
 
+    adjustPass: async ({ request }) => {
+        const data = await request.formData();
+        const attendeeId = data.get('attendeeId') as string;
+        const days = parseInt(data.get('days') as string);
+
+        if (!attendeeId || isNaN(days)) {
+            return fail(400, { error: '잘못된 요청입니다.' });
+        }
+
+        try {
+            const result = await query('SELECT season_pass_expires_at FROM attendees WHERE id = $1', [attendeeId]);
+            if (!result.rows[0]?.season_pass_expires_at) {
+                return fail(400, { error: '유효한 정기권이 없습니다.' });
+            }
+
+            await query(
+                `UPDATE attendees SET season_pass_expires_at = season_pass_expires_at + interval '1 day' * $1 WHERE id = $2`,
+                [days, attendeeId]
+            );
+            return { success: true };
+        } catch (err) {
+            console.error(err);
+            return fail(500, { error: '정기권 조정 중 오류가 발생했습니다.' });
+        }
+    },
+
     cancelPass: async ({ request }) => {
         const data = await request.formData();
         const attendeeId = data.get('attendeeId') as string;
