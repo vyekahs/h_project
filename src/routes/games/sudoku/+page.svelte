@@ -702,43 +702,56 @@
                 </div>
                 <div class="subpage-body">
                     {#if rankingTab === 'halloffame'}
+                        <p class="score-desc">점수 = 기본점수 + (제한시간 - 클리어시간) x 난이도 배율</p>
                         <div class="hall-of-fame">
                             {#if hallOfFameLoading}
                                 <div class="hof-loading">불러오는 중...</div>
                             {:else if hallOfFameData.length === 0}
                                 <div class="hof-empty">아직 기록이 없습니다.</div>
                             {:else}
-                                {#each hallOfFameData as record, i}
-                                    {@const diffLabel = difficultyLabels[record.difficulty as keyof typeof difficultyLabels] || record.difficulty}
-                                    <div class="hof-card" class:hof-top3={i < 3}>
-                                        <div class="hof-rank" class:hof-rank-1={i === 0} class:hof-rank-2={i === 1} class:hof-rank-3={i === 2}>
-                                            {i + 1}
-                                        </div>
-                                        <div class="hof-body">
-                                            <div class="hof-player">
-                                                <span class="hof-name">{record.nickname || '익명'}</span>
-                                                <span class="hof-difficulty">{diffLabel}</span>
+                                {#each ['easy', 'medium', 'hard', 'expert', 'master'] as diff}
+                                    {@const record = hallOfFameData.find((r: any) => r.difficulty === diff)}
+                                    {@const diffLabel = difficultyLabels[diff as keyof typeof difficultyLabels]}
+                                    {#if record}
+                                        <div class="hof-card">
+                                            <div class="hof-diff-badge {diff}">
+                                                {diffLabel}
                                             </div>
-                                            <div class="hof-stats">
-                                                <span class="hof-stat">
-                                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
-                                                    {record.score.toLocaleString()}
-                                                </span>
-                                                <span class="hof-stat">
-                                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                                                    {formatTime(record.clear_time)}
-                                                </span>
-                                                <span class="hof-stat">
-                                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 4H8l-7 8 7 8h13a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z"/><line x1="18" y1="9" x2="12" y2="15"/><line x1="12" y1="9" x2="18" y2="15"/></svg>
-                                                    {record.mistakes}
-                                                </span>
+                                            <div class="hof-body">
+                                                <div class="hof-player">
+                                                    <span class="hof-name">{record.nickname || '익명'}</span>
+                                                </div>
+                                                <div class="hof-stats">
+                                                    <span class="hof-stat">
+                                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                                                        {record.score.toLocaleString()}
+                                                    </span>
+                                                    <span class="hof-stat">
+                                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                                                        {formatTime(record.clear_time)}
+                                                    </span>
+                                                    <span class="hof-stat">
+                                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 4H8l-7 8 7 8h13a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z"/><line x1="18" y1="9" x2="12" y2="15"/><line x1="12" y1="9" x2="18" y2="15"/></svg>
+                                                        {record.mistakes}
+                                                    </span>
+                                                </div>
                                             </div>
                                         </div>
-                                    </div>
+                                    {:else}
+                                        <div class="hof-card hof-empty-card">
+                                            <div class="hof-diff-badge {diff}">
+                                                {diffLabel}
+                                            </div>
+                                            <div class="hof-body">
+                                                <span class="hof-no-record">아직 기록이 없습니다</span>
+                                            </div>
+                                        </div>
+                                    {/if}
                                 {/each}
                             {/if}
                         </div>
                     {:else}
+                        <p class="score-desc">매월 게임 점수가 누적되어 랭킹이 결정됩니다</p>
                         <RankingBoard gameId="sudoku" />
                     {/if}
                 </div>
@@ -1765,6 +1778,35 @@
         text-align: center;
         padding: 2rem;
         color: #888;
+    }
+    .hof-diff-badge {
+        font-size: 0.75rem;
+        font-weight: 700;
+        padding: 0.3rem 0.6rem;
+        border-radius: 6px;
+        min-width: 50px;
+        text-align: center;
+        flex-shrink: 0;
+        background: #f0f0f0;
+        color: #666;
+    }
+    .hof-diff-badge.easy { background: #e8f5e9; color: #2e7d32; }
+    .hof-diff-badge.medium { background: #fff3e0; color: #ef6c00; }
+    .hof-diff-badge.hard { background: #ffebee; color: #c62828; }
+    .hof-diff-badge.expert { background: #e8eaf6; color: #283593; }
+    .hof-diff-badge.master { background: #f3e5f5; color: #6a1b9a; }
+    .hof-empty-card {
+        opacity: 0.5;
+    }
+    .hof-no-record {
+        font-size: 0.85rem;
+        color: #aaa;
+    }
+    .score-desc {
+        text-align: center;
+        font-size: 0.78rem;
+        color: #999;
+        margin: 0 0 0.5rem 0;
     }
 
 </style>

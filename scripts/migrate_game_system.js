@@ -134,7 +134,33 @@ const queries = [
     `DO $$ BEGIN
         ALTER TABLE tutorial_progress DROP CONSTRAINT IF EXISTS fk_tutorial_attendees;
         ALTER TABLE tutorial_progress ADD CONSTRAINT fk_tutorial_attendees FOREIGN KEY (user_id) REFERENCES attendees(id) ON DELETE CASCADE;
-     EXCEPTION WHEN others THEN null; END $$;`
+     EXCEPTION WHEN others THEN null; END $$;`,
+
+    `-- Recalculate sudoku scores from cumulative to single-game best (one-time fix)
+     UPDATE minigame_rankings
+     SET score = CASE difficulty
+            WHEN 'easy'   THEN 10
+            WHEN 'medium' THEN 50
+            WHEN 'hard'   THEN 120
+            WHEN 'expert' THEN 250
+            ELSE 400
+        END
+        + GREATEST(0, (
+            CASE difficulty
+                WHEN 'easy'   THEN 300
+                WHEN 'medium' THEN 600
+                WHEN 'hard'   THEN 900
+                WHEN 'expert' THEN 1200
+                ELSE 1500
+            END - clear_time
+        ) * CASE difficulty
+                WHEN 'easy'   THEN 1
+                WHEN 'medium' THEN 2
+                WHEN 'hard'   THEN 3
+                WHEN 'expert' THEN 4
+                ELSE 5
+            END)
+     WHERE game_id = 'sudoku';`
 ];
 
 async function main() {

@@ -32,6 +32,21 @@ export const RankingService = {
                                     
              const bonus = Math.max(0, (timeLimit - clearTime) * timeMultiplier);
              calculatedScore = baseScore + bonus;
+        } else if (gameId === 'killer-sudoku') {
+             const timeLimit = difficulty === 'easy' ? 600 :
+                              difficulty === 'medium' ? 900 :
+                              difficulty === 'hard' ? 1200 : 1500;
+
+             const baseScore = difficulty === 'easy' ? 20 :
+                               difficulty === 'medium' ? 80 :
+                               difficulty === 'hard' ? 180 : 350;
+
+             const timeMultiplier = difficulty === 'easy' ? 1 :
+                                    difficulty === 'medium' ? 2 :
+                                    difficulty === 'hard' ? 4 : 5;
+
+             const bonus = Math.max(0, (timeLimit - clearTime) * timeMultiplier);
+             calculatedScore = baseScore + bonus;
         } else {
              calculatedScore = score || 0;
         }
@@ -49,19 +64,18 @@ export const RankingService = {
                 score_updated_at = NOW()
         `, [userId, gameId, monthKey, calculatedScore]);
 
-        // 3. Keep Existing "Best Record" Logic (All Time Fame)
-        // 3. Update All-time Cumulative Ranking (minigame_rankings)
-        // User requested: "Sum of scores of ALL games" (Cumulative)
-        
+        // 3. Update All-time Best Record (minigame_rankings)
+        // Store BEST single-game score per difficulty (not cumulative)
+
         await query(`
             INSERT INTO minigame_rankings (game_id, difficulty, user_id, clear_time, score, mistakes, achieved_at)
             VALUES ($1, $2, $3, $4, $5, $6, NOW())
             ON CONFLICT (game_id, difficulty, user_id)
             DO UPDATE SET
-                clear_time = EXCLUDED.clear_time,
-                score = minigame_rankings.score + EXCLUDED.score,
-                mistakes = EXCLUDED.mistakes,
-                achieved_at = NOW()
+                clear_time = CASE WHEN EXCLUDED.score > minigame_rankings.score THEN EXCLUDED.clear_time ELSE minigame_rankings.clear_time END,
+                score = GREATEST(minigame_rankings.score, EXCLUDED.score),
+                mistakes = CASE WHEN EXCLUDED.score > minigame_rankings.score THEN EXCLUDED.mistakes ELSE minigame_rankings.mistakes END,
+                achieved_at = CASE WHEN EXCLUDED.score > minigame_rankings.score THEN NOW() ELSE minigame_rankings.achieved_at END
         `, [gameId, difficulty, userId, clearTime, calculatedScore, mistakes]);
         
         // 4. Update Game History (For My Page)
@@ -103,11 +117,11 @@ export const RankingService = {
     },
 
     /**
-     * Get Hall of Fame: Best single-game score per difficulty
+     * Get Hall of Fame: Top scorer per difficulty (best single-game record)
      */
     async getHallOfFame(gameId: string) {
         const sql = `
-            SELECT
+            SELECT DISTINCT ON (r.difficulty)
                 r.difficulty,
                 r.user_id,
                 a.name as nickname,
@@ -118,8 +132,7 @@ export const RankingService = {
             FROM minigame_rankings r
             LEFT JOIN attendees a ON r.user_id = a.id
             WHERE r.game_id = $1
-            ORDER BY r.score DESC, r.clear_time ASC
-            LIMIT 10
+            ORDER BY r.difficulty, r.score DESC, r.clear_time ASC
         `;
         return (await query(sql, [gameId])).rows;
     },
