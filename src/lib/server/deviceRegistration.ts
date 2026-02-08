@@ -1,5 +1,6 @@
 
 import { query } from '$lib/server/db';
+import { addToIrkCache } from '$lib/server/ble';
 
 export class DeviceRegistrationService {
     // 1. Start Registration: Generate PIN for a device ID
@@ -81,6 +82,7 @@ export class DeviceRegistrationService {
             [irk, regId]
         );
 
+        await addToIrkCache(attendeeId, irk, deviceName);
         console.log(`[Service] Registration ${regId} completed directly (BLE PIN verified)`);
         return { success: true };
     }
@@ -101,6 +103,7 @@ export class DeviceRegistrationService {
             [attendeeId, irk, deviceName]
         );
 
+        await addToIrkCache(attendeeId, irk, deviceName);
         console.log(`[Service] Direct registration completed for attendee: ${attendeeId}`);
         return { success: true };
     }
@@ -144,6 +147,7 @@ export class DeviceRegistrationService {
             );
 
             await query('COMMIT');
+            await addToIrkCache(reg.target_attendee_id, reg.irk, reg.device_name || 'Phone');
             console.log(`[Service] Registration ${regId} completed with PIN verification`);
             return { success: true };
         } catch (e) {

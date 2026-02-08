@@ -3,6 +3,7 @@ import { fail, redirect } from '@sveltejs/kit';
 import QRCode from 'qrcode';
 import type { Actions, PageServerLoad } from './$types';
 import { verifyAdminSession, verifyAttendeeSession } from '$lib/server/auth';
+import { updateSettingsCache, markAllLeft } from '$lib/server/ble';
 
 async function canModifyGame(request: Request, gameId: string | number): Promise<boolean> {
     const sessionToken = request.headers.get('cookie')?.match(/admin_session=([^;]+)/)?.[1];
@@ -134,6 +135,7 @@ export const actions: Actions = {
 
         // Ensure is_open is true
         await query("INSERT INTO system_settings (key, value) VALUES ('is_open', 'true') ON CONFLICT (key) DO UPDATE SET value = 'true'");
+        updateSettingsCache(true);
 
         // 1. Check if ANY attendee with this name exists
         const existingResult = await query('SELECT * FROM attendees WHERE name = $1 ORDER BY id DESC', [name]);
@@ -381,7 +383,9 @@ export const actions: Actions = {
             await query("UPDATE game_sessions SET status = 'finished', end_time = NOW() WHERE status = 'playing'");
             // Set is_open to false
             await query("INSERT INTO system_settings (key, value) VALUES ('is_open', 'false') ON CONFLICT (key) DO UPDATE SET value = 'false'");
-            
+            updateSettingsCache(false);
+            markAllLeft();
+
             // Record business date to prevent auto-close from re-triggering if reopened
             const now = new Date();
             const kstNow = new Date(now.getTime() + 9 * 60 * 60 * 1000);
@@ -402,6 +406,7 @@ export const actions: Actions = {
     openDay: async () => {
         try {
             await query("INSERT INTO system_settings (key, value) VALUES ('is_open', 'true') ON CONFLICT (key) DO UPDATE SET value = 'true'");
+            updateSettingsCache(true);
         } catch (error) {
             return fail(500, { error: 'Failed to open day' });
         }

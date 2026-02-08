@@ -1,6 +1,7 @@
 import { query } from '$lib/server/db';
 import { fail } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
+import { updateSettingsCache } from '$lib/server/ble';
 
 export const load: PageServerLoad = async () => {
     const settingsResult = await query('SELECT key, value FROM system_settings');
@@ -48,6 +49,9 @@ export const actions: Actions = {
                 }
             }
             await query('COMMIT');
+            // BLE 설정 캐시 동기화
+            const openingTime = data.get('opening_time')?.toString();
+            if (openingTime) updateSettingsCache(true, openingTime);
             return { success: true };
         } catch (e) {
             await query('ROLLBACK');

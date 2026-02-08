@@ -21,9 +21,10 @@ BLEScan* pBLEScan;
 const int SCAN_TIME = 3;
 const unsigned long REPORT_INTERVAL = 60 * 1000;
 unsigned long lastReportTime = 0;
+const int RSSI_THRESHOLD = -90; // ~15m, 벽 있는 15평 공간용
 
 // Buffer
-const int MAX_DEVICES = 50;
+const int MAX_DEVICES = 100;
 String deviceMacs[MAX_DEVICES];
 int deviceRssis[MAX_DEVICES];
 String deviceNames[MAX_DEVICES];
@@ -83,7 +84,7 @@ void sendReport() {
   http.addHeader("Content-Type", "application/json");
   http.addHeader("x-api-key", API_KEY);
 
-  DynamicJsonDocument doc(4096);
+  DynamicJsonDocument doc(8192);
   doc["scanner_id"] = SCANNER_ID;
   doc["timestamp"] = millis();
   
@@ -122,6 +123,9 @@ void loop() {
     String mac = device.getAddress().toString().c_str();
     int rssi = device.getRSSI();
 
+    // Skip weak signals (too far away)
+    if (rssi < RSSI_THRESHOLD) continue;
+
     bool existing = false;
     for (int j = 0; j < deviceCount; j++) {
       if (deviceMacs[j] == mac) {
@@ -130,7 +134,7 @@ void loop() {
         break;
       }
     }
-    
+
     if (!existing && deviceCount < MAX_DEVICES) {
       deviceMacs[deviceCount] = mac;
       deviceRssis[deviceCount] = rssi;
