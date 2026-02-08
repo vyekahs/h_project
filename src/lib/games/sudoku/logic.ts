@@ -12,14 +12,14 @@ export type Board = Cell[][];
 /**
  * Creates an empty 9x9 board
  */
-function createEmptyBoard(): number[][] {
+export function createEmptyBoard(): number[][] {
 	return Array.from({ length: 9 }, () => Array(9).fill(0));
 }
 
 /**
  * Checks if placements is valid according to Sudoku rules
  */
-function isValid(board: number[][], row: number, col: number, num: number): boolean {
+export function isValid(board: number[][], row: number, col: number, num: number): boolean {
 	// Check row
 	for (let i = 0; i < 9; i++) {
 		if (board[row][i] === num) return false;
@@ -47,7 +47,7 @@ function isValid(board: number[][], row: number, col: number, num: number): bool
  * Returns true if solvable, false otherwise.
  * Modifies board in-place.
  */
-function solve(board: number[][]): boolean {
+export function solve(board: number[][]): boolean {
 	for (let row = 0; row < 9; row++) {
 		for (let col = 0; col < 9; col++) {
 			if (board[row][col] === 0) {
@@ -254,7 +254,7 @@ const VALID_SEEDS_BY_DIFF = {
 /**
  * Transforms a board to create variety
  */
-function transformBoard(board: number[][]): number[][] {
+export function transformBoard(board: number[][]): number[][] {
     let newBoard = board.map(row => [...row]);
 
     // 1. Relabeling (Map 1-9 to random 1-9)
