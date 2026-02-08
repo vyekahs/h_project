@@ -188,6 +188,7 @@ export async function processScanResults(scannerId: string, timestamp: number, s
             lastSeenMap.set(attendeeId, Date.now());
             // Update DB last_seen_at
             query('UPDATE user_devices SET last_seen_at = NOW() WHERE attendee_id = $1', [attendeeId]).catch(err => console.error(err));
+            console.log(`[BLE] ✅ Matched: ${scan.mac} (${scan.rssi}dBm) → User ${attendeeId}`);
         }
     }
 
@@ -217,13 +218,13 @@ export async function processScanResults(scannerId: string, timestamp: number, s
 
     for (const attendeeId of detectedAttendeeIds) {
         // Check if user is already present AND check if Admin
-        const statusRes = await query('SELECT status, is_admin FROM attendees WHERE id = $1', [attendeeId]);
+        const statusRes = await query('SELECT status, is_admin, name FROM attendees WHERE id = $1', [attendeeId]);
         if (statusRes.rows.length > 0) {
-            const { status, is_admin } = statusRes.rows[0];
-            
+            const { status, is_admin, name } = statusRes.rows[0];
+
             // Auto-Open Logic
             if (!isOpen && is_admin && isPastOpeningTime) {
-                console.log(`[BLE] 🚨 Admin ${attendeeId} detected! Auto-Opening Gym...`);
+                console.log(`[BLE] 🚨 Admin ${attendeeId} (${name}) detected! Auto-Opening Gym...`);
                 await query("INSERT INTO system_settings (key, value) VALUES ('is_open', 'true') ON CONFLICT (key) DO UPDATE SET value = 'true'");
                 isOpen = true; // Avoid repeated updates in this loop
             }

@@ -13,7 +13,10 @@ export const POST: RequestHandler = async ({ request }) => {
     }
 
     try {
-        const body = await request.json();
+        // Parse JSON with control character sanitization (BLE device names may contain them)
+        const rawText = await request.text();
+        const sanitized = rawText.replace(/[\x00-\x1F\x7F]/g, '');
+        const body = JSON.parse(sanitized);
         const { scanner_id, timestamp, devices } = body;
         
         console.log(`[BLE] Report from ${scanner_id}: ${devices?.length || 0} devices`);
