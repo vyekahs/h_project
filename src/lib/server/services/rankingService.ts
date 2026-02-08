@@ -138,27 +138,48 @@ export const RankingService = {
     },
 
     /**
-     * Get Integrated Leaderboard
-     * NOW DEFAULTS TO MONTHLY RANKING
+     * Get Top scorers across all difficulties (for arcade preview)
      */
-    async getLeaderboard(gameId: string, limit = 100) {
-        // Fetch All-Time Cumulative Ranking (Sum of all difficulties)
-         const sql = `
-            SELECT 
+    async getTopScorers(gameId: string, limit = 3) {
+        const sql = `
+            SELECT
+                r.difficulty,
                 r.user_id,
-                a.name as nickname, 
-                'Total' as difficulty,
-                0 as clear_time,
-                SUM(r.score) as score,
-                MAX(r.achieved_at) as achieved_at,
-                RANK() OVER (ORDER BY SUM(r.score) DESC) as rank
+                a.name as nickname,
+                r.score,
+                r.clear_time,
+                r.mistakes,
+                r.achieved_at
             FROM minigame_rankings r
             LEFT JOIN attendees a ON r.user_id = a.id
             WHERE r.game_id = $1
-            GROUP BY r.user_id, a.name
-            ORDER BY score DESC
+            ORDER BY r.score DESC, r.clear_time ASC
             LIMIT $2
         `;
         return (await query(sql, [gameId, limit])).rows;
+    },
+
+    /**
+     * Get Monthly Leaderboard
+     * Shows current month's cumulative scores
+     */
+    async getLeaderboard(gameId: string, limit = 100) {
+        const now = new Date();
+        const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+        const sql = `
+            SELECT
+                r.user_id,
+                a.name as nickname,
+                r.total_score as score,
+                r.score_updated_at as achieved_at,
+                RANK() OVER (ORDER BY r.total_score DESC) as rank
+            FROM minigame_monthly_rankings r
+            LEFT JOIN attendees a ON r.user_id = a.id
+            WHERE r.game_id = $1 AND r.month_key = $2
+            ORDER BY r.total_score DESC
+            LIMIT $3
+        `;
+        return (await query(sql, [gameId, monthKey, limit])).rows;
     }
 };

@@ -41,7 +41,7 @@
     
     // View state for Start Screen
     let view: 'game' | 'ranking' | 'tutorials_list' = $state('game');
-    let rankingTab: 'halloffame' | 'ranking' = $state('halloffame');
+    let rankingTab: 'halloffame' | 'ranking' = $state('ranking');
     let hallOfFameData: any[] = $state([]);
     let hallOfFameLoading = $state(false);
 
@@ -635,7 +635,7 @@
                     <a href="/minigames" class="header-link left">← 오락실</a>
                     <h1>Sudoku</h1>
                     <div class="header-links">
-                        <button class="header-link" onclick={() => { view = 'ranking'; rankingTab = 'halloffame'; loadHallOfFame(); }}>랭킹 🏆</button>
+                        <button class="header-link" onclick={() => { view = 'ranking'; rankingTab = 'ranking'; }}>랭킹 🏆</button>
                         {#if hasUnlockedTutorials}
                             <button class="header-link" onclick={() => view = 'tutorials_list'}>공략집 📖</button>
                         {/if}
@@ -697,8 +697,8 @@
                     <div class="header-links"></div>
                 </div>
                 <div class="ranking-tabs">
-                    <button class="tab" class:active={rankingTab === 'halloffame'} onclick={() => { rankingTab = 'halloffame'; loadHallOfFame(); }}>명예의 전당</button>
                     <button class="tab" class:active={rankingTab === 'ranking'} onclick={() => rankingTab = 'ranking'}>스도쿠 랭킹</button>
+                    <button class="tab" class:active={rankingTab === 'halloffame'} onclick={() => { rankingTab = 'halloffame'; loadHallOfFame(); }}>명예의 전당</button>
                 </div>
                 <div class="subpage-body">
                     {#if rankingTab === 'halloffame'}
@@ -751,7 +751,7 @@
                             {/if}
                         </div>
                     {:else}
-                        <p class="score-desc">매월 게임 점수가 누적되어 랭킹이 결정됩니다</p>
+                        <p class="score-desc">게임 점수가 누적되며, 한 달마다 점수가 초기화됩니다</p>
                         <RankingBoard gameId="sudoku" />
                     {/if}
                 </div>
