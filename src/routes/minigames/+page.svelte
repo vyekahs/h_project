@@ -21,10 +21,9 @@
     async function loadHallOfFame() {
         hofLoading = true;
         try {
-            const res = await fetch('/api/ranking/halloffame/sudoku');
+            const res = await fetch('/api/ranking/halloffame/sudoku?preview=true');
             if (res.ok) {
-                const all = await res.json();
-                hofData = all.slice(0, 3);
+                hofData = await res.json();
             }
         } catch (e) {
             console.error(e);
