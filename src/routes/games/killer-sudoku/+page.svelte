@@ -69,7 +69,20 @@
 
     let showTutorial = $state(false);
     let activeTutorialId = $state('killer_easy_1');
-    let hasUnlockedTutorials = $state(false);
+    let hasUnlockedTutorials = $derived.by(() => {
+        if (!browser) return false;
+        
+        // Check local storage 
+        // Note: derived won't auto-update on localStorage change unless forced,
+        // but it will update on mount and whenever any other signal in here changes.
+        // Since we don't have a signal for localStorage, we rely on component remount or user store updates.
+        // Actually, $user update triggers this.
+        const userVal = $user; // Dependency on user store
+        const unlockedLocal = JSON.parse(localStorage.getItem('killer_sudoku_unlocked_tutorials') || '[]');
+        const unlockedDB = (userVal as any)?.completedTutorials || [];
+        
+        return [...unlockedLocal, ...unlockedDB].some((id: string) => typeof id === 'string' && id.startsWith('killer_'));
+    });
 
     let unlockedTutorialIDs = $derived.by(() => {
         const db = ($user as any)?.completedTutorials || [];
@@ -97,43 +110,32 @@
         };
     });
 
-    $effect(() => {
-        if (browser) {
-            const unlockedLocal = JSON.parse(localStorage.getItem('killer_sudoku_unlocked_tutorials') || '[]');
-            const unlockedDB = ($user as any)?.completedTutorials || [];
-            
-            // Only count killer sudoku tutorials
-            const hasLocal = unlockedLocal.some((id: string) => id.startsWith('killer_'));
-            const hasDB = unlockedDB.some((id: string) => id.startsWith('killer_'));
 
-            if (hasLocal || hasDB) {
-                hasUnlockedTutorials = true;
-            }
-        }
-    });
 
     function checkAndShowTutorial(diff: string) {
         if (!browser) return false;
-        const unlocked = JSON.parse(localStorage.getItem('killer_sudoku_unlocked_tutorials') || '[]');
+        
+        // Use derived Set (DB + Local)
+        const unlocked = unlockedTutorialIDs;
         let targetId: string | null = null;
 
         if (diff === 'easy') {
-            if (!unlocked.includes('killer_easy_1')) targetId = 'killer_easy_1';
-            else if (!unlocked.includes('killer_easy_2')) targetId = 'killer_easy_2';
-            else if (!unlocked.includes('killer_easy_3')) targetId = 'killer_easy_3';
+            if (!unlocked.has('killer_easy_1')) targetId = 'killer_easy_1';
+            else if (!unlocked.has('killer_easy_2')) targetId = 'killer_easy_2';
+            else if (!unlocked.has('killer_easy_3')) targetId = 'killer_easy_3';
         } else if (diff === 'medium') {
-            if (unlocked.includes('killer_easy_3')) {
-                if (!unlocked.includes('killer_medium_1')) targetId = 'killer_medium_1';
-                else if (!unlocked.includes('killer_medium_2')) targetId = 'killer_medium_2';
+            if (unlocked.has('killer_easy_3')) {
+                if (!unlocked.has('killer_medium_1')) targetId = 'killer_medium_1';
+                else if (!unlocked.has('killer_medium_2')) targetId = 'killer_medium_2';
             }
         } else if (diff === 'hard') {
-            if (unlocked.includes('killer_medium_2')) {
-                if (!unlocked.includes('killer_hard_1')) targetId = 'killer_hard_1';
-                else if (!unlocked.includes('killer_hard_2')) targetId = 'killer_hard_2';
+            if (unlocked.has('killer_medium_2')) {
+                if (!unlocked.has('killer_hard_1')) targetId = 'killer_hard_1';
+                else if (!unlocked.has('killer_hard_2')) targetId = 'killer_hard_2';
             }
         } else if (diff === 'expert') {
-            if (unlocked.includes('killer_hard_2')) {
-                if (!unlocked.includes('killer_expert_1')) targetId = 'killer_expert_1';
+            if (unlocked.has('killer_hard_2')) {
+                if (!unlocked.has('killer_expert_1')) targetId = 'killer_expert_1';
             }
         }
 
