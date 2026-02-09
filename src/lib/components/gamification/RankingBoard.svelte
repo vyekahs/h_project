@@ -55,7 +55,7 @@
 <div class="ranking-board" class:preview>
     <div class="header">
         {#if !preview}
-        <h3>🏆 이달의 랭킹 (월간)</h3>
+        <h3>이달의 랭킹</h3>
         {/if}
     </div>
     

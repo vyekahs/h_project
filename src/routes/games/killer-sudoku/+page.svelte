@@ -568,7 +568,7 @@
                     <h1>Killer Sudoku</h1>
                     <div class="header-links">
                         {#if hasUnlockedTutorials}
-                            <button class="header-link" onclick={() => view = 'tutorials_list'}>공략집 📖</button>
+                            <button class="header-link" onclick={() => view = 'tutorials_list'}>공략집</button>
                         {/if}
                         <button class="header-link" onclick={() => { view = 'ranking'; rankingTab = 'halloffame'; loadHallOfFame(); }}>랭킹 🏆</button>
                     </div>
@@ -621,7 +621,7 @@
             <div class="subpage">
                 <div class="start-header">
                     <button class="header-link left" onclick={() => view = 'game'}>← 뒤로</button>
-                    <h1>랭킹 🏆</h1>
+                    <h1>랭킹</h1>
                     <div class="header-links"></div>
                 </div>
                 <div class="ranking-tabs">
@@ -676,7 +676,7 @@
             <div class="subpage">
                 <div class="start-header">
                     <button class="header-link left" onclick={() => view = 'game'}>← 뒤로</button>
-                    <h1>공략집 📖</h1>
+                    <h1>공략집</h1>
                     <div class="header-links"></div>
                 </div>
                 <div class="subpage-body">
