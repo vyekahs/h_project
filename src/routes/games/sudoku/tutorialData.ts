@@ -10,8 +10,8 @@ export interface TutorialStep {
 }
 
 export const TUTORIALS: { [key: string]: any } = {
-    easy_1: {
-        id: 'easy_1',
+    sudoku_easy_1: {
+        id: 'sudoku_easy_1',
         difficulty: 'easy',
         title: '기초 규칙 (Rules)',
         steps: [
@@ -39,8 +39,8 @@ export const TUTORIALS: { [key: string]: any } = {
             }
         ]
     },
-    easy_2: {
-        id: 'easy_2',
+    sudoku_easy_2: {
+        id: 'sudoku_easy_2',
         difficulty: 'easy',
         title: '풀 하우스 & 네이키드 싱글',
         steps: [
@@ -81,8 +81,8 @@ export const TUTORIALS: { [key: string]: any } = {
             }
         ]
     },
-    easy_3: {
-        id: 'easy_3',
+    sudoku_easy_3: {
+        id: 'sudoku_easy_3',
         difficulty: 'easy',
         title: '히든 싱글 (Hidden Single)',
         steps: [
@@ -109,8 +109,8 @@ export const TUTORIALS: { [key: string]: any } = {
             }
         ]
     },
-    medium_1: {
-        id: 'medium_1',
+    sudoku_medium_1: {
+        id: 'sudoku_medium_1',
         difficulty: 'medium',
         title: '포인팅 페어 (Pointing Pair)',
         steps: [
@@ -181,8 +181,8 @@ export const TUTORIALS: { [key: string]: any } = {
             }
         ]
     },
-    medium_2: {
-        id: 'medium_2',
+    sudoku_medium_2: {
+        id: 'sudoku_medium_2',
         difficulty: 'medium',
         title: '네이키드 페어 (Naked Pair)',
         steps: [
@@ -243,8 +243,8 @@ export const TUTORIALS: { [key: string]: any } = {
             }
         ]
     },
-    hard_1: {
-        id: 'hard_1',
+    sudoku_hard_1: {
+        id: 'sudoku_hard_1',
         difficulty: 'hard',
         title: '히든 페어 (Hidden Pair)',
         steps: [
@@ -300,8 +300,8 @@ export const TUTORIALS: { [key: string]: any } = {
             }
         ]
     },
-    hard_2: {
-        id: 'hard_2',
+    sudoku_hard_2: {
+        id: 'sudoku_hard_2',
         difficulty: 'hard',
         title: 'X-윙 (X-Wing)',
         steps: [
@@ -362,8 +362,8 @@ export const TUTORIALS: { [key: string]: any } = {
             }
         ]
     },
-    expert_1: {
-        id: 'expert_1',
+    sudoku_expert_1: {
+        id: 'sudoku_expert_1',
         difficulty: 'expert',
         title: 'Y-윙 (Y-Wing / XY-Wing)',
         steps: [
@@ -429,8 +429,8 @@ export const TUTORIALS: { [key: string]: any } = {
             }
         ]
     },
-    expert_2: {
-        id: 'expert_2',
+    sudoku_expert_2: {
+        id: 'sudoku_expert_2',
         difficulty: 'expert',
         title: '소드피쉬 (Swordfish)',
         steps: [
@@ -492,8 +492,8 @@ export const TUTORIALS: { [key: string]: any } = {
             }
         ]
     },
-    expert_3: {
-        id: 'expert_3',
+    sudoku_expert_3: {
+        id: 'sudoku_expert_3',
         difficulty: 'expert',
         title: 'XY-체인 (XY-Chain)',
         steps: [
@@ -561,8 +561,8 @@ export const TUTORIALS: { [key: string]: any } = {
 };
 
 export const TUTORIAL_ORDER = [
-    'easy_1', 'easy_2', 'easy_3', 
-    'medium_1', 'medium_2', 
-    'hard_1', 'hard_2',
-    'expert_1', 'expert_2', 'expert_3'
+    'sudoku_easy_1', 'sudoku_easy_2', 'sudoku_easy_3', 
+    'sudoku_medium_1', 'sudoku_medium_2', 
+    'sudoku_hard_1', 'sudoku_hard_2',
+    'sudoku_expert_1', 'sudoku_expert_2', 'sudoku_expert_3'
 ];

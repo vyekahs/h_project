@@ -69,17 +69,25 @@
 
     let showTutorial = $state(false);
     let activeTutorialId = $state('killer_easy_1');
+    let hasUnlockedTutorials = $state(false);
+
     let unlockedTutorialIDs = $derived.by(() => {
         const db = ($user as any)?.completedTutorials || [];
         const local = browser ? JSON.parse(localStorage.getItem('killer_sudoku_unlocked_tutorials') || '[]') : [];
         return new Set([...db, ...local]);
     });
 
-    let hasUnlockedTutorials = $derived.by(() => {
-        for (const id of unlockedTutorialIDs) {
-            if (typeof id === 'string' && id.startsWith('killer_')) return true;
+    $effect(() => {
+        if (browser) {
+            const unlockedLocal: string[] = JSON.parse(localStorage.getItem('killer_sudoku_unlocked_tutorials') || '[]');
+            const unlockedDB: string[] = $user.completedTutorials || [];
+            const all = [...unlockedLocal, ...unlockedDB];
+            const hasKiller = all.some(id => typeof id === 'string' && id.startsWith('killer_'));
+
+            if (hasKiller) {
+                hasUnlockedTutorials = true;
+            }
         }
-        return false;
     });
 
     onMount(() => {

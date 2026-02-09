@@ -2,12 +2,12 @@
     import { TUTORIALS } from './tutorialData';
 
     // Props
-    let { tutorialId = 'easy_1', onclose } = $props();
+    let { tutorialId = 'sudoku_easy_1', onclose } = $props();
 
     let step = $state(0);
     
     // Derived state for current tutorial
-    let tutorial = $derived(TUTORIALS[tutorialId] || TUTORIALS['easy_1']);
+    let tutorial = $derived(TUTORIALS[tutorialId] || TUTORIALS['sudoku_easy_1']);
     let currentStepData = $derived(tutorial.steps[step]);
     let totalSteps = $derived(tutorial.steps.length);
 
@@ -52,7 +52,7 @@
         }
         
         // Default visual fillers for "Rules" (Game 1)
-        if (tutorialId === 'easy_1') {
+        if (tutorialId === 'sudoku_easy_1') {
             if (step === 1 && r === 4 && c !== 8) return c + 1;
             if (step === 2 && c === 4 && r !== 8) return r + 1;
             if (step === 3 && r >= 3 && r <= 5 && c >= 3 && c <= 5 && !(r === 4 && c === 4)) return (r - 3) * 3 + (c - 3) + 1;
@@ -66,7 +66,7 @@
              return anim ? anim.val : null;
         }
         // Default for Game 1
-        if (tutorialId === 'easy_1') {
+        if (tutorialId === 'sudoku_easy_1') {
              if (step === 1 && r === 4 && c === 8) return 9;
              if (step === 2 && r === 8 && c === 4) return 9;
              if (step === 3 && r === 4 && c === 4) return 9;

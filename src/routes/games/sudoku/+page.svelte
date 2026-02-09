@@ -83,7 +83,7 @@
     let history: string[] = $state([]);
     
     let showTutorial = $state(false);
-    let activeTutorialId = $state('easy_1'); // Default
+    let activeTutorialId = $state('sudoku_easy_1'); // Default
     let earnedPointsResult = $state(0);
     let calculatedScore = $state(0);
     let isTimeFrozen = $state(false); // For Time Stop item
@@ -144,7 +144,9 @@
             const unlockedLocal = JSON.parse(localStorage.getItem('sudoku_unlocked_tutorials') || '[]');
             const unlockedDB = $user.completedTutorials || [];
             
-            if (unlockedLocal.length > 0 || unlockedDB.length > 0) {
+            const all = [...unlockedLocal, ...unlockedDB];
+            const hasSudoku = all.some((id: string) => typeof id === 'string' && id.startsWith('sudoku_'));
+            if (hasSudoku) {
                 hasUnlockedTutorials = true;
             }
         }
@@ -316,28 +318,24 @@
         let targetId: string | null = null;
         
         if (diff === 'easy') {
-            // Show first uncompleted easy tutorial
-            if (!unlocked.includes('easy_1')) targetId = 'easy_1';
-            else if (!unlocked.includes('easy_2')) targetId = 'easy_2';
-            else if (!unlocked.includes('easy_3')) targetId = 'easy_3';
+            if (!unlocked.includes('sudoku_easy_1')) targetId = 'sudoku_easy_1';
+            else if (!unlocked.includes('sudoku_easy_2')) targetId = 'sudoku_easy_2';
+            else if (!unlocked.includes('sudoku_easy_3')) targetId = 'sudoku_easy_3';
         } else if (diff === 'medium') {
-            // Require easy_3 to be completed
-            if (unlocked.includes('easy_3')) {
-                if (!unlocked.includes('medium_1')) targetId = 'medium_1';
-                else if (!unlocked.includes('medium_2')) targetId = 'medium_2';
+            if (unlocked.includes('sudoku_easy_3')) {
+                if (!unlocked.includes('sudoku_medium_1')) targetId = 'sudoku_medium_1';
+                else if (!unlocked.includes('sudoku_medium_2')) targetId = 'sudoku_medium_2';
             }
         } else if (diff === 'hard') {
-            // Require medium_2 to be completed
-            if (unlocked.includes('medium_2')) {
-                if (!unlocked.includes('hard_1')) targetId = 'hard_1';
-                else if (!unlocked.includes('hard_2')) targetId = 'hard_2';
+            if (unlocked.includes('sudoku_medium_2')) {
+                if (!unlocked.includes('sudoku_hard_1')) targetId = 'sudoku_hard_1';
+                else if (!unlocked.includes('sudoku_hard_2')) targetId = 'sudoku_hard_2';
             }
         } else if (diff === 'expert' || diff === 'master') {
-            // Require hard_2 to be completed
-            if (unlocked.includes('hard_2')) {
-                if (!unlocked.includes('expert_1')) targetId = 'expert_1';
-                else if (!unlocked.includes('expert_2')) targetId = 'expert_2';
-                else if (!unlocked.includes('expert_3')) targetId = 'expert_3';
+            if (unlocked.includes('sudoku_hard_2')) {
+                if (!unlocked.includes('sudoku_expert_1')) targetId = 'sudoku_expert_1';
+                else if (!unlocked.includes('sudoku_expert_2')) targetId = 'sudoku_expert_2';
+                else if (!unlocked.includes('sudoku_expert_3')) targetId = 'sudoku_expert_3';
             }
         }
         
