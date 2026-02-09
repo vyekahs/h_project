@@ -6,25 +6,43 @@
             id: 'sudoku',
             name: '스도쿠',
             description: '논리적인 숫자 퍼즐',
-            url: '/games/sudoku',
+            url: '/games/sudoku?mode=standard',
             color: '#4fc3f7',
             difficulty: 'Easy ~ Master'
+        },
+        {
+            id: 'killer-sudoku',
+            name: '킬러 스도쿠',
+            description: '케이지의 합을 맞춰라',
+            url: '/games/sudoku?mode=killer',
+            color: '#ff8a65',
+            difficulty: 'Easy ~ Expert'
         }
-        // Future games to be added
     ];
 
     let activeTab = 'games'; // 'games' | 'ranking'
 
-    let hofData: any[] = [];
+    let hofDataMap: Record<string, any[]> = {};
     let hofLoading = true;
 
     async function loadHallOfFame() {
         hofLoading = true;
         try {
-            const res = await fetch('/api/ranking/halloffame/sudoku?preview=true');
-            if (res.ok) {
-                hofData = await res.json();
+            const results = await Promise.all(
+                games.map(async (game) => {
+                    const res = await fetch(`/api/ranking/halloffame/${game.id}?preview=true`);
+                    if (res.ok) {
+                        const data = await res.json();
+                        return { id: game.id, data };
+                    }
+                    return { id: game.id, data: [] };
+                })
+            );
+            const map: Record<string, any[]> = {};
+            for (const r of results) {
+                map[r.id] = r.data;
             }
+            hofDataMap = map;
         } catch (e) {
             console.error(e);
         } finally {
@@ -88,6 +106,12 @@
                                         <div class="grid-line"></div>
                                     {/each}
                                 </div>
+                            {:else if game.id === 'killer-sudoku'}
+                                <div class="killer-grid-deco">
+                                    {#each Array(6) as _, i}
+                                        <div class="cage-line"></div>
+                                    {/each}
+                                </div>
                             {/if}
                         </div>
                         
@@ -126,6 +150,7 @@
         <section class="ranking-section">
             <div class="ranking-grid">
                 {#each games as game}
+                    {@const hofData = hofDataMap[game.id] || []}
                     <div class="ranking-card">
                         <div class="ranking-header">
                             <div class="header-left">
@@ -288,6 +313,43 @@
 
     .grid-line {
         border: 2px solid #000;
+        width: 100%;
+        height: 100%;
+    }
+
+    /* Killer Sudoku Specific Theme */
+    .game-card.killer-sudoku {
+        background: linear-gradient(135deg, #fff3e0 0%, #ffffff 100%);
+    }
+
+    .game-card.killer-sudoku .card-bg {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        z-index: 0;
+        overflow: hidden;
+    }
+
+    .killer-grid-deco {
+        position: absolute;
+        top: -10%;
+        right: -10%;
+        width: 150%;
+        height: 150%;
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        grid-template-rows: repeat(2, 1fr);
+        gap: 3px;
+        opacity: 0.04;
+        transform: rotate(-10deg);
+        pointer-events: none;
+    }
+
+    .cage-line {
+        border: 2px dashed #000;
+        border-radius: 4px;
         width: 100%;
         height: 100%;
     }

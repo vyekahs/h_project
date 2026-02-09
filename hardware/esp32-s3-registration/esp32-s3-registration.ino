@@ -340,10 +340,11 @@ void setup() {
     NimBLEAdvertising *pAdvertising = NimBLEDevice::getAdvertising();
   pAdvertising->setAppearance(HID_KEYBOARD);
   pAdvertising->addServiceUUID(hid->getHidService()->getUUID());
-  pAdvertising->addServiceUUID(IRK_SERVICE_UUID); // Web Bluetooth 필터용
-    // Scan Response에 이름 포함 (advertising 패킷 공간 부족 대응)
+    // Scan Response에 이름 + IRK Service UUID 포함
+    // (advertising 패킷은 31바이트 제한이므로 HID UUID만 남기고 나머지는 scan response로)
     NimBLEAdvertisementData scanResp;
     scanResp.setName("HN_SETUP");
+    scanResp.setCompleteServices(NimBLEUUID(IRK_SERVICE_UUID));
     pAdvertising->setScanResponseData(scanResp);
     NimBLEDevice::setPower(ESP_PWR_LVL_P9);
     NimBLEDevice::startAdvertising();

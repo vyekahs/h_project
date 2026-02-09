@@ -43,12 +43,28 @@ self.addEventListener('fetch', (event) => {
 
 		// Static assets (build/files) → cache first
 		if (ASSETS.includes(url.pathname)) {
-			const cached = await cache.match(event.request);
-			if (cached) return cached;
+			const response = await cache.match(event.request);
+			if (response) return response;
 		}
 
-		// Everything else → network only (no caching pages/navigation)
-		return fetch(event.request);
+		// for everything else, try the network first, but
+		// fall back to the cache if we're offline
+		try {
+			const response = await fetch(event.request);
+
+			// only cache successful responses
+			if (response.status === 200) {
+				cache.put(event.request, response.clone());
+			}
+
+			return response;
+		} catch {
+			const cached = await cache.match(event.request);
+			if (cached) return cached;
+
+			// Fallback response to avoid 'Failed to convert value to Response'
+			return new Response('Offline', { status: 408 });
+		}
 	}
 
 	event.respondWith(respond());

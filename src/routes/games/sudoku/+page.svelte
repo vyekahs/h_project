@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { generateSudoku, type Board, type Cell } from '$lib/games/sudoku/logic';
+    import { generateKillerSudoku, type Cage, getCageErrors } from '$lib/games/sudoku/killerLogic';
 	import BoardComponent from './Board.svelte';
 	import Controls from './Controls.svelte';
     import { goto } from '$app/navigation';
@@ -10,9 +11,12 @@
     import { user } from '$lib/stores/user';
     import TutorialModal from './TutorialModal.svelte';
     import { TUTORIAL_ORDER, TUTORIALS } from './tutorialData';
+    import { KILLER_TUTORIALS, KILLER_TUTORIAL_ORDER } from '../killer-sudoku/killerTutorialData';
+    import KillerTutorialModal from '../killer-sudoku/KillerTutorialModal.svelte';
 
     // Game States: 'start', 'playing', 'paused', 'finished'
     type GameState = 'start' | 'playing' | 'paused' | 'finished';
+    type GameMode = 'standard' | 'killer';
 
     async function handleAdReward() {
          try {
@@ -28,9 +32,13 @@
     }
 
 	let gameState: GameState = $state('start');
+    let gameMode: GameMode = $state('standard');
+    let currentTutorialOrder = $derived(gameMode === 'killer' ? KILLER_TUTORIAL_ORDER : TUTORIAL_ORDER);
+    let currentTutorials = $derived(gameMode === 'killer' ? KILLER_TUTORIALS : TUTORIALS);
 	let difficulty: 'easy' | 'medium' | 'hard' | 'expert' | 'master' = $state('medium');
 	let board: Board = $state([]);
 	let solution: number[][];
+    let cages: Cage[] = $state([]); // For Killer Sudoku
 	let selectedCell: Cell | null = $state(null);
 	let isNoteMode = $state(false);
 	let mistakes = $state(0);
@@ -40,15 +48,27 @@
     let timerInterval: any;
     
     // View state for Start Screen
-    let view: 'game' | 'ranking' | 'tutorials_list' = $state('game');
-    let rankingTab: 'halloffame' | 'ranking' = $state('ranking');
+    let view: 'game' | 'ranking' | 'tutorials_list' = $state('game'); // Keeping for compatibility or refactor? 
+    // Actually, the plan says to refactor the start screen. 
+    // 'view' currently toggles between 'game', 'ranking', 'tutorials_list'. 
+    // But 'ranking' and 'tutorials_list' CHANGE the entire view (hiding the difficulty select).
+    // The new design is: Start Screen HAS tabs. 
+    // So 'view' might still be 'game' (meaning "not playing yet"? No, 'gameState' covers that).
+    // The current code uses `gameState === 'start'` to show the start screen.
+    // Inside `gameState === 'start'`, it uses `view` to switch sub-views.
+    // I will replace `view` logic with `activeTab` logic INSIDE `gameState === 'start'`.
+    
+    let activeTab: 'difficulty' | 'ranking' | 'guide' = $state('difficulty');
+    let rankingTab: 'halloffame' | 'ranking' = $state('ranking'); // Sub-tab for Ranking view
     let hallOfFameData: any[] = $state([]);
     let hallOfFameLoading = $state(false);
 
     async function loadHallOfFame() {
         hallOfFameLoading = true;
         try {
-            const res = await fetch('/api/ranking/halloffame/sudoku');
+            // Determine gameId based on mode
+            const gameId = gameMode === 'killer' ? 'killer-sudoku' : 'sudoku';
+            const res = await fetch(`/api/ranking/halloffame/${gameId}`);
             if (res.ok) {
                 hallOfFameData = await res.json();
             }
@@ -75,14 +95,27 @@
     // Derived unlocked list for UI
     let unlockedTutorialIDs = $derived.by(() => {
         const db = ($user as any)?.completedTutorials || [];
-        const local = browser ? JSON.parse(localStorage.getItem('sudoku_unlocked_tutorials') || '[]') : [];
-        return new Set([...db, ...local]);
+        const localStandard = browser ? JSON.parse(localStorage.getItem('sudoku_unlocked_tutorials') || '[]') : [];
+        const localKiller = browser ? JSON.parse(localStorage.getItem('killer_sudoku_unlocked_tutorials') || '[]') : [];
+        return new Set([...db, ...localStandard, ...localKiller]);
     });
 
     // Load game on mount
     onMount(() => {
         // Ensure user data (inventory) is up to date
         user.refresh();
+
+        // 1. Read Mode from URL
+        if (browser) {
+            const params = new URLSearchParams(window.location.search);
+            const modeParam = params.get('mode');
+            if (modeParam === 'killer') {
+                gameMode = 'killer';
+            } else if (modeParam === 'standard') {
+                gameMode = 'standard';
+            }
+        }
+        // If not specified, default to 'standard' (set in declaration)
         
         const saved = localStorage.getItem('sudoku_save');
         if (saved) {
@@ -91,6 +124,9 @@
                 // Simple valid check
                 if (data.board && data.solution && data.difficulty) {
                     hasSavedGame = true;
+                    // Note: We don't overwrite gameMode here if URL param is present?
+                    // Strategy: If URL param is explicitly set, it overrides save for the *Start Screen*
+                    // But if user clicks "Resume", we load from save.
                 }
             } catch (e) {
                 console.error('Failed to load save', e);
@@ -132,6 +168,8 @@
                 mistakes = data.mistakes;
                 difficulty = data.difficulty;
                 history = data.history || [];
+                gameMode = data.gameMode || 'standard';
+                cages = data.cages || [];
                 
                 gameState = 'paused'; // Start paused, user must click resume
             } catch (e) {
@@ -154,7 +192,9 @@
             timer: timerValue,
             mistakes,
             difficulty,
-            history
+            history,
+            gameMode,
+            cages
         };
         localStorage.setItem('sudoku_save', JSON.stringify(data));
     }
@@ -168,7 +208,9 @@
             timer: currentTimer,
             mistakes,
             difficulty,
-            history
+            history,
+            gameMode,
+            cages
         };
         localStorage.setItem('sudoku_save', JSON.stringify(data));
     }
@@ -235,6 +277,39 @@
     function checkAndShowTutorial(diff: string) {
         if (!browser) return false;
         
+        // Killer Sudoku Logic
+        if (gameMode === 'killer') {
+            const unlocked = JSON.parse(localStorage.getItem('killer_sudoku_unlocked_tutorials') || '[]');
+            let targetId: string | null = null;
+            
+            if (diff === 'easy') {
+                if (!unlocked.includes('killer_easy_1')) targetId = 'killer_easy_1';
+                else if (!unlocked.includes('killer_easy_2')) targetId = 'killer_easy_2';
+                else if (!unlocked.includes('killer_easy_3')) targetId = 'killer_easy_3';
+            } else if (diff === 'medium') {
+                if (unlocked.includes('killer_easy_3')) {
+                    if (!unlocked.includes('killer_medium_1')) targetId = 'killer_medium_1';
+                    else if (!unlocked.includes('killer_medium_2')) targetId = 'killer_medium_2';
+                }
+            } else if (diff === 'hard') {
+                if (unlocked.includes('killer_medium_2')) {
+                    if (!unlocked.includes('killer_hard_1')) targetId = 'killer_hard_1';
+                    else if (!unlocked.includes('killer_hard_2')) targetId = 'killer_hard_2';
+                }
+            } else if (diff === 'expert' || diff === 'master') {
+                if (unlocked.includes('killer_hard_2')) {
+                    if (!unlocked.includes('killer_expert_1')) targetId = 'killer_expert_1';
+                }
+            }
+
+            if (targetId) {
+                openTutorial(targetId);
+                return true;
+            }
+            return false;
+        }
+
+        // Standard Sudoku Logic
         const unlocked = JSON.parse(localStorage.getItem('sudoku_unlocked_tutorials') || '[]');
         
         // Determine which tutorial to show based on difficulty
@@ -302,10 +377,11 @@
                     
                     // Track unlocked tutorials
                     if (showTutorial && activeTutorialId) {
-                        const unlocked = JSON.parse(localStorage.getItem('sudoku_unlocked_tutorials') || '[]');
+                        const storageKey = gameMode === 'killer' ? 'killer_sudoku_unlocked_tutorials' : 'sudoku_unlocked_tutorials';
+                        const unlocked = JSON.parse(localStorage.getItem(storageKey) || '[]');
                         if (!unlocked.includes(activeTutorialId)) {
                             unlocked.push(activeTutorialId);
-                            localStorage.setItem('sudoku_unlocked_tutorials', JSON.stringify(unlocked));
+                            localStorage.setItem(storageKey, JSON.stringify(unlocked));
                             
                             // Sync to DB
                             fetch('/api/user/tutorials/complete', {
@@ -328,9 +404,23 @@
             // Clear any old save first
             localStorage.removeItem('sudoku_save');
             
-            const result = generateSudoku(difficulty);
-            board = result.initialBoard;
-            solution = result.solution;
+            if (gameMode === 'killer') {
+                 // Map 'master' -> 'expert' for logic because library might not support 'master' key
+                // or ensure generateKillerSudoku handles it.
+                // killerLogic.ts defines Difficulty = 'easy' | 'medium' | 'hard' | 'expert'
+                const logicDiff = difficulty === 'master' ? 'expert' : difficulty;
+
+                const result = generateKillerSudoku(logicDiff);
+                board = result.initialBoard;
+                solution = result.solution;
+                cages = result.cages;
+            } else {
+                const result = generateSudoku(difficulty);
+                board = result.initialBoard;
+                solution = result.solution;
+                cages = [];
+            }
+           
             mistakes = 0;
             isWon = false;
             selectedCell = null;
@@ -344,10 +434,12 @@
             const data = {
                 board,
                 solution,
+                cages,
                 timer: 0, 
                 mistakes,
                 difficulty,
-                history
+                history,
+                gameMode
             };
             localStorage.setItem('sudoku_save', JSON.stringify(data));
             hasSavedGame = true;
@@ -580,10 +672,9 @@
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    gameId: 'sudoku',
+                    gameId: gameMode === 'killer' ? 'killer-sudoku' : 'sudoku',
                     difficulty: difficulty,
                     clearTime: timerValue,
-                    score: 0,
                     mistakes: mistakes,
                     skipReward: !GAME_CONFIG.ENABLE_REWARDS
                 })
@@ -629,161 +720,182 @@
         }} />
         
     {:else if gameState === 'start'}
-        {#if view === 'game'}
-            <div class="screen start-screen">
-                <div class="start-header">
-                    <a href="/minigames" class="header-link left">← 오락실</a>
-                    <h1>Sudoku</h1>
-                    <div class="header-links">
-                        <button class="header-link" onclick={() => { view = 'ranking'; rankingTab = 'ranking'; }}>랭킹 🏆</button>
-                        {#if hasUnlockedTutorials}
-                            <button class="header-link" onclick={() => view = 'tutorials_list'}>공략집 📖</button>
+        <div class="screen start-screen">
+            <!-- Main Header -->
+            <div class="start-header">
+                <a href="/minigames" class="header-link left">← 오락실</a>
+                <h1>{gameMode === 'killer' ? 'Killer Sudoku' : 'Sudoku'}</h1>
+                <div class="header-links">
+                    <!-- Right header area (empty or settings?) -->
+                </div>
+            </div>
+
+            <!-- Tab Navigation -->
+            <div class="tab-nav">
+                <button 
+                    class="tab-btn" 
+                    class:active={activeTab === 'difficulty'} 
+                    onclick={() => activeTab = 'difficulty'}
+                >
+                    난이도
+                </button>
+                <button 
+                    class="tab-btn" 
+                    class:active={activeTab === 'ranking'} 
+                    onclick={() => { activeTab = 'ranking'; rankingTab = 'ranking'; }}
+                >
+                    랭킹
+                </button>
+                {#if hasUnlockedTutorials}
+                    <button 
+                        class="tab-btn" 
+                        class:active={activeTab === 'guide'} 
+                        onclick={() => activeTab = 'guide'}
+                    >
+                        공략집
+                    </button>
+                {/if}
+            </div>
+
+            <!-- Tab Content -->
+            <div class="tab-content">
+                
+                <!-- 1. Difficulty Tab -->
+                {#if activeTab === 'difficulty'}
+                    <div class="difficulty-tab-content">
+                        {#if hasSavedGame && startMode === 'initial'}
+                            <div class="saved-game-prompt">
+                                <button class="btn-primary huge" onclick={loadSavedGame}>
+                                    이어하기
+                                </button>
+                                <div class="divider">OR</div>
+                                <button class="btn-secondary huge" onclick={() => startMode = 'diff_select'}>
+                                    새 게임 시작
+                                </button>
+                            </div>
+                        {:else}
+                            <div class="difficulty-selection-container">
+                                <div class="difficulty-select">
+                                    <!-- <h2>난이도 선택</h2> --> 
+                                    <!-- Title removed or kept? User said "Difficulty Select and Start Button space-between" -->
+                                    <!-- Let's keep it simple. -->
+                                            
+                                    <div class="options">
+                                        <label class:selected={difficulty === 'easy'}>
+                                            <input type="radio" name="difficulty" value="easy" bind:group={difficulty}>
+                                            쉬움
+                                        </label>
+                                        <label class:selected={difficulty === 'medium'}>
+                                            <input type="radio" name="difficulty" value="medium" bind:group={difficulty}>
+                                            보통
+                                        </label>
+                                        <label class:selected={difficulty === 'hard'}>
+                                            <input type="radio" name="difficulty" value="hard" bind:group={difficulty}>
+                                            어려움
+                                        </label>
+                                        <label class:selected={difficulty === 'expert'}>
+                                            <input type="radio" name="difficulty" value="expert" bind:group={difficulty}>
+                                            전문가
+                                        </label>
+                                        <label class:selected={difficulty === 'master'}>
+                                            <input type="radio" name="difficulty" value="master" bind:group={difficulty}>
+                                            마스터
+                                        </label>
+                                    </div>
+                                </div>
+                                
+                                <div class="start-actions">
+                                    <button class="btn-primary huge" onclick={() => startGame()}>게임 시작</button>
+                                    {#if hasSavedGame}
+                                        <button class="btn-text" onclick={() => startMode = 'initial'}>취소</button>
+                                    {/if}
+                                </div>
+
+                            </div>
                         {/if}
                     </div>
-                </div>
 
-                {#if hasSavedGame && startMode === 'initial'}
-                    <div class="difficulty-select options">
-                        <button class="btn-primary huge" onclick={loadSavedGame}>
-                            이어하기
-                        </button>
-                        <div class="divider">OR</div>
-                        <button class="btn-secondary huge" onclick={() => startMode = 'diff_select'}>
-                            새 게임 시작
-                        </button>
-                    </div>
-                    <div></div><!-- 정렬맞추기 위해 존재 -->
-                {/if}
-
-                {#if !hasSavedGame || startMode === 'diff_select'}
-                    <div class="difficulty-select">
-                        <h2>난이도 선택</h2>
-                        <div class="options">
-                            <label class:selected={difficulty === 'easy'}>
-                                <input type="radio" name="difficulty" value="easy" bind:group={difficulty}>
-                            쉬움
-                            </label>
-                            <label class:selected={difficulty === 'medium'}>
-                                <input type="radio" name="difficulty" value="medium" bind:group={difficulty}>
-                            보통
-                            </label>
-                            <label class:selected={difficulty === 'hard'}>
-                                <input type="radio" name="difficulty" value="hard" bind:group={difficulty}>
-                            어려움
-                            </label>
-                            <label class:selected={difficulty === 'expert'}>
-                                <input type="radio" name="difficulty" value="expert" bind:group={difficulty}>
-                            전문가
-                            </label>
-                            <label class:selected={difficulty === 'master'}>
-                                <input type="radio" name="difficulty" value="master" bind:group={difficulty}>
-                            마스터
-                            </label>
+                <!-- 2. Ranking Tab -->
+                {:else if activeTab === 'ranking'}
+                    <div class="subpage-body">
+                        <div class="ranking-tabs">
+                            <button class="tab" class:active={rankingTab === 'ranking'} onclick={() => rankingTab = 'ranking'}>랭킹</button>
+                            <button class="tab" class:active={rankingTab === 'halloffame'} onclick={() => { rankingTab = 'halloffame'; loadHallOfFame(); }}>명예의 전당</button>
                         </div>
-                    </div>
-                    <button class="btn-primary huge" onclick={() => startGame()}>게임 시작</button>
-
-                    {#if hasSavedGame}
-                        <button class="btn-text" onclick={() => startMode = 'initial'}>취소하고 돌아가기</button>
-                    {/if}
-                {/if}
-            </div>
-
-        {:else if view === 'ranking'}
-            <div class="subpage">
-                <div class="start-header">
-                    <button class="header-link left" onclick={() => view = 'game'}>← 뒤로</button>
-                    <h1>랭킹 🏆</h1>
-                    <div class="header-links"></div>
-                </div>
-                <div class="ranking-tabs">
-                    <button class="tab" class:active={rankingTab === 'ranking'} onclick={() => rankingTab = 'ranking'}>스도쿠 랭킹</button>
-                    <button class="tab" class:active={rankingTab === 'halloffame'} onclick={() => { rankingTab = 'halloffame'; loadHallOfFame(); }}>명예의 전당</button>
-                </div>
-                <div class="subpage-body">
-                    {#if rankingTab === 'halloffame'}
-                        <p class="score-desc">점수 = 기본점수 + (제한시간 - 클리어시간) x 난이도 배율</p>
-                        <div class="hall-of-fame">
-                            {#if hallOfFameLoading}
-                                <div class="hof-loading">불러오는 중...</div>
-                            {:else if hallOfFameData.length === 0}
-                                <div class="hof-empty">아직 기록이 없습니다.</div>
-                            {:else}
-                                {#each ['easy', 'medium', 'hard', 'expert', 'master'] as diff}
-                                    {@const record = hallOfFameData.find((r: any) => r.difficulty === diff)}
-                                    {@const diffLabel = difficultyLabels[diff as keyof typeof difficultyLabels]}
-                                    {#if record}
-                                        <div class="hof-card">
-                                            <div class="hof-diff-badge {diff}">
-                                                {diffLabel}
-                                            </div>
-                                            <div class="hof-body">
-                                                <div class="hof-player">
-                                                    <span class="hof-name">{record.nickname || '익명'}</span>
-                                                </div>
-                                                <div class="hof-stats">
-                                                    <span class="hof-stat">
-                                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
-                                                        {record.score.toLocaleString()}
-                                                    </span>
-                                                    <span class="hof-stat">
-                                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                                                        {formatTime(record.clear_time)}
-                                                    </span>
-                                                    <span class="hof-stat">
-                                                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 4H8l-7 8 7 8h13a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z"/><line x1="18" y1="9" x2="12" y2="15"/><line x1="12" y1="9" x2="18" y2="15"/></svg>
-                                                        {record.mistakes}
-                                                    </span>
-                                                </div>
-                                            </div>
-                                        </div>
+                        
+                        {#if rankingTab === 'halloffame'}
+                            <div class="hall-of-fame-limit">
+                                <p class="score-desc">점수 = 기본점수 + (제한시간 - 클리어시간) x 난이도 배율</p>
+                                <div class="hall-of-fame">
+                                    {#if hallOfFameLoading}
+                                        <div class="hof-loading">불러오는 중...</div>
+                                    {:else if hallOfFameData.length === 0}
+                                        <div class="hof-empty">아직 기록이 없습니다.</div>
                                     {:else}
-                                        <div class="hof-card hof-empty-card">
-                                            <div class="hof-diff-badge {diff}">
-                                                {diffLabel}
+                                        {#each ['easy', 'medium', 'hard', 'expert', 'master'] as diff}
+                                            {@const record = hallOfFameData.find((r: any) => r.difficulty === diff)}
+                                            {@const diffLabel = difficultyLabels[diff as keyof typeof difficultyLabels]}
+                                            {#if record}
+                                                <div class="hof-card">
+                                                    <div class="hof-diff-badge {diff}">
+                                                        {diffLabel}
+                                                    </div>
+                                                    <div class="hof-body">
+                                                        <div class="hof-player">
+                                                            <span class="hof-name">{record.nickname || '익명'}</span>
+                                                        </div>
+                                                        <div class="hof-stats">
+                                                            <span class="hof-stat">
+                                                                {record.score.toLocaleString()}
+                                                            </span>
+                                                            <span class="hof-stat">
+                                                                {formatTime(record.clear_time)}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            {:else}
+                                                <div class="hof-card hof-empty-card">
+                                                    <div class="hof-diff-badge {diff}">{diffLabel}</div>
+                                                    <div class="hof-body">
+                                                        <span class="hof-no-record">-</span>
+                                                    </div>
+                                                </div>
+                                            {/if}
+                                        {/each}
+                                    {/if}
+                                </div>
+                            </div>
+                        {:else}
+                            <p class="score-desc">매월 1일 초기화</p>
+                            <!-- Use dynamic gameId based on mode -->
+                            <RankingBoard gameId={gameMode === 'killer' ? 'killer-sudoku' : 'sudoku'} />
+                        {/if}
+                    </div>
+
+                <!-- 3. Guide Tab -->
+                {:else if activeTab === 'guide'}
+                    <div class="subpage-body">
+                        <div class="tutorial-list-container">
+                            <div class="tutorial-list">
+                                {#each currentTutorialOrder as tid}
+                                    {@const t = currentTutorials[tid]}
+                                    {#if unlockedTutorialIDs.has(tid)}
+                                        <button class="tutorial-list-item" onclick={() => openTutorial(tid)}>
+                                            <div class="t-info">
+                                                <span class="t-badge {t.difficulty}">{t.difficulty.toUpperCase()}</span>
+                                                <span class="t-title">{t.title}</span>
                                             </div>
-                                            <div class="hof-body">
-                                                <span class="hof-no-record">아직 기록이 없습니다</span>
-                                            </div>
-                                        </div>
+                                            <span class="t-arrow">›</span>
+                                        </button>
                                     {/if}
                                 {/each}
-                            {/if}
-                        </div>
-                    {:else}
-                        <p class="score-desc">게임 점수가 누적되며, 한 달마다 점수가 초기화됩니다</p>
-                        <RankingBoard gameId="sudoku" />
-                    {/if}
-                </div>
-            </div>
-
-        {:else if view === 'tutorials_list'}
-            <div class="subpage">
-                <div class="start-header">
-                    <button class="header-link left" onclick={() => view = 'game'}>← 뒤로</button>
-                    <h1>공략집 📖</h1>
-                    <div class="header-links"></div>
-                </div>
-                <div class="subpage-body">
-                    <div class="tutorial-list-container">
-                        <div class="tutorial-list">
-                            {#each TUTORIAL_ORDER as tid}
-                                {@const t = TUTORIALS[tid]}
-                                {#if unlockedTutorialIDs.has(tid)}
-                                    <button class="tutorial-list-item" onclick={() => openTutorial(tid)}>
-                                        <div class="t-info">
-                                            <span class="t-badge {t.difficulty}">{t.difficulty.toUpperCase()}</span>
-                                            <span class="t-title">{t.title}</span>
-                                        </div>
-                                        <span class="t-arrow">›</span>
-                                    </button>
-                                {/if}
-                            {/each}
+                            </div>
                         </div>
                     </div>
-                </div>
+                {/if}
             </div>
-        {/if}
+        </div>
 
     {:else}
         <div class="game-play-area" class:blurred={alertMessage || confirmMessage || gameState === 'paused'}>
@@ -821,6 +933,7 @@
             <div class="game-area">
                  <BoardComponent
                      {board}
+                     {cages}
                      {selectedCell}
                      isGameOver={gameState === 'finished'}
                      onselect={handleCellSelect}
@@ -855,27 +968,78 @@
 
 <!-- ... -->
 
-    <!-- Game Over / Win Overlay -->
+    <!-- Game Result Modal (Redesigned) -->
     {#if gameState === 'finished'}
-        <div class="overlay">
-            <div class="modal">
-                <h2>{isWon ? '승리! 🎉' : '게임 오버 💀'}</h2>
-                <div class="result-stats">
-                     <p>시간: {formatTime(displayTimer)}</p>
-                     <p>난이도: {difficultyLabels[difficulty]}</p>
-                     <p>실수: {mistakes}</p>
-                     <p class="score">🏆 점수: {calculatedScore}</p>
-                     {#if isWon && earnedPointsResult > 0}
-                        <p class="earned-points">✨ 획득 포인트: +{earnedPointsResult} P</p>
-                     {/if}
+        <div class="overlay backdrop-blur">
+            <div class="result-card {isWon ? 'win' : 'lose'}">
+                <div class="result-icon-container">
+                    {#if isWon}
+                        <div class="result-icon win-icon">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/>
+                            </svg>
+                            <div class="particles">
+                                <span>✨</span><span>🎉</span><span>⭐</span>
+                            </div>
+                        </div>
+                    {:else}
+                        <div class="result-icon lose-icon">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+                            </svg>
+                        </div>
+                    {/if}
                 </div>
-                
+
+                <h2 class="result-title">{isWon ? 'SUCCESS!' : 'GAME OVER'}</h2>
+                <p class="result-message">
+                    {#if isWon}
+                        {calculatedScore >= 5000 ? '전설적인 기록입니다! 🏆' : '퍼즐을 완벽하게 해결했습니다! 🎉'}
+                    {:else}
+                        아쉽지만 다음 기회에... 😭
+                    {/if}
+                </p>
+
+                <div class="result-stats-grid">
+                    <div class="stat-item">
+                        <span class="stat-label">난이도</span>
+                        <span class="stat-value">{difficultyLabels[difficulty]}</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">시간</span>
+                        <span class="stat-value">{formatTime(displayTimer)}</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">실수</span>
+                        <span class="stat-value">{mistakes} / 3</span>
+                    </div>
+                    <div class="stat-item highlight">
+                        <span class="stat-label">점수</span>
+                        <span class="stat-value">{calculatedScore.toLocaleString()}</span>
+                    </div>
+                </div>
+
+                <!-- 
+                {#if isWon && earnedPointsResult > 0}
+                    <div class="reward-badge">
+                        <span class="coin-icon">💰</span>
+                        <span>+{earnedPointsResult} P</span>
+                    </div>
+                {/if} 
+                -->
+
                 {#if isWon && GAME_CONFIG.ENABLE_ADS}
                      <RewardedAd onReward={handleAdReward} />
                 {/if}
-                
-                <button class="btn-primary" onclick={() => gameState = 'start'}>다시 하기</button>
-                <button class="btn-text" onclick={quitGame}>나가기</button>
+
+                <div class="result-actions">
+                    <button class="btn-primary huge-btn" onclick={() => gameState = 'start'}>
+                        다시 도전하기
+                    </button>
+                    <button class="btn-text secondary-btn" onclick={quitGame}>
+                        나가기
+                    </button>
+                </div>
             </div>
         </div>
     {/if}
@@ -903,6 +1067,26 @@
             </div>
         </div>
     {/if}
+    {#if showTutorial}
+        {#if gameMode === 'killer'}
+            <KillerTutorialModal tutorialId={activeTutorialId} onclose={(shouldStart: boolean) => {
+                if (shouldStart) {
+                    startGame(true);
+                } else {
+                    showTutorial = false;
+                }
+            }} />
+        {:else}
+            <TutorialModal tutorialId={activeTutorialId} onclose={(shouldStart: boolean) => {
+                if (shouldStart) {
+                    startGame(true);
+                } else {
+                    showTutorial = false;
+                }
+            }} />
+        {/if}
+    {/if}
+
     {#if isLoading}
         <div class="loading-overlay">
             <div class="spinner"></div>
@@ -1065,70 +1249,180 @@
         color: #333;
     }
     
-    .start-screen h1 {
-        font-size: 3.5rem;
-        font-weight: 200; /* Thinner sophisticated font */
+    .start-screen {
+        /* Screen is already flex col */
+        padding-top: 2rem;
+        gap: 0.5rem; /* Reduce gap, let inner containers handle it */
+    }
+
+    /* Tab Navigation */
+    .tab-nav {
+        display: flex;
+        justify-content: center;
+        gap: 0.5rem;
+        padding: 0 1rem;
+        margin-bottom: 0.5rem;
+        flex-shrink: 0;
+    }
+
+    .tab-btn {
+        background: transparent;
+        border: none;
+        padding: 0.6rem 1.2rem;
+        font-size: 1rem;
+        color: #888;
+        font-weight: 500;
+        cursor: pointer;
+        position: relative;
+        transition: color 0.2s;
+    }
+
+    .tab-btn.active {
         color: #333;
-        margin-bottom: 1rem;
+        font-weight: 700;
+    }
+
+    .tab-btn.active::after {
+        content: '';
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        width: 100%;
+        height: 3px;
+        background: #333;
+        border-radius: 3px;
+    }
+
+    /* Tab Content - fills remaining space */
+    .tab-content {
+        flex: 1;
+        width: 100%;
+        overflow: hidden; /* Scroll inside */
+        display: flex;
+        flex-direction: column;
+    }
+
+    /* Difficulty Tab Layout */
+    .difficulty-tab-content {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        justify-content: center; /* Center horizontally or vertically? */
+        width: 100%;
+        padding: 0 1rem 2rem 1rem;
+    }
+
+    .difficulty-selection-container {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between; /* Push start button to bottom */
+        width: 100%;
+        align-items: center;
+        gap: 2rem;
+        padding-top: 2rem;
     }
     
     .difficulty-select {
-        text-align: center;
-        width: 100%;
-    }
-    
-    .difficulty-select h2 {
-        font-size: 1.1rem;
-        font-weight: 500;
-        color: #888;
-        margin-bottom: 1rem;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-    }
-    
-    .options {
-        display: flex;
-        flex-wrap: wrap; 
-        justify-content: center;
-        gap: 0.8rem;
         width: 100%;
     }
 
-    @media (max-width: 600px) {
-        .screen {
-            gap: 1rem;
-            padding: 1rem 0;
-        }
-        .start-screen h1 {
-            font-size: 2.2rem;
-            margin-bottom: 0.5rem;
-        }
-        .options {
-            flex-direction: column;
-            align-items: stretch;
-            padding: 0 1rem;
-        }
-        
-        .options label {
-            justify-content: center;
-            padding: 0.8rem 1.5rem; /* Reduced padding */
-            font-size: 1rem; /* Smaller font */
-        }
+    .start-actions {
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 1rem;
+    }
+
+    .saved-game-prompt {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        flex: 1;
+        width: 100%;
+    }
+
+    /* Scrollable ranking container */
+    .hall-of-fame-limit {
+        flex: 1;
+        overflow-y: auto;
+        padding: 0 1rem;
+    }
+
+    /* ... Existing Styles Below ... */
+    
+    .start-header {
+        /* Reduced bottom margin */
+        padding-bottom: 0.5rem; 
+    }
+
+    /* Fix start header title size for different modes if needed? */
+    .start-header h1 {
+        font-size: 2.2rem; /* Slightly smaller to fit tabs */
+    }
+
+    /* Hide old subpage styles if any overlap */
+    .subpage-body {
+        padding: 0; /* Remove padding for tab content context */
+    }
+    
+    /* ... keep existing styles for options, btn, etc. ... */
+    
+    .options {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.8rem;
+        width: 100%;
     }
     
     .options label {
         display: flex;
         align-items: center;
+        justify-content: center;
         gap: 0.5rem;
-        padding: 1rem 2rem;
+        padding: 1.2rem;
+        width: 100%;
+        max-width: 500px;
         background: #f5f5f7;
-        border-radius: 16px;
+        border-radius: 20px;
         cursor: pointer;
-        font-weight: 500;
+        font-weight: 600;
         transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
         border: 2px solid transparent;
         color: #555;
-        font-size: 1.1rem;
+        font-size: 1.25rem;
+        box-sizing: border-box;
+    }
+    
+    .options label:hover {
+        background: #f0f0f0;
+    }
+
+    /* ... */
+
+    .btn-primary.huge {
+        font-size: 1.3rem;
+        padding: 1.4rem;
+        width: 100%;
+        max-width: 500px;
+        border-radius: 24px;
+    }
+
+    /* ... */
+
+    .btn-secondary.huge {
+        width: 100%;
+        max-width: 500px;
+        justify-content: center;
+        padding: 1.4rem;
+        background: #fff;
+        border: 2px solid #eee;
+        font-size: 1.3rem;
+        margin-bottom: 0.5rem;
+        border-radius: 24px;
     }
     
     .options label:hover {
@@ -1320,7 +1614,9 @@
     
     .btn-primary.huge {
         font-size: 1.2rem;
-        padding: 1.2rem 4rem;
+        padding: 1rem 2rem;
+        width: 100%;
+        max-width: 320px;
     }
     
     .btn-danger {
@@ -1367,6 +1663,25 @@
     
     .btn-secondary:hover {
         background: #e0e0e0;
+    }
+
+    .divider {
+        font-weight: bold;
+        color: #bbb;
+        margin: 0.5rem 0;
+        font-size: 0.9rem;
+        letter-spacing: 1px;
+    }
+
+    .btn-secondary.huge {
+        width: 100%;
+        max-width: 320px;
+        justify-content: center;
+        padding: 1rem;
+        background: #fff;
+        border: 2px solid #eee;
+        font-size: 1.1rem;
+        margin-bottom: 0.5rem;
     }
 
     @media (max-width: 600px) {
@@ -1806,7 +2121,206 @@
         text-align: center;
         font-size: 0.78rem;
         color: #999;
-        margin: 0 0 0.5rem 0;
+        margin: 1rem 0 1rem 0;
     }
 
+    .mode-badge {
+        font-size: 0.8rem;
+        background: #007aff;
+        color: white;
+        padding: 2px 8px;
+        border-radius: 12px;
+        margin-left: 8px;
+        vertical-align: middle;
+        font-weight: 600;
+        text-transform: uppercase;
+    }
+
+    /* Redesigned Result Modal */
+    .overlay.backdrop-blur {
+        backdrop-filter: blur(8px);
+        background: rgba(0, 0, 0, 0.6);
+    }
+
+    .result-card {
+        background: white;
+        padding: 3.5rem 2rem 2.5rem 2rem;
+        border-radius: 32px;
+        width: 90%;
+        max-width: 420px;
+        text-align: center;
+        box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        animation: popIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 1.5rem;
+        position: relative;
+        overflow: visible;
+    }
+
+    .result-card.win {
+        border: 2px solid rgba(255, 215, 0, 0.3);
+    }
+
+    /* Icon Animation */
+    .result-icon-container {
+        position: relative;
+        margin-top: -1rem;
+    }
+
+    .result-icon {
+        width: 80px;
+        height: 80px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto;
+        color: white;
+        box-shadow: 0 10px 20px rgba(0,0,0,0.2);
+    }
+
+    .win-icon {
+        background: linear-gradient(135deg, #FFD700, #FFA500);
+        animation: bounce 2s infinite;
+    }
+
+    .lose-icon {
+        background: linear-gradient(135deg, #ff6b6b, #ee5253);
+    }
+
+    .result-icon svg {
+        width: 40px;
+        height: 40px;
+    }
+
+    .result-title {
+        font-size: 2rem;
+        font-weight: 800;
+        margin: 0;
+        letter-spacing: -1px;
+        background: linear-gradient(45deg, #333, #666);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+    }
+
+    .result-card.win .result-title {
+        background: linear-gradient(45deg, #FFD700, #FFA500);
+        -webkit-background-clip: text;
+    }
+
+    .result-message {
+        color: #666;
+        font-size: 1.1rem;
+        margin: -0.5rem 0 0.5rem 0;
+        line-height: 1.4;
+    }
+
+    /* Stats Grid */
+    .result-stats-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1rem;
+        width: 100%;
+        background: #f8f9fa;
+        padding: 1.5rem;
+        border-radius: 20px;
+    }
+
+    .stat-item {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.2rem;
+    }
+
+    .stat-label {
+        font-size: 0.8rem;
+        color: #888;
+        font-weight: 600;
+        text-transform: uppercase;
+    }
+
+    .stat-value {
+        font-size: 1.1rem;
+        font-weight: 700;
+        color: #333;
+    }
+
+    .stat-item.highlight .stat-value {
+        color: #3b82f6;
+        font-size: 1.3rem;
+    }
+
+    /* Reward Badge */
+    .reward-badge {
+        background: #FFF9C4;
+        color: #FBC02D;
+        padding: 0.5rem 1rem;
+        border-radius: 50px;
+        font-weight: 700;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        box-shadow: 0 4px 10px rgba(251, 192, 45, 0.2);
+    }
+
+    /* Actions */
+    .result-actions {
+        display: flex;
+        flex-direction: column;
+        gap: 0.8rem;
+        width: 100%;
+        margin-top: 0.5rem;
+    }
+
+    .huge-btn {
+        width: 100%;
+        padding: 1rem;
+        font-size: 1.1rem;
+        border-radius: 16px;
+        box-shadow: 0 8px 20px rgba(59, 130, 246, 0.3);
+    }
+
+    .secondary-btn {
+        color: #888;
+        font-weight: 500;
+    }
+    
+    .secondary-btn:hover {
+        color: #333;
+        background: none;
+    }
+
+    @keyframes popIn {
+        from { transform: scale(0.8); opacity: 0; }
+        to { transform: scale(1); opacity: 1; }
+    }
+
+    @keyframes bounce {
+        0%, 20%, 50%, 80%, 100% {transform: translateY(0);}
+        40% {transform: translateY(-10px);}
+        60% {transform: translateY(-5px);}
+    }
+    
+    .particles {
+        position: absolute;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+    }
+    
+    .particles span {
+        position: absolute;
+        animation: float 2s infinite ease-in-out;
+    }
+    .particles span:nth-child(1) { top: -10px; left: -10px; animation-delay: 0s; font-size: 1.2rem; }
+    .particles span:nth-child(2) { top: 0px; right: -15px; animation-delay: 0.5s; font-size: 1rem; }
+    .particles span:nth-child(3) { bottom: -5px; left: 50%; animation-delay: 1s; font-size: 0.8rem; }
+    
+    @keyframes float {
+        0%, 100% { transform: translateY(0); }
+        50% { transform: translateY(-10px); }
+    }
 </style>

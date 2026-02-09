@@ -85,7 +85,8 @@
             // 1. Web Bluetooth로 ESP32 선택 (사용자가 직접 선택 = 본인 확인)
             const device = await navigator.bluetooth.requestDevice({
                 filters: [
-                    { services: ['12345678-1234-5678-1234-56789abcdef0'] }
+                    { services: ['12345678-1234-5678-1234-56789abcdef0'] },
+                    { name: 'HN_SETUP' }
                 ],
                 optionalServices: ['12345678-1234-5678-1234-56789abcdef0']
             });
