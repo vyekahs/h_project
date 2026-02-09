@@ -40,7 +40,8 @@ self.addEventListener('fetch', (event) => {
 
 		// `build`/`files` can always be served from the cache
 		if (ASSETS.includes(url.pathname)) {
-			return cache.match(event.request);
+			const response = await cache.match(event.request);
+			if (response) return response;
 		}
 
 		// for everything else, try the network first, but
@@ -48,13 +49,18 @@ self.addEventListener('fetch', (event) => {
 		try {
 			const response = await fetch(event.request);
 
+			// only cache successful responses
 			if (response.status === 200) {
 				cache.put(event.request, response.clone());
 			}
 
 			return response;
 		} catch {
-			return cache.match(event.request);
+			const cached = await cache.match(event.request);
+			if (cached) return cached;
+			
+			// Fallback response to avoid 'Failed to convert value to Response'
+			return new Response('Offline', { status: 408 });
 		}
 	}
 

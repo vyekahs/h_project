@@ -11,6 +11,8 @@
     import { user } from '$lib/stores/user';
     import TutorialModal from './TutorialModal.svelte';
     import { TUTORIAL_ORDER, TUTORIALS } from './tutorialData';
+    import { KILLER_TUTORIALS, KILLER_TUTORIAL_ORDER } from '../killer-sudoku/killerTutorialData';
+    import KillerTutorialModal from '../killer-sudoku/KillerTutorialModal.svelte';
 
     // Game States: 'start', 'playing', 'paused', 'finished'
     type GameState = 'start' | 'playing' | 'paused' | 'finished';
@@ -31,6 +33,8 @@
 
 	let gameState: GameState = $state('start');
     let gameMode: GameMode = $state('standard');
+    let currentTutorialOrder = $derived(gameMode === 'killer' ? KILLER_TUTORIAL_ORDER : TUTORIAL_ORDER);
+    let currentTutorials = $derived(gameMode === 'killer' ? KILLER_TUTORIALS : TUTORIALS);
 	let difficulty: 'easy' | 'medium' | 'hard' | 'expert' | 'master' = $state('medium');
 	let board: Board = $state([]);
 	let solution: number[][];
@@ -91,8 +95,9 @@
     // Derived unlocked list for UI
     let unlockedTutorialIDs = $derived.by(() => {
         const db = ($user as any)?.completedTutorials || [];
-        const local = browser ? JSON.parse(localStorage.getItem('sudoku_unlocked_tutorials') || '[]') : [];
-        return new Set([...db, ...local]);
+        const localStandard = browser ? JSON.parse(localStorage.getItem('sudoku_unlocked_tutorials') || '[]') : [];
+        const localKiller = browser ? JSON.parse(localStorage.getItem('killer_sudoku_unlocked_tutorials') || '[]') : [];
+        return new Set([...db, ...localStandard, ...localKiller]);
     });
 
     // Load game on mount
@@ -272,6 +277,39 @@
     function checkAndShowTutorial(diff: string) {
         if (!browser) return false;
         
+        // Killer Sudoku Logic
+        if (gameMode === 'killer') {
+            const unlocked = JSON.parse(localStorage.getItem('killer_sudoku_unlocked_tutorials') || '[]');
+            let targetId: string | null = null;
+            
+            if (diff === 'easy') {
+                if (!unlocked.includes('killer_easy_1')) targetId = 'killer_easy_1';
+                else if (!unlocked.includes('killer_easy_2')) targetId = 'killer_easy_2';
+                else if (!unlocked.includes('killer_easy_3')) targetId = 'killer_easy_3';
+            } else if (diff === 'medium') {
+                if (unlocked.includes('killer_easy_3')) {
+                    if (!unlocked.includes('killer_medium_1')) targetId = 'killer_medium_1';
+                    else if (!unlocked.includes('killer_medium_2')) targetId = 'killer_medium_2';
+                }
+            } else if (diff === 'hard') {
+                if (unlocked.includes('killer_medium_2')) {
+                    if (!unlocked.includes('killer_hard_1')) targetId = 'killer_hard_1';
+                    else if (!unlocked.includes('killer_hard_2')) targetId = 'killer_hard_2';
+                }
+            } else if (diff === 'expert' || diff === 'master') {
+                if (unlocked.includes('killer_hard_2')) {
+                    if (!unlocked.includes('killer_expert_1')) targetId = 'killer_expert_1';
+                }
+            }
+
+            if (targetId) {
+                openTutorial(targetId);
+                return true;
+            }
+            return false;
+        }
+
+        // Standard Sudoku Logic
         const unlocked = JSON.parse(localStorage.getItem('sudoku_unlocked_tutorials') || '[]');
         
         // Determine which tutorial to show based on difficulty
@@ -339,10 +377,11 @@
                     
                     // Track unlocked tutorials
                     if (showTutorial && activeTutorialId) {
-                        const unlocked = JSON.parse(localStorage.getItem('sudoku_unlocked_tutorials') || '[]');
+                        const storageKey = gameMode === 'killer' ? 'killer_sudoku_unlocked_tutorials' : 'sudoku_unlocked_tutorials';
+                        const unlocked = JSON.parse(localStorage.getItem(storageKey) || '[]');
                         if (!unlocked.includes(activeTutorialId)) {
                             unlocked.push(activeTutorialId);
-                            localStorage.setItem('sudoku_unlocked_tutorials', JSON.stringify(unlocked));
+                            localStorage.setItem(storageKey, JSON.stringify(unlocked));
                             
                             // Sync to DB
                             fetch('/api/user/tutorials/complete', {
@@ -839,8 +878,8 @@
                     <div class="subpage-body">
                         <div class="tutorial-list-container">
                             <div class="tutorial-list">
-                                {#each TUTORIAL_ORDER as tid}
-                                    {@const t = TUTORIALS[tid]}
+                                {#each currentTutorialOrder as tid}
+                                    {@const t = currentTutorials[tid]}
                                     {#if unlockedTutorialIDs.has(tid)}
                                         <button class="tutorial-list-item" onclick={() => openTutorial(tid)}>
                                             <div class="t-info">
@@ -1028,6 +1067,26 @@
             </div>
         </div>
     {/if}
+    {#if showTutorial}
+        {#if gameMode === 'killer'}
+            <KillerTutorialModal tutorialId={activeTutorialId} onclose={(shouldStart: boolean) => {
+                if (shouldStart) {
+                    startGame(true);
+                } else {
+                    showTutorial = false;
+                }
+            }} />
+        {:else}
+            <TutorialModal tutorialId={activeTutorialId} onclose={(shouldStart: boolean) => {
+                if (shouldStart) {
+                    startGame(true);
+                } else {
+                    showTutorial = false;
+                }
+            }} />
+        {/if}
+    {/if}
+
     {#if isLoading}
         <div class="loading-overlay">
             <div class="spinner"></div>

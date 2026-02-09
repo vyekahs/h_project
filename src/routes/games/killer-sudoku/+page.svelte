@@ -28,7 +28,7 @@
     }
 
 	let gameState: GameState = $state('start');
-	let difficulty: 'easy' | 'medium' | 'hard' | 'expert' = $state('medium');
+	let difficulty: 'easy' | 'medium' | 'hard' | 'expert' = $state('easy');
 	let board: Board = $state([]);
 	let solution: number[][];
 	let cages: Cage[] = $state([]);
