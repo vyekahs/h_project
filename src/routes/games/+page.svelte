@@ -39,6 +39,14 @@
         }
     }
 
+    // Pagination
+    let visibleCount = 10;
+
+    // Reset pagination when filter changes
+    $: if (searchQuery || complexityFilter) {
+        visibleCount = 10;
+    }
+
     let showDetailModal = false;
     let selectedDetailGame: any = null;
 
@@ -107,7 +115,7 @@
     </div>
 
     <div class="games-grid">
-        {#each filteredGames as game}
+        {#each filteredGames.slice(0, visibleCount) as game}
             <!-- svelte-ignore a11y-click-events-have-key-events -->
             <!-- svelte-ignore a11y-no-static-element-interactions -->
             <div class="game-card" class:inactive={!game.is_active} on:click={() => openDetailModal(game)}>
@@ -144,6 +152,12 @@
             <div class="empty-state">검색 결과가 없습니다.</div>
         {/if}
     </div>
+
+    {#if filteredGames.length > visibleCount}
+        <button class="btn-load-more" on:click={() => visibleCount += 10}>
+            더보기 ({filteredGames.length - visibleCount}개 남음)
+        </button>
+    {/if}
 </div>
 
 {#if showDetailModal && selectedDetailGame}
@@ -497,6 +511,26 @@
         padding: 3rem;
         color: #999;
         font-size: 1.1rem;
+    }
+    .btn-load-more {
+        display: block;
+        width: 100%;
+        max-width: 400px;
+        margin: 2rem auto 0;
+        padding: 0.9rem;
+        background: white;
+        border: 1px solid #ddd;
+        border-radius: 12px;
+        color: #555;
+        font-weight: 600;
+        font-size: 0.95rem;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    .btn-load-more:hover {
+        background: #f8f9fa;
+        color: #333;
+        border-color: #ccc;
     }
 
     /* Modal Styles */

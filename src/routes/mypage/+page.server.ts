@@ -1,5 +1,6 @@
 import { query } from '$lib/server/db';
 import { verifyAttendeeSession } from '$lib/server/auth';
+import { removeFromIrkCache } from '$lib/server/ble';
 import type { PageServerLoad } from './$types';
 import { redirect } from '@sveltejs/kit';
 
@@ -76,7 +77,11 @@ export const actions = {
         if (!deviceId) return { error: 'Invalid ID' };
 
         try {
+            const devRes = await query('SELECT irk FROM user_devices WHERE id = $1 AND attendee_id = $2', [deviceId, user.id]);
             await query('DELETE FROM user_devices WHERE id = $1 AND attendee_id = $2', [deviceId, user.id]);
+            if (devRes.rows.length > 0) {
+                removeFromIrkCache(user.id, devRes.rows[0].irk);
+            }
             return { success: true };
         } catch (e) {
             return { error: '기기 삭제에 실패했습니다.' };

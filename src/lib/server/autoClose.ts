@@ -1,5 +1,6 @@
 import { query } from './db';
 import { applyPenalty, promoteWaitlist } from './reservations';
+import { updateSettingsCache, markAllLeft } from './ble';
 
 let intervalId: NodeJS.Timeout | null = null;
 let isRunning = false;
@@ -98,6 +99,8 @@ async function performCloseDay(businessDate: string) {
         await query("UPDATE game_sessions SET status = 'finished', end_time = NOW() WHERE status = 'playing'");
         // Set is_open to false
         await query("INSERT INTO system_settings (key, value) VALUES ('is_open', 'false') ON CONFLICT (key) DO UPDATE SET value = 'false'");
+        updateSettingsCache(false);
+        markAllLeft();
         // Record the last auto-close date
         await query("INSERT INTO system_settings (key, value) VALUES ('last_auto_close_date', $1) ON CONFLICT (key) DO UPDATE SET value = $1", [businessDate]);
         await query('COMMIT');

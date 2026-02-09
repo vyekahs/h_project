@@ -31,10 +31,25 @@
 
     // Season Pass Logic
     $: hasSeasonPass = data.user.season_pass_expires_at && new Date(data.user.season_pass_expires_at) > new Date();
-    $: seasonPassDaysLeft = hasSeasonPass 
-        ? Math.ceil((new Date(data.user.season_pass_expires_at).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)) 
+    $: seasonPassDaysLeft = hasSeasonPass
+        ? Math.ceil((new Date(data.user.season_pass_expires_at).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))
         : 0;
     $: seasonPassEndDate = hasSeasonPass ? new Date(data.user.season_pass_expires_at).toLocaleDateString() : '';
+
+    // Expired Pass Logic (show if expired within 2 months)
+    $: expiredPass = (() => {
+        if (hasSeasonPass || !data.user.season_pass_expires_at) return null;
+        const expiresAt = new Date(data.user.season_pass_expires_at);
+        const now = new Date();
+        const daysSinceExpiry = Math.floor((now.getTime() - expiresAt.getTime()) / (1000 * 60 * 60 * 24));
+        if (daysSinceExpiry <= 60) {
+            return {
+                expiredDate: expiresAt.toLocaleDateString(),
+                daysSinceExpiry
+            };
+        }
+        return null;
+    })();
 
     // Top Opponents
     $: topOpponents = (() => {
@@ -216,6 +231,14 @@
                         <div class="pass-date">
                             종료일: {seasonPassEndDate}
                         </div>
+                    </div>
+                {:else if expiredPass}
+                    <div class="season-pass-banner expired">
+                        <span class="badge">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px; position:relative; top:1px;"><path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/><path d="M13 5v2"/><path d="M13 17v2"/><path d="M13 11v2"/></svg>
+                            정기권 만료
+                        </span>
+                        <div class="pass-expired-date">{expiredPass.expiredDate} 만료</div>
                     </div>
                 {/if}
 
@@ -635,6 +658,22 @@
         display: flex;
         justify-content: space-between;
         align-items: center;
+    }
+    .season-pass-banner.expired {
+        background: linear-gradient(135deg, #868e96 0%, #495057 100%);
+        opacity: 0.85;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        gap: 0.5rem;
+    }
+    .pass-expired-cta {
+        font-size: 0.85rem;
+        opacity: 0.9;
+    }
+    .pass-expired-date {
+        font-size: 0.8rem;
+        opacity: 0.7;
     }
     .pass-info {
         display: flex;

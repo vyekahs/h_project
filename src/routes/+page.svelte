@@ -103,6 +103,17 @@
     let alertVisible = false;
     let alertMessage = '';
 
+    // PWA Install Guide
+    let showInstallGuide = false;
+    let isIOS = false;
+    let isStandalone = false;
+
+    onMount(() => {
+        isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+        isStandalone = window.matchMedia('(display-mode: standalone)').matches
+            || (navigator as any).standalone === true;
+    });
+
     // Limit visible games
     let limitGames = 5;
     let limitScheduledGames = 5;
@@ -293,6 +304,13 @@
             {data.notice}
         </div>
     {/if}
+
+    <!-- {#if !isStandalone}
+        <button class="install-guide-btn" on:click={() => showInstallGuide = true}>
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            앱 설치 방법
+        </button>
+    {/if} -->
 
     <main>
         {#if data.user && ((data.userPenaltyInfo && data.userPenaltyInfo.penalty_points > 0) || (data.userScheduledGames && data.userScheduledGames.length > 0) || data.userPlayingGame || data.userReservation)}
@@ -920,7 +938,62 @@
     </div>
 {/if}
 
-
+{#if showInstallGuide}
+    <div class="modal-backdrop" on:click|self={() => showInstallGuide = false}>
+        <div class="modal-content install-guide-modal">
+            <h3>앱 설치 방법</h3>
+            {#if isIOS}
+                <ol class="guide-steps">
+                    <li>
+                        <span class="step-num">1</span>
+                        <strong>Safari</strong>에서 이 페이지를 엽니다.
+                    </li>
+                    <li>
+                        <span class="step-num">2</span>
+                        하단의 <strong>공유 버튼</strong>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:text-bottom;"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
+                        을 누릅니다.
+                        <div class="guide-img-placeholder">공유 버튼 스크린샷</div>
+                    </li>
+                    <li>
+                        <span class="step-num">3</span>
+                        <strong>'홈 화면에 추가'</strong>를 선택합니다.
+                        <div class="guide-img-placeholder">홈 화면에 추가 스크린샷</div>
+                    </li>
+                    <li>
+                        <span class="step-num">4</span>
+                        오른쪽 상단의 <strong>'추가'</strong>를 누르면 완료!
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="color:#2b8a3e; vertical-align:text-bottom;"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                    </li>
+                </ol>
+            {:else}
+                <ol class="guide-steps">
+                    <li>
+                        <span class="step-num">1</span>
+                        <strong>Chrome</strong>에서 이 페이지를 엽니다.
+                    </li>
+                    <li>
+                        <span class="step-num">2</span>
+                        주소창 오른쪽의 <strong>메뉴(⋮)</strong>를 누릅니다.
+                        <div class="guide-img-placeholder">Chrome 메뉴 스크린샷</div>
+                    </li>
+                    <li>
+                        <span class="step-num">3</span>
+                        <strong>'앱 설치'</strong> 또는 <strong>'홈 화면에 추가'</strong>를 선택합니다.
+                        <div class="guide-img-placeholder">앱 설치 스크린샷</div>
+                    </li>
+                    <li>
+                        <span class="step-num">4</span>
+                        <strong>'설치'</strong>를 누르면 완료!
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="color:#2b8a3e; vertical-align:text-bottom;"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                    </li>
+                </ol>
+            {/if}
+            <p class="guide-note">설치하면 앱처럼 바로 접속할 수 있어요.</p>
+            <button class="btn-modal-close" on:click={() => showInstallGuide = false}>닫기</button>
+        </div>
+    </div>
+{/if}
 
 <style>
     :global(body) {
@@ -2168,5 +2241,90 @@
         font-size: 0.75rem;
         color: #e67700;
         font-weight: 700;
+    }
+
+    /* Install Guide Button */
+    .install-guide-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+        width: 100%;
+        padding: 0.75rem;
+        background: white;
+        border: 1px dashed #ccc;
+        border-radius: 12px;
+        color: #555;
+        font-size: 0.9rem;
+        font-weight: 600;
+        cursor: pointer;
+        margin-bottom: 1rem;
+        transition: all 0.2s;
+    }
+    .install-guide-btn:hover {
+        background: #f8f9fa;
+        border-color: #aaa;
+        color: #333;
+    }
+
+    /* Install Guide Modal */
+    .install-guide-modal {
+        max-width: 400px;
+    }
+    .install-guide-modal h3 {
+        margin: 0 0 1.2rem 0;
+        text-align: center;
+        font-size: 1.2rem;
+        color: #333;
+    }
+    .install-guide-modal .guide-steps {
+        padding: 0;
+        margin: 0 0 1rem 0;
+        list-style: none;
+    }
+    .install-guide-modal .guide-steps li {
+        margin-bottom: 1rem;
+        line-height: 1.6;
+        color: #555;
+        font-size: 0.95rem;
+    }
+    .install-guide-modal .step-num {
+        display: inline-block;
+        background: #e7f5ff;
+        color: #339af0;
+        font-weight: bold;
+        padding: 0.1rem 0.5rem;
+        border-radius: 6px;
+        margin-right: 0.5rem;
+    }
+    .guide-img-placeholder {
+        margin-top: 0.5rem;
+        padding: 2rem 1rem;
+        background: #f1f3f5;
+        border: 2px dashed #dee2e6;
+        border-radius: 8px;
+        text-align: center;
+        color: #adb5bd;
+        font-size: 0.85rem;
+    }
+    .guide-note {
+        text-align: center;
+        color: #888;
+        font-size: 0.85rem;
+        margin: 0 0 1rem 0;
+    }
+    .btn-modal-close {
+        width: 100%;
+        padding: 0.8rem;
+        background: #339af0;
+        color: white;
+        border: none;
+        border-radius: 8px;
+        font-weight: bold;
+        font-size: 1rem;
+        cursor: pointer;
+    }
+    .btn-modal-close:hover {
+        background: #228be6;
     }
 </style>

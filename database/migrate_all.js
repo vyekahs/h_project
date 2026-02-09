@@ -106,6 +106,20 @@ async function migrate() {
         await pool.query('ALTER TABLE device_registrations ADD COLUMN IF NOT EXISTS irk VARCHAR(32);');
         await pool.query("ALTER TABLE device_registrations ADD COLUMN IF NOT EXISTS device_name VARCHAR(100) DEFAULT 'Phone';");
 
+        // 13. Scanners table (BLE scanner heartbeat)
+        console.log('[13] Checking scanners table...');
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS scanners (
+                id TEXT PRIMARY KEY,
+                name TEXT,
+                last_seen_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                ip_address TEXT,
+                metadata JSONB,
+                status TEXT DEFAULT 'active'
+            );
+            CREATE INDEX IF NOT EXISTS idx_scanners_last_seen ON scanners(last_seen_at);
+        `);
+
     } catch (err) {
         console.error('Migration failed:', err);
         process.exit(1);

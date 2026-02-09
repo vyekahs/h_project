@@ -31,14 +31,17 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-	// ignore POST requests etc
 	if (event.request.method !== 'GET') return;
 
+	const url = new URL(event.request.url);
+
+	// Skip: API requests, different origins
+	if (url.pathname.startsWith('/api') || url.origin !== self.location.origin) return;
+
 	async function respond() {
-		const url = new URL(event.request.url);
 		const cache = await caches.open(CACHE);
 
-		// `build`/`files` can always be served from the cache
+		// Static assets (build/files) → cache first
 		if (ASSETS.includes(url.pathname)) {
 			const response = await cache.match(event.request);
 			if (response) return response;
@@ -58,7 +61,7 @@ self.addEventListener('fetch', (event) => {
 		} catch {
 			const cached = await cache.match(event.request);
 			if (cached) return cached;
-			
+
 			// Fallback response to avoid 'Failed to convert value to Response'
 			return new Response('Offline', { status: 408 });
 		}
