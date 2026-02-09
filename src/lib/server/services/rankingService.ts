@@ -33,17 +33,20 @@ export const RankingService = {
              const bonus = Math.max(0, (timeLimit - clearTime) * timeMultiplier);
              calculatedScore = baseScore + bonus;
         } else if (gameId === 'killer-sudoku') {
-             const timeLimit = difficulty === 'easy' ? 600 :
-                              difficulty === 'medium' ? 900 :
-                              difficulty === 'hard' ? 1200 : 1500;
+             const timeLimit = difficulty === 'easy' ? 390 :
+                              difficulty === 'medium' ? 780 :
+                              difficulty === 'hard' ? 1170 :
+                              difficulty === 'expert' ? 1560 : 1950;
 
-             const baseScore = difficulty === 'easy' ? 20 :
-                               difficulty === 'medium' ? 80 :
-                               difficulty === 'hard' ? 180 : 350;
+             const baseScore = difficulty === 'easy' ? 10 :
+                               difficulty === 'medium' ? 50 :
+                               difficulty === 'hard' ? 120 :
+                               difficulty === 'expert' ? 250 : 400;
 
              const timeMultiplier = difficulty === 'easy' ? 1 :
                                     difficulty === 'medium' ? 2 :
-                                    difficulty === 'hard' ? 4 : 5;
+                                    difficulty === 'hard' ? 3 :
+                                    difficulty === 'expert' ? 4 : 5;
 
              const bonus = Math.max(0, (timeLimit - clearTime) * timeMultiplier);
              calculatedScore = baseScore + bonus;
