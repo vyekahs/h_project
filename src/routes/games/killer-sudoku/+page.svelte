@@ -101,7 +101,12 @@
         if (browser) {
             const unlockedLocal = JSON.parse(localStorage.getItem('killer_sudoku_unlocked_tutorials') || '[]');
             const unlockedDB = ($user as any)?.completedTutorials || [];
-            if (unlockedLocal.length > 0 || unlockedDB.length > 0) {
+            
+            // Only count killer sudoku tutorials
+            const hasLocal = unlockedLocal.some((id: string) => id.startsWith('killer_'));
+            const hasDB = unlockedDB.some((id: string) => id.startsWith('killer_'));
+
+            if (hasLocal || hasDB) {
                 hasUnlockedTutorials = true;
             }
         }
