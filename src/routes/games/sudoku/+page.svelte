@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { generateSudoku, type Board, type Cell } from '$lib/games/sudoku/logic';
+    import { generateKillerSudoku, type Cage, getCageErrors } from '$lib/games/sudoku/killerLogic';
 	import BoardComponent from './Board.svelte';
 	import Controls from './Controls.svelte';
     import { goto } from '$app/navigation';
@@ -13,6 +14,7 @@
 
     // Game States: 'start', 'playing', 'paused', 'finished'
     type GameState = 'start' | 'playing' | 'paused' | 'finished';
+    type GameMode = 'standard' | 'killer';
 
     async function handleAdReward() {
          try {
@@ -28,9 +30,11 @@
     }
 
 	let gameState: GameState = $state('start');
+    let gameMode: GameMode = $state('standard');
 	let difficulty: 'easy' | 'medium' | 'hard' | 'expert' | 'master' = $state('medium');
 	let board: Board = $state([]);
 	let solution: number[][];
+    let cages: Cage[] = $state([]); // For Killer Sudoku
 	let selectedCell: Cell | null = $state(null);
 	let isNoteMode = $state(false);
 	let mistakes = $state(0);
@@ -83,6 +87,18 @@
     onMount(() => {
         // Ensure user data (inventory) is up to date
         user.refresh();
+
+        // 1. Read Mode from URL
+        if (browser) {
+            const params = new URLSearchParams(window.location.search);
+            const modeParam = params.get('mode');
+            if (modeParam === 'killer') {
+                gameMode = 'killer';
+            } else if (modeParam === 'standard') {
+                gameMode = 'standard';
+            }
+        }
+        // If not specified, default to 'standard' (set in declaration)
         
         const saved = localStorage.getItem('sudoku_save');
         if (saved) {
@@ -91,6 +107,9 @@
                 // Simple valid check
                 if (data.board && data.solution && data.difficulty) {
                     hasSavedGame = true;
+                    // Note: We don't overwrite gameMode here if URL param is present?
+                    // Strategy: If URL param is explicitly set, it overrides save for the *Start Screen*
+                    // But if user clicks "Resume", we load from save.
                 }
             } catch (e) {
                 console.error('Failed to load save', e);
@@ -132,6 +151,8 @@
                 mistakes = data.mistakes;
                 difficulty = data.difficulty;
                 history = data.history || [];
+                gameMode = data.gameMode || 'standard';
+                cages = data.cages || [];
                 
                 gameState = 'paused'; // Start paused, user must click resume
             } catch (e) {
@@ -154,7 +175,9 @@
             timer: timerValue,
             mistakes,
             difficulty,
-            history
+            history,
+            gameMode,
+            cages
         };
         localStorage.setItem('sudoku_save', JSON.stringify(data));
     }
@@ -168,7 +191,9 @@
             timer: currentTimer,
             mistakes,
             difficulty,
-            history
+            history,
+            gameMode,
+            cages
         };
         localStorage.setItem('sudoku_save', JSON.stringify(data));
     }
@@ -328,9 +353,23 @@
             // Clear any old save first
             localStorage.removeItem('sudoku_save');
             
-            const result = generateSudoku(difficulty);
-            board = result.initialBoard;
-            solution = result.solution;
+            if (gameMode === 'killer') {
+                 // Map 'master' -> 'expert' for logic because library might not support 'master' key
+                // or ensure generateKillerSudoku handles it.
+                // killerLogic.ts defines Difficulty = 'easy' | 'medium' | 'hard' | 'expert'
+                const logicDiff = difficulty === 'master' ? 'expert' : difficulty;
+
+                const result = generateKillerSudoku(logicDiff);
+                board = result.initialBoard;
+                solution = result.solution;
+                cages = result.cages;
+            } else {
+                const result = generateSudoku(difficulty);
+                board = result.initialBoard;
+                solution = result.solution;
+                cages = [];
+            }
+           
             mistakes = 0;
             isWon = false;
             selectedCell = null;
@@ -344,10 +383,12 @@
             const data = {
                 board,
                 solution,
+                cages,
                 timer: 0, 
                 mistakes,
                 difficulty,
-                history
+                history,
+                gameMode
             };
             localStorage.setItem('sudoku_save', JSON.stringify(data));
             hasSavedGame = true;
@@ -657,7 +698,7 @@
 
                 {#if !hasSavedGame || startMode === 'diff_select'}
                     <div class="difficulty-select">
-                        <h2>난이도 선택</h2>
+                        <h2>난이도 선택 <span class="mode-badge">{gameMode === 'killer' ? 'Killer' : 'Standard'}</span></h2>
                         <div class="options">
                             <label class:selected={difficulty === 'easy'}>
                                 <input type="radio" name="difficulty" value="easy" bind:group={difficulty}>
@@ -675,10 +716,12 @@
                                 <input type="radio" name="difficulty" value="expert" bind:group={difficulty}>
                             전문가
                             </label>
-                            <label class:selected={difficulty === 'master'}>
-                                <input type="radio" name="difficulty" value="master" bind:group={difficulty}>
-                            마스터
-                            </label>
+                            {#if gameMode === 'standard'}
+                                <label class:selected={difficulty === 'master'}>
+                                    <input type="radio" name="difficulty" value="master" bind:group={difficulty}>
+                                마스터
+                                </label>
+                            {/if}
                         </div>
                     </div>
                     <button class="btn-primary huge" onclick={() => startGame()}>게임 시작</button>
@@ -821,6 +864,7 @@
             <div class="game-area">
                  <BoardComponent
                      {board}
+                     {cages}
                      {selectedCell}
                      isGameOver={gameState === 'finished'}
                      onselect={handleCellSelect}
@@ -1809,4 +1853,15 @@
         margin: 0 0 0.5rem 0;
     }
 
+    .mode-badge {
+        font-size: 0.8rem;
+        background: #007aff;
+        color: white;
+        padding: 2px 8px;
+        border-radius: 12px;
+        margin-left: 8px;
+        vertical-align: middle;
+        font-weight: 600;
+        text-transform: uppercase;
+    }
 </style>

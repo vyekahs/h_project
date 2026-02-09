@@ -6,7 +6,7 @@
             id: 'sudoku',
             name: '스도쿠',
             description: '논리적인 숫자 퍼즐',
-            url: '/games/sudoku',
+            url: '/games/sudoku?mode=standard',
             color: '#4fc3f7',
             difficulty: 'Easy ~ Master'
         },
@@ -14,7 +14,7 @@
             id: 'killer-sudoku',
             name: '킬러 스도쿠',
             description: '케이지의 합을 맞춰라',
-            url: '/games/killer-sudoku',
+            url: '/games/sudoku?mode=killer',
             color: '#ff8a65',
             difficulty: 'Easy ~ Expert'
         }

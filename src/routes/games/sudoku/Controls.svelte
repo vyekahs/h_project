@@ -29,8 +29,13 @@
             title="메모 모드"
         >
             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15.5 3H5a2 2 0 0 0-2 2v14c0 1.1.9 2 2 2h14a2 2 0 0 0 2-2V8.5L15.5 3Z"/><path d="M15 3v6h6"/><path d="M9 13h1"/><path d="M9 17h1"/><path d="M14 13h1"/><path d="M14 17h1"/></svg>
-            <span class="label">메모 {isNoteMode ? 'ON' : 'OFF'}</span>
+            <span class="label">메모</span>
+            <div class="toggle-indicator" class:on={isNoteMode}>{isNoteMode ? 'ON' : 'OFF'}</div>
         </button>
+        <!-- <button class="tool-btn" onclick={() => onaction('hint')} aria-label="Hint" title="힌트">
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 14c.2-1 .7-1.7 1.5-2.5 1-1 1.5-2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5"/><path d="M9 18h6"/><path d="M10 22h4"/></svg>
+            <span class="label">힌트</span>
+        </button> -->
     </div>
     <div class="numpad">
         {#each [1, 2, 3, 4, 5, 6, 7, 8, 9] as num}
@@ -51,51 +56,49 @@
     .controls {
         display: flex;
         flex-direction: column;
-        gap: 0.5rem;
+        gap: 1.5rem;
         align-items: center;
         width: 100%;
+        margin-top: 1rem;
     }
 
     .numpad {
         display: flex;
-        justify-content: center;
-        gap: 0.4rem;
+        justify-content: space-between;
+        gap: 0.2rem;
         width: 100%;
-        max-width: 400px;
+        max-width: 500px;
+        padding: 0 0.5rem;
     }
     
     .num-btn {
         flex: 1;
-        min-width: 28px;
-        max-width: 42px;
-        height: 48px;
-        font-size: 1.4rem;
+        aspect-ratio: 0.8;
+        font-size: 2rem;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        color: #007aff;
         border: none;
         background: transparent;
         cursor: pointer;
         transition: all 0.15s;
-        font-weight: 500;
+        font-weight: 300;
         display: flex;
         align-items: center;
         justify-content: center;
-        border-radius: 12px;
+        padding: 0;
+        margin: 0;
     }
     
     @media (max-width: 360px) {
         .num-btn {
-            font-size: 1.2rem;
-            height: 42px;
-            border-radius: 10px;
+            font-size: 1.5rem;
         }
     }
 
-    .num-btn:hover {
-        background: #e8f0fe;
-    }
-
     .num-btn:active {
-        transform: scale(0.92);
-        background: #d2e3fc;
+        transform: scale(0.9);
+        background: rgba(0,0,0,0.05);
+        border-radius: 8px;
     }
     
     .num-btn.hidden {
@@ -105,41 +108,61 @@
     
     .tools {
         display: flex;
-        gap: 1.5rem;
-        justify-content: center;
-        border-radius: 20px;
+        width: 100%;
+        justify-content: space-around;
+        padding: 0 1rem;
     }
     
     .tool-btn {
         display: flex;
         flex-direction: column;
         align-items: center;
-        gap: 0.3rem;
+        gap: 0.4rem;
         background: none;
         border: none;
         cursor: pointer;
         color: #8e8e93; /* IOS Gray */
         transition: color 0.2s;
+        position: relative;
+        min-width: 60px;
     }
     
     .tool-btn svg {
-        width: 28px;
-        height: 28px;
-        stroke-width: 1.5;
+        width: 26px;
+        height: 26px;
+        stroke-width: 1.8;
     }
     
     .tool-btn .label {
         font-size: 0.75rem;
         font-weight: 500;
     }
+
+    .toggle-indicator {
+        font-size: 0.6rem;
+        background: #e0e0e0;
+        padding: 1px 6px;
+        border-radius: 10px;
+        color: #666;
+        position: absolute;
+        top: -8px;
+        right: 0;
+    }
+    
+    .toggle-indicator.on {
+        background: #007aff;
+        color: white;
+    }
     
     .tool-btn:hover {
         color: #333;
-        background: #f5f5f7;
     }
     
     .tool-btn.active {
         color: #007aff; /* Active Blue */
-        background: rgba(0, 122, 255, 0.1);
+    }
+    
+    .tool-btn.active svg {
+        fill: rgba(0, 122, 255, 0.1);
     }
 </style>
