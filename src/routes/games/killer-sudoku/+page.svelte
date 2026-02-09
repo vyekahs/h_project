@@ -69,25 +69,17 @@
 
     let showTutorial = $state(false);
     let activeTutorialId = $state('killer_easy_1');
-    let hasUnlockedTutorials = $derived.by(() => {
-        if (!browser) return false;
-        
-        // Check local storage 
-        // Note: derived won't auto-update on localStorage change unless forced,
-        // but it will update on mount and whenever any other signal in here changes.
-        // Since we don't have a signal for localStorage, we rely on component remount or user store updates.
-        // Actually, $user update triggers this.
-        const userVal = $user; // Dependency on user store
-        const unlockedLocal = JSON.parse(localStorage.getItem('killer_sudoku_unlocked_tutorials') || '[]');
-        const unlockedDB = (userVal as any)?.completedTutorials || [];
-        
-        return [...unlockedLocal, ...unlockedDB].some((id: string) => typeof id === 'string' && id.startsWith('killer_'));
-    });
-
     let unlockedTutorialIDs = $derived.by(() => {
         const db = ($user as any)?.completedTutorials || [];
         const local = browser ? JSON.parse(localStorage.getItem('killer_sudoku_unlocked_tutorials') || '[]') : [];
         return new Set([...db, ...local]);
+    });
+
+    let hasUnlockedTutorials = $derived.by(() => {
+        for (const id of unlockedTutorialIDs) {
+            if (typeof id === 'string' && id.startsWith('killer_')) return true;
+        }
+        return false;
     });
 
     onMount(() => {
@@ -287,7 +279,6 @@
                     }
                 });
             }
-            hasUnlockedTutorials = true;
         }
         showTutorial = false;
 
