@@ -63,7 +63,7 @@
         hallOfFameLoading = true;
         try {
             // Determine gameId based on mode
-            const gameId = gameMode === 'killer' ? 'sudoku-killer' : 'sudoku';
+            const gameId = gameMode === 'killer' ? 'killer-sudoku' : 'sudoku';
             const res = await fetch(`/api/ranking/halloffame/${gameId}`);
             if (res.ok) {
                 hallOfFameData = await res.json();
@@ -829,7 +829,7 @@
                         {:else}
                             <p class="score-desc">매월 1일 초기화</p>
                             <!-- Use dynamic gameId based on mode -->
-                            <RankingBoard gameId={gameMode === 'killer' ? 'sudoku-killer' : 'sudoku'} />
+                            <RankingBoard gameId={gameMode === 'killer' ? 'killer-sudoku' : 'sudoku'} />
                         {/if}
                     </div>
 
