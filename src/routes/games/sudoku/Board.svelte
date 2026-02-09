@@ -250,6 +250,19 @@
             loopCount++;
         } while (activeKey !== startKey && loopCount < 100);
 
+        // 2b. Simplify Polygon (Remove Collinear Vertices)
+        // This prevents "double inset" on straight lines which creates a "dip"
+        const uniquePoints = points.filter((curr, i) => {
+             const prev = points[(i - 1 + points.length) % points.length];
+             const next = points[(i + 1) % points.length];
+             const dx1 = curr.x - prev.x;
+             const dy1 = curr.y - prev.y;
+             const dx2 = next.x - curr.x;
+             const dy2 = next.y - curr.y;
+             // Keep point only if direction changes (not collinear)
+             return (dx1 * dy2 !== dy1 * dx2);
+        });
+
         // 3. Process Points to Apply Inset
         // Since we have a polygon, we can just shrink it.
         // Simple logic for rectilinear polygon:
@@ -257,7 +270,8 @@
         // If concave corner (270 deg), move point inward (which looks like filling the notch).
         
         // Helper: get vector of next segment.
-        const insetPoints = points.map((p, i) => {
+        const insetPoints = uniquePoints.map((p, i) => {
+            const points = uniquePoints; // Use simplified points for context
             const prev = points[(i - 1 + points.length) % points.length];
             const next = points[(i + 1) % points.length];
             
@@ -454,9 +468,8 @@
                         d={pathData} 
                         fill="none" 
                         stroke="#000" 
-                        stroke-width="0.04" 
-                        stroke-dasharray="0.1 0.1" 
-                        stroke-linecap="round"
+                        stroke-width="0.035" 
+                        stroke-dasharray="0.05 0.05" 
                         stroke-linejoin="round"
                     />
                     <!-- Sum Label -->

@@ -12,7 +12,7 @@ export const RankingService = {
         // 1. Calculate Unified Score
         let calculatedScore = 0;
         
-        if (gameId === 'sudoku') {
+        if (gameId === 'sudoku' || gameId === 'killer-sudoku') {
              const timeLimit = difficulty === 'easy' ? 300 :
                               difficulty === 'medium' ? 600 :
                               difficulty === 'hard' ? 900 : 
@@ -30,24 +30,6 @@ export const RankingService = {
                                     difficulty === 'hard' ? 3 :
                                     difficulty === 'expert' ? 4 : 5;
                                     
-             const bonus = Math.max(0, (timeLimit - clearTime) * timeMultiplier);
-             calculatedScore = baseScore + bonus;
-        } else if (gameId === 'killer-sudoku') {
-             const timeLimit = difficulty === 'easy' ? 390 :
-                              difficulty === 'medium' ? 780 :
-                              difficulty === 'hard' ? 1170 :
-                              difficulty === 'expert' ? 1560 : 1950;
-
-             const baseScore = difficulty === 'easy' ? 10 :
-                               difficulty === 'medium' ? 50 :
-                               difficulty === 'hard' ? 120 :
-                               difficulty === 'expert' ? 250 : 400;
-
-             const timeMultiplier = difficulty === 'easy' ? 1 :
-                                    difficulty === 'medium' ? 2 :
-                                    difficulty === 'hard' ? 3 :
-                                    difficulty === 'expert' ? 4 : 5;
-
              const bonus = Math.max(0, (timeLimit - clearTime) * timeMultiplier);
              calculatedScore = baseScore + bonus;
         } else {
