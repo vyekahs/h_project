@@ -141,14 +141,14 @@
 
     $effect(() => {
         if (browser) {
-            const unlockedLocal = JSON.parse(localStorage.getItem('sudoku_unlocked_tutorials') || '[]');
+            const unlockedLocal = JSON.parse(localStorage.getItem(
+                gameMode === 'killer' ? 'killer_sudoku_unlocked_tutorials' : 'sudoku_unlocked_tutorials'
+            ) || '[]');
             const unlockedDB = $user.completedTutorials || [];
-            
+
             const all = [...unlockedLocal, ...unlockedDB];
-            const hasSudoku = all.some((id: string) => typeof id === 'string' && id.startsWith('sudoku_'));
-            if (hasSudoku) {
-                hasUnlockedTutorials = true;
-            }
+            const prefix = gameMode === 'killer' ? 'killer_' : 'sudoku_';
+            hasUnlockedTutorials = all.some((id: string) => typeof id === 'string' && id.startsWith(prefix));
         }
     });
 
