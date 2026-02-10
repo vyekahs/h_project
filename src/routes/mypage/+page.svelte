@@ -222,11 +222,6 @@
         <h1>마이페이지</h1>
         {#if data.user}
             <div class="user-simple">
-                <button class="btn-feedback" on:click={() => showFeedbackModal = true}>
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
-                    건의하기
-                </button>
-                <span class="divider">|</span>
                 <span class="user-name">
                     {#if data.user.title}
                         <span class="user-title">[{data.user.title.title_name}]</span>
@@ -373,6 +368,24 @@
                             </div>
                         {/if}
                     </div>
+                </div>
+
+
+                <div class="feedback-section">
+                    <button class="btn-feedback-block" on:click={() => showFeedbackModal = true}>
+                        <div class="feedback-content">
+                            <span class="feedback-icon">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                            </span>
+                            <span class="text-group">
+                                <span class="feedback-title">서비스 건의함</span>
+                                <span class="feedback-subtitle">버그 제보나 기능 요청을 남겨주세요</span>
+                            </span>
+                        </div>
+                        <span class="feedback-arrow">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+                        </span>
+                    </button>
                 </div>
             </div>
         {/if}
@@ -1457,5 +1470,63 @@
     .success-modal p {
         color: #666;
         margin-bottom: 1.5rem;
+    }
+
+    /* New Feedback Section Styles */
+    .feedback-section {
+        margin-top: 1rem;
+        margin-bottom: 2rem;
+    }
+    .btn-feedback-block {
+        width: 100%;
+        background: white;
+        border: 1px solid #eee;
+        border-radius: 12px;
+        padding: 1.2rem;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        cursor: pointer;
+        transition: all 0.2s;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+        text-align: left;
+    }
+    .btn-feedback-block:hover {
+        border-color: #339af0;
+        background: #f8f9fa;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+    }
+    .feedback-content {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+    }
+    .feedback-icon {
+        width: 40px;
+        height: 40px;
+        background: #e7f5ff;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #339af0;
+    }
+    .text-group {
+        display: flex;
+        flex-direction: column;
+        gap: 0.2rem;
+    }
+    .feedback-title {
+        font-weight: 700;
+        color: #333;
+        font-size: 1rem;
+    }
+    .feedback-subtitle {
+        font-size: 0.85rem;
+        color: #888;
+    }
+    .feedback-arrow {
+        color: #ccc;
     }
 </style>
