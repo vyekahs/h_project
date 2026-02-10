@@ -87,6 +87,7 @@
         justify-content: center;
         padding: 0;
         margin: 0;
+        touch-action: manipulation;
     }
     
     @media (max-width: 360px) {
@@ -125,6 +126,7 @@
         transition: color 0.2s;
         position: relative;
         min-width: 60px;
+        touch-action: manipulation;
     }
     
     .tool-btn svg {

@@ -926,6 +926,7 @@
         color: #333;
         position: relative;
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        touch-action: manipulation;
 	}
 
     .screen {
