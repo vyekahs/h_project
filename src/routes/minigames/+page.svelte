@@ -7,16 +7,14 @@
             name: '스도쿠',
             description: '논리적인 숫자 퍼즐',
             url: '/games/sudoku?mode=standard',
-            color: '#4fc3f7',
-            difficulty: 'Easy ~ Master'
+            gradient: 'linear-gradient(135deg, #ffffff 0%, #edf6ff 100%)', // Very Subtle Blue
         },
         {
             id: 'killer-sudoku',
             name: '킬러 스도쿠',
             description: '케이지의 합을 맞춰라',
             url: '/games/sudoku?mode=killer',
-            color: '#ff8a65',
-            difficulty: 'Easy ~ Expert'
+            gradient: 'linear-gradient(135deg, #ffffff 0%, #fffbe6 100%)', // Very Subtle Amber
         }
     ];
 
@@ -70,7 +68,6 @@
         <h1>GAME LOUNGE</h1>
     </header>
 
-    <!-- Tab Navigation -->
     <div class="tab-bar">
         <button 
             class="tab-btn" 
@@ -88,59 +85,33 @@
         </button>
     </div>
 
-    <!-- Top Ad Banner -->
-    <!-- <div class="ad-section">
-        <AdBanner adSlot="top-banner" style="display:block; min-height:90px;" />
-    </div> -->
-
     {#if activeTab === 'games'}
-        <!-- Games Grid -->
         <section class="games-section">
-            <div class="games-grid">
+            <div class="games-list">
                 {#each games as game}
-                    <a href={game.url} class="game-card {game.id}">
-                        <div class="card-bg">
-                            {#if game.id === 'sudoku'}
-                                <div class="sudoku-grid-deco">
-                                    {#each Array(9) as _, i}
-                                        <div class="grid-line"></div>
-                                    {/each}
-                                </div>
-                            {:else if game.id === 'killer-sudoku'}
-                                <div class="killer-grid-deco">
-                                    {#each Array(6) as _, i}
-                                        <div class="cage-line"></div>
-                                    {/each}
-                                </div>
-                            {/if}
-                        </div>
+                    <a href={game.url} class="game-item {game.id}">
+                        <!-- Consistent Light Gradient Background -->
+                        <div class="item-bg" style="background: {game.gradient}"></div>
                         
-                        <!-- <div class="card-header">
-                            <div class="card-badges">
-                                {#each game.tags as tag}
-                                    <span class="badge {tag.toLowerCase()}">{tag}</span>
-                                {/each}
+                        <div class="game-content">
+                            <div class="game-info">
+                                <h3>{game.name}</h3>
                             </div>
-                            <div class="icon-box">{game.icon}</div>
-                        </div> -->
-                        
-                        <div class="card-body">
-                            <h3>{game.name}</h3>
-                            <p class="desc">{game.description}</p>
-                        </div>
-                        
-                        <div class="play-btn">
-                            <span>PLAY</span>
-                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+                            
+                            <div class="play-arrow">
+                                <span>PLAY</span>
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+                            </div>
                         </div>
                     </a>
                 {/each}
                 
-                <!-- Coming Soon -->
-                <div class="game-card coming-soon">
-                    <div class="card-body">
-                        <h3>Coming Soon</h3>
-                        <p class="desc">새로운 게임이 추가될 예정입니다.</p>
+                <div class="game-item coming-soon">
+                    <div class="game-content">
+                        <div class="game-info">
+                            <h3>Coming Soon</h3>
+                            <span class="desc">새로운 게임 준비 중</span>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -148,7 +119,7 @@
     {:else}
         <!-- Hall of Fame -->
         <section class="ranking-section">
-            <div class="ranking-grid">
+            <div class="ranking-list">
                 {#each games as game}
                     {@const hofData = hofDataMap[game.id] || []}
                     <div class="ranking-card">
@@ -193,10 +164,9 @@
 </div>
 
 <style>
-    /* ... (Previous header styles kept) ... */
     .arcade-container {
         padding: 1.5rem;
-        max-width: 1200px;
+        max-width: 600px;
         margin: 0 auto;
         padding-bottom: 6rem;
     }
@@ -208,362 +178,186 @@
     
     .arcade-header h1 {
         font-family: 'Outfit', sans-serif;
-        font-size: 2.5rem;
+        font-size: 2.2rem;
         font-weight: 800;
-        background: linear-gradient(135deg, #1a1a1a 0%, #4a4a4a 100%);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
+        color: #333;
         margin-bottom: 0.5rem;
-        letter-spacing: -1.5px;
-    }
-    
-    .arcade-header p {
-        color: #666;
-        font-size: 1.1rem;
-        font-weight: 500;
+        letter-spacing: -1px;
     }
 
-    /* Tab Bar - refined */
     .tab-bar {
         display: flex;
         justify-content: center;
-        background: #f0f2f5;
-        padding: 0.4rem;
-        border-radius: 100px;
+        background: #f1f3f5;
+        padding: 0.25rem;
+        border-radius: 12px;
         width: fit-content;
-        margin: 0 auto 3rem auto;
+        margin: 0 auto 2.5rem auto;
     }
 
     .tab-btn {
         background: transparent;
         border: none;
-        padding: 0.6rem 1.8rem;
+        padding: 0.6rem 1.5rem;
         font-size: 0.95rem;
         font-weight: 600;
-        color: #888;
+        color: #868e96;
         cursor: pointer;
-        border-radius: 100px;
-        transition: all 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+        border-radius: 10px;
+        transition: all 0.2s ease;
     }
 
     .tab-btn.active {
         background: white;
-        color: #1a1a1a;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.05);
-    }
-
-    .games-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-        gap: 2rem;
-        margin-bottom: 3rem;
-    }
-
-    /* Modern Game Card */
-    .game-card {
-        position: relative;
-        background: white;
-        border-radius: 32px;
-        padding: 2rem;
-        text-decoration: none;
         color: #333;
-        overflow: hidden;
-        transition: all 0.4s cubic-bezier(0.3, 1, 0.3, 1);
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+
+    /* Games List Style - Light Pastel Gradients */
+    .games-list {
         display: flex;
         flex-direction: column;
-        justify-content: space-between;
-        border: 1px solid rgba(0,0,0,0.03); /* Subtle border */
-        box-shadow: 0 20px 40px rgba(0,0,0,0.06), 0 1px 3px rgba(0,0,0,0.02);
-    }
-    
-    .game-card:hover {
-        transform: translateY(-10px) scale(1.02);
-        box-shadow: 0 30px 60px rgba(0,0,0,0.12), 0 5px 15px rgba(0,0,0,0.05);
+        gap: 1.2rem;
     }
 
-    /* Sudoku Specific Theme */
-    .game-card.sudoku {
-        background: linear-gradient(135deg, #f0f7ff 0%, #ffffff 100%);
-    }
-
-    .game-card.sudoku .card-bg {
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        z-index: 0;
-        overflow: hidden;
-    }
-    
-    .sudoku-grid-deco {
-        position: absolute;
-        top: -10%;
-        right: -10%;
-        width: 150%;
-        height: 150%;
-        display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        grid-template-rows: repeat(3, 1fr);
-        gap: 1px;
-        opacity: 0.03;
-        transform: rotate(15deg);
-        pointer-events: none;
-    }
-
-    .grid-line {
-        border: 2px solid #000;
-        width: 100%;
-        height: 100%;
-    }
-
-    /* Killer Sudoku Specific Theme */
-    .game-card.killer-sudoku {
-        background: linear-gradient(135deg, #fff3e0 0%, #ffffff 100%);
-    }
-
-    .game-card.killer-sudoku .card-bg {
-        position: absolute;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        z-index: 0;
-        overflow: hidden;
-    }
-
-    .killer-grid-deco {
-        position: absolute;
-        top: -10%;
-        right: -10%;
-        width: 150%;
-        height: 150%;
-        display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        grid-template-rows: repeat(2, 1fr);
-        gap: 3px;
-        opacity: 0.04;
-        transform: rotate(-10deg);
-        pointer-events: none;
-    }
-
-    .cage-line {
-        border: 2px dashed #000;
-        border-radius: 4px;
-        width: 100%;
-        height: 100%;
-    }
-
-    /* Content Styling */
-     .card-body, .play-btn {
+    .game-item {
         position: relative;
-        z-index: 1;
-    }
-
-    .icon-box {
-        font-size: 3rem;
-        filter: drop-shadow(0 4px 8px rgba(0,0,0,0.1));
-    }
-    
-    .icon-box.grayscale {
-        filter: grayscale(1);
-        opacity: 0.3;
-    }
-
-    .card-badges {
-        display: flex;
-        flex-direction: column;
-        gap: 0.5rem;
-    }
-
-    .badge {
-        font-size: 0.7rem;
-        padding: 6px 12px;
-        border-radius: 100px;
-        font-weight: 800;
-        letter-spacing: 0.5px;
-        text-transform: uppercase;
-        width: fit-content;
-    }
-    
-    .badge.hot {
-        background: #ff3b30;
-        color: white;
-        box-shadow: 0 4px 10px rgba(255, 59, 48, 0.3);
-    }
-    
-    .badge.brain {
-        background: #5856d6;
-        color: white;
-        box-shadow: 0 4px 10px rgba(88, 86, 214, 0.3);
-    }
-
-    .card-body h3 {
-        font-family: 'Outfit', sans-serif;
-        font-size: 2rem;
-        font-weight: 800;
-        margin: 0 0 0.5rem 0;
-        color: #1d1d1f;
-        letter-spacing: -1px;
-    }
-
-    .desc {
-        font-size: 1rem;
-        color: #6e6e73;
-        margin-bottom: 1.5rem;
-        line-height: 1.4;
-    }
-    .dot {
-        width: 8px;
-        height: 8px;
-        border-radius: 50%;
-        background: #4fc3f7;
-    }
-
-    .play-btn {
-        margin-top: auto;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        background: #1d1d1f;
-        color: white;
-        padding: 1rem 1.5rem;
+        display: block;
+        padding: 1.8rem 2.2rem; /* Even more padding */
         border-radius: 20px;
-        font-weight: 700;
-        font-size: 1rem;
-        transition: all 0.3s;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        text-decoration: none;
+        box-shadow: 0 8px 20px rgba(0,0,0,0.05), 0 2px 4px rgba(0,0,0,0.02); /* Soft layered shadow */
+        transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.25s;
+        overflow: hidden;
+        color: #111; /* Dark Text */
+        min-height: 70px; /* Minimal height */
+        /* border: none; - implicit */
     }
 
-    .play-btn svg {
-        transition: transform 0.3s;
+    .item-bg {
+        position: absolute;
+        top: 0; left: 0; width: 100%; height: 100%;
+        z-index: 1;
+        transition: transform 0.5s;
     }
 
-    .game-card:hover .play-btn {
-        background: #000;
+    .game-item:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 15px 30px rgba(0,0,0,0.08), 0 5px 10px rgba(0,0,0,0.03); 
+    }
+    
+    .game-item:hover .item-bg {
         transform: scale(1.02);
     }
 
-    .game-card:hover .play-btn svg {
-        transform: translateX(4px);
+    .game-content {
+        position: relative;
+        z-index: 2; /* Above bg */
+        display: flex;
+        align-items: center;
+        justify-content: space-between; /* Space out title and button */
+        gap: 1rem;
+        height: 100%;
     }
 
-    /* Ranking Grid Styles */
-    .ranking-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-        gap: 2rem;
+    /* No Icon styles */
+
+    .game-info {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+    }
+
+    .game-info h3 {
+        margin: 0;
+        font-size: 1.5rem; /* Large */
+        font-weight: 500; /* Medium Weight */
+        color: #111;
+        letter-spacing: -0.5px;
+    }
+
+    /* Play Button - Minimal Dark */
+    .play-arrow {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        background: #4a4a4a;
+        padding: 0.6rem 1.4rem;
+        border-radius: 100px;
+        font-size: 0.85rem;
+        font-weight: 600; /* Lighter weight */
+        color: white;
+        transition: background 0.2s, transform 0.2s;
+        border: none;
+        margin-left: auto;
+    }
+    
+    .game-item:hover .play-arrow {
+        background: black;
+        transform: scale(1.02);
+    }
+
+    /* Coming Soon */
+    .game-item.coming-soon {
+        background: #f8f9fa;
+        color: #adb5bd;
+        box-shadow: none;
+        border: 2px dashed #dee2e6;
+        pointer-events: none;
+        display: flex; 
+        align-items: center;
+    }
+    .game-item.coming-soon .item-bg { display: none; }
+    
+    .game-item.coming-soon h3 {
+        font-weight: 400;
+        color: #adb5bd;
+    }
+    .game-item.coming-soon .desc {
+        font-size: 0.85rem;
+        opacity: 0.7;
+    }
+    .game-item.coming-soon .play-arrow {
+        display: none;
+    }
+
+    /* Ranking Section - Consistent */
+    .ranking-list {
+        display: flex;
+        flex-direction: column;
+        gap: 1.5rem;
     }
 
     .ranking-card {
         background: white;
-        border-radius: 24px;
+        border-radius: 20px;
         padding: 1.5rem;
-        box-shadow: 0 10px 30px rgba(0,0,0,0.05);
-        border: 1px solid rgba(0,0,0,0.05);
-        display: flex;
-        flex-direction: column;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.05);
+        border: 1px solid #f8f9fa;
     }
-
+    
+    /* ... Ranking card inner styles same as before ... */
     .ranking-header {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        margin-bottom: 1.5rem;
-        padding-bottom: 1rem;
-        border-bottom: 1px solid #eee;
+        margin-bottom: 1rem;
+        padding-bottom: 0.8rem;
+        border-bottom: 1px solid #f1f3f5;
     }
+    .game-name { font-weight: 700; font-size: 1.1rem; color: #333; }
+    .more-link { font-size: 0.85rem; color: #339af0; text-decoration: none; font-weight: 600; }
     
-    .ranking-header .game-name {
-        font-family: 'Outfit', sans-serif;
-        font-size: 1.2rem;
-        font-weight: 700;
-        color: #333;
-    }
-
-    .more-link {
-        color: #1a1a1a;
-        text-decoration: none;
-        font-size: 0.9rem;
-        font-weight: 600;
-        padding: 0.4rem 0.8rem;
-        background: #f5f5f7;
-        border-radius: 8px;
-        transition: all 0.2s;
-    }
-    .more-link:hover {
-        background: #e5e5e7;
-    }
-
-    .hof-list {
-        display: flex;
-        flex-direction: column;
-        gap: 0.6rem;
-    }
-    .hof-row {
-        display: flex;
-        align-items: center;
-        gap: 0.8rem;
-        padding: 0.5rem 0;
-    }
-    .hof-rank {
-        font-size: 0.8rem;
-        font-weight: 800;
-        width: 26px;
-        height: 26px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        border-radius: 50%;
-        background: #f0f0f0;
-        color: #999;
-        flex-shrink: 0;
-        font-variant-numeric: tabular-nums;
-    }
-    .hof-rank-1 { background: #333; color: #fff; }
-    .hof-rank-2 { background: #777; color: #fff; }
-    .hof-rank-3 { background: #aaa; color: #fff; }
-    .hof-info {
-        flex: 1;
-        min-width: 0;
-    }
-    .hof-name {
-        font-size: 0.95rem;
-        font-weight: 700;
-        color: #333;
-        display: block;
-    }
-    .hof-detail {
-        display: flex;
-        align-items: center;
-        gap: 0.3rem;
-        font-size: 0.75rem;
-        color: #aaa;
-        margin-top: 0.1rem;
-    }
-    .hof-detail svg {
-        opacity: 0.5;
-    }
-    .hof-diff {
-        font-weight: 600;
-        margin-right: 0.2rem;
-    }
-    .hof-score {
-        display: flex;
-        align-items: center;
-        gap: 0.3rem;
-        font-size: 0.85rem;
-        font-weight: 600;
-        color: #888;
-    }
-    .hof-score svg {
-        opacity: 0.5;
-    }
-    .hof-empty {
-        text-align: center;
-        padding: 1.5rem;
-        color: #999;
-        font-size: 0.9rem;
-    }
-
+    .hof-list { display: flex; flex-direction: column; gap: 0.8rem; }
+    .hof-row { display: flex; align-items: center; padding: 0.5rem 0; }
+    .hof-rank { width: 28px; height: 28px; border-radius: 50%; background: #f1f3f5; color: #868e96; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 0.9rem; margin-right: 0.8rem; flex-shrink: 0; }
+    .hof-rank-1 { background: #ffd43b; color: #fff; }
+    .hof-rank-2 { background: #ced4da; color: #fff; }
+    .hof-rank-3 { background: #e7f5ff; color: #74c0fc; }
+    .hof-info { flex: 1; display: flex; flex-direction: column; gap: 0; }
+    .hof-name { font-weight: 500; font-size: 0.95rem; color: #333; }
+    .hof-detail { font-size: 0.8rem; color: #999; display: flex; align-items: center; gap: 4px; }
+    .hof-score { font-weight: 600; color: #333; font-size: 1rem; display: flex; align-items: center; gap: 4px; }
+    .hof-empty { text-align: center; color: #adb5bd; padding: 2rem 0; font-size: 0.9rem; }
 </style>
