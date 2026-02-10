@@ -1224,9 +1224,9 @@
     }
     
     .start-header {
-        display: flex;
+        display: grid;
+        grid-template-columns: 1fr auto 1fr;
         align-items: center;
-        justify-content: space-between;
         width: 100%;
         padding: 0 1rem;
     }
@@ -1236,6 +1236,17 @@
         font-weight: 200;
         color: #333;
         margin: 0;
+        text-align: center;
+    }
+
+    .header-link.left {
+        justify-self: start;
+    }
+
+    .header-links {
+        justify-self: end;
+        display: flex;
+        gap: 0.5rem;
     }
     
     .header-link {
