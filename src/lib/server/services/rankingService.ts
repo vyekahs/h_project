@@ -88,12 +88,12 @@ export const RankingService = {
             }
         }
         
-        // Check for new titles (Safely)
-        try {
-             await import('./titleService').then(({ TitleService }) => TitleService.checkAndAssignTitles(userId));
-        } catch (e) {
-            console.error('[RankingService] Title check failed:', e);
-        }
+        // Check for new titles (Fire-and-forget)
+        import('./titleService').then(({ TitleService }) => {
+            TitleService.checkAndAssignTitles(userId).catch(e => {
+                console.error('[RankingService] Title check failed:', e);
+            });
+        });
         
         return {
             earnedPoints: skipReward ? 0 : finalPoints, 
