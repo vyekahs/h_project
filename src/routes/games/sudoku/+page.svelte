@@ -449,6 +449,10 @@
     }
     
     function addToHistory() {
+        // Limit history to 50 states to prevent memory issues in long sessions
+        if (history.length >= 50) {
+            history.shift();
+        }
         // Deep copy board logic to history
         // Optimize: limit history size if needed, but 81 cells is small enough
         history.push(JSON.stringify(board));

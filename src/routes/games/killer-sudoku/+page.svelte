@@ -323,6 +323,9 @@
     }
 
     function addToHistory() {
+        if (history.length >= 50) {
+            history.shift();
+        }
         history.push(JSON.stringify(board));
     }
 
