@@ -106,9 +106,22 @@ CREATE TABLE IF NOT EXISTS visits (
     departure_time TIMESTAMP WITH TIME ZONE
 );
 
+
 -- QR Tokens table (For secure check-in)
 CREATE TABLE IF NOT EXISTS qr_tokens (
     token VARCHAR(64) PRIMARY KEY,
     expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Feedback table (User suggestions)
+CREATE TABLE IF NOT EXISTS feedback (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER REFERENCES attendees(id) ON DELETE SET NULL,
+    message TEXT NOT NULL,
+    status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'sent', 'failed')),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    sent_at TIMESTAMP WITH TIME ZONE
+);
+CREATE INDEX IF NOT EXISTS idx_feedback_user ON feedback(user_id);
+CREATE INDEX IF NOT EXISTS idx_feedback_status ON feedback(status);

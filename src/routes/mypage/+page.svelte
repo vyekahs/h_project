@@ -1,14 +1,11 @@
 <script lang="ts">
     import { invalidateAll } from '$app/navigation';
     import { onMount } from 'svelte';
+    import { fade } from 'svelte/transition';
     import type { PageData } from './$types';
     export let data: PageData;
 
-    onMount(() => {
-        if(data.user) {
-            loadTitles();
-        }
-    });
+
 
     let selectedYear: string = 'all';
     let selectedMonth: string = 'all';
@@ -174,6 +171,48 @@
     // Tab State
     type Tab = 'dashboard' | 'titles' | 'history';
     let activeTab: Tab = 'dashboard';
+    // Feedback Logic
+
+    let showFeedbackModal = false;
+    let showSuccessModal = false;
+    let feedbackMessage = '';
+
+    onMount(() => {
+        if(data.user) {
+            loadTitles();
+        }
+    });
+
+    async function submitFeedback() {
+        const message = feedbackMessage.trim();
+        if (!message) return;
+        
+        // UI Immediate Response
+        feedbackMessage = '';
+        showFeedbackModal = false;
+        showSuccessModal = true;
+        
+        // Auto-close success modal after 2 seconds (optional, but good UX)
+        setTimeout(() => {
+            showSuccessModal = false;
+        }, 2000);
+
+        // Background Send (Server handles storage)
+        sendFeedback(message);
+    }
+
+    async function sendFeedback(message: string) {
+        try {
+            await fetch('/api/feedback', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ message })
+            });
+        } catch (e) {
+            console.error('Feedback send failed (server should have logged it):', e);
+        }
+    }
+
 </script>
 
 <svelte:window on:click={() => closeDropdowns()} />
@@ -183,6 +222,11 @@
         <h1>마이페이지</h1>
         {#if data.user}
             <div class="user-simple">
+                <button class="btn-feedback" on:click={() => showFeedbackModal = true}>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                    건의하기
+                </button>
+                <span class="divider">|</span>
                 <span class="user-name">
                     {#if data.user.title}
                         <span class="user-title">[{data.user.title.title_name}]</span>
@@ -520,6 +564,47 @@
                 </li>
             </ol>
             <button class="modal-close-btn" on:click={() => showGuideModal = false}>닫기</button>
+        </div>
+    </div>
+{/if}
+
+{#if showFeedbackModal}
+    <div class="modal-backdrop" on:click|self={() => showFeedbackModal = false}>
+        <div class="modal-content">
+            <h3>건의사항 보내기</h3>
+            <p class="modal-desc">
+                더 좋은 서비스를 위해 여러분의 의견을 들려주세요.<br>
+                버그 제보나 기능 요청도 환영합니다!
+            </p>
+            <textarea 
+                bind:value={feedbackMessage} 
+                placeholder="내용을 입력해주세요..." 
+                rows="5"
+                class="feedback-input"
+            ></textarea>
+            <div class="modal-actions">
+                <button class="btn-cancel" on:click={() => showFeedbackModal = false}>취소</button>
+                <button 
+                    class="btn-submit" 
+                    on:click={submitFeedback} 
+                    disabled={!feedbackMessage.trim()}
+                >
+                    보내기
+                </button>
+            </div>
+        </div>
+    </div>
+{/if}
+
+{#if showSuccessModal}
+    <div class="modal-backdrop" on:click|self={() => showSuccessModal = false} transition:fade>
+        <div class="modal-content success-modal">
+            <div class="success-icon">
+                <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+            </div>
+            <h3>전송 완료!</h3>
+            <p>소중한 의견 감사합니다.</p>
+            <button class="modal-close-btn" on:click={() => showSuccessModal = false}>확인</button>
         </div>
     </div>
 {/if}
@@ -1274,5 +1359,103 @@
         font-size: 0.9rem;
         background: white;
         border-radius: 12px;
+    }
+
+    /* Feedback Styles */
+    .btn-feedback {
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        background: #e7f5ff;
+        color: #339af0;
+        border: none;
+        padding: 0.4rem 0.8rem;
+        border-radius: 20px;
+        font-size: 0.85rem;
+        font-weight: 600;
+        cursor: pointer;
+        margin-right: 0.5rem;
+        transition: all 0.2s;
+    }
+    .btn-feedback:hover {
+        background: #d0ebff;
+        color: #1c7ed6;
+    }
+    .divider {
+        color: #eee;
+        margin: 0 0.8rem;
+        font-size: 0.8rem;
+    }
+    
+    .modal-desc {
+        font-size: 0.9rem;
+        color: #666;
+        margin-bottom: 1rem;
+        text-align: center;
+        line-height: 1.5;
+    }
+    .feedback-input {
+        width: 100%;
+        padding: 0.8rem;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        font-size: 0.95rem;
+        resize: vertical;
+        box-sizing: border-box;
+        margin-bottom: 1rem;
+        font-family: inherit;
+    }
+    .feedback-input:focus {
+        outline: none;
+        border-color: #339af0;
+        box-shadow: 0 0 0 3px rgba(51, 154, 240, 0.1);
+    }
+    .modal-actions {
+        display: flex;
+        gap: 0.8rem;
+    }
+    .modal-actions button {
+        flex: 1;
+        padding: 0.8rem;
+        border-radius: 8px;
+        border: none;
+        font-weight: bold;
+        cursor: pointer;
+        font-size: 0.95rem;
+    }
+    .btn-cancel {
+        background: #f1f3f5;
+        color: #495057;
+    }
+    .btn-cancel:hover {
+        background: #e9ecef;
+    }
+    .btn-submit {
+        background: #339af0;
+        color: white;
+    }
+    .btn-submit:hover {
+        background: #228be6;
+    }
+    .btn-submit:disabled {
+        background: #adb5bd;
+        cursor: not-allowed;
+    }
+
+    /* Success Modal */
+    .success-modal {
+        text-align: center;
+        max-width: 300px;
+    }
+    .success-icon {
+        color: #2b8a3e;
+        margin-bottom: 1rem;
+    }
+    .success-modal h3 {
+        margin-bottom: 0.5rem;
+    }
+    .success-modal p {
+        color: #666;
+        margin-bottom: 1.5rem;
     }
 </style>
