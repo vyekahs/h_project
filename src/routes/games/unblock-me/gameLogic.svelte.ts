@@ -211,8 +211,23 @@ export function createUnblockMeGame() {
 
     function restartGame() {
         stopTimer();
-        localStorage.removeItem('unblockme_save');
-        startGame();
+
+        // Reset to same level
+        if (currentLevel) {
+            blocks = parseLevel(currentLevel);
+        }
+        moveCount = 0;
+        isWon = false;
+        timerValue = 0;
+        displayTimer = 0;
+        history = [];
+        earnedPointsResult = 0;
+        calculatedScore = 0;
+
+        gameState = 'playing';
+        hasSavedGame = true;
+        startTimer();
+        saveGame();
     }
 
     function returnToMenu() {

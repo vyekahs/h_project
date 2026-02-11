@@ -299,8 +299,36 @@ export function createSudokuGame() {
 
     function restartGame() {
         clearInterval(timerInterval);
-        localStorage.removeItem('sudoku_save');
-        startGame(true, true);
+
+        // Reset board to initial state (same puzzle)
+        for (let r = 0; r < 9; r++) {
+            for (let c = 0; c < 9; c++) {
+                if (!board[r][c].isFixed) {
+                    board[r][c].value = null;
+                    board[r][c].notes = [];
+                    board[r][c].isError = false;
+                }
+            }
+        }
+
+        mistakes = 0;
+        isWon = false;
+        selectedCell = null;
+        timerValue = 0;
+        displayTimer = 0;
+        history = [];
+        isTimeFrozen = false;
+
+        gameState = 'playing';
+
+        const data = {
+            board, solution, cages,
+            timer: 0, mistakes, difficulty, history, gameMode
+        };
+        localStorage.setItem('sudoku_save', JSON.stringify(data));
+        hasSavedGame = true;
+
+        startTimer();
     }
 
     function handleCellSelect(cell: Cell) {
