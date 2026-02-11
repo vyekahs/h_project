@@ -31,26 +31,26 @@
     let isAutostart = false;
 
     onMount(() => {
-        user.refresh();
-
         if (browser) {
             const params = new URLSearchParams(window.location.search);
             if (params.get('autostart') === 'true') {
                 isAutostart = true;
                 const diff = params.get('difficulty');
                 if (diff) game.difficulty = diff as any;
-                game.startGame(true, true);
+                user.refresh().then(() => game.startGame());
                 return () => { game.clearTimerInterval(); };
             }
             if (params.get('resume') === 'true') {
                 const saved = localStorage.getItem('killer_sudoku_save');
                 if (saved) {
+                    user.refresh();
                     game.loadSavedGame();
                     return () => { game.clearTimerInterval(); };
                 }
             }
         }
 
+        user.refresh();
         game.checkSavedGameExists();
 
         return () => {
