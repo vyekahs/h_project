@@ -7,7 +7,6 @@ export interface GameConfig {
 	difficultyLabels: Record<string, string>;
 	localStorageSaveKey: string;
 	hasTutorials: boolean;
-	hasHallOfFame: boolean;
 	tutorialPrefix?: string; // e.g. 'sudoku_' or 'killer_'
 	tutorialLocalStorageKey?: string;
 }
@@ -28,7 +27,6 @@ export const GAME_REGISTRY: Record<string, GameConfig> = {
 		},
 		localStorageSaveKey: 'sudoku_save',
 		hasTutorials: true,
-		hasHallOfFame: true,
 		tutorialPrefix: 'sudoku_',
 		tutorialLocalStorageKey: 'sudoku_unlocked_tutorials'
 	},
@@ -47,7 +45,6 @@ export const GAME_REGISTRY: Record<string, GameConfig> = {
 		},
 		localStorageSaveKey: 'killer_sudoku_save',
 		hasTutorials: true,
-		hasHallOfFame: true,
 		tutorialPrefix: 'killer_',
 		tutorialLocalStorageKey: 'killer_sudoku_unlocked_tutorials'
 	},
@@ -65,7 +62,6 @@ export const GAME_REGISTRY: Record<string, GameConfig> = {
 			master: '마스터'
 		},
 		localStorageSaveKey: 'unblockme_save',
-		hasTutorials: false,
-		hasHallOfFame: true
+		hasTutorials: false
 	}
 };

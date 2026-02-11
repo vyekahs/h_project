@@ -150,28 +150,6 @@ export const RankingService = {
     },
 
     /**
-     * Get Top scorers across all difficulties (for arcade preview)
-     */
-    async getTopScorers(gameId: string, limit = 3) {
-        const sql = `
-            SELECT
-                r.difficulty,
-                r.user_id,
-                a.name as nickname,
-                r.score,
-                r.clear_time,
-                r.mistakes,
-                r.achieved_at
-            FROM minigame_rankings r
-            LEFT JOIN attendees a ON r.user_id = a.id
-            WHERE r.game_id = $1
-            ORDER BY r.score DESC, r.clear_time ASC
-            LIMIT $2
-        `;
-        return (await query(sql, [gameId, limit])).rows;
-    },
-
-    /**
      * Get recent game activity for the live feed ticker
      */
     async getRecentActivity(limit = 20) {

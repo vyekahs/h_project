@@ -222,7 +222,7 @@
                                 </div>
 
                                 <div class="start-actions">
-                                    <button class="btn-primary huge" onclick={startGame}>Game Start</button>
+                                    <button class="btn-primary huge" onclick={startGame}>게임 시작</button>
                                     {#if hasSavedGame}
                                         <button class="btn-text" onclick={() => startMode = 'initial'}>취소</button>
                                     {/if}
