@@ -1,39 +1,49 @@
 <script lang="ts">
-    import { createEventDispatcher } from 'svelte';
-    
+    import { onDestroy } from 'svelte';
+
     let { onReward } = $props<{ onReward: () => void }>();
-    
+
     let isWatching = $state(false);
     let error: string | null = $state(null);
     let timeLeft = $state(30);
+    let intervalId: ReturnType<typeof setInterval> | null = null;
+
+    function clearTimer() {
+        if (intervalId !== null) {
+            clearInterval(intervalId);
+            intervalId = null;
+        }
+    }
 
     function watchAd() {
         isWatching = true;
-        timeLeft = 5; // Use 5s for demo/testing instead of 30s
-        
-        const interval = setInterval(() => {
+        timeLeft = 5;
+        clearTimer();
+
+        intervalId = setInterval(() => {
             if (timeLeft > 0) {
                 timeLeft--;
             } else {
-                clearInterval(interval);
+                clearTimer();
                 completeAd();
             }
         }, 1000);
     }
-    
+
     async function completeAd() {
-        // Here we would verify server-side for real ads
-        // For mock, just call the callback
         isWatching = false;
         onReward();
     }
-    
+
     function closeAd() {
         if (timeLeft > 0) {
             if (!confirm('광고 시청을 중단하시겠습니까? 보상을 받을 수 없습니다.')) return;
         }
+        clearTimer();
         isWatching = false;
     }
+
+    onDestroy(clearTimer);
 </script>
 
 <button class="btn-ad-trigger" onclick={watchAd}>

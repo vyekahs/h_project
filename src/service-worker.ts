@@ -47,18 +47,36 @@ self.addEventListener('fetch', (event) => {
 			if (response) return response;
 		}
 
-		// for everything else, try the network first, but
-		// fall back to the cache if we're offline
-		try {
-			const response = await fetch(event.request);
-			return response;
-		} catch {
-			const cached = await cache.match(event.request);
-			if (cached) return cached;
-
-			// Fallback response to avoid 'Failed to convert value to Response'
-			return new Response('Offline', { status: 408 });
+		// Main page (/) → network-first (실시간 데이터 중요)
+		if (url.pathname === '/') {
+			try {
+				const response = await fetch(event.request);
+				if (response.status === 200) {
+					cache.put(event.request, response.clone());
+				}
+				return response;
+			} catch {
+				const cached = await cache.match(event.request);
+				if (cached) return cached;
+				return new Response('Offline', { status: 408 });
+			}
 		}
+
+		// Other pages → stale-while-revalidate (빠른 페이지 전환)
+		const cached = await cache.match(event.request);
+		const fetchPromise = fetch(event.request).then(response => {
+			if (response.status === 200) {
+				cache.put(event.request, response.clone());
+			}
+			return response;
+		}).catch(() => null);
+
+		if (cached) return cached;
+
+		const networkResponse = await fetchPromise;
+		if (networkResponse) return networkResponse;
+
+		return new Response('Offline', { status: 408 });
 	}
 
 	event.respondWith(respond());

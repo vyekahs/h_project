@@ -1,5 +1,6 @@
 <script lang="ts">
     import type { Block } from '$lib/games/unblock-me/levels';
+    import { onDestroy } from 'svelte';
 
     let { blocks = $bindable([]), isGameOver, onbeforemove, onmove, onwin, exitRow = 2 } = $props<{
         blocks: Block[],
@@ -129,6 +130,16 @@
         window.removeEventListener('mouseup', handleEnd);
         window.removeEventListener('touchend', handleEnd);
     }
+
+    function cleanupListeners() {
+        window.removeEventListener('mousemove', handleMoveEvent);
+        window.removeEventListener('touchmove', handleMoveEvent);
+        window.removeEventListener('mouseup', handleEnd);
+        window.removeEventListener('touchend', handleEnd);
+        draggingBlockId = null;
+    }
+
+    onDestroy(cleanupListeners);
 
     function getBlockStyle(block: Block) {
         const x = block.x * 100 / 6;
