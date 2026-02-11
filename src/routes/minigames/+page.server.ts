@@ -12,7 +12,7 @@ export const load: PageServerLoad = async ({ locals }) => {
     const userId = locals.user.id;
 
     const [activityFeed, ...rankResults] = await Promise.all([
-        RankingService.getRecentActivity(20),
+        RankingService.getRecentActivity(1),
         ...GAME_IDS.map(gameId => RankingService.getUserRank(userId, gameId))
     ]);
 

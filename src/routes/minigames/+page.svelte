@@ -9,27 +9,21 @@
             name: '스도쿠',
             tagline: '논리 퍼즐의 정석',
             url: '/games/start/sudoku',
-            description: '빈칸을 채워 완성하는 숫자 퍼즐',
-            accentColor: '#60a5fa', // Blue-400
-            icon: 'grid'
+            accentColor: '#60a5fa'
         },
         {
             id: 'killer-sudoku',
             name: '킬러 스도쿠',
             tagline: '스도쿠에 연산 한 스푼',
             url: '/games/start/killer-sudoku',
-            description: '합계 규칙이 추가된 심화 퍼즐',
-            accentColor: '#facc15', // Yellow-400
-            icon: 'calculator'
+            accentColor: '#facc15'
         },
         {
             id: 'unblock-me',
             name: '언블록미',
             tagline: '슬라이딩 블록 퍼즐',
             url: '/games/start/unblock-me',
-            description: '붉은 블록을 탈출시키는 두뇌 게임',
-            accentColor: '#f87171', // Red-400
-            icon: 'arrow'
+            accentColor: '#f87171'
         }
     ];
 </script>
@@ -38,9 +32,8 @@
 
 <div class="arcade-container">
     <header class="arcade-header">
-        <div class="header-content">
+        <div class="glass-title-badge">
             <h1>Game Lounge</h1>
-            <p class="subtitle">잠시 쉬어가세요</p>
         </div>
     </header>
 
@@ -58,9 +51,17 @@
                             {#if game.id === 'sudoku'}
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 9h18" /><path d="M3 15h18" /><path d="M9 3v18" /><path d="M15 3v18" /></svg>
                             {:else if game.id === 'killer-sudoku'}
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M7 7h.01" /><path d="M17 17h.01" /><path d="M7 17h.01" /><path d="M17 7h.01" /><path d="M12 12h.01" /></svg>
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <rect x="4" y="4" width="16" height="16" rx="2" stroke-dasharray="3 3"/>
+                                    <path d="M12 4v16M4 12h16" stroke-width="1" stroke-opacity="0.3" stroke-dasharray="2 2"/>
+                                    <text x="5.5" y="9" font-size="4.5" font-weight="bold" fill="currentColor" stroke="none">20</text>
+                                </svg>
                             {:else if game.id === 'unblock-me'}
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M8 8h8" /><path d="M8 12h5" /><path d="M8 16h8" /><path d="M17 12l2 0" /><path d="M17 10l2 2l-2 2" /></svg>
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <rect x="2" y="2" width="20" height="20" rx="2" stroke-opacity="0.1"/>
+                                    <rect x="5" y="9" width="10" height="6" rx="1.5" fill="currentColor" stroke="none"/>
+                                    <path d="M16 12h5m-2-2l2 2l-2 2" stroke-width="2.5"/>
+                                </svg>
                             {/if}
                         </div>
                         {#if rank}
@@ -86,7 +87,6 @@
                     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
                 </div>
                 <h3>Coming Soon</h3>
-                <p class="tagline">새로운 게임 준비 중</p>
             </div>
         </div>
     </section>
@@ -126,20 +126,45 @@
     }
 
     .arcade-header {
+        display: flex;
+        justify-content: center;
         margin-bottom: 2rem;
-        margin-top: 1rem;
-        text-align: center;
+        padding-top: 1.5rem;
+        position: relative;
+        z-index: 10;
     }
 
-    .header-content h1 {
-        font-family: 'Outfit', sans-serif; /* Fallback to sans-serif if not loaded */
-        font-size: 2.5rem;
-        font-weight: 800;
+    .glass-title-badge {
+        background: rgba(255, 255, 255, 0.2);
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        padding: 0.5rem 1.5rem;
+        border-radius: 100px;
+        text-align: center;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+    }
+
+    .glass-title-badge h1 {
+        font-family: 'Outfit', sans-serif;
+        font-size: 1.4rem;
+        font-weight: 700;
+        color: #333;
         margin: 0;
-        background: linear-gradient(135deg, #1a1a1a 0%, #4a4a4a 100%);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        letter-spacing: -1px;
+        letter-spacing: -0.02em;
+        line-height: 1.1;
+    }
+
+    .subtitle {
+        margin-top: 0.2rem;
+        font-size: 0.8rem;
+        color: #666;
+        font-weight: 500;
+        letter-spacing: -0.01em;
+        opacity: 0.8;
     }
 
     .subtitle {
@@ -219,8 +244,8 @@
     }
 
     .icon-box svg {
-        width: 24px;
-        height: 24px;
+        width: 32px;
+        height: 32px;
     }
 
     .rank-badge {
@@ -259,11 +284,9 @@
     .text-content .tagline {
         margin: 0.25rem 0 0 0;
         font-size: 0.95rem;
-        color: #666;
+        color: #642d2d;
         font-weight: 400;
     }
-
-
 
     /* Glow Effect */
     .glow-effect {
@@ -299,7 +322,6 @@
         align-items: center;
         text-align: center;
         justify-content: center;
-        padding: 1rem 0;
     }
 
     .icon-box.disabled {
