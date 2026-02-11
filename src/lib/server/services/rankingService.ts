@@ -172,6 +172,51 @@ export const RankingService = {
     },
 
     /**
+     * Get recent game activity for the live feed ticker
+     */
+    async getRecentActivity(limit = 20) {
+        const sql = `
+            SELECT
+                r.game_id,
+                r.difficulty,
+                r.user_id,
+                a.name as nickname,
+                r.score,
+                r.clear_time,
+                r.achieved_at
+            FROM minigame_rankings r
+            LEFT JOIN attendees a ON r.user_id = a.id
+            ORDER BY r.achieved_at DESC
+            LIMIT $1
+        `;
+        return (await query(sql, [limit])).rows;
+    },
+
+    /**
+     * Get a user's current monthly rank for a specific game
+     * Returns rank number if within top 100, null otherwise
+     */
+    async getUserRank(userId: number, gameId: string): Promise<number | null> {
+        const now = new Date();
+        const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+        const sql = `
+            SELECT rank FROM (
+                SELECT user_id, RANK() OVER (ORDER BY total_score DESC) as rank
+                FROM minigame_monthly_rankings
+                WHERE game_id = $1 AND month_key = $2
+            ) ranked
+            WHERE user_id = $3
+        `;
+        const result = await query(sql, [gameId, monthKey, userId]);
+        if (result.rows.length > 0) {
+            const rank = parseInt(result.rows[0].rank);
+            return rank <= 100 ? rank : null;
+        }
+        return null;
+    },
+
+    /**
      * Get Monthly Leaderboard
      * Shows current month's cumulative scores
      */
