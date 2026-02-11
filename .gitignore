@@ -24,3 +24,10 @@ vite.config.ts.timestamp-*
 
 # Database
 pgdata/
+
+
+# Svelte
+.svelte-kit
+
+# Rust
+scripts/unblock-gen/*

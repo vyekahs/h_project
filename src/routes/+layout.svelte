@@ -17,6 +17,8 @@
 
     function handleStart(clientY: number) {
         if (typeof window === 'undefined') return;
+        // Disable pull-to-refresh on game pages (they handle their own touch)
+        if ($page.url.pathname.startsWith('/games/')) return;
         if (window.scrollY === 0) {
             startY = clientY;
             isTouching = true;

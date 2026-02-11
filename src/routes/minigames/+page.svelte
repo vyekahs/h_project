@@ -6,15 +6,22 @@
             id: 'sudoku',
             name: '스도쿠',
             description: '논리적인 숫자 퍼즐',
-            url: '/games/sudoku?mode=standard',
+            url: '/games/start/sudoku',
             gradient: 'linear-gradient(135deg, #ffffff 0%, #edf6ff 100%)', // Very Subtle Blue
         },
         {
             id: 'killer-sudoku',
             name: '킬러 스도쿠',
             description: '케이지의 합을 맞춰라',
-            url: '/games/sudoku?mode=killer',
+            url: '/games/start/killer-sudoku',
             gradient: 'linear-gradient(135deg, #ffffff 0%, #fffbe6 100%)', // Very Subtle Amber
+        },
+        {
+            id: 'unblock-me',
+            name: '언블록미',
+            description: '블록을 밀어 탈출하라',
+            url: '/games/start/unblock-me',
+            gradient: 'linear-gradient(135deg, #ffffff 0%, #fce4ec 100%)', // Very Subtle Rose
         }
     ];
 
