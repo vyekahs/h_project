@@ -270,7 +270,18 @@
                                                                 {formatTime(record.clear_time)}
                                                             </span>
                                                             <span class="hof-stat">
-                                                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 4H8l-7 8 7 8h13a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z"/><line x1="18" y1="9" x2="12" y2="15"/><line x1="12" y1="9" x2="18" y2="15"/></svg>
+                                                                {#if gameConfig.id === 'unblock-me'}
+                                                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                                                        <polyline points="5 9 2 12 5 15" />
+                                                                        <polyline points="9 5 12 2 15 5" />
+                                                                        <polyline points="19 9 22 12 19 15" />
+                                                                        <polyline points="15 19 12 22 9 19" />
+                                                                        <line x1="2" y1="12" x2="22" y2="12" />
+                                                                        <line x1="12" y1="2" x2="12" y2="22" />
+                                                                    </svg>
+                                                                {:else}
+                                                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 4H8l-7 8 7 8h13a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z"/><line x1="18" y1="9" x2="12" y2="15"/><line x1="12" y1="9" x2="18" y2="15"/></svg>
+                                                                {/if}
                                                                 {record.mistakes}
                                                             </span>
                                                         </div>
