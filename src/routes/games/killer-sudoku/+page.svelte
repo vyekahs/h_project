@@ -1,80 +1,61 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
-	import type { Board, Cell } from '$lib/games/sudoku/logic';
-	import { generateKillerSudoku, getCageErrors, findCageForCell, type Cage } from '$lib/games/sudoku/killerLogic';
-	import KillerBoardComponent from './KillerBoard.svelte';
-	import Controls from '../sudoku/Controls.svelte';
+    import { onMount } from 'svelte';
+    import KillerBoardComponent from './KillerBoard.svelte';
+    import Controls from '../sudoku/Controls.svelte';
     import KillerTutorialModal from './KillerTutorialModal.svelte';
-    import { KILLER_TUTORIALS, KILLER_TUTORIAL_ORDER } from './killerTutorialData';
     import { goto } from '$app/navigation';
     import { browser } from '$app/environment';
     import RankingBoard from '$lib/components/gamification/RankingBoard.svelte';
-    import RewardedAd from '$lib/components/ads/RewardedAd.svelte';
+    import GamePauseModal from '$lib/components/games/GamePauseModal.svelte';
+    import GameResultModal from '$lib/components/games/GameResultModal.svelte';
     import { user } from '$lib/stores/user';
+    import { GAME_CONFIG } from '$lib/config';
 
-    type GameState = 'start' | 'playing' | 'paused' | 'finished';
+    import { createKillerSudokuGame, difficultyLabels, formatTime } from './gameLogic.svelte';
+    import { createKillerTutorialLogic } from './tutorialLogic.svelte';
 
-    async function handleAdReward() {
-         try {
-            await fetch('/api/points/reward', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ amount: 20, source: 'rewarded_ad' })
-            });
-            alert('보너스 포인트 20P를 획득했습니다!');
-         } catch (e) {
-             console.error('Reward failed', e);
-         }
+    const game = createKillerSudokuGame();
+
+    function openTutorial(id: string) {
+        game.activeTutorialId = id;
+        game.showTutorial = true;
     }
 
-	let gameState: GameState = $state('start');
-	let difficulty: 'easy' | 'medium' | 'hard' | 'expert' = $state('easy');
-	let board: Board = $state([]);
-	let solution: number[][];
-	let cages: Cage[] = $state([]);
-	let selectedCell: Cell | null = $state(null);
-	let isNoteMode = $state(false);
-	let mistakes = $state(0);
-	let isWon = $state(false);
-    let timerValue = 0;
-    let displayTimer = $state(0);
-    let timerInterval: any;
+    const tutorial = createKillerTutorialLogic(
+        () => $user.completedTutorials || [],
+        openTutorial
+    );
 
-    let view: 'game' | 'ranking' | 'tutorials_list' = $state('game');
-    let rankingTab: 'halloffame' | 'ranking' = $state('halloffame');
-    let hallOfFameData: any[] = $state([]);
-    let hallOfFameLoading = $state(false);
+    game.setTutorialChecker(tutorial.checkAndShowTutorial);
 
-    async function loadHallOfFame() {
-        hallOfFameLoading = true;
-        try {
-            const res = await fetch('/api/ranking/halloffame/killer-sudoku');
-            if (res.ok) {
-                hallOfFameData = await res.json();
+    let isAutostart = false;
+
+    onMount(() => {
+        user.refresh();
+
+        if (browser) {
+            const params = new URLSearchParams(window.location.search);
+            if (params.get('autostart') === 'true') {
+                isAutostart = true;
+                const diff = params.get('difficulty');
+                if (diff) game.difficulty = diff as any;
+                game.startGame();
+                return () => { game.clearTimerInterval(); };
             }
-        } catch (e) {
-            console.error('Failed to load hall of fame', e);
-        } finally {
-            hallOfFameLoading = false;
+            if (params.get('resume') === 'true') {
+                const saved = localStorage.getItem('killer_sudoku_save');
+                if (saved) {
+                    game.loadSavedGame();
+                    return () => { game.clearTimerInterval(); };
+                }
+            }
         }
-    }
 
-    let history: string[] = $state([]);
-    let earnedPointsResult = $state(0);
-    let calculatedScore = $state(0);
-    let isTimeFrozen = $state(false);
+        game.checkSavedGameExists();
 
-    let hasSavedGame = $state(false);
-    let startMode: 'initial' | 'diff_select' = $state('initial');
-
-    let showTutorial = $state(false);
-    let activeTutorialId = $state('killer_easy_1');
-    let hasUnlockedTutorials = $state(false);
-
-    let unlockedTutorialIDs = $derived.by(() => {
-        const db = ($user as any)?.completedTutorials || [];
-        const local = browser ? JSON.parse(localStorage.getItem('killer_sudoku_unlocked_tutorials') || '[]') : [];
-        return new Set([...db, ...local]);
+        return () => {
+            game.clearTimerInterval();
+        };
     });
 
     $effect(() => {
@@ -85,567 +66,94 @@
             const hasKiller = all.some(id => typeof id === 'string' && id.startsWith('killer_'));
 
             if (hasKiller) {
-                hasUnlockedTutorials = true;
+                game.hasUnlockedTutorials = true;
             }
         }
     });
-
-    onMount(() => {
-        user.refresh();
-
-        const saved = localStorage.getItem('killer_sudoku_save');
-        if (saved) {
-            try {
-                const data = JSON.parse(saved);
-                if (data.board && data.solution && data.difficulty && data.cages) {
-                    hasSavedGame = true;
-                }
-            } catch (e) {
-                console.error('Failed to load save', e);
-            }
-        }
-
-        return () => {
-            clearInterval(timerInterval);
-        };
-    });
-
-
-
-    function checkAndShowTutorial(diff: string) {
-        if (!browser) return false;
-        
-        // Use derived Set (DB + Local)
-        const unlocked = unlockedTutorialIDs;
-        let targetId: string | null = null;
-
-        if (diff === 'easy') {
-            if (!unlocked.has('killer_easy_1')) targetId = 'killer_easy_1';
-            else if (!unlocked.has('killer_easy_2')) targetId = 'killer_easy_2';
-            else if (!unlocked.has('killer_easy_3')) targetId = 'killer_easy_3';
-        } else if (diff === 'medium') {
-            if (unlocked.has('killer_easy_3')) {
-                if (!unlocked.has('killer_medium_1')) targetId = 'killer_medium_1';
-                else if (!unlocked.has('killer_medium_2')) targetId = 'killer_medium_2';
-            }
-        } else if (diff === 'hard') {
-            if (unlocked.has('killer_medium_2')) {
-                if (!unlocked.has('killer_hard_1')) targetId = 'killer_hard_1';
-                else if (!unlocked.has('killer_hard_2')) targetId = 'killer_hard_2';
-            }
-        } else if (diff === 'expert') {
-            if (unlocked.has('killer_hard_2')) {
-                if (!unlocked.has('killer_expert_1')) targetId = 'killer_expert_1';
-            }
-        }
-
-        if (targetId) {
-            openTutorial(targetId);
-            return true;
-        }
-        return false;
-    }
-
-    function openTutorial(id: string) {
-        activeTutorialId = id;
-        showTutorial = true;
-    }
-
-    function loadSavedGame() {
-        const saved = localStorage.getItem('killer_sudoku_save');
-        if (saved) {
-             try {
-                const data = JSON.parse(saved);
-
-                if (!Array.isArray(data.board) || data.board.length !== 9) {
-                    throw new Error('Invalid board data');
-                }
-
-                board = data.board;
-                solution = data.solution;
-                cages = data.cages;
-                timerValue = data.timer;
-                displayTimer = data.timer;
-                mistakes = data.mistakes;
-                difficulty = data.difficulty;
-                history = data.history || [];
-
-                gameState = 'paused';
-            } catch (e) {
-                console.error('Failed to load save', e);
-                showAlert('저장된 게임 데이터가 손상되어 이어할 수 없습니다. 새 게임을 시작합니다.');
-                localStorage.removeItem('killer_sudoku_save');
-                hasSavedGame = false;
-                startMode = 'diff_select';
-                view = 'game';
-            }
-        }
-    }
-
-    function saveGame() {
-        if (gameState !== 'playing') return;
-        const data = {
-            board, solution, cages,
-            timer: timerValue, mistakes, difficulty, history
-        };
-        localStorage.setItem('killer_sudoku_save', JSON.stringify(data));
-    }
-
-    function saveGameWithTimer(currentTimer: number) {
-        if (gameState !== 'playing') return;
-        const data = {
-            board, solution, cages,
-            timer: currentTimer, mistakes, difficulty, history
-        };
-        localStorage.setItem('killer_sudoku_save', JSON.stringify(data));
-    }
-
-    function clearSave() {
-        localStorage.removeItem('killer_sudoku_save');
-        hasSavedGame = false;
-    }
-
-    let alertMessage: string | null = $state(null);
-    let confirmMessage: string | null = $state(null);
-    let confirmCallback: (() => void) | null = null;
-
-    function showAlert(msg: string) {
-        alertMessage = msg;
-    }
-
-    function showConfirm(msg: string, callback: () => void) {
-        confirmMessage = msg;
-        confirmCallback = callback;
-    }
-
-    function handleConfirm(yes: boolean) {
-        if (yes && confirmCallback) {
-            confirmCallback();
-        }
-        confirmMessage = null;
-        confirmCallback = null;
-    }
-
-    async function useItem(code: string): Promise<boolean> {
-        try {
-            const res = await fetch('/api/shop/use', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ itemCode: code })
-            });
-            const data = await res.json();
-            return data.success;
-        } catch(e) {
-            return false;
-        }
-    }
-
-    let completedNumbers = $derived.by(() => {
-        const counts = Array(10).fill(0);
-        if (board.length === 0) return [];
-        for(let r=0; r<9; r++) {
-            for(let c=0; c<9; c++) {
-                const val = board[r][c].value;
-                if (val !== null) counts[val]++;
-            }
-        }
-        const completed: number[] = [];
-        for(let i=1; i<=9; i++) {
-            if (counts[i] >= 9) completed.push(i);
-        }
-        return completed;
-    });
-
-    let currentCageErrors = $derived.by(() => {
-        if (board.length === 0 || cages.length === 0) return new Set<string>();
-        return getCageErrors(board, cages);
-    });
-
-    let isLoading = $state(false);
-
-    async function startGame(force = false, skipTutorialCheck = false) {
-        // Tutorial check
-        if (!skipTutorialCheck && !force) {
-            const shouldShow = checkAndShowTutorial(difficulty);
-            if (shouldShow) return;
-        }
-
-        // Track tutorial completion
-        if (showTutorial && activeTutorialId) {
-            const unlocked = JSON.parse(localStorage.getItem('killer_sudoku_unlocked_tutorials') || '[]');
-            if (!unlocked.includes(activeTutorialId)) {
-                unlocked.push(activeTutorialId);
-                localStorage.setItem('killer_sudoku_unlocked_tutorials', JSON.stringify(unlocked));
-
-                fetch('/api/user/tutorials/complete', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ tutorialId: activeTutorialId })
-                }).then(async (res) => {
-                    if (res.ok) {
-                        await user.refresh();
-                    }
-                });
-            }
-        }
-        showTutorial = false;
-
-        isLoading = true;
-        await new Promise(resolve => setTimeout(resolve, 50));
-
-        try {
-            localStorage.removeItem('killer_sudoku_save');
-
-            const result = generateKillerSudoku(difficulty);
-            board = result.initialBoard;
-            solution = result.solution;
-            cages = result.cages;
-            mistakes = 0;
-            isWon = false;
-            selectedCell = null;
-            timerValue = 0;
-            displayTimer = 0;
-            history = [];
-
-            gameState = 'playing';
-
-            const data = {
-                board, solution, cages,
-                timer: 0, mistakes, difficulty, history
-            };
-            localStorage.setItem('killer_sudoku_save', JSON.stringify(data));
-            hasSavedGame = true;
-
-            startTimer();
-        } finally {
-            isLoading = false;
-        }
-    }
-
-    function addToHistory() {
-        if (history.length >= 50) {
-            history.shift();
-        }
-        history.push(JSON.stringify(board));
-    }
-
-    function startTimer() {
-        clearInterval(timerInterval);
-        timerInterval = setInterval(() => {
-            if (gameState === 'playing' && !isTimeFrozen && !alertMessage && !confirmMessage) {
-                timerValue++;
-                displayTimer = timerValue;
-                if (timerValue % 5 === 0) {
-                    saveGameWithTimer(timerValue);
-                }
-            }
-        }, 1000);
-    }
-
-    function pauseGame() {
-        gameState = 'paused';
-        clearInterval(timerInterval);
-    }
-
-    function resumeGame() {
-        gameState = 'playing';
-        startTimer();
-    }
-
-    function quitGame() {
-        clearInterval(timerInterval);
-        localStorage.removeItem('killer_sudoku_save');
-        hasSavedGame = false;
-        gameState = 'start';
-    }
-
-	function handleCellSelect(cell: Cell) {
-		if (gameState !== 'playing' || alertMessage || confirmMessage) return;
-		selectedCell = cell;
-	}
-
-    function removeNotes(r: number, c: number, num: number) {
-        for(let i=0; i<9; i++) {
-            const idx = board[r][i].notes.indexOf(num);
-            if (idx !== -1) board[r][i].notes.splice(idx, 1);
-        }
-        for(let i=0; i<9; i++) {
-            const idx = board[i][c].notes.indexOf(num);
-            if (idx !== -1) board[i][c].notes.splice(idx, 1);
-        }
-        const startRow = Math.floor(r/3)*3;
-        const startCol = Math.floor(c/3)*3;
-        for(let i=0; i<3; i++) {
-            for(let j=0; j<3; j++) {
-                const cell = board[startRow+i][startCol+j];
-                const idx = cell.notes.indexOf(num);
-                if (idx !== -1) cell.notes.splice(idx, 1);
-            }
-        }
-        // Also remove from same cage
-        const cage = findCageForCell(r, c, cages);
-        if (cage) {
-            for (const { row, col } of cage.cells) {
-                if (row === r && col === c) continue;
-                const idx = board[row][col].notes.indexOf(num);
-                if (idx !== -1) board[row][col].notes.splice(idx, 1);
-            }
-        }
-    }
-
-	function handleNumberInput(num: number) {
-		if (gameState !== 'playing' || !selectedCell || selectedCell.isFixed || alertMessage || confirmMessage) return;
-
-        addToHistory();
-
-		if (isNoteMode) {
-            const idx = selectedCell.notes.indexOf(num);
-            if (idx === -1) {
-                selectedCell.notes.push(num);
-                selectedCell.notes.sort();
-            } else {
-                selectedCell.notes.splice(idx, 1);
-            }
-			return;
-		}
-
-        if (completedNumbers.includes(num)) return;
-
-        const correctVal = solution[selectedCell.row][selectedCell.col];
-
-        selectedCell.value = num;
-        selectedCell.notes = [];
-
-        if (num === correctVal) {
-            selectedCell.isError = false;
-            removeNotes(selectedCell.row, selectedCell.col, num);
-            checkWin();
-        } else {
-            selectedCell.isError = true;
-            mistakes++;
-            if (mistakes >= 3) {
-                handleGameOver(false);
-            }
-        }
-	}
-
-    function checkWin() {
-        let filled = 0;
-        for(let r=0; r<9; r++) {
-            for(let c=0; c<9; c++) {
-                if (board[r][c].value !== null) filled++;
-            }
-        }
-        if (filled === 81 && mistakes < 3) {
-            handleGameOver(true);
-        }
-    }
-
-    function handleGameOver(won: boolean) {
-        clearInterval(timerInterval);
-        isWon = won;
-        gameState = 'finished';
-        clearSave();
-
-        if (won) {
-            submitScore();
-        }
-    }
-
-    async function handleAction(action: 'undo' | 'erase' | 'hint' | 'time_stop' | 'refresh_prob') {
-        if (gameState !== 'playing') return;
-
-        if (action === 'erase') {
-             if (selectedCell && !selectedCell.isFixed) {
-                addToHistory();
-                selectedCell.value = null;
-                selectedCell.notes = [];
-            }
-        } else if (action === 'undo') {
-                if (history.length > 0) {
-                    const previousState = history.pop();
-                    if (previousState) {
-                        const parsed = JSON.parse(previousState);
-                        const currentTimer = timerValue;
-                        board = parsed;
-                        displayTimer = currentTimer;
-                        if (selectedCell) {
-                            selectedCell = board[selectedCell.row][selectedCell.col];
-                        }
-                    }
-                }
-        } else if (action === 'hint') {
-            const ok = await useItem('hint_ticket');
-            if (ok) {
-                const emptyCells = [];
-                for(let r=0; r<9; r++) {
-                    for(let c=0; c<9; c++) {
-                        if (board[r][c].value === null) {
-                            emptyCells.push({r, c});
-                        }
-                    }
-                }
-
-                if (emptyCells.length > 0) {
-                    addToHistory();
-                    const target = emptyCells[Math.floor(Math.random() * emptyCells.length)];
-                    const correctVal = solution[target.r][target.c];
-
-                    board[target.r][target.c].value = correctVal;
-                    board[target.r][target.c].notes = [];
-                    board[target.r][target.c].isFixed = true;
-
-                    checkWin();
-                }
-            } else {
-                showAlert('힌트 티켓이 부족합니다! 🎫');
-            }
-        } else if (action === 'time_stop') {
-            if (isTimeFrozen) {
-                showAlert('이미 시간이 정지된 상태입니다! ❄️');
-                return;
-            }
-            const ok = await useItem('time_stop');
-            if (ok) {
-                isTimeFrozen = true;
-                setTimeout(() => {
-                    isTimeFrozen = false;
-                }, 30000);
-            } else {
-                showAlert('타임 스톱 아이템이 부족합니다! 😅');
-            }
-        } else if (action === 'refresh_prob') {
-            showConfirm('현재 게임을 포기하고 새로운 문제를 시작하시겠습니까? (문제 교체 아이템 소모)', async () => {
-                const ok = await useItem('refresh_prob');
-                if (ok) {
-                    startGame(true);
-                } else {
-                    showAlert('문제 교체 아이템이 부족합니다! 😅');
-                }
-            });
-        }
-    }
-
-    import { GAME_CONFIG } from '$lib/config';
-
-    async function submitScore() {
-        try {
-            const res = await fetch('/api/game/record', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    gameId: 'killer-sudoku',
-                    difficulty: difficulty,
-                    clearTime: timerValue,
-                    score: 0,
-                    mistakes: mistakes,
-                    skipReward: !GAME_CONFIG.ENABLE_REWARDS
-                })
-            });
-            const data = await res.json();
-            if (res.ok) {
-                earnedPointsResult = data.earnedPoints;
-                calculatedScore = data.score;
-            } else {
-                console.error('Score submit failed:', res.status, data);
-            }
-        } catch (e) {
-            console.error('Failed to submit score', e);
-        }
-    }
-
-    function formatTime(seconds: number) {
-        const mins = Math.floor(seconds / 60);
-        const secs = seconds % 60;
-        return `${mins}:${secs.toString().padStart(2, '0')}`;
-    }
-
-    const difficultyLabels: Record<string, string> = {
-        easy: '쉬움',
-        medium: '보통',
-        hard: '어려움',
-        expert: '전문가'
-    };
 </script>
 
 <div class="game-container">
-    {#if gameState === 'start'}
-        {#if view === 'game'}
+    {#if game.gameState === 'start'}
+        {#if game.view === 'game'}
             <div class="screen start-screen">
                 <div class="start-header">
                     <a href="/minigames" class="header-link left">← 오락실</a>
                     <h1>Killer Sudoku</h1>
                     <div class="header-links">
-                        {#if hasUnlockedTutorials}
-                            <button class="header-link" onclick={() => view = 'tutorials_list'}>공략집</button>
+                        {#if game.hasUnlockedTutorials}
+                            <button class="header-link" onclick={() => game.view = 'tutorials_list'}>공략집</button>
                         {/if}
-                        <button class="header-link" onclick={() => { view = 'ranking'; rankingTab = 'halloffame'; loadHallOfFame(); }}>랭킹 🏆</button>
+                        <button class="header-link" onclick={() => { game.view = 'ranking'; game.rankingTab = 'halloffame'; game.loadHallOfFame(); }}>랭킹 🏆</button>
                     </div>
                 </div>
 
-                {#if hasSavedGame && startMode === 'initial'}
+                {#if game.hasSavedGame && game.startMode === 'initial'}
                     <div class="difficulty-select options">
-                        <button class="btn-primary huge" onclick={loadSavedGame}>
+                        <button class="btn-primary huge" onclick={game.loadSavedGame}>
                             이어하기
                         </button>
                         <div class="divider">OR</div>
-                        <button class="btn-secondary huge" onclick={() => startMode = 'diff_select'}>
+                        <button class="btn-secondary huge" onclick={() => game.startMode = 'diff_select'}>
                             새 게임 시작
                         </button>
                     </div>
                     <div></div>
                 {/if}
 
-                {#if !hasSavedGame || startMode === 'diff_select'}
+                {#if !game.hasSavedGame || game.startMode === 'diff_select'}
                     <div class="difficulty-select">
                         <h2>난이도 선택</h2>
                         <div class="options">
-                            <label class:selected={difficulty === 'easy'}>
-                                <input type="radio" name="difficulty" value="easy" bind:group={difficulty}>
+                            <label class:selected={game.difficulty === 'easy'}>
+                                <input type="radio" name="difficulty" value="easy" bind:group={game.difficulty}>
                             쉬움
                             </label>
-                            <label class:selected={difficulty === 'medium'}>
-                                <input type="radio" name="difficulty" value="medium" bind:group={difficulty}>
+                            <label class:selected={game.difficulty === 'medium'}>
+                                <input type="radio" name="difficulty" value="medium" bind:group={game.difficulty}>
                             보통
                             </label>
-                            <label class:selected={difficulty === 'hard'}>
-                                <input type="radio" name="difficulty" value="hard" bind:group={difficulty}>
+                            <label class:selected={game.difficulty === 'hard'}>
+                                <input type="radio" name="difficulty" value="hard" bind:group={game.difficulty}>
                             어려움
                             </label>
-                            <label class:selected={difficulty === 'expert'}>
-                                <input type="radio" name="difficulty" value="expert" bind:group={difficulty}>
+                            <label class:selected={game.difficulty === 'expert'}>
+                                <input type="radio" name="difficulty" value="expert" bind:group={game.difficulty}>
                             전문가
+                            </label>
+                            <label class:selected={game.difficulty === 'master'}>
+                                <input type="radio" name="difficulty" value="master" bind:group={game.difficulty}>
+                            마스터
                             </label>
                         </div>
                     </div>
-                    <button class="btn-primary huge" onclick={() => startGame()}>게임 시작</button>
+                    <button class="btn-primary huge" onclick={() => game.startGame()}>게임 시작</button>
 
-                    {#if hasSavedGame}
-                        <button class="btn-text" onclick={() => startMode = 'initial'}>취소하고 돌아가기</button>
+                    {#if game.hasSavedGame}
+                        <button class="btn-text" onclick={() => game.startMode = 'initial'}>취소하고 돌아가기</button>
                     {/if}
                 {/if}
             </div>
 
-        {:else if view === 'ranking'}
+        {:else if game.view === 'ranking'}
             <div class="subpage">
                 <div class="start-header">
-                    <button class="header-link left" onclick={() => view = 'game'}>← 뒤로</button>
+                    <button class="header-link left" onclick={() => game.view = 'game'}>← 뒤로</button>
                     <h1>랭킹</h1>
                     <div class="header-links"></div>
                 </div>
                 <div class="ranking-tabs">
-                    <button class="tab" class:active={rankingTab === 'halloffame'} onclick={() => { rankingTab = 'halloffame'; loadHallOfFame(); }}>명예의 전당</button>
-                    <button class="tab" class:active={rankingTab === 'ranking'} onclick={() => rankingTab = 'ranking'}>킬러 스도쿠 랭킹</button>
+                    <button class="tab" class:active={game.rankingTab === 'halloffame'} onclick={() => { game.rankingTab = 'halloffame'; game.loadHallOfFame(); }}>명예의 전당</button>
+                    <button class="tab" class:active={game.rankingTab === 'ranking'} onclick={() => game.rankingTab = 'ranking'}>킬러 스도쿠 랭킹</button>
                 </div>
                 <div class="subpage-body">
-                    {#if rankingTab === 'halloffame'}
+                    {#if game.rankingTab === 'halloffame'}
                         <div class="hall-of-fame">
-                            {#if hallOfFameLoading}
+                            {#if game.hallOfFameLoading}
                                 <div class="hof-loading">불러오는 중...</div>
-                            {:else if hallOfFameData.length === 0}
+                            {:else if game.hallOfFameData.length === 0}
                                 <div class="hof-empty">아직 기록이 없습니다.</div>
                             {:else}
-                                {#each hallOfFameData as record, i}
+                                {#each game.hallOfFameData as record, i}
                                     {@const diffLabel = difficultyLabels[record.difficulty as keyof typeof difficultyLabels] || record.difficulty}
                                     <div class="hof-card" class:hof-top3={i < 3}>
                                         <div class="hof-rank" class:hof-rank-1={i === 0} class:hof-rank-2={i === 1} class:hof-rank-3={i === 2}>
@@ -681,19 +189,19 @@
                 </div>
             </div>
 
-        {:else if view === 'tutorials_list'}
+        {:else if game.view === 'tutorials_list'}
             <div class="subpage">
                 <div class="start-header">
-                    <button class="header-link left" onclick={() => view = 'game'}>← 뒤로</button>
+                    <button class="header-link left" onclick={() => game.view = 'game'}>← 뒤로</button>
                     <h1>공략집</h1>
                     <div class="header-links"></div>
                 </div>
                 <div class="subpage-body">
                     <div class="tutorial-list-container">
                         <div class="tutorial-list">
-                            {#each KILLER_TUTORIAL_ORDER as tid}
-                                {@const t = KILLER_TUTORIALS[tid]}
-                                {#if unlockedTutorialIDs.has(tid)}
+                            {#each tutorial.tutorialOrder as tid}
+                                {@const t = tutorial.tutorials[tid]}
+                                {#if tutorial.unlockedTutorialIDs.has(tid)}
                                     <button class="tutorial-list-item" onclick={() => openTutorial(tid)}>
                                         <div class="t-info">
                                             <span class="t-badge {t.difficulty}">{t.difficulty.toUpperCase()}</span>
@@ -710,31 +218,31 @@
         {/if}
 
     {:else}
-        <div class="game-play-area" class:blurred={alertMessage || confirmMessage || gameState === 'paused'}>
+        <div class="game-play-area" class:blurred={game.alertMessage || game.confirmMessage || game.gameState === 'paused'}>
             <header>
                 <div class="header-info">
-                    <span class="difficulty-badge">{difficultyLabels[difficulty]}</span>
-                    <span class="mistakes">{mistakes}/3 실수</span>
+                    <span class="difficulty-badge">{difficultyLabels[game.difficulty]}</span>
+                    <span class="mistakes">{game.mistakes}/3 실수</span>
                 </div>
 
                 <div class="timer-controls">
                     <div class="header-items">
                         {#if $user.inventory.some((i: any) => i.item_code === 'time_stop')}
-                            <button class="icon-btn theme-btn" onclick={() => handleAction('time_stop')} title="타임 스톱 (시간 정지)">
+                            <button class="icon-btn theme-btn" onclick={() => game.handleAction('time_stop')} title="타임 스톱 (시간 정지)">
                                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="2" x2="22" y1="12" y2="12"/><line x1="12" x2="12" y1="2" y2="22"/><path d="m20 16-4-4 4-4"/><path d="m4 8 4 4-4 4"/><path d="m16 4-4 4-4-4"/><path d="m8 20 4-4 4 4"/></svg>
                             </button>
                         {/if}
                         {#if $user.inventory.some((i: any) => i.item_code === 'refresh_prob')}
-                            <button class="icon-btn theme-btn" onclick={() => handleAction('refresh_prob')} title="문제 교체">
+                            <button class="icon-btn theme-btn" onclick={() => game.handleAction('refresh_prob')} title="문제 교체">
                                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5"/></svg>
                             </button>
                         {/if}
                     </div>
 
-                    <div class="timer" class:frozen={isTimeFrozen}>
-                        {#if isTimeFrozen}❄️ {/if}{formatTime(displayTimer)}
+                    <div class="timer" class:frozen={game.isTimeFrozen}>
+                        {#if game.isTimeFrozen}❄️ {/if}{formatTime(game.displayTimer)}
                     </div>
-                    <button class="icon-btn" onclick={pauseGame} aria-label="Pause">
+                    <button class="icon-btn" onclick={game.pauseGame} aria-label="Pause">
                         <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><rect x="9" y="9" width="2" height="6"/><rect x="13" y="9" width="2" height="6"/></svg>
                     </button>
                 </div>
@@ -742,95 +250,93 @@
 
             <div class="game-area">
                  <KillerBoardComponent
-                     {board}
-                     {selectedCell}
-                     {cages}
-                     cageErrors={currentCageErrors}
-                     isGameOver={gameState === 'finished'}
-                     onselect={handleCellSelect}
+                     board={game.board}
+                     selectedCell={game.selectedCell}
+                     cages={game.cages}
+                     cageErrors={game.currentCageErrors}
+                     isGameOver={game.gameState === 'finished'}
+                     onselect={game.handleCellSelect}
                  />
             </div>
 
-            <div class="controls-area" class:hidden={gameState !== 'playing'}>
+            <div class="controls-area" class:hidden={game.gameState !== 'playing'}>
                 <Controls
-                    bind:isNoteMode
-                    completedNumbers={completedNumbers}
-                    onnumber={handleNumberInput}
-                    onaction={handleAction}
+                    bind:isNoteMode={game.isNoteMode}
+                    completedNumbers={game.completedNumbers}
+                    onnumber={game.handleNumberInput}
+                    onaction={game.handleAction}
                     onnewgame={() => {}}
                 />
             </div>
         </div>
     {/if}
 
-    {#if gameState === 'paused'}
-        <div class="overlay">
-            <div class="modal">
-                <h2>일시정지</h2>
-                <button class="btn-primary" onclick={resumeGame}>계속하기</button>
-                <button class="btn-danger" onclick={quitGame}>그만두기</button>
-            </div>
-        </div>
+    {#if game.gameState === 'paused'}
+        <GamePauseModal
+            stats={[
+                { label: '시간', value: formatTime(game.displayTimer) },
+                { label: '실수', value: `${game.mistakes}/3` }
+            ]}
+            onResume={game.resumeGame}
+            onQuit={game.quitGame}
+            onRestart={game.restartGame}
+        />
     {/if}
 
-    {#if gameState === 'finished'}
-        <div class="overlay">
-            <div class="modal">
-                <h2>{isWon ? '승리! 🎉' : '게임 오버 💀'}</h2>
-                <div class="result-stats">
-                     <p>시간: {formatTime(displayTimer)}</p>
-                     <p>난이도: {difficultyLabels[difficulty]}</p>
-                     <p>실수: {mistakes}</p>
-                     <p class="score">🏆 점수: {calculatedScore}</p>
-                     {#if isWon && earnedPointsResult > 0}
-                        <p class="earned-points">✨ 획득 포인트: +{earnedPointsResult} P</p>
-                     {/if}
-                </div>
-
-                {#if isWon && GAME_CONFIG.ENABLE_ADS}
-                     <RewardedAd onReward={handleAdReward} />
-                {/if}
-
-                <button class="btn-primary" onclick={() => gameState = 'start'}>다시 하기</button>
-                <button class="btn-text" onclick={quitGame}>나가기</button>
-            </div>
-        </div>
+    {#if game.gameState === 'finished'}
+        <GameResultModal
+            isWon={game.isWon}
+            message={game.isWon ? (game.calculatedScore >= 5000 ? '전설적인 기록입니다! 🏆' : '퍼즐을 완벽하게 해결했습니다! 🎉') : '아쉽지만 다음 기회에... 😭'}
+            stats={[
+                { label: '난이도', value: difficultyLabels[game.difficulty] },
+                { label: '시간', value: formatTime(game.displayTimer) },
+                { label: '실수', value: `${game.mistakes} / 3` },
+                { label: '점수', value: game.calculatedScore.toLocaleString(), highlight: true }
+            ]}
+            showAd={game.isWon && GAME_CONFIG.ENABLE_ADS}
+            onAdReward={game.handleAdReward}
+            primaryAction={{ label: '다시 도전하기', onclick: () => goto('/games/start/killer-sudoku') }}
+            secondaryAction={{ label: '나가기', onclick: game.quitGame }}
+        />
     {/if}
 
-    {#if confirmMessage}
-        <div class="overlay" onclick={() => handleConfirm(false)}>
+    {#if game.confirmMessage}
+        <div class="overlay" onclick={() => game.handleConfirm(false)}>
             <div class="modal alert-modal" onclick={(e) => e.stopPropagation()}>
                 <h3>확인 🤔</h3>
-                <p>{confirmMessage}</p>
+                <p>{game.confirmMessage}</p>
                 <div class="modal-actions">
-                    <button class="btn-secondary" onclick={() => handleConfirm(false)}>취소</button>
-                    <button class="btn-primary" onclick={() => handleConfirm(true)}>확인</button>
+                    <button class="btn-secondary" onclick={() => game.handleConfirm(false)}>취소</button>
+                    <button class="btn-primary" onclick={() => game.handleConfirm(true)}>확인</button>
                 </div>
             </div>
         </div>
     {/if}
 
-    {#if alertMessage}
-        <div class="overlay" onclick={() => alertMessage = null}>
+    {#if game.alertMessage}
+        <div class="overlay" onclick={() => game.alertMessage = null}>
             <div class="modal alert-modal" onclick={(e) => e.stopPropagation()}>
                 <h3>알림 🔔</h3>
-                <p>{alertMessage}</p>
-                <button class="btn-primary" onclick={() => alertMessage = null}>확인</button>
+                <p>{game.alertMessage}</p>
+                <button class="btn-primary" onclick={() => game.alertMessage = null}>확인</button>
             </div>
         </div>
     {/if}
 
-    {#if showTutorial}
-        <KillerTutorialModal tutorialId={activeTutorialId} onclose={(shouldStart: boolean) => {
+    {#if game.showTutorial}
+        <KillerTutorialModal tutorialId={game.activeTutorialId} onclose={(shouldStart: boolean) => {
             if (shouldStart) {
-                startGame(true);
+                game.startGame(true);
             } else {
-                showTutorial = false;
+                game.showTutorial = false;
+                if (isAutostart) {
+                    goto('/games/start/killer-sudoku');
+                }
             }
         }} />
     {/if}
 
-    {#if isLoading}
+    {#if game.isLoading}
         <div class="loading-overlay">
             <div class="spinner"></div>
             <p>게임 생성 중...</p>
@@ -1212,12 +718,6 @@
         border: 1px solid rgba(0,0,0,0.05);
     }
 
-    .modal h2 {
-        font-size: 2rem;
-        font-weight: 700;
-        margin-bottom: 1rem;
-    }
-
     .btn-primary {
         background: #333;
         color: white;
@@ -1301,19 +801,6 @@
 
     .btn-text:hover {
         color: #333;
-    }
-
-    .earned-points {
-        font-size: 1.2rem;
-        font-weight: 700;
-        color: #007aff;
-        margin-top: 0.5rem;
-        animation: pop 0.5s cubic-bezier(0.18, 0.89, 0.32, 1.28);
-    }
-
-    @keyframes pop {
-        0% { transform: scale(0.8); opacity: 0; }
-        100% { transform: scale(1); opacity: 1; }
     }
 
     /* Ranking Tabs */
