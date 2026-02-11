@@ -7,299 +7,314 @@
         {
             id: 'sudoku',
             name: '스도쿠',
-            tagline: '복잡한 머릿속을 비우는 논리의 미학',
+            tagline: '논리 퍼즐의 정석',
             url: '/games/start/sudoku',
-            gradient: 'linear-gradient(135deg, #ffffff 0%, #edf6ff 100%)',
-            accentColor: '#4a90d9',
+            description: '빈칸을 채워 완성하는 숫자 퍼즐',
+            accentColor: '#60a5fa', // Blue-400
+            icon: 'grid'
         },
         {
             id: 'killer-sudoku',
             name: '킬러 스도쿠',
-            tagline: '연산과 논리의 완벽한 조화',
+            tagline: '스도쿠에 연산 한 스푼',
             url: '/games/start/killer-sudoku',
-            gradient: 'linear-gradient(135deg, #ffffff 0%, #fffbe6 100%)',
-            accentColor: '#d4a017',
+            description: '합계 규칙이 추가된 심화 퍼즐',
+            accentColor: '#facc15', // Yellow-400
+            icon: 'calculator'
         },
         {
             id: 'unblock-me',
             name: '언블록미',
-            tagline: '꽉 막힌 상황을 시원하게 뚫어내는 쾌감',
+            tagline: '슬라이딩 블록 퍼즐',
             url: '/games/start/unblock-me',
-            gradient: 'linear-gradient(135deg, #ffffff 0%, #fce4ec 100%)',
-            accentColor: '#d4526e',
+            description: '붉은 블록을 탈출시키는 두뇌 게임',
+            accentColor: '#f87171', // Red-400
+            icon: 'arrow'
         }
     ];
 </script>
 
+<div class="page-background"></div>
+
 <div class="arcade-container">
     <header class="arcade-header">
-        <h1>GAME LOUNGE</h1>
+        <div class="header-content">
+            <h1>Game Lounge</h1>
+            <p class="subtitle">잠시 쉬어가세요</p>
+        </div>
     </header>
 
-    <ActivityTicker activities={data.activityFeed} />
+    <div class="ticker-wrapper">
+        <ActivityTicker activities={data.activityFeed} />
+    </div>
 
-    <section class="games-section">
-        <div class="games-list">
-            {#each games as game}
-                {@const rank = data.userRanks[game.id]}
-                <a href={game.url} class="game-card">
-                    <div class="card-bg" style="background: {game.gradient}"></div>
-
-                    <!-- Game illustration -->
-                    <div class="card-illustration" style="color: {game.accentColor}">
-                        {#if game.id === 'sudoku'}
-                            <svg viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                <rect x="4" y="4" width="72" height="72" rx="6" stroke="currentColor" stroke-width="2"/>
-                                <line x1="28" y1="4" x2="28" y2="76" stroke="currentColor" stroke-width="2"/>
-                                <line x1="52" y1="4" x2="52" y2="76" stroke="currentColor" stroke-width="2"/>
-                                <line x1="4" y1="28" x2="76" y2="28" stroke="currentColor" stroke-width="2"/>
-                                <line x1="4" y1="52" x2="76" y2="52" stroke="currentColor" stroke-width="2"/>
-                                <text x="16" y="21" font-size="14" font-weight="700" fill="currentColor" text-anchor="middle">5</text>
-                                <text x="40" y="21" font-size="14" font-weight="700" fill="currentColor" text-anchor="middle">3</text>
-                                <text x="64" y="45" font-size="14" font-weight="700" fill="currentColor" text-anchor="middle">8</text>
-                                <text x="16" y="69" font-size="14" font-weight="700" fill="currentColor" text-anchor="middle">1</text>
-                                <text x="40" y="69" font-size="14" font-weight="700" fill="currentColor" text-anchor="middle">9</text>
-                                <text x="64" y="69" font-size="14" font-weight="700" fill="currentColor" text-anchor="middle">7</text>
-                            </svg>
-                        {:else if game.id === 'killer-sudoku'}
-                            <svg viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                <rect x="4" y="4" width="72" height="72" rx="6" stroke="currentColor" stroke-width="2"/>
-                                <line x1="28" y1="4" x2="28" y2="76" stroke="currentColor" stroke-width="1.5"/>
-                                <line x1="52" y1="4" x2="52" y2="76" stroke="currentColor" stroke-width="1.5"/>
-                                <line x1="4" y1="28" x2="76" y2="28" stroke="currentColor" stroke-width="1.5"/>
-                                <line x1="4" y1="52" x2="76" y2="52" stroke="currentColor" stroke-width="1.5"/>
-                                <!-- Cage outlines (dashed) -->
-                                <rect x="6" y="6" width="44" height="20" rx="3" stroke="currentColor" stroke-width="1.5" stroke-dasharray="3 2"/>
-                                <rect x="6" y="30" width="20" height="44" rx="3" stroke="currentColor" stroke-width="1.5" stroke-dasharray="3 2"/>
-                                <rect x="54" y="30" width="20" height="20" rx="3" stroke="currentColor" stroke-width="1.5" stroke-dasharray="3 2"/>
-                                <!-- Cage sums -->
-                                <text x="10" y="13" font-size="8" font-weight="600" fill="currentColor">15</text>
-                                <text x="10" y="37" font-size="8" font-weight="600" fill="currentColor">22</text>
-                                <text x="58" y="37" font-size="8" font-weight="600" fill="currentColor">9</text>
-                            </svg>
-                        {:else if game.id === 'unblock-me'}
-                            <svg viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                <rect x="4" y="4" width="72" height="72" rx="6" stroke="currentColor" stroke-width="2"/>
-                                <!-- Blocks -->
-                                <rect x="10" y="10" width="28" height="12" rx="3" fill="currentColor" opacity="0.3"/>
-                                <rect x="44" y="10" width="12" height="28" rx="3" fill="currentColor" opacity="0.3"/>
-                                <rect x="10" y="32" width="28" height="12" rx="3" fill="#ef5350" opacity="0.6"/>
-                                <rect x="10" y="54" width="12" height="20" rx="3" fill="currentColor" opacity="0.3"/>
-                                <rect x="30" y="54" width="26" height="12" rx="3" fill="currentColor" opacity="0.3"/>
-                                <!-- Exit arrow -->
-                                <path d="M68 38 L76 38" stroke="#ef5350" stroke-width="2.5" stroke-linecap="round"/>
-                                <path d="M73 34 L77 38 L73 42" stroke="#ef5350" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
-                            </svg>
+    <section class="games-grid">
+        {#each games as game}
+            {@const rank = data.userRanks[game.id]}
+            <a href={game.url} class="game-card glass-panel" style="--accent: {game.accentColor}">
+                <div class="card-content">
+                    <div class="card-header">
+                        <div class="icon-box">
+                            {#if game.id === 'sudoku'}
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 9h18" /><path d="M3 15h18" /><path d="M9 3v18" /><path d="M15 3v18" /></svg>
+                            {:else if game.id === 'killer-sudoku'}
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M7 7h.01" /><path d="M17 17h.01" /><path d="M7 17h.01" /><path d="M17 7h.01" /><path d="M12 12h.01" /></svg>
+                            {:else if game.id === 'unblock-me'}
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M8 8h8" /><path d="M8 12h5" /><path d="M8 16h8" /><path d="M17 12l2 0" /><path d="M17 10l2 2l-2 2" /></svg>
+                            {/if}
+                        </div>
+                        {#if rank}
+                            <div class="rank-badge">
+                                <span class="rank-label">내 순위</span>
+                                <span class="rank-number">#{rank}</span>
+                            </div>
                         {/if}
                     </div>
-
-                    <div class="card-content">
-                        <div class="card-text">
-                            <h3 class="card-title">{game.name}</h3>
-                            <p class="card-tagline">{game.tagline}</p>
-                        </div>
-                        <div class="card-footer">
-                            {#if rank}
-                                <span class="rank-badge" style="color: {game.accentColor}; border-color: {game.accentColor}">
-                                    My Rank #{rank}
-                                </span>
-                            {:else}
-                                <span></span>
-                            {/if}
-                            <div class="play-arrow">
-                                <span>PLAY</span>
-                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-                            </div>
-                        </div>
-                    </div>
-                </a>
-            {/each}
-
-            <div class="game-card coming-soon">
-                <div class="card-content">
-                    <div class="card-text">
-                        <h3 class="card-title">Coming Soon</h3>
-                        <p class="card-tagline">새로운 게임 준비 중</p>
+                    
+                    <div class="text-content">
+                        <h3>{game.name}</h3>
+                        <p class="tagline">{game.tagline}</p>
                     </div>
                 </div>
+                <div class="glow-effect"></div>
+            </a>
+        {/each}
+
+        <div class="game-card glass-panel coming-soon">
+            <div class="card-content centered">
+                <div class="icon-box disabled">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                </div>
+                <h3>Coming Soon</h3>
+                <p class="tagline">새로운 게임 준비 중</p>
             </div>
         </div>
     </section>
 </div>
 
 <style>
+    :global(body) {
+        margin: 0;
+        background-color: #f0f2f5; /* Fallback */
+    }
+
+    .page-background {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        z-index: -1;
+        background: radial-gradient(circle at 10% 20%, rgba(216, 241, 230, 0.7) 0%, rgba(233, 240, 255, 0.4) 40%, rgba(240, 230, 250, 0.3) 80%);
+        background-size: 200% 200%;
+        animation: gradientMove 20s ease infinite;
+    }
+
+    @keyframes gradientMove {
+        0% { background-position: 0% 50%; }
+        50% { background-position: 100% 50%; }
+        100% { background-position: 0% 50%; }
+    }
+
     .arcade-container {
-        padding: 1.5rem;
         max-width: 600px;
         margin: 0 auto;
+        padding: 1.5rem;
         padding-bottom: 6rem;
+        min-height: 100vh;
+        box-sizing: border-box;
     }
 
     .arcade-header {
+        margin-bottom: 2rem;
+        margin-top: 1rem;
         text-align: center;
-        margin: 2rem 0 2rem 0;
     }
 
-    .arcade-header h1 {
-        font-family: 'Outfit', sans-serif;
-        font-size: 2.2rem;
+    .header-content h1 {
+        font-family: 'Outfit', sans-serif; /* Fallback to sans-serif if not loaded */
+        font-size: 2.5rem;
         font-weight: 800;
-        color: #333;
-        margin-bottom: 0.5rem;
+        margin: 0;
+        background: linear-gradient(135deg, #1a1a1a 0%, #4a4a4a 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
         letter-spacing: -1px;
     }
 
-    /* Games List */
-    .games-list {
-        display: flex;
-        flex-direction: column;
-        gap: 1.2rem;
+    .subtitle {
+        color: #666;
+        margin-top: 0.5rem;
+        font-size: 1rem;
+        font-weight: 500;
     }
 
+    .ticker-wrapper {
+        margin-bottom: 2rem;
+    }
+
+    /* Grid Layout */
+    .games-grid {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 1.25rem;
+    }
+
+    /* Glass Panel Utility */
+    .glass-panel {
+        background: rgba(255, 255, 255, 0.65);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        border: 1px solid rgba(255, 255, 255, 0.8);
+        box-shadow: 
+            0 4px 6px -1px rgba(0, 0, 0, 0.05), 
+            0 2px 4px -1px rgba(0, 0, 0, 0.03),
+            inset 0 0 0 1px rgba(255, 255, 255, 0.5);
+        border-radius: 24px;
+    }
+
+    /* Game Card Styling */
     .game-card {
         position: relative;
         display: block;
-        padding: 1.8rem 2rem;
-        border-radius: 20px;
         text-decoration: none;
-        box-shadow: 0 8px 20px rgba(0,0,0,0.05), 0 2px 4px rgba(0,0,0,0.02);
-        transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.25s;
+        padding: 1.75rem;
+        transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
         overflow: hidden;
-        color: #111;
-        min-height: 160px;
+        color: #1f2937;
+        isolation: isolate; /* Create stacking context */
     }
 
-    .card-bg {
-        position: absolute;
-        top: 0; left: 0; width: 100%; height: 100%;
-        z-index: 1;
-        transition: transform 0.5s;
+    .game-card:active {
+        transform: scale(0.98);
+        background: rgba(255, 255, 255, 0.75);
     }
 
-    .game-card:hover {
-        transform: translateY(-4px);
-        box-shadow: 0 15px 30px rgba(0,0,0,0.08), 0 5px 10px rgba(0,0,0,0.03);
-    }
-
-    .game-card:hover .card-bg {
-        transform: scale(1.02);
-    }
-
-    /* Game illustration */
-    .card-illustration {
-        position: absolute;
-        right: 1.5rem;
-        top: 50%;
-        transform: translateY(-50%);
-        width: 70px;
-        height: 70px;
-        opacity: 0.12;
-        z-index: 2;
-        pointer-events: none;
-    }
-
-    .card-illustration svg {
-        width: 100%;
-        height: 100%;
-    }
-
-    .game-card:hover .card-illustration {
-        opacity: 0.2;
-        transition: opacity 0.3s;
-    }
-
-    /* Card content */
     .card-content {
         position: relative;
-        z-index: 3;
+        z-index: 2;
         display: flex;
         flex-direction: column;
-        justify-content: space-between;
         height: 100%;
-        min-height: 90px;
+        gap: 1.25rem;
     }
 
-    .card-text {
-        display: flex;
-        flex-direction: column;
-        gap: 0.4rem;
-    }
-
-    .card-title {
-        margin: 0;
-        font-size: 1.6rem;
-        font-weight: 700;
-        color: #111;
-        letter-spacing: -0.5px;
-    }
-
-    .card-tagline {
-        margin: 0;
-        font-size: 0.9rem;
-        font-style: italic;
-        color: #666;
-        font-weight: 400;
-        line-height: 1.4;
-    }
-
-    .card-footer {
+    .card-header {
         display: flex;
         justify-content: space-between;
+        align-items: flex-start;
+    }
+
+    .icon-box {
+        width: 48px;
+        height: 48px;
+        border-radius: 14px;
+        background: var(--accent, #3b82f6);
+        background: linear-gradient(135deg, var(--accent) 0%, white 200%);
+        display: flex;
         align-items: center;
-        margin-top: 1.2rem;
+        justify-content: center;
+        color: white;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    }
+
+    .icon-box svg {
+        width: 24px;
+        height: 24px;
     }
 
     .rank-badge {
+        background: rgba(255, 255, 255, 0.9);
+        padding: 0.4rem 0.8rem;
+        border-radius: 100px;
         font-size: 0.75rem;
         font-weight: 700;
-        padding: 0.3rem 0.7rem;
-        border-radius: 100px;
-        border: 1.5px solid;
-        background: rgba(255,255,255,0.8);
-    }
-
-    .play-arrow {
+        color: var(--accent);
+        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
         display: flex;
+        flex-direction: column;
         align-items: center;
-        gap: 0.5rem;
-        background: #4a4a4a;
-        padding: 0.6rem 1.4rem;
-        border-radius: 100px;
-        font-size: 0.85rem;
-        font-weight: 600;
-        color: white;
-        transition: background 0.2s, transform 0.2s;
-        border: none;
-        margin-left: auto;
+        line-height: 1.1;
+        border: 1px solid rgba(255,255,255,1);
+    }
+    
+    .rank-label { 
+        font-size: 0.6rem; 
+        text-transform: uppercase; 
+        opacity: 0.8; 
+    }
+    
+    .rank-number {
+        font-size: 0.9rem;
     }
 
-    .game-card:hover .play-arrow {
-        background: black;
-        transform: scale(1.02);
+    .text-content h3 {
+        margin: 0;
+        font-size: 1.5rem;
+        font-weight: 700;
+        letter-spacing: -0.5px;
+        color: #111;
     }
 
-    /* Coming Soon */
-    .game-card.coming-soon {
-        background: #f8f9fa;
-        color: #adb5bd;
-        box-shadow: none;
-        border: 2px dashed #dee2e6;
+    .text-content .tagline {
+        margin: 0.25rem 0 0 0;
+        font-size: 0.95rem;
+        color: #666;
+        font-weight: 400;
+    }
+
+
+
+    /* Glow Effect */
+    .glow-effect {
+        position: absolute;
+        top: -50%;
+        left: -50%;
+        width: 200%;
+        height: 200%;
+        background: radial-gradient(circle at 50% 50%, var(--accent) 0%, transparent 60%);
+        opacity: 0.08;
+        transform: translate(-30%, -30%);
         pointer-events: none;
-        min-height: auto;
-        padding: 1.5rem 2rem;
+        z-index: 1;
+        transition: opacity 0.3s;
+    }
+    
+    .game-card:active .glow-effect {
+        opacity: 0.15;
     }
 
-    .game-card.coming-soon .card-bg { display: none; }
-
-    .game-card.coming-soon .card-title {
-        font-size: 1.2rem;
-        font-weight: 500;
-        color: #adb5bd;
+    /* Coming Soon State */
+    .game-card.coming-soon {
+        background: rgba(255, 255, 255, 0.4);
+        border-style: dashed;
+        cursor: default;
     }
 
-    .game-card.coming-soon .card-tagline {
-        font-style: normal;
-        color: #ced4da;
-        font-size: 0.85rem;
+    .game-card.coming-soon:active {
+        transform: none;
+    }
+
+    .centered {
+        align-items: center;
+        text-align: center;
+        justify-content: center;
+        padding: 1rem 0;
+    }
+
+    .icon-box.disabled {
+        background: #e5e7eb;
+        color: #9ca3af;
+        box-shadow: none;
+    }
+
+    @media (min-width: 640px) {
+        .games-grid {
+            grid-template-columns: repeat(2, 1fr);
+        }
+        
+        .arcade-container {
+            max-width: 800px;
+        }
     }
 </style>

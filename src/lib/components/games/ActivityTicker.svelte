@@ -47,18 +47,21 @@
 <style>
     .ticker-container {
         width: 100%;
-        background: rgba(0, 0, 0, 0.03);
-        border-radius: 12px;
-        height: 2.2rem;
-        margin-bottom: 2rem;
+        background: rgba(255, 255, 255, 0.5);
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+        border: 1px solid rgba(255, 255, 255, 0.6);
+        border-radius: 16px;
+        height: 2.8rem;
         display: flex;
         align-items: center;
-        padding: 0 1rem;
+        padding: 0 1.25rem;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.02);
     }
 
     .ticker-text {
-        font-size: 0.82rem;
-        color: #555;
+        font-size: 0.9rem;
+        color: #374151;
         font-weight: 500;
         letter-spacing: -0.2px;
         white-space: nowrap;
