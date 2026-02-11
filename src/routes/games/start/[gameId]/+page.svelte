@@ -4,6 +4,7 @@
     import RankingBoard from '$lib/components/gamification/RankingBoard.svelte';
     import { user } from '$lib/stores/user';
     import type { GameConfig } from '$lib/games/gameRegistry';
+    import { formatTime } from '$lib/games/utils';
 
     let { data } = $props();
     const gameConfig: GameConfig = data.gameConfig;
@@ -102,12 +103,6 @@
     function resumeGame() {
         const separator = gameConfig.gameUrl.includes('?') ? '&' : '?';
         goto(`${gameConfig.gameUrl}${separator}resume=true`);
-    }
-
-    function formatTime(seconds: number) {
-        const m = Math.floor(seconds / 60);
-        const s = seconds % 60;
-        return `${m}:${s.toString().padStart(2, '0')}`;
     }
 
     async function openTutorial(tid: string) {

@@ -4,14 +4,11 @@ import { goto } from '$app/navigation';
 import { browser } from '$app/environment';
 import { user } from '$lib/stores/user';
 import { GAME_CONFIG } from '$lib/config';
+import { formatTime } from '$lib/games/utils';
 
 export type GameState = 'start' | 'playing' | 'paused' | 'finished';
 
-export function formatTime(seconds: number) {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
-}
+export { formatTime };
 
 export const difficultyLabels: Record<string, string> = {
     easy: '쉬움',
