@@ -596,9 +596,10 @@
     }
     
     /* Colors on Text */
-    .note-item.highlight { 
+    .note-item.highlight {
         color: #1a73e8 !important; /* Blue highlight */
         font-weight: bold !important;
+        font-size: 0.45em !important;
     }
     
     /* User input - gray/blue color */

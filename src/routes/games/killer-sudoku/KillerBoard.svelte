@@ -219,6 +219,7 @@
     .note-item.highlight {
         color: #1a73e8 !important;
         font-weight: bold !important;
+        font-size: 0.48em !important;
     }
 
     .cell-value {
