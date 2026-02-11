@@ -15,23 +15,50 @@ export const RankingService = {
         if (gameId === 'sudoku' || gameId === 'killer-sudoku') {
              const timeLimit = difficulty === 'easy' ? 300 :
                               difficulty === 'medium' ? 600 :
-                              difficulty === 'hard' ? 900 : 
+                              difficulty === 'hard' ? 900 :
                               difficulty === 'expert' ? 1200 : 1500;
-                              
+
              // Adjusted Base Score (10% of previous)
              const baseScore = difficulty === 'easy' ? 10 :
                                difficulty === 'medium' ? 50 :
                                difficulty === 'hard' ? 120 :
                                difficulty === 'expert' ? 250 : 400;
-                               
+
              // Progressive Time Multiplier (1, 2, 3, 4, 5)
              const timeMultiplier = difficulty === 'easy' ? 1 :
                                     difficulty === 'medium' ? 2 :
                                     difficulty === 'hard' ? 3 :
                                     difficulty === 'expert' ? 4 : 5;
-                                    
+
              const bonus = Math.max(0, (timeLimit - clearTime) * timeMultiplier);
              calculatedScore = baseScore + bonus;
+        } else if (gameId === 'unblock-me') {
+             const timeLimit = difficulty === 'easy' ? 30 :
+                              difficulty === 'medium' ? 60 :
+                              difficulty === 'hard' ? 120 :
+                              difficulty === 'expert' ? 240 : 360;
+
+             const baseScore = difficulty === 'easy' ? 10 :
+                               difficulty === 'medium' ? 50 :
+                               difficulty === 'hard' ? 120 :
+                               difficulty === 'expert' ? 250 : 400;
+
+             const timeMultiplier = difficulty === 'easy' ? 1 :
+                                    difficulty === 'medium' ? 2 :
+                                    difficulty === 'hard' ? 3 :
+                                    difficulty === 'expert' ? 4 : 5;
+
+             const timeBonus = Math.max(0, (timeLimit - clearTime) * timeMultiplier);
+
+             // mistakes = extraMoves (moveCount - optimalMoves)
+             const extraMoves = Math.max(0, mistakes);
+             const movePenaltyPerMove = difficulty === 'easy' ? 1 :
+                                        difficulty === 'medium' ? 3 :
+                                        difficulty === 'hard' ? 5 :
+                                        difficulty === 'expert' ? 8 : 12;
+             const movePenalty = extraMoves * movePenaltyPerMove;
+
+             calculatedScore = Math.max(baseScore, baseScore + timeBonus - movePenalty);
         } else {
              calculatedScore = score || 0;
         }

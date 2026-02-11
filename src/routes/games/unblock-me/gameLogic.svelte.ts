@@ -14,7 +14,7 @@ export const difficultyLabels: Record<string, string> = {
 export const difficultyList: Difficulty[] = ['easy', 'medium', 'hard', 'expert', 'master'];
 
 const TIME_LIMITS: Record<string, number> = {
-    easy: 120, medium: 300, hard: 600, expert: 900, master: 1200
+    easy: 30, medium: 60, hard: 120, expert: 240, master: 360
 };
 
 export { formatTime };
@@ -179,7 +179,6 @@ export function createUnblockMeGame() {
         const prev = history[history.length - 1];
         history = history.slice(0, -1);
         blocks = JSON.parse(prev);
-        if (moveCount > 0) moveCount--;
     }
 
     function handleWin() {
@@ -191,35 +190,9 @@ export function createUnblockMeGame() {
         submitScore();
     }
 
-    function calculateScoreValue(): number {
-        if (!currentLevel) return 0;
-
-        const baseScore = difficulty === 'easy' ? 10
-            : difficulty === 'medium' ? 50
-            : difficulty === 'hard' ? 120
-            : difficulty === 'expert' ? 250 : 400;
-
-        const timeLimit = TIME_LIMITS[difficulty];
-        const timeMultiplier = difficulty === 'easy' ? 1
-            : difficulty === 'medium' ? 2
-            : difficulty === 'hard' ? 3
-            : difficulty === 'expert' ? 4 : 5;
-        const timeBonus = Math.max(0, (timeLimit - timerValue) * timeMultiplier);
-
-        const moveMultiplier = difficulty === 'easy' ? 2
-            : difficulty === 'medium' ? 4
-            : difficulty === 'hard' ? 6
-            : difficulty === 'expert' ? 8 : 10;
-        const moveBonus = Math.max(0, (currentLevel.moves * 3 - moveCount) * moveMultiplier);
-
-        return baseScore + timeBonus + moveBonus;
-    }
-
     async function submitScore() {
-        const score = calculateScoreValue();
-        calculatedScore = score;
-
         try {
+            const extraMoves = currentLevel ? Math.max(0, moveCount - currentLevel.moves) : 0;
             const res = await fetch('/api/game/record', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -227,8 +200,7 @@ export function createUnblockMeGame() {
                     gameId: 'unblock-me',
                     difficulty,
                     clearTime: timerValue,
-                    score,
-                    mistakes: 0,
+                    mistakes: extraMoves,
                     skipReward: !GAME_CONFIG.ENABLE_REWARDS
                 })
             });

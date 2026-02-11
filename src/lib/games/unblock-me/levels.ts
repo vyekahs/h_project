@@ -19,12 +19,12 @@ export interface Block {
 }
 
 export const BLOCK_COLORS = [
-    '#b3e5fc', '#c8e6c9', '#fff9c4', '#f8bbd0', '#d1c4e9',
-    '#ffe0b2', '#b2dfdb', '#f0f4c3', '#ffccbc', '#c5cae9',
-    '#dcedc8', '#ffecb3', '#e1bee7', '#b2ebf2', '#d7ccc8',
+    '#90a4ae', '#a1887f', '#80cbc4', '#9fa8da', '#ce93d8',
+    '#80deea', '#bcaaa4', '#b0bec5', '#81d4fa', '#c5e1a5',
+    '#ffcc80', '#b39ddb', '#8097ae', '#a5b8c4', '#d1a89a',
 ];
 
-export const HERO_COLOR = '#ef9a9a';
+export const HERO_COLOR = '#ef5350';
 
 export function parseLevel(level: UnblockLevel): Block[] {
     const grid: string[][] = [];

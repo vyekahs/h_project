@@ -91,29 +91,23 @@
 
     {:else}
         <!-- Playing / Paused / Finished -->
-        <div class="play-header">
-            <div class="play-header-left">
-                <span class="diff-badge">{difficultyLabels[game.difficulty]}</span>
-            </div>
-            <div class="play-header-center">
-                <div class="stat-item">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 9l2 2 4-4"/><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
-                    <span>{game.moveCount}</span>
+        <div class="game-play-area" class:blurred={game.alertMessage || game.confirmMessage || game.gameState === 'paused'}>
+            <header>
+                <div class="header-info">
+                    <span class="difficulty-badge">{difficultyLabels[game.difficulty]}</span>
+                    <span class="moves">{game.moveCount}회 이동</span>
                 </div>
-                <div class="stat-item">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                    <span>{formatTime(game.displayTimer)}</span>
+                <div class="timer-controls">
+                    <div class="timer">
+                        {formatTime(game.displayTimer)}
+                    </div>
+                    <button class="icon-btn" onclick={game.pauseGame} aria-label="Pause">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><rect x="9" y="9" width="2" height="6"/><rect x="13" y="9" width="2" height="6"/></svg>
+                    </button>
                 </div>
-            </div>
-            <div class="play-header-right">
-                <button class="icon-btn" onclick={game.pauseGame}>
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
-                </button>
-            </div>
-        </div>
+            </header>
 
-        <div class="game-play-area" class:blurred={game.gameState === 'paused'}>
-            <div class="board-area">
+            <div class="game-area">
                 <Board
                     bind:blocks={game.blocks}
                     isGameOver={game.gameState === 'finished'}
@@ -399,62 +393,82 @@
         cursor: pointer;
     }
 
-    /* Play Header */
-    .play-header {
+    /* Game Header - matches Sudoku */
+    header {
+        width: 100%;
         display: flex;
-        align-items: center;
+        flex-direction: row;
         justify-content: space-between;
-        padding: 0.5rem 0 1rem 0;
-    }
-
-    .play-header-left, .play-header-right {
-        flex: 0 0 auto;
-    }
-
-    .play-header-center {
-        display: flex;
-        gap: 1.2rem;
         align-items: center;
+        gap: 0.5rem;
+        padding: 0.5rem 0;
+        flex-shrink: 0;
     }
 
-    .diff-badge {
-        background: #ef9a9a;
-        color: white;
-        padding: 0.3rem 0.8rem;
-        border-radius: 8px;
-        font-size: 0.8rem;
-        font-weight: 700;
-    }
-
-    .stat-item {
+    .header-info {
         display: flex;
-        align-items: center;
-        gap: 4px;
-        font-size: 0.95rem;
+        flex-direction: column;
+        gap: 0.3rem;
+    }
+
+    .difficulty-badge {
+        font-size: 0.75rem;
         font-weight: 600;
         color: #555;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+    }
+
+    .moves {
+        font-size: 0.85rem;
+        font-weight: 600;
+        color: #333;
+    }
+
+    .timer-controls {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+    }
+
+    .timer {
+        font-size: 1.6rem;
+        font-weight: 400;
+        font-variant-numeric: tabular-nums;
+        color: #333;
+        background: #f5f5f7;
+        padding: 0.4rem 1rem;
+        border-radius: 30px;
+        min-width: 80px;
+        text-align: center;
     }
 
     .icon-btn {
         background: none;
         border: none;
-        padding: 6px;
         cursor: pointer;
-        color: #555;
-        border-radius: 8px;
+        padding: 4px;
+        border-radius: 50%;
         transition: background 0.2s;
+        display: flex;
+        align-items: center;
+        justify-content: center;
     }
 
     .icon-btn:active {
-        background: #f1f3f5;
-        transform: scale(0.9);
+        background: #f0f0f0;
     }
 
-    /* Board Area */
+    /* Game Play Area - matches Sudoku */
     .game-play-area {
-        flex: 1;
         display: flex;
         flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        max-width: 500px;
+        flex: 1;
+        gap: 1rem;
         transition: filter 0.3s, opacity 0.3s;
     }
 
@@ -463,29 +477,27 @@
         opacity: 0.5;
     }
 
-    .board-area {
-        flex: 1;
-        display: flex;
-        align-items: flex-start;
-        justify-content: center;
-        padding: 0 2rem;
+    .game-area {
+        width: 100%;
     }
 
     /* Controls */
     .controls-area {
+        width: 100%;
         display: flex;
         justify-content: center;
-        padding: 1.5rem 0 2rem 0;
+        padding: 0.5rem 0;
+        padding-bottom: env(safe-area-inset-bottom, 0.5rem);
     }
 
     .undo-btn {
         display: flex;
         align-items: center;
         gap: 6px;
-        background: #f1f3f5;
+        background: #f0f0f0;
         border: none;
         padding: 0.7rem 1.4rem;
-        border-radius: 12px;
+        border-radius: 50px;
         font-size: 0.9rem;
         font-weight: 600;
         color: #555;
@@ -494,7 +506,7 @@
     }
 
     .undo-btn:active:not(:disabled) {
-        background: #e9ecef;
+        background: #e0e0e0;
         transform: scale(0.95);
     }
 

@@ -1,10 +1,10 @@
 <script lang="ts">
     import type { Block } from '$lib/games/unblock-me/levels';
-    
-    let { blocks = $bindable([]), isGameOver, onbeforemove, onmove, onwin, exitRow = 2 } = $props<{ 
-        blocks: Block[], 
-        isGameOver: boolean, 
-        onbeforemove: () => void, 
+
+    let { blocks = $bindable([]), isGameOver, onbeforemove, onmove, onwin, exitRow = 2 } = $props<{
+        blocks: Block[],
+        isGameOver: boolean,
+        onbeforemove: () => void,
         onmove: () => void,
         onwin: () => void,
         exitRow?: number
@@ -20,19 +20,19 @@
 
     function handleStart(e: MouseEvent | TouchEvent, block: Block) {
         if (isGameOver) return;
-        
-        e.preventDefault(); 
+
+        e.preventDefault();
         onbeforemove();
-        
+
         draggingBlockId = block.id;
         const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
         const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
-        
+
         initialX = clientX;
         initialY = clientY;
         startBlockX = block.x;
         startBlockY = block.y;
-        
+
         if (boardEl) {
             cellSize = boardEl.offsetWidth / 6;
         }
@@ -46,7 +46,7 @@
     function calculateConstraints(block: Block) {
         let min = 0;
         let max = 6 - block.length;
-        
+
         if (block.orientation === 'horizontal') {
             for (const other of blocks) {
                 if (other.id === block.id) continue;
@@ -86,21 +86,21 @@
         const blockIndex = blocks.findIndex(b => b.id === draggingBlockId);
         if (blockIndex === -1) return;
         const block = blocks[blockIndex];
-        
+
         const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
         const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
 
-        const deltaPixels = block.orientation === 'horizontal' 
-            ? clientX - initialX 
+        const deltaPixels = block.orientation === 'horizontal'
+            ? clientX - initialX
             : clientY - initialY;
-            
+
         const deltaUnits = Math.round(deltaPixels / cellSize);
-        
+
         const constraints = calculateConstraints(block);
-        
+
         let newPos = (block.orientation === 'horizontal' ? startBlockX : startBlockY) + deltaUnits;
         newPos = Math.max(constraints.min, Math.min(constraints.max, newPos));
-        
+
         if (block.orientation === 'horizontal') {
             blocks[blockIndex].x = newPos;
         } else {
@@ -122,20 +122,20 @@
                 }
             }
         }
-        
+
         draggingBlockId = null;
         window.removeEventListener('mousemove', handleMoveEvent);
         window.removeEventListener('touchmove', handleMoveEvent);
         window.removeEventListener('mouseup', handleEnd);
         window.removeEventListener('touchend', handleEnd);
     }
-    
+
     function getBlockStyle(block: Block) {
         const x = block.x * 100 / 6;
         const y = block.y * 100 / 6;
         const width = block.orientation === 'horizontal' ? (block.length * 100 / 6) : (100 / 6);
         const height = block.orientation === 'vertical' ? (block.length * 100 / 6) : (100 / 6);
-        
+
         return `
             left: ${x}%;
             top: ${y}%;
@@ -146,35 +146,22 @@
     }
 </script>
 
-<div class="board-frame">
-    <!-- Frame Exit Indicator (Outside Grid) -->
-    <div 
-        class="frame-exit-indicator" 
-        style="top: calc(16px + (100% - 32px) * {exitRow} / 6); height: calc((100% - 32px) / 6);"
-    >
-        <div class="exit-label">EXIT</div>
-        <div class="exit-arrow-icon"></div>
-    </div>
-
-    <!-- Inner Board Container -->
-    <div class="board-container" bind:this={boardEl}>
+<div class="board-wrapper">
+    <div class="board" bind:this={boardEl}>
         <!-- Grid Background -->
-        <div class="grid-background">
-            
-            <!-- Grid Lines -->
+        <div class="grid-bg">
             {#each Array(6) as _, r}
                 {#each Array(6) as _, c}
-                    <div class="grid-cell" class:has-exit={r === exitRow && c === 5}>
-                    </div>
+                    <div class="grid-cell" class:exit-cell={r === exitRow && c === 5}></div>
                 {/each}
             {/each}
         </div>
-        
+
         <!-- Blocks -->
         <div class="blocks-layer">
             {#each blocks as block (block.id)}
                  <!-- svelte-ignore a11y_no_static_element_interactions -->
-                <div 
+                <div
                     class="block"
                     class:hero={block.type === 'hero'}
                     class:dragging={draggingBlockId === block.id}
@@ -184,184 +171,131 @@
                     ontouchstart={(e) => handleStart(e, block)}
                 >
                     <div class="block-inner">
-                        <div class="block-highlight"></div>
+                        {#if block.type === 'hero'}
+                            <div class="hero-arrow">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+                            </div>
+                        {/if}
                     </div>
                 </div>
             {/each}
         </div>
     </div>
+
+    <!-- Exit indicator -->
+    <div class="exit-indicator" style="top: calc({exitRow} * 100% / 6 + 100% / 12);">
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+    </div>
 </div>
 
 <style>
-    /* 
-      NEW DESIGN CONCEPT: "Modern Minimalist"
-      - Clean lines, soft shadows, matte finishes.
-      - No wood textures or grooves.
-      - Frame: Sleek dark grey/metallic.
-    */
-    
-    .board-frame {
+    .board-wrapper {
         position: relative;
         width: 100%;
         max-width: 500px;
-        padding: 16px;
-        /* Sleek dark frame */
-        background: #2d3436; 
-        border-radius: 20px;
-        box-shadow: 
-            0 20px 40px rgba(0,0,0,0.3),
-            0 0 0 1px rgba(255,255,255,0.05);
-        box-sizing: border-box;
+        padding-right: 24px;
     }
-    
-    .board-container {
+
+    .board {
         position: relative;
         width: 100%;
         aspect-ratio: 1/1;
-        /* Clean light grey background for contrast */
-        background: #f5f6fa;
-        border-radius: 12px;
-        overflow: hidden; 
-        box-shadow: inset 0 2px 10px rgba(0,0,0,0.1);
+        background: #f8f9fa;
+        border-radius: 16px;
+        border: 3px solid #333;
+        overflow: hidden;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.08);
     }
-    
-    .grid-background {
+
+    .grid-bg {
         position: absolute;
         inset: 0;
         display: grid;
         grid-template-columns: repeat(6, 1fr);
         grid-template-rows: repeat(6, 1fr);
     }
-    
+
     .grid-cell {
-        /* Very subtle grid */
-        border: 1px solid rgba(0,0,0,0.03); 
+        border: 1px solid rgba(0,0,0,0.04);
     }
-    
-    /* --- EXIT INDICATOR (FRAME LEVEL) --- */
-    .frame-exit-indicator {
+
+    .grid-cell.exit-cell {
+        border-right-color: transparent;
+        background: linear-gradient(to right, transparent 60%, rgba(239, 83, 80, 0.05));
+    }
+
+    /* Exit indicator */
+    .exit-indicator {
         position: absolute;
-        right: -6px; /* Hang slightly off right edge */
-        width: 60px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 4px;
-        z-index: 10;
-        pointer-events: none;
+        right: 0;
+        transform: translateY(-50%);
+        color: #ef5350;
+        opacity: 0.7;
+        animation: nudge 2s infinite ease-in-out;
     }
-    
-    .exit-label {
-        font-size: 0.7rem;
-        font-weight: 800;
-        letter-spacing: 1px;
-        color: rgba(255, 71, 87, 0.9);
-        transform: rotate(90deg);
-        transform-origin: center;
-        opacity: 0.8;
+
+    @keyframes nudge {
+        0%, 100% { transform: translateY(-50%) translateX(0); }
+        50% { transform: translateY(-50%) translateX(3px); }
     }
-    
-    .exit-arrow-icon {
-        width: 0; 
-        height: 0; 
-        border-top: 6px solid transparent;
-        border-bottom: 6px solid transparent;
-        border-left: 10px solid #ff4757;
-        filter: drop-shadow(0 0 4px rgba(255, 71, 87, 0.4));
-        animation: lateral-pulse 1.5s infinite ease-in-out;
-    }
-    
-    @keyframes lateral-pulse {
-        0%, 100% { transform: translateX(0); opacity: 0.8; }
-        50% { transform: translateX(4px); opacity: 1; }
-    }
-    
-    .grid-cell.has-exit {
-        border-right: none;
-        box-shadow: inset -10px 0 20px -10px rgba(255, 71, 87, 0.1); /* Inner glow hint */
-    }
-    
-    /* --- BLOCKS --- */
+
+    /* Blocks */
     .blocks-layer {
         position: absolute;
         inset: 0;
     }
-    
+
     .block {
         position: absolute;
-        padding: 4px; /* Clean gap */
+        padding: 3px;
         box-sizing: border-box;
         touch-action: none;
         cursor: grab;
         transition: left 0.15s cubic-bezier(0.2, 0.8, 0.2, 1), top 0.15s cubic-bezier(0.2, 0.8, 0.2, 1);
         z-index: 5;
     }
-    
+
     .block.dragging {
         z-index: 20;
         cursor: grabbing;
         transition: none;
-        transform: scale(1.02);
     }
-    
-    /* Clean Block Look */
+
     .block-inner {
         width: 100%;
         height: 100%;
         border-radius: 8px;
         position: relative;
         overflow: hidden;
-        
         background: var(--block-color);
-        /* Soft shadow for depth, top bevel highlight */
-        box-shadow: 
-            inset 0 1px 0 rgba(255,255,255,0.4),
-            0 2px 5px rgba(0,0,0,0.1);
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
     }
-    
-    /* Soft top highlight */
-    .block-highlight {
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        height: 30%;
-        background: linear-gradient(to bottom, rgba(255,255,255,0.2), transparent);
+
+    .block.dragging .block-inner {
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
     }
-    
-    /* --- HERO BLOCK --- */
-    /* Only Hero looks "Special" but cleaner now */
+
+    /* Hero block */
     .block.hero {
-        padding: 3px; /* Slightly larger */
         z-index: 10;
     }
-    
-    .block.hero .block-inner {
-        /* Vibrant Red Gradient */
-        background: linear-gradient(135deg, #ff6b6b, #ee5253);
-        box-shadow: 
-            inset 0 1px 0 rgba(255,255,255,0.5),
-            0 4px 10px rgba(238, 82, 83, 0.4);
-    }
-    
-    /* Pulse effect for Hero */
-    .block.hero .block-inner::after {
-        content: '';
-        position: absolute;
-        inset: 0;
-        background: linear-gradient(45deg, transparent, rgba(255,255,255,0.2), transparent);
-        background-size: 200% 200%;
-        animation: shine 3s infinite;
-    }
-    
-    @keyframes shine {
-        0% { background-position: -150% -150%; }
-        20% { background-position: 150% 150%; }
-        100% { background-position: 150% 150%; }
-    }
-    
-    /* Regular Blocks - Muted/Soft Colors overrides if color prop is too bright? */
-    /* Assuming "var(--block-color)" comes from levels.ts which are pastel. 
-       Should look good on #f5f6fa bg. */ 
 
+    .block.hero .block-inner {
+        background: #ef5350;
+        box-shadow: 0 2px 8px rgba(239,83,80,0.3);
+    }
+
+    .block.hero.dragging .block-inner {
+        box-shadow: 0 4px 16px rgba(239,83,80,0.4);
+    }
+
+    .hero-arrow {
+        position: absolute;
+        right: 6px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: rgba(255,255,255,0.8);
+        display: flex;
+        align-items: center;
+    }
 </style>
