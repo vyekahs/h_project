@@ -5,7 +5,6 @@
     import KillerTutorialModal from './KillerTutorialModal.svelte';
     import { goto } from '$app/navigation';
     import { browser } from '$app/environment';
-    import RankingBoard from '$lib/components/gamification/RankingBoard.svelte';
     import GamePauseModal from '$lib/components/games/GamePauseModal.svelte';
     import GameResultModal from '$lib/components/games/GameResultModal.svelte';
     import { user } from '$lib/stores/user';
@@ -48,176 +47,18 @@
                     return () => { game.clearTimerInterval(); };
                 }
             }
+            // No params - redirect to start page
+            goto('/games/start/killer-sudoku', { replaceState: true });
         }
-
-        user.refresh();
-        game.checkSavedGameExists();
 
         return () => {
             game.clearTimerInterval();
         };
     });
-
-    $effect(() => {
-        if (browser) {
-            const unlockedLocal: string[] = JSON.parse(localStorage.getItem('killer_sudoku_unlocked_tutorials') || '[]');
-            const unlockedDB: string[] = $user.completedTutorials || [];
-            const all = [...unlockedLocal, ...unlockedDB];
-            const hasKiller = all.some(id => typeof id === 'string' && id.startsWith('killer_'));
-
-            if (hasKiller) {
-                game.hasUnlockedTutorials = true;
-            }
-        }
-    });
 </script>
 
 <div class="game-container">
-    {#if game.gameState === 'start'}
-        {#if game.view === 'game'}
-            <div class="screen start-screen">
-                <div class="start-header">
-                    <a href="/minigames" class="header-link left">← 오락실</a>
-                    <h1>Killer Sudoku</h1>
-                    <div class="header-links">
-                        {#if game.hasUnlockedTutorials}
-                            <button class="header-link" onclick={() => game.view = 'tutorials_list'}>공략집</button>
-                        {/if}
-                        <button class="header-link" onclick={() => { game.view = 'ranking'; game.rankingTab = 'halloffame'; game.loadHallOfFame(); }}>랭킹 🏆</button>
-                    </div>
-                </div>
-
-                {#if game.hasSavedGame && game.startMode === 'initial'}
-                    <div class="difficulty-select options">
-                        <button class="btn-primary huge" onclick={game.loadSavedGame}>
-                            이어하기
-                        </button>
-                        <div class="divider">OR</div>
-                        <button class="btn-secondary huge" onclick={() => game.startMode = 'diff_select'}>
-                            새 게임 시작
-                        </button>
-                    </div>
-                    <div></div>
-                {/if}
-
-                {#if !game.hasSavedGame || game.startMode === 'diff_select'}
-                    <div class="difficulty-select">
-                        <h2>난이도 선택</h2>
-                        <div class="options">
-                            <label class:selected={game.difficulty === 'easy'}>
-                                <input type="radio" name="difficulty" value="easy" bind:group={game.difficulty}>
-                            쉬움
-                            </label>
-                            <label class:selected={game.difficulty === 'medium'}>
-                                <input type="radio" name="difficulty" value="medium" bind:group={game.difficulty}>
-                            보통
-                            </label>
-                            <label class:selected={game.difficulty === 'hard'}>
-                                <input type="radio" name="difficulty" value="hard" bind:group={game.difficulty}>
-                            어려움
-                            </label>
-                            <label class:selected={game.difficulty === 'expert'}>
-                                <input type="radio" name="difficulty" value="expert" bind:group={game.difficulty}>
-                            전문가
-                            </label>
-                            <label class:selected={game.difficulty === 'master'}>
-                                <input type="radio" name="difficulty" value="master" bind:group={game.difficulty}>
-                            마스터
-                            </label>
-                        </div>
-                    </div>
-                    <button class="btn-primary huge" onclick={() => game.startGame()}>게임 시작</button>
-
-                    {#if game.hasSavedGame}
-                        <button class="btn-text" onclick={() => game.startMode = 'initial'}>취소하고 돌아가기</button>
-                    {/if}
-                {/if}
-            </div>
-
-        {:else if game.view === 'ranking'}
-            <div class="subpage">
-                <div class="start-header">
-                    <button class="header-link left" onclick={() => game.view = 'game'}>← 뒤로</button>
-                    <h1>랭킹</h1>
-                    <div class="header-links"></div>
-                </div>
-                <div class="ranking-tabs">
-                    <button class="tab" class:active={game.rankingTab === 'halloffame'} onclick={() => { game.rankingTab = 'halloffame'; game.loadHallOfFame(); }}>명예의 전당</button>
-                    <button class="tab" class:active={game.rankingTab === 'ranking'} onclick={() => game.rankingTab = 'ranking'}>킬러 스도쿠 랭킹</button>
-                </div>
-                <div class="subpage-body">
-                    {#if game.rankingTab === 'halloffame'}
-                        <div class="hall-of-fame">
-                            {#if game.hallOfFameLoading}
-                                <div class="hof-loading">불러오는 중...</div>
-                            {:else if game.hallOfFameData.length === 0}
-                                <div class="hof-empty">아직 기록이 없습니다.</div>
-                            {:else}
-                                {#each game.hallOfFameData as record, i}
-                                    {@const diffLabel = difficultyLabels[record.difficulty as keyof typeof difficultyLabels] || record.difficulty}
-                                    <div class="hof-card" class:hof-top3={i < 3}>
-                                        <div class="hof-rank" class:hof-rank-1={i === 0} class:hof-rank-2={i === 1} class:hof-rank-3={i === 2}>
-                                            {i + 1}
-                                        </div>
-                                        <div class="hof-body">
-                                            <div class="hof-player">
-                                                <span class="hof-name">{record.nickname || '익명'}</span>
-                                                <span class="hof-difficulty">{diffLabel}</span>
-                                            </div>
-                                            <div class="hof-stats">
-                                                <span class="hof-stat">
-                                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
-                                                    {record.score.toLocaleString()}
-                                                </span>
-                                                <span class="hof-stat">
-                                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                                                    {formatTime(record.clear_time)}
-                                                </span>
-                                                <span class="hof-stat">
-                                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 4H8l-7 8 7 8h13a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z"/><line x1="18" y1="9" x2="12" y2="15"/><line x1="12" y1="9" x2="18" y2="15"/></svg>
-                                                    {record.mistakes}
-                                                </span>
-                                            </div>
-                                        </div>
-                                    </div>
-                                {/each}
-                            {/if}
-                        </div>
-                    {:else}
-                        <RankingBoard gameId="killer-sudoku" />
-                    {/if}
-                </div>
-            </div>
-
-        {:else if game.view === 'tutorials_list'}
-            <div class="subpage">
-                <div class="start-header">
-                    <button class="header-link left" onclick={() => game.view = 'game'}>← 뒤로</button>
-                    <h1>공략집</h1>
-                    <div class="header-links"></div>
-                </div>
-                <div class="subpage-body">
-                    <div class="tutorial-list-container">
-                        <div class="tutorial-list">
-                            {#each tutorial.tutorialOrder as tid}
-                                {@const t = tutorial.tutorials[tid]}
-                                {#if tutorial.unlockedTutorialIDs.has(tid)}
-                                    <button class="tutorial-list-item" onclick={() => openTutorial(tid)}>
-                                        <div class="t-info">
-                                            <span class="t-badge {t.difficulty}">{t.difficulty.toUpperCase()}</span>
-                                            <span class="t-title">{t.title}</span>
-                                        </div>
-                                        <span class="t-arrow">›</span>
-                                    </button>
-                                {/if}
-                            {/each}
-                        </div>
-                    </div>
-                </div>
-            </div>
-        {/if}
-
-    {:else}
+    {#if game.gameState !== 'start'}
         <div class="game-play-area" class:blurred={game.alertMessage || game.confirmMessage || game.gameState === 'paused'}>
             <header>
                 <div class="header-info">
@@ -336,39 +177,9 @@
         }} />
     {/if}
 
-    {#if game.isLoading}
-        <div class="loading-overlay">
-            <div class="spinner"></div>
-            <p>게임 생성 중...</p>
-        </div>
-    {/if}
 </div>
 
 <style>
-    .loading-overlay {
-        position: fixed;
-        top: 0; left: 0;
-        width: 100%; height: 100%;
-        background: rgba(0, 0, 0, 0.7);
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-        align-items: center;
-        z-index: 2000;
-        color: white;
-        backdrop-filter: blur(5px);
-    }
-    .spinner {
-        width: 40px; height: 40px;
-        border: 4px solid rgba(255, 255, 255, 0.3);
-        border-top-color: #fff;
-        border-radius: 50%;
-        animation: spin 1s linear infinite;
-        margin-bottom: 1rem;
-    }
-    @keyframes spin {
-        to { transform: rotate(360deg); }
-    }
     .modal-actions {
         display: flex;
         gap: 1rem;
@@ -381,26 +192,6 @@
         padding: 0.8rem;
     }
 
-    .divider {
-        font-weight: bold;
-        color: #bbb;
-        margin: 0.5rem 0;
-        font-size: 0.9rem;
-        letter-spacing: 1px;
-    }
-    .btn-secondary.huge {
-        width: 100%;
-        justify-content: center;
-        padding: 1rem;
-        background: #fff;
-        border: 2px solid #eee;
-        font-size: 1.1rem;
-        margin-bottom: 0.5rem;
-    }
-    .btn-secondary.huge:hover {
-        border-color: #ddd;
-        background: #fafafa;
-    }
     .alert-modal {
         max-width: 320px;
         padding: 2rem;
@@ -436,142 +227,8 @@
         position: relative;
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
         touch-action: manipulation;
+        background: #f8f9fa;
 	}
-
-    .screen {
-        display: flex;
-        flex-direction: column;
-        justify-content: flex-start;
-        gap: 2.5rem;
-        flex: 1;
-        width: 100%;
-        overflow: hidden;
-        padding-top: 2rem;
-    }
-    .subpage {
-        display: flex;
-        flex-direction: column;
-        justify-content: flex-start;
-        width: 100%;
-        flex: 1;
-        gap: 2.5rem;
-        overflow: hidden;
-        padding-top: 2rem;
-    }
-    .subpage-body {
-        overflow-y: auto;
-        width: 100%;
-    }
-
-    .start-header {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        width: 100%;
-        padding: 0 1rem;
-    }
-
-    .start-header h1 {
-        font-size: 2.2rem;
-        font-weight: 200;
-        color: #333;
-        margin: 0;
-    }
-
-    .header-link {
-        font-size: 0.85rem;
-        color: #666;
-        text-decoration: none;
-        background: none;
-        border: none;
-        cursor: pointer;
-        padding: 0.5rem;
-        transition: color 0.2s;
-    }
-
-    .header-link:hover {
-        color: #333;
-    }
-
-    .start-screen h1 {
-        font-size: 3rem;
-        font-weight: 200;
-        color: #333;
-        margin-bottom: 1rem;
-    }
-
-    .difficulty-select {
-        text-align: center;
-        width: 100%;
-    }
-
-    .difficulty-select h2 {
-        font-size: 1.1rem;
-        font-weight: 500;
-        color: #888;
-        margin-bottom: 1rem;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-    }
-
-    .options {
-        display: flex;
-        flex-wrap: wrap;
-        justify-content: center;
-        gap: 0.8rem;
-        width: 100%;
-    }
-
-    @media (max-width: 600px) {
-        .screen {
-            gap: 1rem;
-            padding: 1rem 0;
-        }
-        .start-screen h1 {
-            font-size: 2rem;
-            margin-bottom: 0.5rem;
-        }
-        .options {
-            flex-direction: column;
-            align-items: stretch;
-            padding: 0 1rem;
-        }
-        .options label {
-            justify-content: center;
-            padding: 0.8rem 1.5rem;
-            font-size: 1rem;
-        }
-    }
-
-    .options label {
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-        padding: 1rem 2rem;
-        background: #f5f5f7;
-        border-radius: 16px;
-        cursor: pointer;
-        font-weight: 500;
-        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-        border: 2px solid transparent;
-        color: #555;
-        font-size: 1.1rem;
-    }
-
-    .options label:hover {
-        background: #f0f0f0;
-    }
-
-    .options label.selected {
-        background: #333;
-        border-color: #333;
-        color: white;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-    }
-
-    .options input {
-        display: none;
-    }
 
 	header {
 		width: 100%;
@@ -736,30 +393,6 @@
         box-shadow: 0 2px 6px rgba(0,0,0,0.15);
     }
 
-    .btn-primary.huge {
-        font-size: 1.2rem;
-        padding: 1.2rem 4rem;
-    }
-
-    .btn-danger {
-        background: transparent;
-        color: #ff3b30;
-        border: 1px solid #ff3b30;
-        padding: 0.8rem 2rem;
-        border-radius: 50px;
-        font-weight: 600;
-        cursor: pointer;
-        transition: all 0.2s;
-    }
-
-    .btn-danger:hover {
-        background: #fff0f0;
-    }
-
-    .start-screen .btn-primary {
-        margin-top: 1rem;
-    }
-
     .btn-secondary {
         background: #f0f0f0;
         color: #333;
@@ -779,201 +412,4 @@
         background: #e0e0e0;
     }
 
-    @media (max-width: 600px) {
-        .start-screen .btn-primary {
-            width: 100%;
-        }
-        .btn-secondary {
-            width: 100%;
-            justify-content: center;
-        }
-    }
-
-    .btn-text {
-        background: none;
-        border: none;
-        color: #8e8e93;
-        cursor: pointer;
-        text-decoration: none;
-        font-size: 0.95rem;
-        transition: color 0.2s;
-    }
-
-    .btn-text:hover {
-        color: #333;
-    }
-
-    /* Ranking Tabs */
-    .ranking-tabs {
-        display: flex;
-        gap: 0;
-        width: 100%;
-        max-width: 500px;
-        margin: 0 auto;
-        background: #f0f0f0;
-        border-radius: 12px;
-        padding: 4px;
-    }
-    .tab {
-        flex: 1;
-        padding: 0.6rem 1rem;
-        border: none;
-        background: transparent;
-        border-radius: 10px;
-        font-weight: 600;
-        font-size: 0.9rem;
-        color: #888;
-        cursor: pointer;
-        transition: all 0.2s;
-    }
-    .tab.active {
-        background: #fff;
-        color: #333;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-    }
-
-    /* Hall of Fame */
-    .hall-of-fame {
-        width: 100%;
-        max-width: 500px;
-        margin: 0 auto;
-        display: flex;
-        flex-direction: column;
-        gap: 0.8rem;
-        overflow-y: auto;
-        flex: 1;
-    }
-    .hof-card {
-        display: flex;
-        align-items: center;
-        gap: 0.9rem;
-        background: #fff;
-        border-radius: 10px;
-        padding: 0.7rem 1rem;
-        border: 1px solid #eee;
-    }
-    .hof-top3 {
-        background: #fafafa;
-        border-color: #ddd;
-    }
-    .hof-rank {
-        font-size: 0.85rem;
-        font-weight: 800;
-        width: 28px; height: 28px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        border-radius: 50%;
-        background: #f0f0f0;
-        color: #999;
-        font-variant-numeric: tabular-nums;
-        flex-shrink: 0;
-    }
-    .hof-rank-1 { background: #333; color: #fff; }
-    .hof-rank-2 { background: #777; color: #fff; }
-    .hof-rank-3 { background: #aaa; color: #fff; }
-    .hof-body { flex: 1; min-width: 0; }
-    .hof-difficulty {
-        font-size: 0.65rem;
-        font-weight: 600;
-        color: #bbb;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-    }
-    .hof-player {
-        display: flex;
-        align-items: center;
-        gap: 0.4rem;
-        margin-bottom: 0.2rem;
-    }
-    .hof-name {
-        font-size: 0.95rem;
-        font-weight: 700;
-        color: #333;
-    }
-    .hof-stats {
-        display: flex;
-        gap: 0.7rem;
-        font-size: 0.78rem;
-        color: #888;
-    }
-    .hof-stat {
-        display: flex;
-        align-items: center;
-        gap: 0.25rem;
-    }
-    .hof-stat svg { opacity: 0.5; }
-    .hof-loading, .hof-empty {
-        text-align: center;
-        padding: 2rem;
-        color: #888;
-    }
-
-    @media (max-width: 450px) {
-        .start-screen h1 {
-            font-size: 1.8rem;
-        }
-        .btn-primary {
-            padding: 0.7rem 1.5rem;
-            font-size: 0.95rem;
-            margin-top: 0.5rem;
-        }
-    }
-
-    /* Tutorial List Styles */
-    .tutorial-list-container {
-        width: 100%;
-        max-width: 500px;
-        margin: 0 auto;
-        padding: 0 0.5rem;
-    }
-    .tutorial-list {
-        display: flex;
-        flex-direction: column;
-        gap: 0.5rem;
-    }
-    .tutorial-list-item {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        background: #fff;
-        border: 1px solid #eee;
-        border-radius: 10px;
-        padding: 0.8rem 1rem;
-        cursor: pointer;
-        transition: all 0.2s;
-        width: 100%;
-        text-align: left;
-    }
-    .tutorial-list-item:hover {
-        background: #f8f9fa;
-        border-color: #ddd;
-    }
-    .t-info {
-        display: flex;
-        align-items: center;
-        gap: 0.6rem;
-    }
-    .t-badge {
-        font-size: 0.6rem;
-        font-weight: 700;
-        padding: 0.15rem 0.4rem;
-        border-radius: 4px;
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-    }
-    .t-badge.easy { background: #d3f9d8; color: #2b8a3e; }
-    .t-badge.medium { background: #fff3bf; color: #e67700; }
-    .t-badge.hard { background: #ffc9c9; color: #c92a2a; }
-    .t-badge.expert { background: #d0bfff; color: #5f3dc4; }
-    .t-title {
-        font-size: 0.95rem;
-        font-weight: 600;
-        color: #333;
-    }
-    .t-arrow {
-        font-size: 1.2rem;
-        color: #adb5bd;
-        font-weight: 300;
-    }
 </style>

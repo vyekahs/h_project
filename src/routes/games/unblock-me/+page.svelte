@@ -5,14 +5,9 @@
     import { goto } from '$app/navigation';
     import { browser } from '$app/environment';
     import { onMount } from 'svelte';
-    import { createUnblockMeGame, difficultyLabels, difficultyList, formatTime, type Difficulty } from './gameLogic.svelte';
+    import { createUnblockMeGame, difficultyLabels, formatTime, type Difficulty } from './gameLogic.svelte';
 
     const game = createUnblockMeGame();
-
-    // Check for saved game on mount
-    $effect(() => {
-        game.checkSavedGame();
-    });
 
     // Handle autostart/resume from unified start page
     onMount(() => {
@@ -24,6 +19,9 @@
             game.startGame();
         } else if (params.get('resume') === 'true') {
             game.loadGame();
+        } else {
+            // No params - redirect to start page
+            goto('/games/start/unblock-me', { replaceState: true });
         }
     });
 
@@ -43,53 +41,7 @@
 </script>
 
 <div class="game-container">
-    {#if game.gameState === 'start'}
-         <div class="screen start-screen">
-            <!-- Header -->
-            <div class="game-header">
-                <a href="/minigames" class="back-btn">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
-                </a>
-                <h1>Unblock Me</h1>
-            </div>
-
-            <div class="tab-nav">
-                <button class="tab-btn" class:active={game.activeTab === 'difficulty'} onclick={() => game.activeTab = 'difficulty'}>난이도</button>
-                <button class="tab-btn" class:active={game.activeTab === 'ranking'} onclick={() => game.activeTab = 'ranking'}>랭킹</button>
-            </div>
-
-            {#if game.activeTab === 'difficulty'}
-                <div class="start-content">
-                    {#if game.hasSavedGame && game.startMode === 'initial'}
-                        <div class="resume-section">
-                            <button class="btn-primary" onclick={game.loadGame}>이어하기</button>
-                            <button class="btn-secondary" onclick={() => game.startMode = 'diff_select'}>새 게임 시작</button>
-                        </div>
-                    {:else}
-                         <div class="difficulty-section">
-                            {#each difficultyList as diff}
-                                <button class="diff-btn"
-                                    class:selected={game.difficulty === diff}
-                                    onclick={() => game.difficulty = diff}
-                                >
-                                    <span class="diff-label">{difficultyLabels[diff]}</span>
-                                </button>
-                            {/each}
-                        </div>
-                        <div class="start-btn">
-                             <button class="btn-primary" onclick={game.startGame} disabled={game.isLoading}>
-                                {game.isLoading ? '로딩 중...' : '게임 시작'}
-                            </button>
-                        </div>
-                        {#if game.hasSavedGame}
-                             <button class="btn-text secondary" style="margin-top:1rem" onclick={() => game.startMode = 'initial'}>취소</button>
-                        {/if}
-                    {/if}
-                </div>
-            {/if}
-         </div>
-
-    {:else}
+    {#if game.gameState !== 'start'}
         <!-- Playing / Paused / Finished -->
         <div class="game-play-area" class:blurred={game.alertMessage || game.confirmMessage || game.gameState === 'paused'}>
             <header>
@@ -178,11 +130,6 @@
         </div>
     {/if}
 
-    {#if game.isLoading}
-        <div class="overlay">
-            <div class="spinner"></div>
-        </div>
-    {/if}
 </div>
 
 <style>
@@ -201,147 +148,7 @@
         flex-direction: column;
         overscroll-behavior: none;
         margin: 0 auto;
-    }
-
-    /* Header */
-    .game-header {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        position: relative;
-        margin: 1.5rem 0 2rem 0;
-    }
-
-    .back-btn {
-        position: absolute;
-        left: 0;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        width: 36px;
-        height: 36px;
-        border-radius: 10px;
-        background: #f1f3f5;
-        color: #333;
-        text-decoration: none;
-        transition: background 0.2s;
-    }
-
-
-
-    .game-header h1 {
-        font-family: 'Outfit', sans-serif;
-        font-size: 1.8rem;
-        font-weight: 800;
-        color: #333;
-        letter-spacing: -1px;
-        margin: 0;
-    }
-
-    /* Tab Nav */
-    .tab-nav {
-        display: flex;
-        justify-content: center;
-        gap: 0.5rem;
-        padding: 0 1rem;
-        margin-bottom: 0.5rem;
-        flex-shrink: 0;
-        width: 100%;
-        margin: 0 auto 2rem auto;
-    }
-
-    .tab-btn {
-        background: transparent;
-        border: none;
-        padding: 0.6rem 1.2rem;
-        font-size: 1rem;
-        color: #888;
-        font-weight: 500;
-        cursor: pointer;
-        position: relative;
-        transition: color 0.2s;
-    }
-
-    .tab-btn.active {
-        color: #333;
-        font-weight: 700;
-        background: transparent;
-        box-shadow: none; /* Reset */
-    }
-
-    .tab-btn.active::after {
-        content: '';
-        position: absolute;
-        bottom: 0;
-        left: 0;
-        width: 100%;
-        height: 3px;
-        background: #333;
-        border-radius: 3px;
-    }
-
-    /* Start Content */
-    .start-content {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        gap: 1.5rem;
-        flex: 1;
-        overflow-y: auto;
-    }
-
-    .resume-section {
-        display: flex;
-        flex-direction: column;
-        gap: 0.8rem; /* Matches Sudoku */
-        width: 100%;
-        max-width: 280px;
-    }
-
-    .difficulty-section {
-        display: flex;
-        flex-direction: column;
-        gap: 0.8rem; /* Matches Sudoku */
-        width: 100%;
-        max-width: 280px;
-    }
-
-    .diff-btn {
-        background: #f5f5f7;
-        border: 2px solid transparent;
-        color: #555;
-        padding: 0.9rem 1.2rem;
-        border-radius: 14px;
-        cursor: pointer;
-        transition: all 0.2s ease;
-        
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        text-align: center;
-    }
-
-    .diff-btn:active {
-        transform: scale(0.98);
-    }
-
-    .diff-btn.selected {
-        background: #333;
-        border-color: #333;
-        color: white;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-    }
-
-    .diff-label {
-        font-size: 1rem;
-        font-weight: 600;
-        color: inherit;
-    }
-
-    .start-btn {
-        width: 100%;
-        max-width: 280px;
-        margin-top: 0.5rem;
+        background: #f8f9fa;
     }
 
     /* Buttons */
@@ -555,12 +362,4 @@
         to { opacity: 1; transform: scale(1); }
     }
     
-    .spinner {
-        width: 40px; height: 40px;
-        border: 4px solid rgba(255,255,255,0.3);
-        border-top-color: white;
-        border-radius: 50%;
-        animation: spin 1s linear infinite;
-    }
-    @keyframes spin { to { transform: rotate(360deg); } }
 </style>

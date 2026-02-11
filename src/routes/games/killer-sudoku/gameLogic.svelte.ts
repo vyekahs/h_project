@@ -32,36 +32,15 @@ export function createKillerSudokuGame() {
     let displayTimer = $state(0);
     let timerInterval: any;
 
-    let view: 'game' | 'ranking' | 'tutorials_list' = $state('game');
-    let rankingTab: 'halloffame' | 'ranking' = $state('halloffame');
-    let hallOfFameData: any[] = $state([]);
-    let hallOfFameLoading = $state(false);
-
-    async function loadHallOfFame() {
-        hallOfFameLoading = true;
-        try {
-            const res = await fetch('/api/ranking/halloffame/killer-sudoku');
-            if (res.ok) {
-                hallOfFameData = await res.json();
-            }
-        } catch (e) {
-            console.error('Failed to load hall of fame', e);
-        } finally {
-            hallOfFameLoading = false;
-        }
-    }
-
     let history: string[] = $state([]);
     let earnedPointsResult = $state(0);
     let calculatedScore = $state(0);
     let isTimeFrozen = $state(false);
 
     let hasSavedGame = $state(false);
-    let startMode: 'initial' | 'diff_select' = $state('initial');
 
     let showTutorial = $state(false);
     let activeTutorialId = $state('killer_easy_1');
-    let hasUnlockedTutorials = $state(false);
 
     let completedNumbers = $derived.by(() => {
         const counts = Array(10).fill(0);
@@ -83,8 +62,6 @@ export function createKillerSudokuGame() {
         if (board.length === 0 || cages.length === 0) return new Set<string>();
         return getCageErrors(board, cages);
     });
-
-    let isLoading = $state(false);
 
     // Alert/Confirm Modal
     let alertMessage: string | null = $state(null);
@@ -154,8 +131,6 @@ export function createKillerSudokuGame() {
                 showAlert('저장된 게임 데이터가 손상되어 이어할 수 없습니다. 새 게임을 시작합니다.');
                 localStorage.removeItem('killer_sudoku_save');
                 hasSavedGame = false;
-                startMode = 'diff_select';
-                view = 'game';
             }
         }
     }
@@ -210,11 +185,7 @@ export function createKillerSudokuGame() {
         }
         showTutorial = false;
 
-        isLoading = true;
-        await new Promise(resolve => setTimeout(resolve, 50));
-
-        try {
-            localStorage.removeItem('killer_sudoku_save');
+        localStorage.removeItem('killer_sudoku_save');
 
             const result = generateKillerSudoku(difficulty);
             board = result.initialBoard;
@@ -237,9 +208,6 @@ export function createKillerSudokuGame() {
             hasSavedGame = true;
 
             startTimer();
-        } finally {
-            isLoading = false;
-        }
     }
 
     function addToHistory() {
@@ -491,20 +459,6 @@ export function createKillerSudokuGame() {
          }
     }
 
-    function checkSavedGameExists() {
-        const saved = localStorage.getItem('killer_sudoku_save');
-        if (saved) {
-            try {
-                const data = JSON.parse(saved);
-                if (data.board && data.solution && data.difficulty && data.cages) {
-                    hasSavedGame = true;
-                }
-            } catch (e) {
-                console.error('Failed to load save', e);
-            }
-        }
-    }
-
     function clearTimerInterval() {
         clearInterval(timerInterval);
     }
@@ -525,12 +479,6 @@ export function createKillerSudokuGame() {
         get mistakes() { return mistakes; },
         get isWon() { return isWon; },
         get displayTimer() { return displayTimer; },
-        get view() { return view; },
-        set view(v: 'game' | 'ranking' | 'tutorials_list') { view = v; },
-        get rankingTab() { return rankingTab; },
-        set rankingTab(v: 'halloffame' | 'ranking') { rankingTab = v; },
-        get hallOfFameData() { return hallOfFameData; },
-        get hallOfFameLoading() { return hallOfFameLoading; },
         get history() { return history; },
         get showTutorial() { return showTutorial; },
         set showTutorial(v: boolean) { showTutorial = v; },
@@ -540,20 +488,13 @@ export function createKillerSudokuGame() {
         get calculatedScore() { return calculatedScore; },
         get isTimeFrozen() { return isTimeFrozen; },
         get hasSavedGame() { return hasSavedGame; },
-        set hasSavedGame(v: boolean) { hasSavedGame = v; },
-        get startMode() { return startMode; },
-        set startMode(v: 'initial' | 'diff_select') { startMode = v; },
-        get hasUnlockedTutorials() { return hasUnlockedTutorials; },
-        set hasUnlockedTutorials(v: boolean) { hasUnlockedTutorials = v; },
         get completedNumbers() { return completedNumbers; },
         get currentCageErrors() { return currentCageErrors; },
-        get isLoading() { return isLoading; },
         get alertMessage() { return alertMessage; },
         set alertMessage(v: string | null) { alertMessage = v; },
         get confirmMessage() { return confirmMessage; },
 
         // Functions
-        loadHallOfFame,
         showAlert,
         showConfirm,
         handleConfirm,
@@ -569,7 +510,6 @@ export function createKillerSudokuGame() {
         handleNumberInput,
         handleAction,
         handleAdReward,
-        checkSavedGameExists,
         clearTimerInterval,
         setTutorialChecker,
         formatTime,

@@ -11,8 +11,6 @@ export const difficultyLabels: Record<string, string> = {
     easy: '쉬움', medium: '보통', hard: '어려움', expert: '전문가', master: '마스터'
 };
 
-export const difficultyList: Difficulty[] = ['easy', 'medium', 'hard', 'expert', 'master'];
-
 const TIME_LIMITS: Record<string, number> = {
     easy: 30, medium: 60, hard: 120, expert: 240, master: 360
 };
@@ -37,10 +35,7 @@ export function createUnblockMeGame() {
     let history: string[] = $state([]);
 
     // UI state
-    let activeTab: 'difficulty' | 'ranking' = $state('difficulty');
     let hasSavedGame = $state(false);
-    let startMode: 'initial' | 'diff_select' = $state('initial');
-    let isLoading = $state(false);
 
     // Modals
     let alertMessage: string | null = $state(null);
@@ -50,10 +45,6 @@ export function createUnblockMeGame() {
     // Score
     let earnedPointsResult = $state(0);
     let calculatedScore = $state(0);
-
-    // Ranking
-    let hallOfFameData: any[] = $state([]);
-    let hallOfFameLoading = $state(false);
 
     // Modal helpers
     function showAlert(msg: string) { alertMessage = msg; }
@@ -135,12 +126,8 @@ export function createUnblockMeGame() {
     }
 
     // Game flow
-    async function startGame() {
-        isLoading = true;
-        await new Promise(r => setTimeout(r, 50));
-
-        try {
-            localStorage.removeItem('unblockme_save');
+    function startGame() {
+        localStorage.removeItem('unblockme_save');
             const level = getRandomLevel(difficulty);
             currentLevel = level;
             blocks = parseLevel(level);
@@ -154,12 +141,8 @@ export function createUnblockMeGame() {
 
             gameState = 'playing';
             hasSavedGame = true;
-            startMode = 'initial';
             startTimer();
-            saveGame();
-        } finally {
-            isLoading = false;
-        }
+        saveGame();
     }
 
     function handleBeforeMove() {
@@ -237,15 +220,6 @@ export function createUnblockMeGame() {
         goto('/games/start/unblock-me');
     }
 
-    function checkSavedGame() {
-        try {
-            const saved = localStorage.getItem('unblockme_save');
-            if (saved) {
-                hasSavedGame = true;
-            }
-        } catch {}
-    }
-
     return {
         // State (getters/setters for reactivity)
         get gameState() { return gameState; },
@@ -260,20 +234,12 @@ export function createUnblockMeGame() {
         get timerValue() { return timerValue; },
         get displayTimer() { return displayTimer; },
         get history() { return history; },
-        get activeTab() { return activeTab; },
-        set activeTab(v: 'difficulty' | 'ranking') { activeTab = v; },
         get hasSavedGame() { return hasSavedGame; },
-        get startMode() { return startMode; },
-        set startMode(v: 'initial' | 'diff_select') { startMode = v; },
-        get isLoading() { return isLoading; },
         get alertMessage() { return alertMessage; },
         set alertMessage(v: string | null) { alertMessage = v; },
         get confirmMessage() { return confirmMessage; },
         get earnedPointsResult() { return earnedPointsResult; },
         get calculatedScore() { return calculatedScore; },
-        get hallOfFameData() { return hallOfFameData; },
-        get hallOfFameLoading() { return hallOfFameLoading; },
-
         // Functions
         showAlert,
         showConfirm,
@@ -292,6 +258,5 @@ export function createUnblockMeGame() {
         quitGame,
         restartGame,
         returnToMenu,
-        checkSavedGame,
     };
 }

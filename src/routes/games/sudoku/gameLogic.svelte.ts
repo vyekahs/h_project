@@ -35,27 +35,6 @@ export function createSudokuGame() {
     let displayTimer = $state(0); // Reactive display value
     let timerInterval: any;
 
-    // View state
-    let activeTab: 'difficulty' | 'ranking' | 'guide' = $state('difficulty');
-    let rankingTab: 'halloffame' | 'ranking' = $state('ranking');
-    let hallOfFameData: any[] = $state([]);
-    let hallOfFameLoading = $state(false);
-
-    async function loadHallOfFame() {
-        hallOfFameLoading = true;
-        try {
-            const gameId = gameMode === 'killer' ? 'killer-sudoku' : 'sudoku';
-            const res = await fetch(`/api/ranking/halloffame/${gameId}`);
-            if (res.ok) {
-                hallOfFameData = await res.json();
-            }
-        } catch (e) {
-            console.error('Failed to load hall of fame', e);
-        } finally {
-            hallOfFameLoading = false;
-        }
-    }
-
     // Simple history stack
     let history: string[] = $state([]);
 
@@ -68,8 +47,6 @@ export function createSudokuGame() {
     let isTimeFrozen = $state(false);
 
     let hasSavedGame = $state(false);
-    let startMode: 'initial' | 'diff_select' = $state('initial');
-    let hasUnlockedTutorials = $state(false);
 
     // Derived
     let completedNumbers = $derived.by(() => {
@@ -88,8 +65,6 @@ export function createSudokuGame() {
         return completed;
     });
 
-    // Loading
-    let isLoading = $state(false);
 
     // Alert/Confirm Modal State
     let alertMessage: string | null = $state(null);
@@ -154,7 +129,6 @@ export function createSudokuGame() {
                 showAlert('저장된 게임 데이터가 손상되어 이어할 수 없습니다. 새 게임을 시작합니다.');
                 localStorage.removeItem('sudoku_save');
                 hasSavedGame = false;
-                startMode = 'diff_select';
             }
         }
     }
@@ -211,12 +185,7 @@ export function createSudokuGame() {
              if (shouldShow) return;
         }
 
-        isLoading = true;
-        // Allow UI to update before heavy calculation
-        await new Promise(resolve => setTimeout(resolve, 50));
-
-        try {
-            // 2. Play Count & Unlock Logic (Only for new games)
+        // 2. Play Count & Unlock Logic (Only for new games)
             if (force || !hasSavedGame) {
                 if (browser) {
                     const playCounts = JSON.parse(localStorage.getItem('sudoku_play_counts') || '{}');
@@ -242,7 +211,6 @@ export function createSudokuGame() {
                                 }
                             });
                         }
-                        hasUnlockedTutorials = true;
                     }
                 }
             }
@@ -289,9 +257,6 @@ export function createSudokuGame() {
             hasSavedGame = true;
 
             startTimer();
-        } finally {
-            isLoading = false;
-        }
     }
 
     function addToHistory() {
@@ -540,20 +505,6 @@ export function createSudokuGame() {
          }
     }
 
-    function checkSavedGameExists() {
-        const saved = localStorage.getItem('sudoku_save');
-        if (saved) {
-            try {
-                const data = JSON.parse(saved);
-                if (data.board && data.solution && data.difficulty) {
-                    hasSavedGame = true;
-                }
-            } catch (e) {
-                console.error('Failed to load save', e);
-            }
-        }
-    }
-
     function clearTimerInterval() {
         clearInterval(timerInterval);
     }
@@ -577,12 +528,6 @@ export function createSudokuGame() {
         get mistakes() { return mistakes; },
         get isWon() { return isWon; },
         get displayTimer() { return displayTimer; },
-        get activeTab() { return activeTab; },
-        set activeTab(v: 'difficulty' | 'ranking' | 'guide') { activeTab = v; },
-        get rankingTab() { return rankingTab; },
-        set rankingTab(v: 'halloffame' | 'ranking') { rankingTab = v; },
-        get hallOfFameData() { return hallOfFameData; },
-        get hallOfFameLoading() { return hallOfFameLoading; },
         get history() { return history; },
         get showTutorial() { return showTutorial; },
         set showTutorial(v: boolean) { showTutorial = v; },
@@ -592,19 +537,12 @@ export function createSudokuGame() {
         get calculatedScore() { return calculatedScore; },
         get isTimeFrozen() { return isTimeFrozen; },
         get hasSavedGame() { return hasSavedGame; },
-        set hasSavedGame(v: boolean) { hasSavedGame = v; },
-        get startMode() { return startMode; },
-        set startMode(v: 'initial' | 'diff_select') { startMode = v; },
-        get hasUnlockedTutorials() { return hasUnlockedTutorials; },
-        set hasUnlockedTutorials(v: boolean) { hasUnlockedTutorials = v; },
         get completedNumbers() { return completedNumbers; },
-        get isLoading() { return isLoading; },
         get alertMessage() { return alertMessage; },
         set alertMessage(v: string | null) { alertMessage = v; },
         get confirmMessage() { return confirmMessage; },
 
         // Functions
-        loadHallOfFame,
         showAlert,
         showConfirm,
         handleConfirm,
@@ -622,7 +560,6 @@ export function createSudokuGame() {
         handleAction,
         handleAdReward,
         handleGameOver,
-        checkSavedGameExists,
         clearTimerInterval,
         setTutorialChecker,
         formatTime,
