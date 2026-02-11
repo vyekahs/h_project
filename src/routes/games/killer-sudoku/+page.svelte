@@ -39,7 +39,7 @@
                 isAutostart = true;
                 const diff = params.get('difficulty');
                 if (diff) game.difficulty = diff as any;
-                game.startGame();
+                game.startGame(true, true);
                 return () => { game.clearTimerInterval(); };
             }
             if (params.get('resume') === 'true') {
