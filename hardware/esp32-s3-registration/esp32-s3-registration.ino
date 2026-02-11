@@ -54,6 +54,8 @@ bool irkCaptured = false;
 // Web Bluetooth flow state
 bool isWebBtFlow = false;
 unsigned long webBtAuthTime = 0;
+unsigned long webBtFlowStartTime = 0;  // Web BT 플로우 시작 시간 (자동 리셋용)
+const unsigned long WEB_BT_TIMEOUT = 60000;  // 60초 후 자동 리셋
 
 // Deferred actions (콜백 내에서 BLE 스택 재진입 방지)
 bool pendingSecurityInit = false;
@@ -143,25 +145,40 @@ class MyServerCallbacks: public NimBLEServerCallbacks {
         securityStarted = false;
         Serial.println("Device connected. ConnID: " + String(currentConnId));
 
-        // Web Bluetooth 플로우 (서버 등록 없이 직접 연결된 경우)
-        // → Just Works 페어링 사용 (PIN 불필요)
+        // Web Bluetooth 플로우
         if (!isRegistering) {
-            Serial.println("Web Bluetooth flow detected - switching to JustWorks pairing");
-            isWebBtFlow = true;
-            webBtAuthTime = 0;
-            irkCaptured = false;
-            capturedIrk = "";
+            if (isWebBtFlow && irkCaptured) {
+                // 재연결: IRK 이미 캡처됨 → 캐릭터리스틱에 IRK 세팅 유지
+                Serial.println("Web BT reconnect - IRK already captured, ready to read");
+                if (pIrkCharacteristic != NULL && capturedIrk.length() == 32) {
+                    pIrkCharacteristic->setValue((uint8_t*)capturedIrk.c_str(), 32);
+                    Serial.println("IRK re-set in characteristic for reconnect read");
+                }
+            } else {
+                // 첫 연결: JustWorks 페어링 설정
+                Serial.println("Web Bluetooth flow detected - switching to JustWorks pairing");
+                isWebBtFlow = true;
+                webBtAuthTime = 0;
+                webBtFlowStartTime = millis();
+                irkCaptured = false;
+                capturedIrk = "";
+                // 첫 연결만 초기화
+                if (pIrkCharacteristic != NULL) {
+                    const char* empty = "00000000000000000000000000000000";
+                    pIrkCharacteristic->setValue((uint8_t*)empty, 32);
+                }
+                // 딜레이 후 페어링 시작 (안드로이드 GATT 탐색 시간 확보)
+                pendingSecurityInit = true;
+                pendingSecurityConnId = connInfo.getConnHandle();
+            }
             ble_hs_cfg.sm_io_cap = BLE_HS_IO_NO_INPUT_OUTPUT;
             ble_hs_cfg.sm_mitm = 0;
-            // loop에서 처리 (콜백 내 BLE 스택 재진입 방지)
-            pendingSecurityInit = true;
-            pendingSecurityConnId = connInfo.getConnHandle();
-        }
-
-        // IRK 캐릭터리스틱 초기화 (새 연결마다)
-        if (pIrkCharacteristic != NULL) {
-            const char* empty = "00000000000000000000000000000000";
-            pIrkCharacteristic->setValue((uint8_t*)empty, 32);
+        } else {
+            // iOS 플로우: 매 연결마다 초기화
+            if (pIrkCharacteristic != NULL) {
+                const char* empty = "00000000000000000000000000000000";
+                pIrkCharacteristic->setValue((uint8_t*)empty, 32);
+            }
         }
     }
 
@@ -171,13 +188,27 @@ class MyServerCallbacks: public NimBLEServerCallbacks {
         securityStarted = false;
         Serial.println("Device disconnected, reason: " + String(reason));
 
-        // 상태 리셋
-        isWebBtFlow = false;
-        webBtAuthTime = 0;
+        // Web BT 플로우에서 IRK 캡처 완료 전이면 모드 유지 (재연결 대비)
+        if (isWebBtFlow && irkCaptured && webBtAuthTime == 0) {
+            // 첫 끊김: IRK 캡처됨 → 재연결 대기
+            Serial.println("Web BT: IRK captured, keeping JustWorks for reconnect");
+            webBtAuthTime = 1;  // 재연결 구분용 플래그
+        } else if (isWebBtFlow && irkCaptured && webBtAuthTime > 0) {
+            // 재연결 후 끊김: 안드로이드가 IRK를 읽었으므로 플로우 완료 → 즉시 리셋
+            Serial.println("Web BT: Flow complete, resetting to iOS mode");
+            isWebBtFlow = false;
+            irkCaptured = false;
+            capturedIrk = "";
+            webBtFlowStartTime = 0;
+            webBtAuthTime = 0;
+            ble_hs_cfg.sm_io_cap = BLE_HS_IO_DISPLAY_ONLY;
+            ble_hs_cfg.sm_mitm = 1;
+        } else if (!isWebBtFlow) {
+            // iOS 플로우를 위해 원래 보안 설정 복원
+            ble_hs_cfg.sm_io_cap = BLE_HS_IO_DISPLAY_ONLY;
+            ble_hs_cfg.sm_mitm = 1;
+        }
 
-        // iOS 플로우를 위해 원래 보안 설정 복원
-        ble_hs_cfg.sm_io_cap = BLE_HS_IO_DISPLAY_ONLY;
-        ble_hs_cfg.sm_mitm = 1;
         // 등록 중이 아닐 때만 광고 재시작 (loop에서 처리)
         if (!pendingDisconnect) {
             pendingAdvertisingRestart = true;
@@ -255,15 +286,24 @@ void uploadIrk(String irk) {
 
 void setup() {
   Serial.begin(115200);
-  delay(1000);
+  delay(2000);  // 시리얼 안정화 대기 늘림
 
   Serial.println("\n\n=== ESP32-S3 Registration Device ===");
 
-  // Initialize NVS
+  // Initialize NVS (본딩 데이터 손상 방지를 위해 매번 정리)
   esp_err_t ret = nvs_flash_init();
-  if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+  if (ret != ESP_OK) {
+      Serial.println("NVS init failed, erasing...");
       nvs_flash_erase();
       nvs_flash_init();
+  }
+  // BLE 본딩 저장소 초기화 (이전 등록 데이터가 크래시 유발 방지)
+  nvs_handle_t nvs_handle;
+  if (nvs_open("nimble_bond", NVS_READWRITE, &nvs_handle) == ESP_OK) {
+      nvs_erase_all(nvs_handle);
+      nvs_commit(nvs_handle);
+      nvs_close(nvs_handle);
+      Serial.println("NVS bond store cleared");
   }
 
   // WiFi Setup
@@ -353,10 +393,25 @@ void setup() {
 }
 
 void loop() {
+  // 0-a. Web BT 플로우 자동 리셋 (60초 후 iOS 모드로 복귀)
+  if (isWebBtFlow && webBtFlowStartTime > 0 && millis() - webBtFlowStartTime > WEB_BT_TIMEOUT) {
+      Serial.println("Web BT flow timeout - resetting to iOS mode");
+      isWebBtFlow = false;
+      irkCaptured = false;
+      capturedIrk = "";
+      webBtFlowStartTime = 0;
+      ble_hs_cfg.sm_io_cap = BLE_HS_IO_DISPLAY_ONLY;
+      ble_hs_cfg.sm_mitm = 1;
+  }
+
   // 0. Deferred BLE actions (콜백에서 직접 호출하면 스택 오버플로우)
   if (pendingSecurityInit) {
-      pendingSecurityInit = false;
-      ble_gap_security_initiate(pendingSecurityConnId);
+      // 안드로이드 GATT 탐색 시간 확보 후 페어링 시작
+      if (connectTime > 0 && millis() - connectTime > 2000) {
+          pendingSecurityInit = false;
+          Serial.println("Initiating security after 2s delay...");
+          ble_gap_security_initiate(pendingSecurityConnId);
+      }
   }
   if (pendingAdvertisingRestart) {
       pendingAdvertisingRestart = false;

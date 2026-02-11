@@ -308,10 +308,13 @@ export async function processScanResults(scannerId: string, timestamp: number, s
         }
 
         if (attendeeId) {
+            const isFirst = !detectedAttendeeIds.has(attendeeId);
             detectedAttendeeIds.add(attendeeId);
             // Update last seen (메모리만, DB 불필요)
             lastSeenMap.set(attendeeId, Date.now());
-            console.log(`[BLE] ✅ Matched: ${scan.mac} (${scan.rssi}dBm) → User ${attendeeId}`);
+            if (isFirst) {
+                console.log(`[BLE] ✅ Matched: ${scan.mac} (${scan.rssi}dBm) → User ${attendeeId}`);
+            }
         }
     }
 

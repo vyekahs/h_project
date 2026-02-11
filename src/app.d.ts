@@ -18,7 +18,8 @@ declare global {
                     description?: string;
                     is_equipped: boolean;
                 };
-            }
+            };
+            isAdmin?: boolean;
         }
 		// interface PageData {}
 		// interface PageState {}

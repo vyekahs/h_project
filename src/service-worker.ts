@@ -1,4 +1,5 @@
 /// <reference types="@sveltejs/kit" />
+/// <reference lib="webworker" />
 import { build, files, version } from '$service-worker';
 
 // Create a unique cache name for this deployment
@@ -30,7 +31,8 @@ self.addEventListener('activate', (event) => {
 	event.waitUntil(deleteOldCaches());
 });
 
-self.addEventListener('fetch', (event) => {
+self.addEventListener('fetch', (e) => {
+	const event = e as FetchEvent;
 	if (event.request.method !== 'GET') return;
 
 	const url = new URL(event.request.url);
@@ -47,36 +49,29 @@ self.addEventListener('fetch', (event) => {
 			if (response) return response;
 		}
 
-		// Main page (/) → network-first (실시간 데이터 중요)
-		if (url.pathname === '/') {
+		// 데이터 요청 및 페이지 네비게이션 → network only (항상 최신 데이터)
+		// SvelteKit __data.json, 페이지 HTML 등은 캐시하지 않음
+		if (url.pathname.includes('__data.json') ||
+			event.request.headers.get('accept')?.includes('text/html')) {
 			try {
-				const response = await fetch(event.request);
-				if (response.status === 200) {
-					cache.put(event.request, response.clone());
-				}
-				return response;
+				return await fetch(event.request);
 			} catch {
-				const cached = await cache.match(event.request);
-				if (cached) return cached;
 				return new Response('Offline', { status: 408 });
 			}
 		}
 
-		// Other pages → stale-while-revalidate (빠른 페이지 전환)
-		const cached = await cache.match(event.request);
-		const fetchPromise = fetch(event.request).then(response => {
+		// 기타 리소스 (이미지, 폰트 등) → network first, 오프라인 시 캐시
+		try {
+			const response = await fetch(event.request);
 			if (response.status === 200) {
 				cache.put(event.request, response.clone());
 			}
 			return response;
-		}).catch(() => null);
-
-		if (cached) return cached;
-
-		const networkResponse = await fetchPromise;
-		if (networkResponse) return networkResponse;
-
-		return new Response('Offline', { status: 408 });
+		} catch {
+			const cached = await cache.match(event.request);
+			if (cached) return cached;
+			return new Response('Offline', { status: 408 });
+		}
 	}
 
 	event.respondWith(respond());

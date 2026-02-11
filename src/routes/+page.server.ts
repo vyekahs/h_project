@@ -1,7 +1,6 @@
 import { query } from '$lib/server/db';
 import { fail } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
-import { promoteWaitlist } from '$lib/server/reservations';
 import { verifyAdminSession, verifyAttendeeSession } from '$lib/server/auth';
 import { TitleService } from '$lib/server/services/titleService';
 
@@ -25,132 +24,116 @@ async function canModifyGame(request: Request, gameId: string | number): Promise
     }
 }
 
-export const load: PageServerLoad = async ({ locals, cookies, request }) => {
-    const userAuthCookie = cookies.get('user_auth');
-// ... load function logic (omitted, assuming it stays same but preserving previous code)
-// WAIT, replace_file_content replaces the chunk. I need to keep load intact. 
-// I will just Insert canModifyGame before load.
+export const load: PageServerLoad = async ({ locals }) => {
+    // hooks.server.ts에서 이미 설정된 인증 정보 사용 (중복 DB 호출 제거)
+    const user = locals.user || null;
+    const isAdmin = locals.isAdmin || false;
 
-    // ... (rest of load function remains the same)
-    // Auto-finish removed as per request
-    // await query("UPDATE game_sessions SET status = 'finished' WHERE status = 'playing' AND end_time < NOW()");
+    // 독립적인 쿼리들을 병렬 실행
+    const [
+        attendeesResult,
+        gamesResult,
+        scheduledGamesResult,
+        allGamesResult,
+        reservationsResult,
+        noticeResult,
+        sysRes
+    ] = await Promise.all([
+        query(`
+            SELECT a.id, a.name, v.arrival_time,
+                   t.title_name,
+                   EXISTS(SELECT 1 FROM session_participants sp JOIN game_sessions gs ON sp.session_id = gs.id WHERE sp.attendee_id = a.id AND gs.status = 'playing') as is_playing
+            FROM visits v
+            JOIN attendees a ON v.attendee_id = a.id
+            LEFT JOIN minigame_user_points up ON a.id = up.user_id
+            LEFT JOIN minigame_titles t ON up.equipped_title_id = t.id
+            WHERE v.departure_time IS NULL
+            ORDER BY v.arrival_time DESC
+        `),
+        query(`
+            SELECT gs.id, gs.game_name, gs.end_time, gs.created_by,
+                   COALESCE(json_agg(json_build_object('id', a.id, 'name', a.name, 'title_name', t.title_name)) FILTER (WHERE a.id IS NOT NULL), '[]') as players
+            FROM game_sessions gs
+            LEFT JOIN session_participants sp ON gs.id = sp.session_id
+            LEFT JOIN attendees a ON sp.attendee_id = a.id
+            LEFT JOIN minigame_user_points up ON a.id = up.user_id
+            LEFT JOIN minigame_titles t ON up.equipped_title_id = t.id
+            WHERE gs.status = 'playing'
+            GROUP BY gs.id, gs.game_name, gs.end_time, gs.created_by
+            ORDER BY gs.end_time ASC
+        `),
+        query(`
+            SELECT gs.id, gs.game_name, gs.game_id, gs.min_players, gs.max_players, gs.scheduled_at, gs.created_by, g.image_url,
+                   COALESCE(json_agg(json_build_object('id', a.id, 'name', a.name, 'title_name', t.title_name)) FILTER (WHERE a.id IS NOT NULL), '[]') as participants
+            FROM game_sessions gs
+            LEFT JOIN session_participants sp ON gs.id = sp.session_id
+            LEFT JOIN attendees a ON sp.attendee_id = a.id
+            LEFT JOIN games g ON gs.game_id = g.id
+            LEFT JOIN minigame_user_points up ON a.id = up.user_id
+            LEFT JOIN minigame_titles t ON up.equipped_title_id = t.id
+            WHERE gs.status = 'scheduled'
+            GROUP BY gs.id, gs.game_name, gs.game_id, gs.min_players, gs.max_players, gs.scheduled_at, gs.created_by, g.image_url
+            ORDER BY gs.scheduled_at ASC
+        `),
+        query('SELECT id, name, min_players, max_players, playtime_min, image_url FROM games ORDER BY name ASC'),
+        query(`
+            SELECT r.id, r.session_id, r.game_id, r.attendee_id, r.status, a.name as attendee_name,
+                   COALESCE(g.name, gs.game_name) as game_name
+            FROM reservations r
+            JOIN attendees a ON r.attendee_id = a.id
+            LEFT JOIN games g ON r.game_id = g.id
+            LEFT JOIN game_sessions gs ON r.session_id = gs.id
+            WHERE r.status != 'cancelled'
+        `),
+        query('SELECT content FROM notices WHERE is_active = true ORDER BY created_at DESC LIMIT 1'),
+        query("SELECT value FROM system_settings WHERE key = 'is_open'")
+    ]);
 
-    const attendeesResult = await query(`
-        SELECT a.id, a.name, v.arrival_time,
-               t.title_name,
-               EXISTS(SELECT 1 FROM session_participants sp JOIN game_sessions gs ON sp.session_id = gs.id WHERE sp.attendee_id = a.id AND gs.status = 'playing') as is_playing
-        FROM visits v
-        JOIN attendees a ON v.attendee_id = a.id
-        LEFT JOIN minigame_user_points up ON a.id = up.user_id
-        LEFT JOIN minigame_titles t ON up.equipped_title_id = t.id
-        WHERE v.departure_time IS NULL
-        ORDER BY v.arrival_time DESC
-    `);
-
-
-    const gamesResult = await query(`
-        SELECT gs.id, gs.game_name, gs.end_time, gs.created_by, 
-               COALESCE(json_agg(json_build_object('id', a.id, 'name', a.name, 'title_name', t.title_name)) FILTER (WHERE a.id IS NOT NULL), '[]') as players
-        FROM game_sessions gs
-        LEFT JOIN session_participants sp ON gs.id = sp.session_id
-        LEFT JOIN attendees a ON sp.attendee_id = a.id
-        LEFT JOIN minigame_user_points up ON a.id = up.user_id
-        LEFT JOIN minigame_titles t ON up.equipped_title_id = t.id
-        WHERE gs.status = 'playing'
-        GROUP BY gs.id, gs.game_name, gs.end_time, gs.created_by
-        ORDER BY gs.end_time ASC
-    `);
-
-    const scheduledGamesResult = await query(`
-        SELECT gs.id, gs.game_name, gs.game_id, gs.min_players, gs.max_players, gs.scheduled_at, gs.created_by, g.image_url,
-               COALESCE(json_agg(json_build_object('id', a.id, 'name', a.name, 'title_name', t.title_name)) FILTER (WHERE a.id IS NOT NULL), '[]') as participants
-        FROM game_sessions gs
-        LEFT JOIN session_participants sp ON gs.id = sp.session_id
-        LEFT JOIN attendees a ON sp.attendee_id = a.id
-        LEFT JOIN games g ON gs.game_id = g.id
-        LEFT JOIN minigame_user_points up ON a.id = up.user_id
-        LEFT JOIN minigame_titles t ON up.equipped_title_id = t.id
-        WHERE gs.status = 'scheduled'
-        GROUP BY gs.id, gs.game_name, gs.game_id, gs.min_players, gs.max_players, gs.scheduled_at, gs.created_by, g.image_url
-        ORDER BY gs.scheduled_at ASC
-    `);
-
-    // Fetch all games for dropdown
-    const allGamesResult = await query('SELECT id, name, min_players, max_players, playtime_min, image_url FROM games ORDER BY name ASC');
-    
-    // Fetch all reservations
-    // Fetch all reservations
-    const reservationsResult = await query(`
-        SELECT r.id, r.session_id, r.game_id, r.attendee_id, r.status, a.name as attendee_name, 
-               COALESCE(g.name, gs.game_name) as game_name
-        FROM reservations r
-        JOIN attendees a ON r.attendee_id = a.id
-        LEFT JOIN games g ON r.game_id = g.id
-        LEFT JOIN game_sessions gs ON r.session_id = gs.id
-        WHERE r.status != 'cancelled'
-    `);
-
-    const noticeResult = await query('SELECT content FROM notices WHERE is_active = true ORDER BY created_at DESC LIMIT 1');
     const notice = noticeResult.rows[0]?.content || null;
-
-    const sessionToken = cookies.get('admin_session');
-    const isAdmin = sessionToken ? await verifyAdminSession(sessionToken) : false;
-
-    // Check if system is open
-    const sysRes = await query("SELECT value FROM system_settings WHERE key = 'is_open'");
     const isOpen = sysRes.rows[0]?.value !== 'false';
 
-    const userSessionToken = cookies.get('user_session');
-    let user = null;
+    // 유저별 데이터도 병렬로 조회
     let userPenaltyInfo = null;
     let userReservation = null;
     let userScheduledGames: any[] = [];
     let userPlayingGame = null;
 
-    if (userSessionToken) {
+    if (user) {
         try {
-            user = await verifyAttendeeSession(userSessionToken);
-            if (user) {
-                // Refresh permissions from DB
-                const userStatus = await query('SELECT can_manage_games, penalty_points, is_blacklisted FROM attendees WHERE id = $1', [user.id]);
-                if (userStatus.rows.length > 0) {
-                     user.can_manage_games = userStatus.rows[0].can_manage_games;
-                     userPenaltyInfo = userStatus.rows[0];
-                     userPenaltyInfo = null; // User might have been deleted?
-                }
-
-                // Fetch Title
-                const title = await TitleService.getUserTitle(user.id);
-                if (title) {
-                    (user as any).title = title;
-                }
-    
-                const resResult = await query(`
+            const [userStatusRes, titleRes, resResult, schedResult, playingResult] = await Promise.all([
+                query('SELECT can_manage_games, penalty_points, is_blacklisted FROM attendees WHERE id = $1', [user.id]),
+                TitleService.getUserTitle(user.id),
+                query(`
                     SELECT r.*, gs.game_name, gs.status as session_status, gs.scheduled_at
                     FROM reservations r
                     JOIN game_sessions gs ON r.session_id = gs.id
                     WHERE r.attendee_id = $1 AND r.status IN ('pending', 'waitlisted', 'confirmed')
                     LIMIT 1
-                `, [user.id]);
-                userReservation = resResult.rows[0] || null;
-    
-                const schedResult = await query(`
+                `, [user.id]),
+                query(`
                     SELECT gs.*
                     FROM game_sessions gs
                     JOIN session_participants sp ON gs.id = sp.session_id
                     WHERE sp.attendee_id = $1 AND gs.status = 'scheduled'
                     ORDER BY gs.scheduled_at ASC
-                `, [user.id]);
-                userScheduledGames = schedResult.rows;
-    
-                const playingResult = await query(`
+                `, [user.id]),
+                query(`
                     SELECT gs.id, gs.game_name
                     FROM session_participants sp
                     JOIN game_sessions gs ON sp.session_id = gs.id
                     WHERE sp.attendee_id = $1 AND gs.status = 'playing'
-                `, [user.id]);
-                userPlayingGame = playingResult.rows[0] || null;
+                `, [user.id])
+            ]);
+
+            if (userStatusRes.rows.length > 0) {
+                user.can_manage_games = userStatusRes.rows[0].can_manage_games;
             }
+            if (titleRes) {
+                (user as any).title = titleRes;
+            }
+            userReservation = resResult.rows[0] || null;
+            userScheduledGames = schedResult.rows;
+            userPlayingGame = playingResult.rows[0] || null;
         } catch (e) {}
     }
 
@@ -158,14 +141,14 @@ export const load: PageServerLoad = async ({ locals, cookies, request }) => {
         attendees: attendeesResult.rows,
         games: gamesResult.rows,
         scheduledGames: scheduledGamesResult.rows,
-        user: user,
-        isAdmin: isAdmin,
-        isOpen: isOpen,
-        notice: notice,
-        userPenaltyInfo: userPenaltyInfo,
-        userReservation: userReservation,
-        userScheduledGames: userScheduledGames,
-        userPlayingGame: userPlayingGame,
+        user,
+        isAdmin,
+        isOpen,
+        notice,
+        userPenaltyInfo,
+        userReservation,
+        userScheduledGames,
+        userPlayingGame,
         allGames: allGamesResult.rows,
         reservations: reservationsResult.rows,
     };
