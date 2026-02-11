@@ -12,19 +12,19 @@ const char* WIFI_PASS = "a4ke01fh66";
 
 // Server Config
 const char* API_SERVER = "https://damonpyo.mooo.com";
-// const int API_PORT = 8080;
 const char* API_KEY = "hproject_scanner_secret_2026";
-const char* SCANNER_ID = "scanner_sub_hall";
+const char* SCANNER_ID = "scanner_main_hall";
 
 // BLE
 BLEScan* pBLEScan;
 const int SCAN_TIME = 3;
-const unsigned long REPORT_INTERVAL = 60 * 1000;
-unsigned long lastReportTime = 0;
-const int RSSI_THRESHOLD = -90; // ~15m, 벽 있는 15평 공간용
+const int SCAN_ROUNDS = 3;
+const int BATCH_SIZE = 50;
+const unsigned long SCAN_INTERVAL = 60 * 1000;
+unsigned long lastScanTime = 0;
 
-// Buffer
-const int MAX_DEVICES = 100;
+// Buffer (multi-scan dedup)
+const int MAX_DEVICES = 300;
 String deviceMacs[MAX_DEVICES];
 int deviceRssis[MAX_DEVICES];
 String deviceNames[MAX_DEVICES];
@@ -38,17 +38,17 @@ void setup() {
   // WiFi Connect
   Serial.print("Connecting to WiFi: ");
   Serial.println(WIFI_SSID);
-  
+
   WiFi.mode(WIFI_STA);
   WiFi.begin(WIFI_SSID, WIFI_PASS);
-  
+
   int attempts = 0;
   while (WiFi.status() != WL_CONNECTED && attempts < 30) {
     delay(500);
     Serial.print(".");
     attempts++;
   }
-  
+
   if (WiFi.status() == WL_CONNECTED) {
     Serial.println("\n*** WiFi Connected! ***");
     Serial.print("IP: ");
@@ -63,99 +63,122 @@ void setup() {
   Serial.println("Initializing BLE...");
   BLEDevice::init(SCANNER_ID);
   pBLEScan = BLEDevice::getScan();
-  pBLEScan->setActiveScan(true); // Active Scan for iPhone detection
+  pBLEScan->setActiveScan(true);
   pBLEScan->setInterval(100);
   pBLEScan->setWindow(99);
-  
+
   Serial.println("=== SCANNER READY ===\n");
 }
 
-void sendReport() {
-  if (WiFi.status() != WL_CONNECTED || deviceCount == 0) {
-    Serial.println("No devices or WiFi down");
-    return;
+void addDevice(String mac, int rssi, String name) {
+  for (int i = 0; i < deviceCount; i++) {
+    if (deviceMacs[i] == mac) {
+      deviceRssis[i] = rssi; // update RSSI
+      return;
+    }
   }
-  
+  if (deviceCount < MAX_DEVICES) {
+    deviceMacs[deviceCount] = mac;
+    deviceRssis[deviceCount] = rssi;
+    deviceNames[deviceCount] = name;
+    deviceCount++;
+  }
+}
+
+bool sendBatch(int startIdx, int endIdx, int batchIndex, int totalBatches) {
   HTTPClient http;
   String url = String(API_SERVER) + "/api/ble/report";
-  Serial.println("URL: " + url);
-  
+
   http.begin(url);
   http.addHeader("Content-Type", "application/json");
   http.addHeader("x-api-key", API_KEY);
 
-  DynamicJsonDocument doc(8192);
+  int batchCount = endIdx - startIdx;
+  DynamicJsonDocument doc(4096);
   doc["scanner_id"] = SCANNER_ID;
   doc["timestamp"] = millis();
-  
-  JsonArray devices = doc.createNestedArray("devices");
-  for (int i = 0; i < deviceCount; i++) {
-    JsonObject d = devices.createNestedObject();
+  doc["batch_index"] = batchIndex;
+  doc["total_batches"] = totalBatches;
+
+  JsonArray devArr = doc.createNestedArray("devices");
+  for (int i = startIdx; i < endIdx; i++) {
+    JsonObject d = devArr.createNestedObject();
     d["mac"] = deviceMacs[i];
     d["rssi"] = deviceRssis[i];
-    
     d["name"] = deviceNames[i];
   }
-  
+
   String jsonString;
   serializeJson(doc, jsonString);
-  
-  Serial.print("Sending " + String(deviceCount) + " devices... ");
+
+  Serial.print("  Batch " + String(batchIndex + 1) + "/" + String(totalBatches) + " (" + String(batchCount) + " devices)... ");
   int code = http.POST(jsonString);
-  
+  http.end();
+
   if (code > 0) {
     Serial.println("OK (" + String(code) + ")");
+    return true;
   } else {
     Serial.println("Error: " + String(code));
+    return false;
   }
-  http.end();
 }
 
 void loop() {
-  // Scan
-  Serial.println("Scanning BLE...");
-  BLEScanResults* foundDevices = pBLEScan->start(SCAN_TIME, false);
-  int count = foundDevices->getCount();
-  Serial.println("Found: " + String(count) + " devices");
+  if (millis() - lastScanTime < SCAN_INTERVAL) {
+    delay(1000);
+    return;
+  }
+  lastScanTime = millis();
 
-  for (int i = 0; i < count; i++) {
-    BLEAdvertisedDevice device = foundDevices->getDevice(i);
-    String mac = device.getAddress().toString().c_str();
-    int rssi = device.getRSSI();
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("WiFi down, skipping");
+    return;
+  }
 
-    // Skip weak signals (too far away)
-    if (rssi < RSSI_THRESHOLD) continue;
+  // Multi-round scan
+  deviceCount = 0;
+  for (int round = 1; round <= SCAN_ROUNDS; round++) {
+    Serial.println("Scan round " + String(round) + "/" + String(SCAN_ROUNDS) + "...");
+    BLEScanResults* foundDevices = pBLEScan->start(SCAN_TIME, false);
+    int count = foundDevices->getCount();
+    Serial.println("  Found: " + String(count) + " devices");
 
-    bool existing = false;
-    for (int j = 0; j < deviceCount; j++) {
-      if (deviceMacs[j] == mac) {
-        deviceRssis[j] = rssi;
-        existing = true;
-        break;
-      }
+    for (int i = 0; i < count; i++) {
+      BLEAdvertisedDevice device = foundDevices->getDevice(i);
+      String mac = device.getAddress().toString().c_str();
+      int rssi = device.getRSSI();
+      String name = device.haveName() ? String(device.getName().c_str()) : "";
+      addDevice(mac, rssi, name);
     }
+    pBLEScan->clearResults();
 
-    if (!existing && deviceCount < MAX_DEVICES) {
-      deviceMacs[deviceCount] = mac;
-      deviceRssis[deviceCount] = rssi;
-      
-      if (device.haveName()) {
-        deviceNames[deviceCount] = device.getName().c_str();
-      } else {
-        deviceNames[deviceCount] = "";
-      }
-      
-      deviceCount++;
+    if (round < SCAN_ROUNDS) {
+      delay(1000);
     }
   }
-  pBLEScan->clearResults();
 
-  // Report
-  if (millis() - lastReportTime > REPORT_INTERVAL) {
-    sendReport();
-    lastReportTime = millis();
-    deviceCount = 0;
+  Serial.println("Total unique devices: " + String(deviceCount));
+
+  if (deviceCount == 0) return;
+
+  // Send in batches
+  int totalBatches = (deviceCount + BATCH_SIZE - 1) / BATCH_SIZE;
+  Serial.println("Sending in " + String(totalBatches) + " batch(es)");
+
+  int successCount = 0;
+  for (int batch = 0; batch < totalBatches; batch++) {
+    int startIdx = batch * BATCH_SIZE;
+    int endIdx = min(startIdx + BATCH_SIZE, deviceCount);
+
+    if (sendBatch(startIdx, endIdx, batch, totalBatches)) {
+      successCount++;
+    }
+
+    if (batch < totalBatches - 1) {
+      delay(200);
+    }
   }
-  
-  delay(1000);
+
+  Serial.println("Report done: " + String(successCount) + "/" + String(totalBatches) + " batches OK");
 }

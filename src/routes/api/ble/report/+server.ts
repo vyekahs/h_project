@@ -17,9 +17,10 @@ export const POST: RequestHandler = async ({ request }) => {
         const rawText = await request.text();
         const sanitized = rawText.replace(/[\x00-\x1F\x7F]/g, '');
         const body = JSON.parse(sanitized);
-        const { scanner_id, timestamp, devices } = body;
-        
-        console.log(`[BLE] Report from ${scanner_id}: ${devices?.length || 0} devices`);
+        const { scanner_id, timestamp, devices, batch_index, total_batches } = body;
+        const isLastBatch = !total_batches || (batch_index === total_batches - 1);
+
+        console.log(`[BLE] Report from ${scanner_id}: ${devices?.length || 0} devices (batch ${(batch_index ?? 0) + 1}/${total_batches ?? 1})`);
         // Log MACs with RSSI to identify close devices
         console.log(`[BLE] Devices: ${devices?.map((d: any) => `${d.mac} (${d.rssi}dBm)`).join(', ')}`);
         
@@ -44,7 +45,7 @@ export const POST: RequestHandler = async ({ request }) => {
 
         // 3. Process in background (async) to not block scanner
         // Or await if we want to ensure processing. Await is safer for consistency.
-        await processScanResults(actualScannerId, timestamp, devices);
+        await processScanResults(actualScannerId, timestamp, devices, isLastBatch);
 
         return json({ success: true, count: devices.length });
     } catch (e) {

@@ -206,7 +206,7 @@ function verifyMetric(hash: Buffer, prand: Buffer, key: Buffer, padding: 'Head'|
 /**
  * Process Scan Results
  */
-export async function processScanResults(scannerId: string, timestamp: number, scans: ScanResult[]) {
+export async function processScanResults(scannerId: string, timestamp: number, scans: ScanResult[], isLastBatch: boolean = true) {
     // 0. Settings Cache 초기화 (첫 요청에서 DB 로드 후 영구 캐시)
     if (!settingsCache) {
         try {
@@ -321,10 +321,12 @@ export async function processScanResults(scannerId: string, timestamp: number, s
         console.log(`[BLE] Matched Users: ${[...detectedAttendeeIds].join(', ')}`);
     }
 
-    // Diagnostic: Check if any 'present' users with devices were NOT detected this cycle
-    const missingUsers = [...attendeeCache.values()].filter(a => a.status === 'present' && !detectedAttendeeIds.has(a.id));
-    if (missingUsers.length > 0) {
-        console.log(`[BLE] ⚠️ Present users NOT detected this cycle: ${missingUsers.map(u => `${u.name}(${u.id})`).join(', ')}`);
+    // Diagnostic: Check missing users only on last batch (배치 분할 시 중간 배치에서 오탐 방지)
+    if (isLastBatch) {
+        const missingUsers = [...attendeeCache.values()].filter(a => a.status === 'present' && !detectedAttendeeIds.has(a.id));
+        if (missingUsers.length > 0) {
+            console.log(`[BLE] ⚠️ Present users NOT detected this cycle: ${missingUsers.map(u => `${u.name}(${u.id})`).join(', ')}`);
+        }
     }
 
     // 3. Auto Check-in Logic & Auto-Open Logic
@@ -365,10 +367,10 @@ export async function processScanResults(scannerId: string, timestamp: number, s
         }
     }
 
-    // 4. Trigger Auto-Checkout Check (opportunistic)
-    // Or we can rely on a separate cron. 
-    // Let's do it here lightly since it's called every 5 mins by scanner.
-    await checkAutoCheckout();
+    // 4. Trigger Auto-Checkout Check (마지막 배치에서만 실행)
+    if (isLastBatch) {
+        await checkAutoCheckout();
+    }
 }
 
 /**
