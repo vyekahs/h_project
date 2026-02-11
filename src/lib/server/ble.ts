@@ -321,11 +321,16 @@ export async function processScanResults(scannerId: string, timestamp: number, s
         console.log(`[BLE] Matched Users: ${[...detectedAttendeeIds].join(', ')}`);
     }
 
-    // Diagnostic: Check missing users only on last batch (배치 분할 시 중간 배치에서 오탐 방지)
+    // Diagnostic: Check missing users only on last batch (전체 사이클 기준으로 판단)
     if (isLastBatch) {
-        const missingUsers = [...attendeeCache.values()].filter(a => a.status === 'present' && !detectedAttendeeIds.has(a.id));
+        const recentThreshold = Date.now() - 2 * 60 * 1000; // 2분 이내
+        const missingUsers = [...attendeeCache.values()].filter(a => {
+            if (a.status !== 'present') return false;
+            const lastSeen = lastSeenMap.get(a.id);
+            return !lastSeen || lastSeen < recentThreshold;
+        });
         if (missingUsers.length > 0) {
-            console.log(`[BLE] ⚠️ Present users NOT detected this cycle: ${missingUsers.map(u => `${u.name}(${u.id})`).join(', ')}`);
+            console.log(`[BLE] ⚠️ Present users NOT detected recently: ${missingUsers.map(u => `${u.name}(${u.id})`).join(', ')}`);
         }
     }
 
