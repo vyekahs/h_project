@@ -6,113 +6,13 @@
     import AdBanner from '$lib/components/ads/AdBanner.svelte';
 
 	let { children } = $props();
-
-    // Pull to Refresh Logic
-    let startY = 0; 
-    let currentY = $state(0);
-    let refreshing = $state(false);
-    let pullDistance = $state(0);
-    const threshold = 70; // px to trigger refresh
-    let isTouching = false;
-
-    function handleStart(clientY: number) {
-        if (typeof window === 'undefined') return;
-        // Disable pull-to-refresh on game pages (they handle their own touch)
-        if ($page.url.pathname.startsWith('/games/')) return;
-        if (window.scrollY === 0) {
-            startY = clientY;
-            isTouching = true;
-        }
-    }
-
-    function handleMove(clientY: number) {
-        if (typeof window === 'undefined') return;
-        if (!isTouching) return;
-        
-        // Only pull if we started at the top and are pulling down
-        if (window.scrollY === 0 && startY > 0 && !refreshing) {
-            const diff = clientY - startY;
-            
-            if (diff > 0) {
-                // Resistance effect
-                pullDistance = Math.min(diff * 0.5, 150); 
-                currentY = pullDistance;
-            } else {
-                // Scrolling up (normal scroll)
-                currentY = 0;
-                pullDistance = 0;
-            }
-        }
-    }
-
-    function handleEnd() {
-        if (typeof window === 'undefined') return;
-        isTouching = false;
-        if (window.scrollY === 0 && startY > 0 && !refreshing) {
-            if (pullDistance > threshold) {
-                // Trigger Refresh
-                refreshing = true;
-                currentY = threshold; 
-                setTimeout(() => {
-                    window.location.reload();
-                }, 500); 
-            } else {
-                // Cancel
-                resetPull();
-            }
-        } else {
-             resetPull();
-        }
-        startY = 0;
-    }
-
-    // Touch Handlers
-    function handleTouchStart(e: TouchEvent) { handleStart(e.touches[0].clientY); }
-    function handleTouchMove(e: TouchEvent) { handleMove(e.touches[0].clientY); }
-    function handleTouchEnd() { handleEnd(); }
-
-    // Mouse Handlers (for PC testing)
-    function handleMouseDown(e: MouseEvent) { handleStart(e.clientY); }
-    function handleMouseMove(e: MouseEvent) { if(e.buttons === 1) handleMove(e.clientY); }
-    function handleMouseUp() { handleEnd(); }
-    function handleMouseLeave() { if(isTouching) handleEnd(); }
-    
-    function resetPull() {
-        currentY = 0;
-        pullDistance = 0;
-    }
-    
-    let mainStyle = $derived.by(() => {
-        if (refreshing) {
-             return `transform: translateY(${threshold}px); transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);`;
-        }
-        if (pullDistance > 0) {
-             // Dragging - use simplistic transition to avoid lag but keep it reactive
-             return `transform: translateY(${currentY}px); transition: none;`;
-        }
-        if (currentY > 0) {
-            // Released but not refreshing (snapping back)
-             return `transform: translateY(0px); transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);`;
-        }
-        return ''; 
-    });
-
 </script>
 
 <svelte:head>
 	<link rel="icon" href={favicon} />
 </svelte:head>
 
-<div class="app-layout" 
-    ontouchstart={handleTouchStart} 
-    ontouchmove={handleTouchMove} 
-    ontouchend={handleTouchEnd}
-    onmousedown={handleMouseDown}
-    onmousemove={handleMouseMove}
-    onmouseup={handleMouseUp}
-    onmouseleave={handleMouseLeave}
->
-    <!-- Top Bar for Points (Shop Button) - Only show on Arcade page as requested -->
+<div class="app-layout">
     <!-- Top Bar for Points (Shop Button) - Temporarily hidden for initial release -->
     <!-- {#if $page.url.pathname === '/minigames'}
         <div class="top-bar">
@@ -121,25 +21,14 @@
         </div>
     {/if} -->
 
-    <!-- Refresh Indicator -->
-    <div class="refresh-indicator" style="transform: translateY({currentY}px); opacity: {pullDistance > 0 ? 1 : 0};">
-        <div class="spinner" class:spinning={refreshing}>
-            {#if refreshing}
-                ⏳
-            {:else}
-                ⬇️
-            {/if}
-        </div>
-    </div>
-
-	<main class="content" style={mainStyle}>
+	<main class="content">
 		{@render children()}
-        {#if !$page.url.pathname.startsWith('/admin') && !$page.url.pathname.includes('/games/')}
+        {#if !$page.url.pathname.startsWith('/admin') && !$page.url.pathname.includes('/games/') && !$page.url.pathname.startsWith('/tools/')}
              <AdBanner adSlot="footer-banner" />
         {/if}
 	</main>
 
-	{#if !$page.url.pathname.startsWith('/admin') && !$page.url.pathname.startsWith('/games/')}
+	{#if !$page.url.pathname.startsWith('/admin') && !$page.url.pathname.startsWith('/games/') && !$page.url.pathname.startsWith('/tools/')}
 	<nav class="bottom-nav">
 		<a href="/" class="nav-item home" class:active={$page.url.pathname === '/'}>
 			<span class="icon">
@@ -175,7 +64,7 @@
 		padding: 0;
 		font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
 		background: #f8f9fa;
-        overscroll-behavior-y: none; /* Prevent native pull-to-refresh interference */
+        overscroll-behavior-y: none;
 	}
     :global(*), :global(*::before), :global(*::after) {
         box-sizing: border-box;
@@ -183,7 +72,7 @@
 	.app-layout {
 		min-height: 100vh;
 		position: relative;
-		padding-bottom: calc(70px + env(safe-area-inset-bottom)); /* Space for bottom nav + safe area */
+		padding-bottom: calc(70px + env(safe-area-inset-bottom));
 	}
 
     .top-bar {
@@ -194,11 +83,11 @@
         padding: 1rem;
         display: flex;
         justify-content: space-between;
-        pointer-events: none; /* Let clicks pass through except buttons */
+        pointer-events: none;
         z-index: 100;
         box-sizing: border-box;
     }
-    
+
     .top-bar > :global(*) {
         pointer-events: auto;
     }
@@ -209,9 +98,9 @@
 		left: 50%;
         transform: translateX(-50%);
 		width: 100%;
-        max-width: 600px; /* Constrain width for PC */
+        max-width: 600px;
 		height: 60px;
-        box-sizing: content-box; /* Ensure padding doesn't eat into height */
+        box-sizing: content-box;
 		background: white;
 		border-top: 1px solid #eee;
 		display: flex;
@@ -220,7 +109,7 @@
 		padding-bottom: env(safe-area-inset-bottom);
 		box-shadow: 0 -2px 10px rgba(0,0,0,0.03);
 		z-index: 1000;
-        border-left: 1px solid #f1f3f5; /* Add side borders for PC view */
+        border-left: 1px solid #f1f3f5;
         border-right: 1px solid #f1f3f5;
 	}
 	.nav-item {
@@ -241,41 +130,8 @@
 	.nav-item.active {
 		color: #333;
 	}
-    /* Add subtle active indicator */
     .nav-item.active .icon {
         transform: scale(1.1);
         transition: transform 0.2s;
-    }
-
-    /* Pull to Refresh Styles */
-    .refresh-indicator {
-        position: fixed;
-        top: -40px; /* Start hidden above */
-        left: 0;
-        width: 100%;
-        height: 40px;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        z-index: 900;
-        pointer-events: none;
-    }
-    .spinner {
-        width: 30px;
-        height: 30px;
-        background: white;
-        border-radius: 50%;
-        box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 1.2rem;
-    }
-    .spinner.spinning {
-        animation: spin 1s linear infinite;
-    }
-    @keyframes spin {
-        from { transform: rotate(0deg); }
-        to { transform: rotate(360deg); }
     }
 </style>
