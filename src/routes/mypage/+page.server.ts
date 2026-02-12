@@ -51,7 +51,7 @@ export const load: PageServerLoad = async ({ parent }) => {
     // Fetch Registered Devices & Parties & All Attendees & All Games
     const [devicesResult, parties, allAttendeesResult, allGamesResult] = await Promise.all([
         query('SELECT id, name, created_at, last_seen_at FROM user_devices WHERE attendee_id = $1 ORDER BY created_at DESC', [user.id]),
-        PartyService.getUserParties(user.id),
+        PartyService.getUserParties(user.id).catch(() => []),
         query('SELECT id, name FROM attendees ORDER BY name ASC'),
         query('SELECT id, name, playtime_min, image_url FROM games ORDER BY name ASC')
     ]);

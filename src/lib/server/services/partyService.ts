@@ -2,21 +2,26 @@ import { query } from '$lib/server/db';
 
 export const PartyService = {
     async getUserParties(userId: number) {
-        const result = await query(`
-            SELECT gp.id, gp.name, gp.game_id, gp.game_name, gp.duration, gp.guest_count,
-                g.image_url, g.name as resolved_game_name,
-                COALESCE(json_agg(json_build_object(
-                    'id', a.id, 'name', a.name
-                ) ORDER BY a.name) FILTER (WHERE a.id IS NOT NULL), '[]') as members
-            FROM game_parties gp
-            LEFT JOIN game_party_members gpm ON gp.id = gpm.party_id
-            LEFT JOIN attendees a ON gpm.attendee_id = a.id
-            LEFT JOIN games g ON gp.game_id = g.id
-            WHERE gp.owner_id = $1
-            GROUP BY gp.id, gp.name, gp.game_id, gp.game_name, gp.duration, gp.guest_count, g.image_url, g.name
-            ORDER BY gp.updated_at DESC
-        `, [userId]);
-        return result.rows;
+        try {
+            const result = await query(`
+                SELECT gp.id, gp.name, gp.game_id, gp.game_name, gp.duration, gp.guest_count,
+                    g.image_url, g.name as resolved_game_name,
+                    COALESCE(json_agg(json_build_object(
+                        'id', a.id, 'name', a.name
+                    ) ORDER BY a.name) FILTER (WHERE a.id IS NOT NULL), '[]') as members
+                FROM game_parties gp
+                LEFT JOIN game_party_members gpm ON gp.id = gpm.party_id
+                LEFT JOIN attendees a ON gpm.attendee_id = a.id
+                LEFT JOIN games g ON gp.game_id = g.id
+                WHERE gp.owner_id = $1
+                GROUP BY gp.id, gp.name, gp.game_id, gp.game_name, gp.duration, gp.guest_count, g.image_url, g.name
+                ORDER BY gp.updated_at DESC
+            `, [userId]);
+            return result.rows;
+        } catch (e: any) {
+            if (e.code === '42P01') return []; // table does not exist
+            throw e;
+        }
     },
 
     async createParty(userId: number, data: {
