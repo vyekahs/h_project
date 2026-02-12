@@ -400,13 +400,13 @@
                     <div class="section-header">
                         <h3>
                             내 기기
-                            <div class="header-actions">
-                                <a href="/devices/register" class="btn-register">기기 등록</a>
-                                <button class="btn-guide" on:click={() => showGuideModal = true} aria-label="기기 등록 방법">
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
-                                </button>
-                            </div>
                         </h3>
+                        <div class="header-actions">
+                            <a href="/devices/register" class="btn-register">기기 등록</a>
+                            <button class="btn-guide" on:click={() => showGuideModal = true} aria-label="기기 등록 방법">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+                            </button>
+                        </div>
                     </div>
 
                     <div class="device-list">
