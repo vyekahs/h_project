@@ -112,8 +112,19 @@
     let guestCount = 0;
     let selectedPlayerIds: number[] = [];
     let scheduledSelectedPlayerIds: number[] = [];
+    let partyMembers: { id: number; name: string }[] = [];
+    let scheduledPartyMembers: { id: number; name: string }[] = [];
 
     $: parties = (data.parties || []) as Party[];
+
+    // 참석자 + 고정팟 미참석 멤버 병합
+    $: mergedAttendees = (() => {
+        const attendeeIds = new Set((attendees || []).map(a => a.id));
+        const extra = partyMembers
+            .filter(m => !attendeeIds.has(m.id))
+            .map(m => ({ id: m.id, name: m.name, arrival_time: '', is_playing: false, title_name: undefined, isPartyOnly: true }));
+        return [...(attendees || []).map(a => ({ ...a, isPartyOnly: false })), ...extra];
+    })();
 
     let endGameModalVisible = false;
     let selectedEndGame: GameSession | null = null;
@@ -161,12 +172,14 @@
         selectedGameId = party.game_id?.toString() || '';
         selectedDuration = party.duration?.toString() || '';
         guestCount = party.guest_count || 0;
+        partyMembers = party.members;
         selectedPlayerIds = party.members.map(m => m.id);
     }
 
     function applyPartyToScheduledModal(party: Party) {
         scheduledGameName = party.game_name || party.resolved_game_name || '';
         guestCount = party.guest_count || 0;
+        scheduledPartyMembers = party.members;
         scheduledSelectedPlayerIds = party.members.map(m => m.id);
     }
 
@@ -176,7 +189,8 @@
         dropdownOpen = false;
         guestCount = 0;
         scheduledSelectedPlayerIds = [];
-        
+        scheduledPartyMembers = [];
+
         const now = new Date();
         now.setMinutes(Math.ceil((now.getMinutes() + 30) / 10) * 10);
         const year = now.getFullYear();
@@ -474,6 +488,7 @@
                         dropdownOpen = false;
                         guestCount = 0;
                         selectedPlayerIds = [];
+                        partyMembers = [];
                     }}>+ 게임 시작</button>
                 {/if}
             </div>
@@ -815,21 +830,14 @@
 
                 <div class="player-select">
                     <p>참여자 선택:</p>
-                    {#each (attendees || []) as attendee (attendee.id)}
-                        <label class:disabled={attendee.is_playing}>
+                    {#each mergedAttendees as attendee (attendee.id)}
+                        <label class:disabled={attendee.is_playing} class:party-member={attendee.isPartyOnly}>
                             <input
                                 type="checkbox"
                                 name="players"
                                 value={attendee.id}
                                 disabled={attendee.is_playing}
-                                checked={selectedPlayerIds.includes(attendee.id)}
-                                on:change={(e) => {
-                                    if (e.currentTarget.checked) {
-                                        selectedPlayerIds = [...selectedPlayerIds, attendee.id];
-                                    } else {
-                                        selectedPlayerIds = selectedPlayerIds.filter(id => id !== attendee.id);
-                                    }
-                                }}
+                                bind:group={selectedPlayerIds}
                             />
                             {attendee.name}
                             {#if attendee.is_playing}
@@ -1027,14 +1035,13 @@
                         <label>함께할 멤버</label>
                         <div class="selected-members-tags">
                             {#each scheduledSelectedPlayerIds as playerId}
-                                {#each (attendees || []).filter(a => a.id === playerId) as attendee}
-                                    <span class="member-tag">
-                                        {attendee.name}
-                                        <button type="button" class="tag-remove" on:click={() => {
-                                            scheduledSelectedPlayerIds = scheduledSelectedPlayerIds.filter(id => id !== playerId);
-                                        }}>&times;</button>
-                                    </span>
-                                {/each}
+                                {@const memberName = (attendees || []).find(a => a.id === playerId)?.name || scheduledPartyMembers.find(m => m.id === playerId)?.name || `ID:${playerId}`}
+                                <span class="member-tag">
+                                    {memberName}
+                                    <button type="button" class="tag-remove" on:click={() => {
+                                        scheduledSelectedPlayerIds = scheduledSelectedPlayerIds.filter(id => id !== playerId);
+                                    }}>&times;</button>
+                                </span>
                                 <input type="hidden" name="players" value={playerId} />
                             {/each}
                         </div>
@@ -2552,5 +2559,14 @@
     }
     .tag-remove:hover {
         color: #1864ab;
+    }
+    .party-member {
+        color: #868e96;
+        font-style: italic;
+    }
+    .status-text-small {
+        font-size: 0.7rem;
+        color: #adb5bd;
+        margin-left: 2px;
     }
 </style>
