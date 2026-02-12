@@ -120,6 +120,24 @@ async function migrate() {
             CREATE INDEX IF NOT EXISTS idx_scanners_last_seen ON scanners(last_seen_at);
         `);
 
+        // 14. Guest support in session_participants
+        console.log('[14] Adding guest support to session_participants...');
+        await pool.query('ALTER TABLE session_participants ALTER COLUMN attendee_id DROP NOT NULL;');
+        await pool.query('ALTER TABLE session_participants ADD COLUMN IF NOT EXISTS guest_name VARCHAR(50);');
+        await pool.query(`
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1 FROM pg_constraint WHERE conname = 'chk_participant_identity'
+                ) THEN
+                    ALTER TABLE session_participants
+                        ADD CONSTRAINT chk_participant_identity
+                        CHECK (attendee_id IS NOT NULL OR guest_name IS NOT NULL);
+                END IF;
+            END
+            $$;
+        `);
+
     } catch (err) {
         console.error('Migration failed:', err);
         process.exit(1);

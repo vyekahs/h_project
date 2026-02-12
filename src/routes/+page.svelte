@@ -96,6 +96,7 @@
     let scheduledAt = '';
     let minPlayers = 2;
     let maxPlayers = 4;
+    let guestCount = 0;
 
     let endGameModalVisible = false;
     let selectedEndGame: GameSession | null = null;
@@ -142,6 +143,7 @@
         showScheduledGameModal = true;
         scheduledGameName = '';
         dropdownOpen = false;
+        guestCount = 0;
         
         const now = new Date();
         now.setMinutes(Math.ceil((now.getMinutes() + 30) / 10) * 10);
@@ -433,11 +435,12 @@
                 <h2>진행 중인 게임 ({games.length})</h2>
                 {#if data.user && (data.user.can_manage_games || data.isAdmin)}
                     <button class="btn-create" on:click={() => {
-                        showModal = true; 
+                        showModal = true;
                         selectedGameName = '';
                         selectedDuration = '';
                         selectedGameId = '';
                         dropdownOpen = false;
+                        guestCount = 0;
                     }}>+ 게임 시작</button>
                 {/if}
             </div>
@@ -497,11 +500,14 @@
                                 <div class="players">
                                     {#each (game.players || []) as player}
                                         {@const p = player as any}
-                                        <div class="player-tag">
+                                        <div class="player-tag" class:guest-tag={p.is_guest}>
                                             {#if p.title_name}
                                                 <span class="tag-title">[{p.title_name}]</span>
                                             {/if}
                                             {p.name}
+                                            {#if p.is_guest}
+                                                <span class="guest-badge">G</span>
+                                            {/if}
                                         </div>
                                     {/each}
                                 </div>
@@ -649,12 +655,15 @@
                                 <div class="participants">
                                     <div class="participant-list">
                                         {#each (game.participants || []) as p}
-                                            {@const participant = p as Attendee}
-                                            <span class="p-name">
+                                            {@const participant = p as any}
+                                            <span class="p-name" class:guest-name={participant.is_guest}>
                                                 {#if participant.title_name}
                                                     <span class="p-title">[{participant.title_name}]</span>
                                                 {/if}
                                                 {participant.name}
+                                                {#if participant.is_guest}
+                                                    <span class="guest-badge">G</span>
+                                                {/if}
                                             </span>
                                         {/each}
                                     </div>
@@ -764,7 +773,21 @@
                         </label>
                     {/each}
                 </div>
-                
+
+                <div class="input-group guest-input-group">
+                    <label for="guestCount">게스트 수</label>
+                    <input
+                        type="number"
+                        id="guestCount"
+                        name="guestCount"
+                        bind:value={guestCount}
+                        min="0"
+                        max="20"
+                        class="number-input"
+                    />
+                    <p class="hint">* 미등록 참가자 수 (게스트1, 게스트2... 자동 생성)</p>
+                </div>
+
                 <div class="modal-actions">
                     <button type="button" on:click={() => showModal = false} class="btn-cancel">취소</button>
                     <button type="submit" class="btn-primary">게임 시작</button>
@@ -804,20 +827,24 @@
                 <div class="player-select">
                     {#if selectedEndGame?.players && selectedEndGame.players.length > 0}
                         {#each selectedEndGame.players as player}
+                            {@const pl = player as any}
                             <div class="player-score-row">
                                 <label class="checkbox-label">
-                                    <input type="checkbox" name="winnerIds" value={player.id}>
-                                    <span class="p-name">{player.name}</span>
-                                    {#if player.id === selectedEndGame.created_by}
+                                    <input type="checkbox" name="winnerIds" value={pl.id}>
+                                    <span class="p-name">{pl.name}</span>
+                                    {#if pl.id === selectedEndGame.created_by}
                                         <span class="owner-badge">
                                             <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m2 4 3 12h14l3-12-6 7-4-7-4 7-6-7zm3 16h14"/></svg>
                                         </span>
                                     {/if}
+                                    {#if pl.is_guest}
+                                        <span class="guest-badge">G</span>
+                                    {/if}
                                 </label>
-                                <input 
-                                    type="number" 
-                                    name="score_{player.id}" 
-                                    placeholder="점수" 
+                                <input
+                                    type="number"
+                                    name="score_{pl.id}"
+                                    placeholder="점수"
                                     class="score-input"
                                 >
                             </div>
@@ -912,7 +939,21 @@
                         <input type="number" id="maxPlayers" name="maxPlayers" min="1" bind:value={maxPlayers} required class="number-input">
                     </div>
                 </div>
-                
+
+                <div class="input-group guest-input-group">
+                    <label for="scheduledGuestCount">게스트 수</label>
+                    <input
+                        type="number"
+                        id="scheduledGuestCount"
+                        name="guestCount"
+                        bind:value={guestCount}
+                        min="0"
+                        max="20"
+                        class="number-input"
+                    />
+                    <p class="hint">* 미등록 참가자 수 (게스트1, 게스트2... 자동 생성)</p>
+                </div>
+
                 <div class="modal-actions">
                     <button type="button" on:click={() => showScheduledGameModal = false} class="btn-cancel">취소</button>
                     <button type="submit" class="btn-primary">예약 생성</button>
@@ -1240,6 +1281,33 @@
         border-radius: 6px;
         font-size: 0.85rem;
         color: #666;
+    }
+    .player-tag.guest-tag {
+        border: 1px dashed #adb5bd;
+        background: #f8f9fa;
+        opacity: 0.85;
+    }
+    .guest-badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        background: #868e96;
+        color: white;
+        font-size: 10px;
+        font-weight: bold;
+        margin-left: 4px;
+        vertical-align: middle;
+    }
+    .guest-name {
+        opacity: 0.85;
+    }
+    .guest-input-group {
+        margin-top: 0.5rem;
+        padding-top: 0.5rem;
+        border-top: 1px solid #eee;
     }
     .empty-state {
         grid-column: 1 / -1;
