@@ -63,6 +63,7 @@ CREATE TABLE IF NOT EXISTS game_sessions (
     scheduled_at TIMESTAMP WITH TIME ZONE,
     min_players INTEGER DEFAULT 2,
     max_players INTEGER DEFAULT 4,
+    party_id INTEGER, -- FK added by migrate_all.js after game_parties table exists
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 

@@ -118,8 +118,16 @@
     let scheduledPartyDropdownOpen = false;
     let showGuestInput = false;
     let showScheduledGuestInput = false;
+    let selectedPartyId: number | null = null;
+    let scheduledSelectedPartyId: number | null = null;
 
     $: parties = (data.parties || []) as Party[];
+    $: userPartyIds = new Set(data.userPartyIds || []);
+
+    function canJoinGame(game: any): boolean {
+        if (!game.party_id) return true;
+        return userPartyIds.has(game.party_id);
+    }
 
     // 참석자 + 고정팟 미참석 멤버 병합
     $: mergedAttendees = (() => {
@@ -179,6 +187,7 @@
         showGuestInput = guestCount > 0;
         partyMembers = party.members;
         selectedPlayerIds = party.members.map(m => m.id);
+        selectedPartyId = party.id;
     }
 
     function applyPartyToScheduledModal(party: Party) {
@@ -187,6 +196,7 @@
         showScheduledGuestInput = guestCount > 0;
         scheduledPartyMembers = party.members;
         scheduledSelectedPlayerIds = party.members.map(m => m.id);
+        scheduledSelectedPartyId = party.id;
     }
 
     function openScheduledGameModal() {
@@ -197,6 +207,7 @@
         showScheduledGuestInput = false;
         scheduledSelectedPlayerIds = [];
         scheduledPartyMembers = [];
+        scheduledSelectedPartyId = null;
 
         const now = new Date();
         now.setMinutes(Math.ceil((now.getMinutes() + 30) / 10) * 10);
@@ -501,6 +512,7 @@
                         showGuestInput = false;
                         selectedPlayerIds = [];
                         partyMembers = [];
+                        selectedPartyId = null;
                     }}>+ 게임 시작</button>
                 {/if}
             </div>
@@ -512,7 +524,7 @@
                     
                     <div class="table-card playing">
                         <div class="table-header">
-                            <h3>{game.game_name}</h3>
+                            <h3>{game.game_name}{#if game.party_id}<span class="party-badge">고정팟</span>{/if}</h3>
                             <div class="header-meta-row">
                                 {#if canManageGame(game)}
                                     <div class="manage-controls">
@@ -541,7 +553,7 @@
                                             </form>
                                         {:else if myReservation && myReservation.status === 'pending_approval'}
                                             <span class="status-text">요청 대기 중...</span>
-                                        {:else if !myReservation}
+                                        {:else if !myReservation && canJoinGame(game)}
                                             <form method="POST" action="?/reserveGame" use:enhance={handleJoinRequest}>
                                                 <input type="hidden" name="sessionId" value={game.id}>
                                                 <button class="btn-reserve">참여 요청</button>
@@ -663,6 +675,7 @@
                         <div class="table-header">
                             <h3>
                                 <span class="game-title-text">{game.game_name}</span>
+                                {#if game.party_id}<span class="party-badge">고정팟</span>{/if}
                                 <span class="sub-text">({(game.participants || []).length} / {game.max_players})</span>
                             </h3>
                             <div class="header-meta-row">
@@ -695,7 +708,7 @@
                                         });
                                     })()}
                                     
-                                    {#if !hasConflict}
+                                    {#if !hasConflict && canJoinGame(game)}
                                         <div class="actions">
                                             <form method="POST" action="?/joinScheduledGame">
                                                 <input type="hidden" name="sessionId" value={game.id}>
@@ -803,6 +816,9 @@
                 };
             }} class="game-form">
                 <input type="hidden" name="gameId" value={selectedGameId} />
+                {#if selectedPartyId}
+                    <input type="hidden" name="partyId" value={selectedPartyId} />
+                {/if}
                 <div class="input-group custom-dropdown">
                     <input 
                         type="text" 
@@ -1012,7 +1028,10 @@
                     await update();
                 };
             }} class="game-form">
-                
+                {#if scheduledSelectedPartyId}
+                    <input type="hidden" name="partyId" value={scheduledSelectedPartyId} />
+                {/if}
+
                 <div class="input-group custom-dropdown">
                     <label for="scheduledGameName">게임 이름</label>
                     <input 
@@ -2035,6 +2054,16 @@
     }
     .btn-tichu-counter:hover {
         background: #3b5bdb;
+    }
+    .party-badge {
+        font-size: 0.65rem;
+        background: #e8d5f5;
+        color: #7c3aed;
+        padding: 1px 5px;
+        border-radius: 4px;
+        margin-left: 4px;
+        font-weight: 500;
+        vertical-align: middle;
     }
     .btn-reserve-mini, .btn-join-mini {
         background: #fab005;

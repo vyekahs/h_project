@@ -52,7 +52,7 @@ export const load: PageServerLoad = async ({ locals }) => {
             ORDER BY v.arrival_time DESC
         `),
         query(`
-            SELECT gs.id, gs.game_name, gs.end_time, gs.created_by,
+            SELECT gs.id, gs.game_name, gs.end_time, gs.created_by, gs.party_id,
                    COALESCE(json_agg(json_build_object(
                        'id', COALESCE(a.id, -sp.id),
                        'name', COALESCE(a.name, sp.guest_name),
@@ -65,11 +65,11 @@ export const load: PageServerLoad = async ({ locals }) => {
             LEFT JOIN minigame_user_points up ON a.id = up.user_id
             LEFT JOIN minigame_titles t ON up.equipped_title_id = t.id
             WHERE gs.status = 'playing'
-            GROUP BY gs.id, gs.game_name, gs.end_time, gs.created_by
+            GROUP BY gs.id, gs.game_name, gs.end_time, gs.created_by, gs.party_id
             ORDER BY gs.end_time ASC
         `),
         query(`
-            SELECT gs.id, gs.game_name, gs.game_id, gs.min_players, gs.max_players, gs.scheduled_at, gs.created_by, g.image_url,
+            SELECT gs.id, gs.game_name, gs.game_id, gs.min_players, gs.max_players, gs.scheduled_at, gs.created_by, gs.party_id, g.image_url,
                    COALESCE(json_agg(json_build_object(
                        'id', COALESCE(a.id, -sp.id),
                        'name', COALESCE(a.name, sp.guest_name),
@@ -83,7 +83,7 @@ export const load: PageServerLoad = async ({ locals }) => {
             LEFT JOIN minigame_user_points up ON a.id = up.user_id
             LEFT JOIN minigame_titles t ON up.equipped_title_id = t.id
             WHERE gs.status = 'scheduled'
-            GROUP BY gs.id, gs.game_name, gs.game_id, gs.min_players, gs.max_players, gs.scheduled_at, gs.created_by, g.image_url
+            GROUP BY gs.id, gs.game_name, gs.game_id, gs.min_players, gs.max_players, gs.scheduled_at, gs.created_by, gs.party_id, g.image_url
             ORDER BY gs.scheduled_at ASC
         `),
         query('SELECT id, name, min_players, max_players, playtime_min, image_url FROM games ORDER BY name ASC'),
@@ -109,10 +109,11 @@ export const load: PageServerLoad = async ({ locals }) => {
     let userScheduledGames: any[] = [];
     let userPlayingGame = null;
     let parties: any[] = [];
+    let userPartyIds: number[] = [];
 
     if (user) {
         try {
-            const [userStatusRes, titleRes, resResult, schedResult, playingResult, partiesResult] = await Promise.all([
+            const [userStatusRes, titleRes, resResult, schedResult, playingResult, partiesResult, partyMembershipResult] = await Promise.all([
                 query('SELECT can_manage_games, penalty_points, is_blacklisted FROM attendees WHERE id = $1', [user.id]),
                 TitleService.getUserTitle(user.id),
                 query(`
@@ -135,7 +136,8 @@ export const load: PageServerLoad = async ({ locals }) => {
                     JOIN game_sessions gs ON sp.session_id = gs.id
                     WHERE sp.attendee_id = $1 AND gs.status = 'playing'
                 `, [user.id]),
-                PartyService.getUserParties(user.id)
+                PartyService.getUserParties(user.id),
+                query('SELECT party_id FROM game_party_members WHERE attendee_id = $1', [user.id])
             ]);
 
             if (userStatusRes.rows.length > 0) {
@@ -148,6 +150,7 @@ export const load: PageServerLoad = async ({ locals }) => {
             userScheduledGames = schedResult.rows;
             userPlayingGame = playingResult.rows[0] || null;
             parties = partiesResult;
+            userPartyIds = partyMembershipResult.rows.map((r: any) => r.party_id);
         } catch (e) {}
     }
 
@@ -166,6 +169,7 @@ export const load: PageServerLoad = async ({ locals }) => {
         allGames: allGamesResult.rows,
         reservations: reservationsResult.rows,
         parties,
+        userPartyIds,
     };
 };
 
@@ -205,9 +209,17 @@ export const actions: Actions = {
             }
 
             // Get game info to determine status default
-            const gameInfo = await query('SELECT status FROM game_sessions WHERE id = $1', [sessionId]);
+            const gameInfo = await query('SELECT status, party_id FROM game_sessions WHERE id = $1', [sessionId]);
             if (gameInfo.rows.length === 0) return fail(404, { error: '게임을 찾을 수 없습니다.' });
             const gameStatus = gameInfo.rows[0].status;
+
+            // Check party restriction
+            if (gameInfo.rows[0].party_id) {
+                const isMember = await PartyService.isPartyMember(gameInfo.rows[0].party_id, parseInt(attendeeId as string));
+                if (!isMember) {
+                    return fail(403, { error: '고정팟 전용 게임입니다. 팟 멤버만 참여할 수 있습니다.' });
+                }
+            }
 
             // 1. Check if already playing or reserved OR Requested
             const busyCheck = await query(`
@@ -267,6 +279,7 @@ export const actions: Actions = {
         const maxPlayers = parseInt(data.get('maxPlayers')?.toString() || '4');
         const guestCount = parseInt(data.get('guestCount')?.toString() || '0');
         const playerIds = data.getAll('players').map(p => p.toString()).filter(p => p);
+        const partyId = data.get('partyId') ? parseInt(data.get('partyId') as string) : null;
         const sessionToken = cookies.get('admin_session');
         const isAdmin = sessionToken ? await verifyAdminSession(sessionToken) : false;
         const userSessionToken = cookies.get('user_session');
@@ -287,8 +300,8 @@ export const actions: Actions = {
         await query('BEGIN');
         try {
             const sessionResult = await query(
-                'INSERT INTO game_sessions (game_name, status, scheduled_at, min_players, max_players, created_by) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id',
-                [gameName, 'scheduled', scheduledAt, minPlayers, maxPlayers, creatorId]
+                'INSERT INTO game_sessions (game_name, status, scheduled_at, min_players, max_players, created_by, party_id) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id',
+                [gameName, 'scheduled', scheduledAt, minPlayers, maxPlayers, creatorId, partyId]
             );
             const newSessionId = sessionResult.rows[0].id;
 
@@ -346,11 +359,19 @@ export const actions: Actions = {
 
         // 1. Check if busy
         // 0.5. Get target session info to check date
-        const targetSession = await query('SELECT scheduled_at FROM game_sessions WHERE id = $1', [sessionId]);
+        const targetSession = await query('SELECT scheduled_at, party_id FROM game_sessions WHERE id = $1', [sessionId]);
         if (targetSession.rows.length === 0) {
             return fail(404, { error: '세션을 찾을 수 없습니다.' });
         }
         const targetDate = targetSession.rows[0].scheduled_at;
+
+        // Check party restriction
+        if (targetSession.rows[0].party_id) {
+            const isMember = await PartyService.isPartyMember(targetSession.rows[0].party_id, finalAttendeeId);
+            if (!isMember) {
+                return fail(403, { error: '고정팟 전용 게임입니다. 팟 멤버만 참여할 수 있습니다.' });
+            }
+        }
 
         // 1. Check if already joined THIS session
         const existingParticipant = await query('SELECT 1 FROM session_participants WHERE session_id = $1 AND attendee_id = $2', [sessionId, finalAttendeeId]);
@@ -496,6 +517,7 @@ export const actions: Actions = {
         const duration = parseInt(data.get('duration')?.toString() || '0');
         let playerIds = data.getAll('players').map(p => p.toString());
         const guestCount = parseInt(data.get('guestCount')?.toString() || '0');
+        const partyId = data.get('partyId') ? parseInt(data.get('partyId') as string) : null;
 
         // Check permission (Admin or Manager)
         const sessionToken = request.headers.get('cookie')?.match(/admin_session=([^;]+)/)?.[1];
@@ -538,10 +560,10 @@ export const actions: Actions = {
 
             // 1. Create Game Session
             const sessionResult = await query(
-                `INSERT INTO game_sessions (game_name, game_id, status, start_time, end_time, created_by) 
-                 VALUES ($1, $2, 'playing', NOW(), NOW() + ($3 || ' minutes')::INTERVAL, $4) 
+                `INSERT INTO game_sessions (game_name, game_id, status, start_time, end_time, created_by, party_id)
+                 VALUES ($1, $2, 'playing', NOW(), NOW() + ($3 || ' minutes')::INTERVAL, $4, $5)
                  RETURNING id`,
-                [gameName, gameId, duration, creatorId]
+                [gameName, gameId, duration, creatorId, partyId]
             );
             const newGameId = sessionResult.rows[0].id;
 

@@ -91,5 +91,13 @@ export const PartyService = {
     async deleteParty(userId: number, partyId: number) {
         const result = await query('DELETE FROM game_parties WHERE id = $1 AND owner_id = $2', [partyId, userId]);
         return (result.rowCount ?? 0) > 0;
+    },
+
+    async isPartyMember(partyId: number, attendeeId: number): Promise<boolean> {
+        const result = await query(
+            'SELECT 1 FROM game_party_members WHERE party_id = $1 AND attendee_id = $2',
+            [partyId, attendeeId]
+        );
+        return result.rows.length > 0;
     }
 };

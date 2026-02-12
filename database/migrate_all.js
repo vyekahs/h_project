@@ -164,6 +164,11 @@ async function migrate() {
         await pool.query('CREATE INDEX IF NOT EXISTS idx_game_parties_owner ON game_parties(owner_id);');
         await pool.query('CREATE INDEX IF NOT EXISTS idx_game_party_members_party ON game_party_members(party_id);');
 
+        // 16. Party-linked game sessions (고정팟 전용 게임)
+        console.log('[16] Checking party_id on game_sessions...');
+        await pool.query('ALTER TABLE game_sessions ADD COLUMN IF NOT EXISTS party_id INTEGER REFERENCES game_parties(id) ON DELETE SET NULL;');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_game_sessions_party ON game_sessions(party_id);');
+
     } catch (err) {
         console.error('Migration failed:', err);
         process.exit(1);
