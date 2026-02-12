@@ -114,6 +114,10 @@
     let scheduledSelectedPlayerIds: number[] = [];
     let partyMembers: { id: number; name: string }[] = [];
     let scheduledPartyMembers: { id: number; name: string }[] = [];
+    let partyDropdownOpen = false;
+    let scheduledPartyDropdownOpen = false;
+    let showGuestInput = false;
+    let showScheduledGuestInput = false;
 
     $: parties = (data.parties || []) as Party[];
 
@@ -172,6 +176,7 @@
         selectedGameId = party.game_id?.toString() || '';
         selectedDuration = party.duration?.toString() || '';
         guestCount = party.guest_count || 0;
+        showGuestInput = guestCount > 0;
         partyMembers = party.members;
         selectedPlayerIds = party.members.map(m => m.id);
     }
@@ -179,6 +184,7 @@
     function applyPartyToScheduledModal(party: Party) {
         scheduledGameName = party.game_name || party.resolved_game_name || '';
         guestCount = party.guest_count || 0;
+        showScheduledGuestInput = guestCount > 0;
         scheduledPartyMembers = party.members;
         scheduledSelectedPlayerIds = party.members.map(m => m.id);
     }
@@ -188,6 +194,7 @@
         scheduledGameName = '';
         dropdownOpen = false;
         guestCount = 0;
+        showScheduledGuestInput = false;
         scheduledSelectedPlayerIds = [];
         scheduledPartyMembers = [];
 
@@ -244,6 +251,10 @@
         const target = event.target as HTMLElement;
         if (!target.closest('.custom-dropdown')) {
             dropdownOpen = false;
+        }
+        if (!target.closest('.party-dropdown-wrapper')) {
+            partyDropdownOpen = false;
+            scheduledPartyDropdownOpen = false;
         }
     }
 
@@ -487,6 +498,7 @@
                         selectedGameId = '';
                         dropdownOpen = false;
                         guestCount = 0;
+                        showGuestInput = false;
                         selectedPlayerIds = [];
                         partyMembers = [];
                     }}>+ 게임 시작</button>
@@ -560,6 +572,10 @@
                                         </div>
                                     {/each}
                                 </div>
+                                {#if game.game_name.includes('티츄') && (game.players || []).filter((p) => !p.is_guest).length === 4}
+                                    <a href="/tools/tichu-counter?sessionId={game.id}&players={encodeURIComponent(JSON.stringify((game.players || []).filter((p) => !p.is_guest).map(p => ({ id: p.id, name: p.name }))))}"
+                                       class="btn-tichu-counter">점수판 열기</a>
+                                {/if}
                             </div>
                         </div>
 
@@ -747,20 +763,28 @@
             <h2>새 게임 시작</h2>
             {#if parties.length > 0}
                 <div class="party-selector">
-                    <label for="partySelect">고정팟 불러오기</label>
-                    <select id="partySelect" on:change={(e) => {
-                        const val = e.currentTarget.value;
-                        if (val) {
-                            const party = parties.find(p => p.id === parseInt(val));
-                            if (party) applyPartyToModal(party);
-                        }
-                        e.currentTarget.value = '';
-                    }}>
-                        <option value="">-- 고정팟 선택 --</option>
-                        {#each parties as party}
-                            <option value={party.id}>{party.name} ({party.game_name || party.resolved_game_name || '게임 미지정'})</option>
-                        {/each}
-                    </select>
+                    <label>고정팟 불러오기</label>
+                    <!-- svelte-ignore a11y-click-events-have-key-events -->
+                    <!-- svelte-ignore a11y-no-static-element-interactions -->
+                    <div class="party-dropdown-wrapper" on:click|stopPropagation>
+                        <button type="button" class="party-dropdown-trigger" on:click={() => partyDropdownOpen = !partyDropdownOpen}>
+                            <span>고정팟 선택</span>
+                            <span class="party-chevron" class:open={partyDropdownOpen}>&#9662;</span>
+                        </button>
+                        {#if partyDropdownOpen}
+                            <div class="party-dropdown-list">
+                                {#each parties as party}
+                                    <button type="button" class="party-dropdown-item" on:click={() => {
+                                        applyPartyToModal(party);
+                                        partyDropdownOpen = false;
+                                    }}>
+                                        <span class="party-item-name">{party.name}</span>
+                                        <span class="party-item-game">{party.game_name || party.resolved_game_name || '게임 미지정'}</span>
+                                    </button>
+                                {/each}
+                            </div>
+                        {/if}
+                    </div>
                 </div>
             {/if}
             <form method="POST" action="?/createGame" use:enhance={() => {
@@ -847,19 +871,24 @@
                     {/each}
                 </div>
 
-                <div class="input-group guest-input-group">
-                    <label for="guestCount">게스트 수</label>
-                    <input
-                        type="number"
-                        id="guestCount"
-                        name="guestCount"
-                        bind:value={guestCount}
-                        min="0"
-                        max="20"
-                        class="number-input"
-                    />
-                    <p class="hint">* 미등록 참가자 수 (게스트1, 게스트2... 자동 생성)</p>
-                </div>
+                {#if showGuestInput}
+                    <div class="input-group guest-input-group">
+                        <label for="guestCount">게스트 수</label>
+                        <input
+                            type="number"
+                            id="guestCount"
+                            name="guestCount"
+                            bind:value={guestCount}
+                            min="0"
+                            max="20"
+                            class="number-input"
+                        />
+                        <p class="hint">* 미등록 참가자 수 (게스트1, 게스트2... 자동 생성)</p>
+                    </div>
+                {:else}
+                    <input type="hidden" name="guestCount" value="0" />
+                    <button type="button" class="btn-toggle-guest" on:click={() => showGuestInput = true}>+ 게스트 추가</button>
+                {/if}
 
                 <div class="modal-actions">
                     <button type="button" on:click={() => showModal = false} class="btn-cancel">취소</button>
@@ -947,20 +976,28 @@
             </h2>
             {#if parties.length > 0}
                 <div class="party-selector">
-                    <label for="scheduledPartySelect">고정팟 불러오기</label>
-                    <select id="scheduledPartySelect" on:change={(e) => {
-                        const val = e.currentTarget.value;
-                        if (val) {
-                            const party = parties.find(p => p.id === parseInt(val));
-                            if (party) applyPartyToScheduledModal(party);
-                        }
-                        e.currentTarget.value = '';
-                    }}>
-                        <option value="">-- 고정팟 선택 --</option>
-                        {#each parties as party}
-                            <option value={party.id}>{party.name} ({party.game_name || party.resolved_game_name || '게임 미지정'})</option>
-                        {/each}
-                    </select>
+                    <label>고정팟 불러오기</label>
+                    <!-- svelte-ignore a11y-click-events-have-key-events -->
+                    <!-- svelte-ignore a11y-no-static-element-interactions -->
+                    <div class="party-dropdown-wrapper" on:click|stopPropagation>
+                        <button type="button" class="party-dropdown-trigger" on:click={() => scheduledPartyDropdownOpen = !scheduledPartyDropdownOpen}>
+                            <span>고정팟 선택</span>
+                            <span class="party-chevron" class:open={scheduledPartyDropdownOpen}>&#9662;</span>
+                        </button>
+                        {#if scheduledPartyDropdownOpen}
+                            <div class="party-dropdown-list">
+                                {#each parties as party}
+                                    <button type="button" class="party-dropdown-item" on:click={() => {
+                                        applyPartyToScheduledModal(party);
+                                        scheduledPartyDropdownOpen = false;
+                                    }}>
+                                        <span class="party-item-name">{party.name}</span>
+                                        <span class="party-item-game">{party.game_name || party.resolved_game_name || '게임 미지정'}</span>
+                                    </button>
+                                {/each}
+                            </div>
+                        {/if}
+                    </div>
                 </div>
             {/if}
             <form method="POST" action="?/createScheduledGame" use:enhance={() => {
@@ -1016,7 +1053,6 @@
                 <div class="input-group">
                     <label for="scheduledAt">시작 예정 시간</label>
                     <input type="datetime-local" id="scheduledAt" name="scheduledAt" bind:value={scheduledAt} required class="full-width-input">
-                    <p class="hint">※ 시작 10분 전까지 최소 인원이 모이지 않으면 자동 폭파됩니다.</p>
                 </div>
 
                 <div class="player-limits">
@@ -1048,20 +1084,25 @@
                     </div>
                 {/if}
 
-                <div class="input-group guest-input-group">
-                    <label for="scheduledGuestCount">게스트 수</label>
-                    <input
-                        type="number"
-                        id="scheduledGuestCount"
-                        name="guestCount"
-                        bind:value={guestCount}
-                        min="0"
-                        max={Math.max(0, maxPlayers - 1)}
-                        on:input={() => { const limit = Math.max(0, maxPlayers - 1); if (guestCount > limit) guestCount = limit; }}
-                        class="number-input"
-                    />
-                    <p class="hint">* 미등록 참가자 수 (본인 제외 최대 {Math.max(0, maxPlayers - 1)}명, 게스트1, 게스트2... 자동 생성)</p>
-                </div>
+                {#if showScheduledGuestInput}
+                    <div class="input-group guest-input-group">
+                        <label for="scheduledGuestCount">게스트 수</label>
+                        <input
+                            type="number"
+                            id="scheduledGuestCount"
+                            name="guestCount"
+                            bind:value={guestCount}
+                            min="0"
+                            max={Math.max(0, maxPlayers - 1)}
+                            on:input={() => { const limit = Math.max(0, maxPlayers - 1); if (guestCount > limit) guestCount = limit; }}
+                            class="number-input"
+                        />
+                        <p class="hint">* 미등록 참가자 수 (본인 제외 최대 {Math.max(0, maxPlayers - 1)}명, 게스트1, 게스트2... 자동 생성)</p>
+                    </div>
+                {:else}
+                    <input type="hidden" name="guestCount" value="0" />
+                    <button type="button" class="btn-toggle-guest" on:click={() => showScheduledGuestInput = true}>+ 게스트 추가</button>
+                {/if}
 
                 <div class="modal-actions">
                     <button type="button" on:click={() => showScheduledGameModal = false} class="btn-cancel">취소</button>
@@ -1317,7 +1358,7 @@
     }
     .attendee-card {
         background: white;
-        padding: 1rem;
+        padding: 0.75rem;
         border-radius: 12px;
         text-align: center;
         box-shadow: 0 2px 8px rgba(0,0,0,0.05);
@@ -1620,13 +1661,13 @@
     }
     .table-card {
         background: white;
-        padding: 0.75rem 1rem;
+        padding: 0.5rem 1rem;
         border-radius: 12px;
         box-shadow: 0 2px 4px rgba(0,0,0,0.05);
         border: 1px solid #eee;
         display: flex;
         flex-direction: column;
-        gap: 1rem;
+        gap: 0.1rem;
         transition: transform 0.2s, box-shadow 0.2s;
     }
     .table-card:hover {
@@ -1704,10 +1745,9 @@
         background: none !important;
         border: none !important;
         display: flex;
-        flex-direction: row;
-        align-items: center;
+        flex-direction: column;
         width: 100%;
-        gap: 1rem;
+        gap: 0.5rem;
     }
     .session-info.current, .session-info.next {
         background: none;
@@ -1978,6 +2018,23 @@
 
     .btn-reserve:hover {
         background: #f08c00;
+    }
+    .btn-tichu-counter {
+        display: inline-block;
+        margin-top: 0.5rem;
+        padding: 0.4rem 0.8rem;
+        background: #364fc7;
+        color: white;
+        border: none;
+        border-radius: 8px;
+        font-weight: 600;
+        font-size: 0.8rem;
+        text-decoration: none;
+        text-align: center;
+        cursor: pointer;
+    }
+    .btn-tichu-counter:hover {
+        background: #3b5bdb;
     }
     .btn-reserve-mini, .btn-join-mini {
         background: #fab005;
@@ -2518,7 +2575,10 @@
         color: #555;
         margin-bottom: 0.4rem;
     }
-    .party-selector select {
+    .party-dropdown-wrapper {
+        position: relative;
+    }
+    .party-dropdown-trigger {
         width: 100%;
         padding: 0.6rem 0.75rem;
         border: 1px solid #ddd;
@@ -2526,9 +2586,63 @@
         font-size: 0.9rem;
         background: #f8f9fa;
         cursor: pointer;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        color: #555;
+        text-align: left;
     }
-    .party-selector select:hover {
+    .party-dropdown-trigger:hover {
         border-color: #adb5bd;
+    }
+    .party-chevron {
+        font-size: 0.7rem;
+        color: #999;
+        transition: transform 0.2s;
+    }
+    .party-chevron.open {
+        transform: rotate(180deg);
+    }
+    .party-dropdown-list {
+        position: absolute;
+        top: calc(100% + 4px);
+        left: 0;
+        right: 0;
+        background: white;
+        border: 1px solid #eee;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        max-height: 200px;
+        overflow-y: auto;
+        z-index: 100;
+    }
+    .party-dropdown-item {
+        width: 100%;
+        padding: 0.6rem 0.75rem;
+        border: none;
+        background: none;
+        cursor: pointer;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 0.5rem;
+        text-align: left;
+        font-size: 0.9rem;
+    }
+    .party-dropdown-item:hover {
+        background: #f8f9fa;
+    }
+    .party-dropdown-item:not(:last-child) {
+        border-bottom: 1px solid #f1f3f5;
+    }
+    .party-item-name {
+        font-weight: 600;
+        color: #333;
+    }
+    .party-item-game {
+        font-size: 0.8rem;
+        color: #888;
+        flex-shrink: 0;
     }
 
     /* Selected Members Tags */
@@ -2568,5 +2682,22 @@
         font-size: 0.7rem;
         color: #adb5bd;
         margin-left: 2px;
+    }
+    .btn-toggle-guest {
+        width: 100%;
+        padding: 0.5rem;
+        background: none;
+        border: 1px dashed #ccc;
+        border-radius: 8px;
+        color: #888;
+        font-size: 0.85rem;
+        cursor: pointer;
+        margin-bottom: 0.5rem;
+        transition: all 0.2s;
+    }
+    .btn-toggle-guest:hover {
+        border-color: #888;
+        color: #555;
+        background: #f8f9fa;
     }
 </style>
