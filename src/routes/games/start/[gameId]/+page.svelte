@@ -36,6 +36,12 @@
     let tutorialData: Record<string, any> | null = $state(null);
     let tutorialOrder: string[] = $state([]);
     let unlockedTutorialIDs: Set<string> = $state(new Set());
+    
+    let visibleTutorials = $derived(
+        (tutorialData && tutorialOrder)
+        ? tutorialOrder.filter(tid => tutorialData[tid] && unlockedTutorialIDs.has(tid))
+        : []
+    );
 
     // Tutorial modal
     let showTutorial = $state(false);
@@ -308,20 +314,20 @@
                 <!-- 3. Guide Tab -->
                 {:else if activeTab === 'guide'}
                     <div class="subpage-body">
-                        {#if tutorialData && tutorialOrder.length > 0}
+                        {#if visibleTutorials.length > 0}
                             <div class="tutorial-list-container">
                                 <div class="tutorial-list">
-                                    {#each tutorialOrder as tid}
-                                        {@const t = tutorialData[tid]}
-                                        {#if t && unlockedTutorialIDs.has(tid)}
-                                            <button class="tutorial-list-item glass-list-item" onclick={() => openTutorial(tid)}>
-                                                <div class="t-info">
-                                                    <span class="t-badge {t.difficulty}">{t.difficulty.toUpperCase()}</span>
-                                                    <span class="t-title">{t.title}</span>
+                                    {#each visibleTutorials as tid}
+                                        {@const t = tutorialData![tid]}
+                                        <button class="tutorial-list-item glass-list-item" onclick={() => openTutorial(tid)}>
+                                            <div class="t-info">
+                                                <div class="hof-diff-badge {t.difficulty}">
+                                                    {gameConfig.difficultyLabels[t.difficulty] || t.difficulty.toUpperCase()}
                                                 </div>
-                                                <span class="t-arrow">›</span>
-                                            </button>
-                                        {/if}
+                                                <span class="t-title">{t.title}</span>
+                                            </div>
+                                            <span class="t-arrow">›</span>
+                                        </button>
                                     {/each}
                                 </div>
                             </div>

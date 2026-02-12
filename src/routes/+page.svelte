@@ -129,13 +129,21 @@
         return userPartyIds.has(game.party_id);
     }
 
-    // 참석자 + 고정팟 미참석 멤버 병합
+    // 참석자 + 고정팟 미참석 멤버 병합 (고정팟 멤버 상단 정렬)
     $: mergedAttendees = (() => {
         const attendeeIds = new Set((attendees || []).map(a => a.id));
+        const partyMemberIds = new Set(partyMembers.map(m => m.id));
         const extra = partyMembers
             .filter(m => !attendeeIds.has(m.id))
-            .map(m => ({ id: m.id, name: m.name, arrival_time: '', is_playing: false, title_name: undefined, isPartyOnly: true }));
-        return [...(attendees || []).map(a => ({ ...a, isPartyOnly: false })), ...extra];
+            .map(m => ({ id: m.id, name: m.name, arrival_time: '', is_playing: false, title_name: undefined, isPartyOnly: true, isPartyMember: true }));
+        const mapped = (attendees || []).map(a => ({ ...a, isPartyOnly: false, isPartyMember: partyMemberIds.has(a.id) }));
+        // 고정팟 멤버를 상단에 정렬
+        const sorted = [...mapped, ...extra].sort((a, b) => {
+            if (a.isPartyMember && !b.isPartyMember) return -1;
+            if (!a.isPartyMember && b.isPartyMember) return 1;
+            return 0;
+        });
+        return sorted;
     })();
 
     let endGameModalVisible = false;
@@ -871,7 +879,7 @@
                 <div class="player-select">
                     <p>참여자 선택:</p>
                     {#each mergedAttendees as attendee (attendee.id)}
-                        <label class:disabled={attendee.is_playing} class:party-member={attendee.isPartyOnly}>
+                        <label class:disabled={attendee.is_playing} class:party-member={attendee.isPartyMember}>
                             <input
                                 type="checkbox"
                                 name="players"
@@ -880,7 +888,9 @@
                                 bind:group={selectedPlayerIds}
                             />
                             {attendee.name}
-                            {#if attendee.is_playing}
+                            {#if attendee.isPartyOnly}
+                                <span class="status-text">(미참석)</span>
+                            {:else if attendee.is_playing}
                                 <span class="status-text">(게임 중)</span>
                             {/if}
                         </label>
@@ -2704,8 +2714,12 @@
         color: #1864ab;
     }
     .party-member {
+        color: #7c3aed;
+        font-weight: 500;
+    }
+    .party-member.disabled {
         color: #868e96;
-        font-style: italic;
+        font-weight: 400;
     }
     .status-text-small {
         font-size: 0.7rem;
