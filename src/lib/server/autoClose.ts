@@ -118,13 +118,11 @@ async function checkReservations() {
         const settings = settingsResult.rows.reduce((acc: any, row: any) => {
             acc[row.key] = row.value;
             return acc;
-        }, { 
-            no_show_limit_minutes: '10',
-            auto_dissolve_limit_minutes: '10'
+        }, {
+            no_show_limit_minutes: '10'
         });
 
         const noShowLimit = parseInt(settings.no_show_limit_minutes);
-        const autoDissolveLimit = parseInt(settings.auto_dissolve_limit_minutes);
 
         // 1. Auto-cancel No-shows
         const noShows = await query(`
@@ -143,22 +141,27 @@ async function checkReservations() {
             console.log(`Auto-cancelled reservation ${row.id} for attendee ${row.attendee_id} (No-show)`);
         }
 
-        // 2. Auto-dissolve scheduled games
-        const underpopulated = await query(`
-            SELECT gs.id, gs.min_players, COUNT(sp.id) as current_players
+        // 2. Auto-start scheduled games that have passed their scheduled time
+        const readyToStart = await query(`
+            SELECT gs.id, gs.game_id, gs.game_name,
+                   COALESCE(g.playtime_min, 60) as playtime_min,
+                   COUNT(sp.id) as current_players
             FROM game_sessions gs
             LEFT JOIN session_participants sp ON gs.id = sp.session_id
+            LEFT JOIN games g ON gs.game_id = g.id
             WHERE gs.status = 'scheduled'
-              AND gs.scheduled_at < NOW() + ($1 || ' minutes')::interval
-            GROUP BY gs.id, gs.min_players
-            HAVING COUNT(sp.id) < COALESCE(gs.min_players, 2)
-        `, [autoDissolveLimit]);
+              AND gs.scheduled_at <= NOW()
+            GROUP BY gs.id, gs.game_id, gs.game_name, g.playtime_min
+        `);
 
-        for (const row of underpopulated.rows) {
-            await query("UPDATE game_sessions SET status = 'finished' WHERE id = $1", [row.id]);
-            // Also cancel any reservations for this session
-            await query("UPDATE reservations SET status = 'cancelled' WHERE session_id = $1", [row.id]);
-            console.log(`Auto-dissolved session ${row.id} (Min players not met 10 mins before start)`);
+        for (const row of readyToStart.rows) {
+            const duration = row.playtime_min || 60;
+            await query(
+                "UPDATE game_sessions SET status = 'playing', start_time = NOW(), end_time = NOW() + interval '" + duration + " minutes' WHERE id = $1",
+                [row.id]
+            );
+            await query("UPDATE reservations SET status = 'confirmed' WHERE session_id = $1 AND status = 'pending'", [row.id]);
+            console.log(`Auto-started session ${row.id} (${row.game_name}, ${duration}min, ${row.current_players} players)`);
         }
 
     } catch (error) {

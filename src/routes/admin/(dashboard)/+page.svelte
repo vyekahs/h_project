@@ -825,7 +825,6 @@
                 <div class="input-group">
                     <label for="scheduledAt">시작 예정 시간</label>
                     <input type="datetime-local" id="scheduledAt" name="scheduledAt" bind:value={scheduledAt} required class="full-width-input">
-                    <p class="hint">※ 시작 10분 전까지 최소 인원이 모이지 않으면 자동 폭파됩니다.</p>
                 </div>
 
                 <div class="player-limits">
