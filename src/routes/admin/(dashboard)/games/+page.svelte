@@ -49,7 +49,20 @@
         showBggModal = false;
         bggResults = [];
         bggQuery = '';
+        importedIds = new Set();
+        lastImportedId = null;
     }
+
+    // Game Search & Pagination
+    let gameSearch = '';
+    let visibleCount = 12;
+    $: filteredGames = gameSearch
+        ? data.games.filter((g: any) => g.name.toLowerCase().includes(gameSearch.toLowerCase()))
+        : data.games;
+    $: visibleGames = filteredGames.slice(0, visibleCount);
+    $: hasMore = visibleCount < filteredGames.length;
+    // 검색어 변경 시 페이지네이션 리셋
+    $: if (gameSearch !== undefined) visibleCount = 12;
 
     let showDetailModal = false;
     let selectedDetailGame: any = null;
@@ -64,11 +77,19 @@
         selectedDetailGame = null;
     }
 
+    // BGG import 성공 추적
+    let lastImportedId: string | null = null;
+    let importedIds: Set<string> = new Set();
+
     $: if (form?.success) {
         // @ts-ignore
         if (form.imported) {
-            closeBggModal();
-            alert('게임이 성공적으로 가져와졌습니다!');
+            // 모달을 닫지 않고 성공 표시만
+            if (lastImportedId) {
+                importedIds.add(lastImportedId);
+                importedIds = importedIds; // trigger reactivity
+            }
+            lastImportedId = null;
         // @ts-ignore
         } else if (form.bggGames) {
             // @ts-ignore
@@ -95,8 +116,19 @@
         </div>
     </div>
 
+    <div class="search-bar">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="text" placeholder="게임 이름 검색..." bind:value={gameSearch} />
+        {#if gameSearch}
+            <button class="btn-clear-search" on:click={() => gameSearch = ''}>
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+        {/if}
+        <span class="search-count">{filteredGames.length}개</span>
+    </div>
+
     <div class="games-grid">
-        {#each data.games as game}
+        {#each visibleGames as game}
             <!-- svelte-ignore a11y-click-events-have-key-events -->
             <!-- svelte-ignore a11y-no-static-element-interactions -->
             <div class="game-card" class:inactive={!game.is_active} on:click={() => openDetailModal(game)}>
@@ -151,10 +183,15 @@
                 </div>
             </div>
         {/each}
-        {#if data.games.length === 0}
-            <div class="empty-state">등록된 게임이 없습니다.</div>
+        {#if filteredGames.length === 0}
+            <div class="empty-state">{gameSearch ? '검색 결과가 없습니다.' : '등록된 게임이 없습니다.'}</div>
         {/if}
     </div>
+    {#if hasMore}
+        <button class="btn-load-more" on:click={() => visibleCount += 12}>
+            더 보기 ({visibleGames.length}/{filteredGames.length})
+        </button>
+    {/if}
 </div>
 
 {#if showDetailModal && selectedDetailGame}
@@ -347,19 +384,24 @@
                                     <span class="name">{game.name}</span>
                                     <span class="year">({game.year})</span>
                                 </div>
-                                <form method="POST" action="?/importBgg" use:enhance={() => {
-                                    isImporting = true;
-                                    return async ({ update }) => {
-                                        await update();
-                                        isImporting = false;
-                                    };
-                                }}>
-                                    <input type="hidden" name="bggId" value={game.id} />
-                                    <input type="hidden" name="searchName" value={game.name} />
-                                    <button type="submit" class="btn-secondary" disabled={isImporting}>
-                                        {isImporting ? '가져오는 중...' : '가져오기'}
-                                    </button>
-                                </form>
+                                {#if importedIds.has(game.id)}
+                                    <span class="imported-badge">추가됨 ✓</span>
+                                {:else}
+                                    <form method="POST" action="?/importBgg" use:enhance={() => {
+                                        isImporting = true;
+                                        lastImportedId = game.id;
+                                        return async ({ update }) => {
+                                            await update();
+                                            isImporting = false;
+                                        };
+                                    }}>
+                                        <input type="hidden" name="bggId" value={game.id} />
+                                        <input type="hidden" name="searchName" value={game.name} />
+                                        <button type="submit" class="btn-secondary" disabled={isImporting}>
+                                            {isImporting ? '가져오는 중...' : '가져오기'}
+                                        </button>
+                                    </form>
+                                {/if}
                             </li>
                         {/each}
                     </ul>
@@ -720,5 +762,75 @@
     .header-actions {
         display: flex;
         gap: 0.5rem;
+    }
+
+    /* Search Bar */
+    .search-bar {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        margin-bottom: 1.5rem;
+        background: white;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        padding: 0.5rem 0.75rem;
+    }
+    .search-bar svg {
+        color: #adb5bd;
+        flex-shrink: 0;
+    }
+    .search-bar input {
+        flex: 1;
+        border: none;
+        outline: none;
+        font-size: 0.95rem;
+        padding: 0.25rem 0;
+        background: transparent;
+    }
+    .btn-clear-search {
+        background: none;
+        border: none;
+        padding: 2px;
+        cursor: pointer;
+        color: #adb5bd;
+        display: flex;
+        align-items: center;
+    }
+    .btn-clear-search:hover {
+        color: #666;
+    }
+    .search-count {
+        font-size: 0.85rem;
+        color: #888;
+        white-space: nowrap;
+    }
+
+    /* Load More */
+    .btn-load-more {
+        display: block;
+        width: 100%;
+        padding: 0.75rem;
+        margin-top: 1.5rem;
+        background: white;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        font-size: 0.9rem;
+        color: #555;
+        cursor: pointer;
+        transition: background 0.2s;
+    }
+    .btn-load-more:hover {
+        background: #f8f9fa;
+    }
+
+    /* Imported Badge */
+    .imported-badge {
+        color: #2e7d32;
+        font-size: 0.85rem;
+        font-weight: 600;
+        padding: 0.4rem 0.75rem;
+        background: #e8f5e9;
+        border-radius: 6px;
+        white-space: nowrap;
     }
 </style>
