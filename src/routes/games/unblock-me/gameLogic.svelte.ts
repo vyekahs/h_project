@@ -36,6 +36,7 @@ export function createUnblockMeGame() {
 
     // UI state
     let hasSavedGame = $state(false);
+    let hasRestarted = $state(false);
 
     // Modals
     let alertMessage: string | null = $state(null);
@@ -89,6 +90,7 @@ export function createUnblockMeGame() {
                 timer: timerValue,
                 difficulty,
                 history,
+                hasRestarted,
             };
             localStorage.setItem('unblockme_save', JSON.stringify(data));
         } catch {}
@@ -114,6 +116,7 @@ export function createUnblockMeGame() {
             displayTimer = timerValue;
             difficulty = data.difficulty || 'medium';
             history = data.history || [];
+            hasRestarted = data.hasRestarted || false;
             isWon = false;
 
             gameState = 'paused';
@@ -138,6 +141,7 @@ export function createUnblockMeGame() {
             history = [];
             earnedPointsResult = 0;
             calculatedScore = 0;
+            hasRestarted = false;
 
             gameState = 'playing';
             hasSavedGame = true;
@@ -170,7 +174,9 @@ export function createUnblockMeGame() {
         stopTimer();
         localStorage.removeItem('unblockme_save');
         hasSavedGame = false;
-        submitScore();
+        if (!hasRestarted) {
+            submitScore();
+        }
     }
 
     async function submitScore() {
@@ -210,24 +216,27 @@ export function createUnblockMeGame() {
     }
 
     function restartGame() {
-        stopTimer();
+        showConfirm('다시시작하면 랭킹에 기록되지 않습니다. 계속하시겠습니까?', () => {
+            stopTimer();
+            hasRestarted = true;
 
-        // Reset to same level
-        if (currentLevel) {
-            blocks = parseLevel(currentLevel);
-        }
-        moveCount = 0;
-        isWon = false;
-        timerValue = 0;
-        displayTimer = 0;
-        history = [];
-        earnedPointsResult = 0;
-        calculatedScore = 0;
+            // Reset to same level
+            if (currentLevel) {
+                blocks = parseLevel(currentLevel);
+            }
+            moveCount = 0;
+            isWon = false;
+            timerValue = 0;
+            displayTimer = 0;
+            history = [];
+            earnedPointsResult = 0;
+            calculatedScore = 0;
 
-        gameState = 'playing';
-        hasSavedGame = true;
-        startTimer();
-        saveGame();
+            gameState = 'playing';
+            hasSavedGame = true;
+            startTimer();
+            saveGame();
+        });
     }
 
     function returnToMenu() {
@@ -250,6 +259,7 @@ export function createUnblockMeGame() {
         get displayTimer() { return displayTimer; },
         get history() { return history; },
         get hasSavedGame() { return hasSavedGame; },
+        get hasRestarted() { return hasRestarted; },
         get alertMessage() { return alertMessage; },
         set alertMessage(v: string | null) { alertMessage = v; },
         get confirmMessage() { return confirmMessage; },

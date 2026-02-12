@@ -101,11 +101,12 @@
         {#if game.gameState === 'finished'}
             <GameResultModal
                 isWon={true}
+                message={game.hasRestarted ? '다시시작한 게임은 랭킹에 반영되지 않습니다' : undefined}
                 stats={[
                     { label: '난이도', value: difficultyLabels[game.difficulty] },
                     { label: '시간', value: formatTime(game.timerValue) },
                     { label: '이동', value: `${game.moveCount}회` },
-                    { label: '점수', value: game.calculatedScore.toLocaleString(), highlight: true }
+                    ...(!game.hasRestarted ? [{ label: '점수', value: game.calculatedScore.toLocaleString(), highlight: true }] : [])
                 ]}
                 primaryAction={{ label: '다시 도전', onclick: game.startGame }}
                 secondaryAction={{ label: '나가기', onclick: () => goto('/games/start/unblock-me') }}

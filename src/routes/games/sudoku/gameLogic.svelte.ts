@@ -47,6 +47,7 @@ export function createSudokuGame() {
     let isTimeFrozen = $state(false);
 
     let hasSavedGame = $state(false);
+    let hasRestarted = $state(false);
 
     // Derived
     let completedNumbers = $derived.by(() => {
@@ -122,6 +123,7 @@ export function createSudokuGame() {
                 history = data.history || [];
                 gameMode = data.gameMode || 'standard';
                 cages = data.cages || [];
+                hasRestarted = data.hasRestarted || false;
 
                 gameState = 'paused'; // Start paused, user must click resume
             } catch (e) {
@@ -144,7 +146,8 @@ export function createSudokuGame() {
             difficulty,
             history,
             gameMode,
-            cages
+            cages,
+            hasRestarted
         };
         localStorage.setItem('sudoku_save', JSON.stringify(data));
     }
@@ -160,7 +163,8 @@ export function createSudokuGame() {
             difficulty,
             history,
             gameMode,
-            cages
+            cages,
+            hasRestarted
         };
         localStorage.setItem('sudoku_save', JSON.stringify(data));
     }
@@ -239,6 +243,7 @@ export function createSudokuGame() {
             timerValue = 0;
             displayTimer = 0;
             history = [];
+            hasRestarted = false;
 
             gameState = 'playing';
 
@@ -251,7 +256,8 @@ export function createSudokuGame() {
                 mistakes,
                 difficulty,
                 history,
-                gameMode
+                gameMode,
+                hasRestarted
             };
             localStorage.setItem('sudoku_save', JSON.stringify(data));
             hasSavedGame = true;
@@ -298,37 +304,40 @@ export function createSudokuGame() {
     }
 
     function restartGame() {
-        clearInterval(timerInterval);
+        showConfirm('다시시작하면 랭킹에 기록되지 않습니다. 계속하시겠습니까?', () => {
+            clearInterval(timerInterval);
+            hasRestarted = true;
 
-        // Reset board to initial state (same puzzle)
-        for (let r = 0; r < 9; r++) {
-            for (let c = 0; c < 9; c++) {
-                if (!board[r][c].isFixed) {
-                    board[r][c].value = null;
-                    board[r][c].notes = [];
-                    board[r][c].isError = false;
+            // Reset board to initial state (same puzzle)
+            for (let r = 0; r < 9; r++) {
+                for (let c = 0; c < 9; c++) {
+                    if (!board[r][c].isFixed) {
+                        board[r][c].value = null;
+                        board[r][c].notes = [];
+                        board[r][c].isError = false;
+                    }
                 }
             }
-        }
 
-        mistakes = 0;
-        isWon = false;
-        selectedCell = null;
-        timerValue = 0;
-        displayTimer = 0;
-        history = [];
-        isTimeFrozen = false;
+            mistakes = 0;
+            isWon = false;
+            selectedCell = null;
+            timerValue = 0;
+            displayTimer = 0;
+            history = [];
+            isTimeFrozen = false;
 
-        gameState = 'playing';
+            gameState = 'playing';
 
-        const data = {
-            board, solution, cages,
-            timer: 0, mistakes, difficulty, history, gameMode
-        };
-        localStorage.setItem('sudoku_save', JSON.stringify(data));
-        hasSavedGame = true;
+            const data = {
+                board, solution, cages,
+                timer: 0, mistakes, difficulty, history, gameMode, hasRestarted
+            };
+            localStorage.setItem('sudoku_save', JSON.stringify(data));
+            hasSavedGame = true;
 
-        startTimer();
+            startTimer();
+        });
     }
 
     function handleCellSelect(cell: Cell) {
@@ -416,7 +425,7 @@ export function createSudokuGame() {
         gameState = 'finished';
         clearSave();
 
-        if (won) {
+        if (won && !hasRestarted) {
             submitScore();
         }
     }
@@ -565,6 +574,7 @@ export function createSudokuGame() {
         get calculatedScore() { return calculatedScore; },
         get isTimeFrozen() { return isTimeFrozen; },
         get hasSavedGame() { return hasSavedGame; },
+        get hasRestarted() { return hasRestarted; },
         get completedNumbers() { return completedNumbers; },
         get alertMessage() { return alertMessage; },
         set alertMessage(v: string | null) { alertMessage = v; },

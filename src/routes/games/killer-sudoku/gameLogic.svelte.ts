@@ -38,6 +38,7 @@ export function createKillerSudokuGame() {
     let isTimeFrozen = $state(false);
 
     let hasSavedGame = $state(false);
+    let hasRestarted = $state(false);
 
     let showTutorial = $state(false);
     let activeTutorialId = $state('killer_easy_1');
@@ -124,6 +125,7 @@ export function createKillerSudokuGame() {
                 mistakes = data.mistakes;
                 difficulty = data.difficulty;
                 history = data.history || [];
+                hasRestarted = data.hasRestarted || false;
 
                 gameState = 'paused';
             } catch (e) {
@@ -139,7 +141,7 @@ export function createKillerSudokuGame() {
         if (gameState !== 'playing') return;
         const data = {
             board, solution, cages,
-            timer: timerValue, mistakes, difficulty, history
+            timer: timerValue, mistakes, difficulty, history, hasRestarted
         };
         localStorage.setItem('killer_sudoku_save', JSON.stringify(data));
     }
@@ -148,7 +150,7 @@ export function createKillerSudokuGame() {
         if (gameState !== 'playing') return;
         const data = {
             board, solution, cages,
-            timer: currentTimer, mistakes, difficulty, history
+            timer: currentTimer, mistakes, difficulty, history, hasRestarted
         };
         localStorage.setItem('killer_sudoku_save', JSON.stringify(data));
     }
@@ -197,12 +199,13 @@ export function createKillerSudokuGame() {
             timerValue = 0;
             displayTimer = 0;
             history = [];
+            hasRestarted = false;
 
             gameState = 'playing';
 
             const data = {
                 board, solution, cages,
-                timer: 0, mistakes, difficulty, history
+                timer: 0, mistakes, difficulty, history, hasRestarted
             };
             localStorage.setItem('killer_sudoku_save', JSON.stringify(data));
             hasSavedGame = true;
@@ -248,37 +251,40 @@ export function createKillerSudokuGame() {
     }
 
     function restartGame() {
-        clearInterval(timerInterval);
+        showConfirm('다시시작하면 랭킹에 기록되지 않습니다. 계속하시겠습니까?', () => {
+            clearInterval(timerInterval);
+            hasRestarted = true;
 
-        // Reset board to initial state (same puzzle)
-        for (let r = 0; r < 9; r++) {
-            for (let c = 0; c < 9; c++) {
-                if (!board[r][c].isFixed) {
-                    board[r][c].value = null;
-                    board[r][c].notes = [];
-                    board[r][c].isError = false;
+            // Reset board to initial state (same puzzle)
+            for (let r = 0; r < 9; r++) {
+                for (let c = 0; c < 9; c++) {
+                    if (!board[r][c].isFixed) {
+                        board[r][c].value = null;
+                        board[r][c].notes = [];
+                        board[r][c].isError = false;
+                    }
                 }
             }
-        }
 
-        mistakes = 0;
-        isWon = false;
-        selectedCell = null;
-        timerValue = 0;
-        displayTimer = 0;
-        history = [];
-        isTimeFrozen = false;
+            mistakes = 0;
+            isWon = false;
+            selectedCell = null;
+            timerValue = 0;
+            displayTimer = 0;
+            history = [];
+            isTimeFrozen = false;
 
-        gameState = 'playing';
+            gameState = 'playing';
 
-        const data = {
-            board, solution, cages,
-            timer: 0, mistakes, difficulty, history
-        };
-        localStorage.setItem('killer_sudoku_save', JSON.stringify(data));
-        hasSavedGame = true;
+            const data = {
+                board, solution, cages,
+                timer: 0, mistakes, difficulty, history, hasRestarted
+            };
+            localStorage.setItem('killer_sudoku_save', JSON.stringify(data));
+            hasSavedGame = true;
 
-        startTimer();
+            startTimer();
+        });
     }
 
     function handleCellSelect(cell: Cell) {
@@ -369,7 +375,7 @@ export function createKillerSudokuGame() {
         gameState = 'finished';
         clearSave();
 
-        if (won) {
+        if (won && !hasRestarted) {
             submitScore();
         }
     }
@@ -516,6 +522,7 @@ export function createKillerSudokuGame() {
         get calculatedScore() { return calculatedScore; },
         get isTimeFrozen() { return isTimeFrozen; },
         get hasSavedGame() { return hasSavedGame; },
+        get hasRestarted() { return hasRestarted; },
         get completedNumbers() { return completedNumbers; },
         get currentCageErrors() { return currentCageErrors; },
         get alertMessage() { return alertMessage; },

@@ -134,14 +134,14 @@
     {#if game.gameState === 'finished'}
         <GameResultModal
             isWon={game.isWon}
-            message={game.isWon ? (game.calculatedScore >= 5000 ? '전설적인 기록입니다! 🏆' : '퍼즐을 완벽하게 해결했습니다! 🎉') : '아쉽지만 다음 기회에... 😭'}
+            message={game.hasRestarted ? '다시시작한 게임은 랭킹에 반영되지 않습니다' : game.isWon ? (game.calculatedScore >= 5000 ? '전설적인 기록입니다! 🏆' : '퍼즐을 완벽하게 해결했습니다! 🎉') : '아쉽지만 다음 기회에... 😭'}
             stats={[
                 { label: '난이도', value: difficultyLabels[game.difficulty] },
                 { label: '시간', value: formatTime(game.displayTimer) },
                 { label: '실수', value: `${game.mistakes} / 3` },
-                { label: '점수', value: game.calculatedScore.toLocaleString(), highlight: true }
+                ...(!game.hasRestarted ? [{ label: '점수', value: game.calculatedScore.toLocaleString(), highlight: true }] : [])
             ]}
-            showAd={game.isWon && GAME_CONFIG.ENABLE_ADS}
+            showAd={game.isWon && !game.hasRestarted && GAME_CONFIG.ENABLE_ADS}
             onAdReward={game.handleAdReward}
             primaryAction={{ label: '다시 도전하기', onclick: () => goto('/games/start/killer-sudoku') }}
             secondaryAction={{ label: '나가기', onclick: game.quitGame }}
@@ -409,6 +409,7 @@
         font-weight: 600;
         cursor: pointer;
         font-size: 1rem;
+        justify-content: center;
         transition: all 0.2s;
         display: flex;
         align-items: center;
