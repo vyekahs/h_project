@@ -817,7 +817,7 @@
                 </div>
 
                 <div class="form-group">
-                    <label>멤버 선택</label>
+                    <label>멤버 선택 <span class="member-hint">함께 플레이한 사람만 표시됩니다</span></label>
                     <div class="member-select-list">
                         {#each (data.allAttendees || []) as attendee}
                             <label class="member-checkbox" class:owner={data.user && attendee.id === data.user.id}>
@@ -1950,6 +1950,13 @@
         cursor: pointer;
         border-radius: 4px;
     }
+    .member-checkbox input[type="checkbox"] {
+        flex-shrink: 0;
+        width: 1em;
+        height: 1em;
+        margin: 0;
+        vertical-align: middle;
+    }
     .member-checkbox:hover {
         background: #f8f9fa;
     }
@@ -1960,5 +1967,10 @@
     .owner-badge {
         font-size: 0.75rem;
         color: #888;
+    }
+    .member-hint {
+        font-size: 0.75rem;
+        color: #adb5bd;
+        font-weight: 400;
     }
 </style>

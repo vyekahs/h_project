@@ -52,7 +52,21 @@ export const load: PageServerLoad = async ({ parent }) => {
     const [devicesResult, parties, allAttendeesResult, allGamesResult] = await Promise.all([
         query('SELECT id, name, created_at, last_seen_at FROM user_devices WHERE attendee_id = $1 ORDER BY created_at DESC', [user.id]),
         PartyService.getUserParties(user.id).catch(() => []),
-        query('SELECT id, name FROM attendees ORDER BY name ASC'),
+        query(`
+            SELECT DISTINCT a.id, a.name
+            FROM attendees a
+            WHERE a.id = $1
+               OR a.id IN (
+                   SELECT sp2.attendee_id
+                   FROM session_participants sp1
+                   JOIN game_sessions gs ON sp1.session_id = gs.id
+                   JOIN session_participants sp2 ON sp2.session_id = gs.id
+                   WHERE sp1.attendee_id = $1
+                     AND sp2.attendee_id != $1
+                     AND gs.status = 'finished'
+               )
+            ORDER BY a.name ASC
+        `, [user.id]),
         query('SELECT id, name, playtime_min, image_url FROM games ORDER BY name ASC')
     ]);
     // Trigger Title Check (Background)
