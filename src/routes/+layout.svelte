@@ -65,6 +65,7 @@
 		font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
 		background: #f8f9fa;
         overscroll-behavior-y: none;
+        touch-action: manipulation;
 	}
     :global(*), :global(*::before), :global(*::after) {
         box-sizing: border-box;
