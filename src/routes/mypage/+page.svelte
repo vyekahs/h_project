@@ -169,7 +169,7 @@
     }
 
     // Tab State
-    type Tab = 'dashboard' | 'titles' | 'history';
+    type Tab = 'dashboard' | 'titles' | 'history' | 'parties';
     let activeTab: Tab = 'dashboard';
     // Feedback Logic
 
@@ -213,6 +213,68 @@
         }
     }
 
+    // Party (고정팟) Management
+    let showPartyModal = false;
+    let editingParty: any = null;
+    let partyName = '';
+    let partyGameId: string = '';
+    let partyGameName = '';
+    let partyDuration: string = '';
+    let partyGuestCount = 0;
+    let partyMemberIds: number[] = [];
+    let partyGameDropdownOpen = false;
+    let partyGameSearch = '';
+
+    $: filteredPartyGames = (data.allGames || []).filter((g: any) =>
+        g.name.toLowerCase().includes(partyGameSearch.toLowerCase())
+    );
+
+    function openCreatePartyModal() {
+        editingParty = null;
+        partyName = '';
+        partyGameId = '';
+        partyGameName = '';
+        partyDuration = '';
+        partyGuestCount = 0;
+        partyMemberIds = data.user ? [data.user.id] : [];
+        partyGameDropdownOpen = false;
+        partyGameSearch = '';
+        showPartyModal = true;
+    }
+
+    function openEditPartyModal(party: any) {
+        editingParty = party;
+        partyName = party.name;
+        partyGameId = party.game_id?.toString() || '';
+        partyGameName = party.game_name || party.resolved_game_name || '';
+        partyDuration = party.duration?.toString() || '';
+        partyGuestCount = party.guest_count || 0;
+        partyMemberIds = party.members.map((m: any) => m.id);
+        if (data.user && !partyMemberIds.includes(data.user.id)) {
+            partyMemberIds = [data.user.id, ...partyMemberIds];
+        }
+        partyGameDropdownOpen = false;
+        partyGameSearch = '';
+        showPartyModal = true;
+    }
+
+    function selectPartyGame(game: any) {
+        partyGameId = game.id.toString();
+        partyGameName = game.name;
+        if (game.playtime_min) partyDuration = game.playtime_min.toString();
+        partyGameDropdownOpen = false;
+        partyGameSearch = '';
+    }
+
+    function togglePartyMember(id: number) {
+        if (data.user && id === data.user.id) return;
+        if (partyMemberIds.includes(id)) {
+            partyMemberIds = partyMemberIds.filter(mid => mid !== id);
+        } else {
+            partyMemberIds = [...partyMemberIds, id];
+        }
+    }
+
 </script>
 
 <svelte:window on:click={() => closeDropdowns()} />
@@ -253,6 +315,10 @@
             <button class="tab-item" class:active={activeTab === 'history'} on:click={() => activeTab = 'history'}>
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
                 활동 기록
+            </button>
+            <button class="tab-item" class:active={activeTab === 'parties'} on:click={() => activeTab = 'parties'}>
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+                고정팟
             </button>
         </div>
 
@@ -430,6 +496,67 @@
                                     <p class="title-desc">{title.description || '특별한 칭호입니다.'}</p>
                                 </div>
                             {/each}
+                        </div>
+                    {/if}
+                </div>
+            </div>
+        {/if}
+
+        {#if activeTab === 'parties'}
+            <div class="tab-content">
+                <div class="parties-section">
+                    <div class="section-header">
+                        <h3>고정팟 관리</h3>
+                        <button class="btn-create-party" on:click={openCreatePartyModal}>+ 새 고정팟</button>
+                    </div>
+
+                    {#if data.parties && data.parties.length > 0}
+                        <div class="party-list">
+                            {#each data.parties as party}
+                                <div class="party-card-manage">
+                                    <div class="party-info-block">
+                                        <div class="party-name-row">
+                                            <strong>{party.name}</strong>
+                                            {#if party.game_name || party.resolved_game_name}
+                                                <span class="party-game-label">{party.game_name || party.resolved_game_name}</span>
+                                            {/if}
+                                        </div>
+                                        <div class="party-details">
+                                            {#if party.duration}
+                                                <span class="party-detail">{party.duration}분</span>
+                                            {/if}
+                                            {#if party.guest_count > 0}
+                                                <span class="party-detail">게스트 {party.guest_count}명</span>
+                                            {/if}
+                                        </div>
+                                        <div class="party-member-tags">
+                                            {#each party.members as member}
+                                                <span class="member-tag">{member.name}</span>
+                                            {/each}
+                                        </div>
+                                    </div>
+                                    <div class="party-actions-row">
+                                        <button class="btn-edit-party" on:click={() => openEditPartyModal(party)}>수정</button>
+                                        <form method="POST" action="?/deleteParty" use:enhance={() => {
+                                            return async ({ result, update }) => {
+                                                if (result.type === 'success') await update();
+                                            };
+                                        }}>
+                                            <input type="hidden" name="partyId" value={party.id} />
+                                            <button type="submit" class="btn-delete-party" on:click|preventDefault={(e) => {
+                                                if (confirm(`'${party.name}' 고정팟을 삭제하시겠습니까?`)) {
+                                                    const form = (e.currentTarget as HTMLElement).closest('form');
+                                                    if (form) form.requestSubmit();
+                                                }
+                                            }}>삭제</button>
+                                        </form>
+                                    </div>
+                                </div>
+                            {/each}
+                        </div>
+                    {:else}
+                        <div class="empty-state-small">
+                            아직 고정팟이 없습니다.<br>자주 함께 하는 멤버와 게임을 등록해보세요!
                         </div>
                     {/if}
                 </div>
@@ -618,6 +745,104 @@
             <h3>전송 완료!</h3>
             <p>소중한 의견 감사합니다.</p>
             <button class="modal-close-btn" on:click={() => showSuccessModal = false}>확인</button>
+        </div>
+    </div>
+{/if}
+
+{#if showPartyModal}
+    <div class="modal-backdrop" on:click|self={() => showPartyModal = false}>
+        <div class="modal-content party-modal">
+            <h3>{editingParty ? '고정팟 수정' : '새 고정팟 만들기'}</h3>
+            <form method="POST" action={editingParty ? '?/updateParty' : '?/createParty'} use:enhance={() => {
+                return async ({ result, update }) => {
+                    if (result.type === 'success') {
+                        showPartyModal = false;
+                        await update();
+                    }
+                };
+            }}>
+                {#if editingParty}
+                    <input type="hidden" name="partyId" value={editingParty.id} />
+                {/if}
+                <input type="hidden" name="gameId" value={partyGameId} />
+                <input type="hidden" name="gameName" value={partyGameName} />
+
+                <div class="form-group">
+                    <label for="partyName">팟 이름</label>
+                    <input type="text" id="partyName" name="partyName" bind:value={partyName} placeholder="예: 금요일 전략팟" required />
+                </div>
+
+                <div class="form-group">
+                    <label>게임 (선택사항)</label>
+                    <div class="game-search-wrapper" on:click|stopPropagation>
+                        <input
+                            type="text"
+                            placeholder="게임 검색..."
+                            bind:value={partyGameSearch}
+                            on:focus={() => partyGameDropdownOpen = true}
+                            on:input={() => partyGameDropdownOpen = true}
+                        />
+                        {#if partyGameName && !partyGameDropdownOpen}
+                            <div class="selected-game-tag">
+                                {partyGameName}
+                                <button type="button" class="btn-clear-game" on:click={() => { partyGameId = ''; partyGameName = ''; }}>x</button>
+                            </div>
+                        {/if}
+                        {#if partyGameDropdownOpen}
+                            <div class="game-dropdown">
+                                {#each filteredPartyGames as game}
+                                    <div class="game-option" on:click={() => selectPartyGame(game)} role="button" tabindex="0" on:keydown={(e) => e.key === 'Enter' && selectPartyGame(game)}>
+                                        {game.name}
+                                        {#if game.playtime_min}
+                                            <span class="game-time">({game.playtime_min}분)</span>
+                                        {/if}
+                                    </div>
+                                {:else}
+                                    <div class="game-option empty">검색 결과 없음</div>
+                                {/each}
+                            </div>
+                        {/if}
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group half">
+                        <label for="partyDuration">플레이 시간 (분)</label>
+                        <input type="number" id="partyDuration" name="duration" bind:value={partyDuration} placeholder="60" min="1" />
+                    </div>
+                    <div class="form-group half">
+                        <label for="partyGuestCount">게스트 수</label>
+                        <input type="number" id="partyGuestCount" name="guestCount" bind:value={partyGuestCount} min="0" max="20" />
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>멤버 선택</label>
+                    <div class="member-select-list">
+                        {#each (data.allAttendees || []) as attendee}
+                            <label class="member-checkbox" class:owner={data.user && attendee.id === data.user.id}>
+                                <input
+                                    type="checkbox"
+                                    name="memberIds"
+                                    value={attendee.id}
+                                    checked={partyMemberIds.includes(attendee.id)}
+                                    disabled={data.user && attendee.id === data.user.id}
+                                    on:change={() => togglePartyMember(attendee.id)}
+                                />
+                                {attendee.name}
+                                {#if data.user && attendee.id === data.user.id}
+                                    <span class="owner-badge">(나)</span>
+                                {/if}
+                            </label>
+                        {/each}
+                    </div>
+                </div>
+
+                <div class="modal-actions">
+                    <button type="button" class="btn-cancel" on:click={() => showPartyModal = false}>취소</button>
+                    <button type="submit" class="btn-submit">{editingParty ? '수정' : '만들기'}</button>
+                </div>
+            </form>
         </div>
     </div>
 {/if}
@@ -1528,5 +1753,212 @@
     }
     .feedback-arrow {
         color: #ccc;
+    }
+
+    /* Party (고정팟) Styles */
+    .parties-section {
+        margin-bottom: 2rem;
+    }
+    .btn-create-party {
+        background: #339af0;
+        color: white;
+        border: none;
+        padding: 0.4rem 0.8rem;
+        border-radius: 8px;
+        font-size: 0.85rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background 0.2s;
+    }
+    .btn-create-party:hover {
+        background: #228be6;
+    }
+    .party-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.8rem;
+    }
+    .party-card-manage {
+        background: white;
+        border: 1px solid #eee;
+        border-radius: 12px;
+        padding: 1rem;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+    }
+    .party-name-row {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        margin-bottom: 0.4rem;
+        flex-wrap: wrap;
+    }
+    .party-name-row strong {
+        font-size: 1.05rem;
+        color: #333;
+    }
+    .party-game-label {
+        font-size: 0.8rem;
+        background: #e7f5ff;
+        color: #339af0;
+        padding: 0.15rem 0.5rem;
+        border-radius: 4px;
+        font-weight: 600;
+    }
+    .party-details {
+        display: flex;
+        gap: 0.5rem;
+        margin-bottom: 0.5rem;
+    }
+    .party-detail {
+        font-size: 0.8rem;
+        color: #888;
+    }
+    .party-member-tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.3rem;
+    }
+    .member-tag {
+        font-size: 0.8rem;
+        background: #f1f3f5;
+        color: #495057;
+        padding: 0.2rem 0.5rem;
+        border-radius: 4px;
+    }
+    .party-actions-row {
+        display: flex;
+        gap: 0.5rem;
+        margin-top: 0.8rem;
+        justify-content: flex-end;
+    }
+    .btn-edit-party, .btn-delete-party {
+        border: none;
+        padding: 0.3rem 0.7rem;
+        border-radius: 6px;
+        font-size: 0.8rem;
+        font-weight: 600;
+        cursor: pointer;
+    }
+    .btn-edit-party {
+        background: #f1f3f5;
+        color: #495057;
+    }
+    .btn-edit-party:hover {
+        background: #e9ecef;
+    }
+    .btn-delete-party {
+        background: #fff5f5;
+        color: #e03131;
+    }
+    .btn-delete-party:hover {
+        background: #ffe3e3;
+    }
+
+    /* Party Modal */
+    .party-modal {
+        max-width: 450px;
+        max-height: 85vh;
+        overflow-y: auto;
+    }
+    .party-modal h3 {
+        text-align: center;
+    }
+    .form-row {
+        display: flex;
+        gap: 0.8rem;
+    }
+    .form-group.half {
+        flex: 1;
+    }
+    .game-search-wrapper {
+        position: relative;
+    }
+    .game-search-wrapper input {
+        width: 100%;
+        padding: 0.5rem;
+        border: 1px solid #ddd;
+        border-radius: 6px;
+        font-size: 0.9rem;
+        box-sizing: border-box;
+    }
+    .selected-game-tag {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+        margin-top: 0.3rem;
+        background: #e7f5ff;
+        color: #339af0;
+        padding: 0.2rem 0.5rem;
+        border-radius: 4px;
+        font-size: 0.85rem;
+        font-weight: 600;
+    }
+    .btn-clear-game {
+        background: none;
+        border: none;
+        color: #339af0;
+        cursor: pointer;
+        font-size: 0.9rem;
+        padding: 0 0.2rem;
+        font-weight: bold;
+    }
+    .game-dropdown {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        background: white;
+        border: 1px solid #eee;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        max-height: 180px;
+        overflow-y: auto;
+        z-index: 50;
+        margin-top: 4px;
+    }
+    .game-option {
+        padding: 0.5rem 0.8rem;
+        cursor: pointer;
+        font-size: 0.9rem;
+        color: #333;
+    }
+    .game-option:hover {
+        background: #f8f9fa;
+    }
+    .game-option.empty {
+        color: #adb5bd;
+        cursor: default;
+    }
+    .game-time {
+        color: #888;
+        font-size: 0.8rem;
+    }
+    .member-select-list {
+        max-height: 200px;
+        overflow-y: auto;
+        border: 1px solid #eee;
+        border-radius: 8px;
+        padding: 0.5rem;
+    }
+    .member-checkbox {
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        padding: 0.35rem 0.3rem;
+        font-size: 0.9rem;
+        color: #333;
+        cursor: pointer;
+        border-radius: 4px;
+    }
+    .member-checkbox:hover {
+        background: #f8f9fa;
+    }
+    .member-checkbox.owner {
+        color: #339af0;
+        font-weight: 600;
+    }
+    .owner-badge {
+        font-size: 0.75rem;
+        color: #888;
     }
 </style>

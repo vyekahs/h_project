@@ -138,6 +138,32 @@ async function migrate() {
             $$;
         `);
 
+        // 15. Game Parties (고정팟)
+        console.log('[15] Checking game_parties tables...');
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS game_parties (
+                id SERIAL PRIMARY KEY,
+                name VARCHAR(100) NOT NULL,
+                owner_id INTEGER REFERENCES attendees(id) ON DELETE CASCADE,
+                game_id INTEGER REFERENCES games(id) ON DELETE SET NULL,
+                game_name VARCHAR(100),
+                duration INTEGER,
+                guest_count INTEGER DEFAULT 0,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            );
+        `);
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS game_party_members (
+                id SERIAL PRIMARY KEY,
+                party_id INTEGER REFERENCES game_parties(id) ON DELETE CASCADE,
+                attendee_id INTEGER REFERENCES attendees(id) ON DELETE CASCADE,
+                UNIQUE(party_id, attendee_id)
+            );
+        `);
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_game_parties_owner ON game_parties(owner_id);');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_game_party_members_party ON game_party_members(party_id);');
+
     } catch (err) {
         console.error('Migration failed:', err);
         process.exit(1);

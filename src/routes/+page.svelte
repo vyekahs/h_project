@@ -15,6 +15,18 @@
         title?: { title_name: string };
     }
     
+    interface Party {
+        id: number;
+        name: string;
+        game_id: number | null;
+        game_name: string | null;
+        resolved_game_name: string | null;
+        image_url: string | null;
+        duration: number | null;
+        guest_count: number;
+        members: { id: number; name: string }[];
+    }
+
     export let data: {
         attendees: Attendee[];
         games: GameSession[];
@@ -29,6 +41,7 @@
         isAdmin: boolean;
         reservations: Reservation[];
         allGames: any[]; // Using any[] for simplicity or define Game interface
+        parties: Party[];
     };
 
     interface Attendee {
@@ -97,6 +110,10 @@
     let minPlayers = 2;
     let maxPlayers = 4;
     let guestCount = 0;
+    let selectedPlayerIds: number[] = [];
+    let scheduledSelectedPlayerIds: number[] = [];
+
+    $: parties = (data.parties || []) as Party[];
 
     let endGameModalVisible = false;
     let selectedEndGame: GameSession | null = null;
@@ -139,11 +156,26 @@
         endGameModalVisible = true;
     }
 
+    function applyPartyToModal(party: Party) {
+        selectedGameName = party.game_name || party.resolved_game_name || '';
+        selectedGameId = party.game_id?.toString() || '';
+        selectedDuration = party.duration?.toString() || '';
+        guestCount = party.guest_count || 0;
+        selectedPlayerIds = party.members.map(m => m.id);
+    }
+
+    function applyPartyToScheduledModal(party: Party) {
+        scheduledGameName = party.game_name || party.resolved_game_name || '';
+        guestCount = party.guest_count || 0;
+        scheduledSelectedPlayerIds = party.members.map(m => m.id);
+    }
+
     function openScheduledGameModal() {
         showScheduledGameModal = true;
         scheduledGameName = '';
         dropdownOpen = false;
         guestCount = 0;
+        scheduledSelectedPlayerIds = [];
         
         const now = new Date();
         now.setMinutes(Math.ceil((now.getMinutes() + 30) / 10) * 10);
@@ -441,6 +473,7 @@
                         selectedGameId = '';
                         dropdownOpen = false;
                         guestCount = 0;
+                        selectedPlayerIds = [];
                     }}>+ 게임 시작</button>
                 {/if}
             </div>
@@ -469,7 +502,8 @@
                                     <div class="user-actions">
                                         {#if isParticipant}
                                              <form method="POST" action="?/leavePlayingGame" on:submit|preventDefault={(e) => {
-                                                  if ((game.players || []).length <= 2) {
+                                                  const registeredCount = (game.players || []).filter((p: any) => !p.is_guest).length;
+                                                  if (registeredCount <= 2) {
                                                       alert('게임을 진행하기 위한 최소 인원(2명)이므로 나갈 수 없습니다.');
                                                       return;
                                                   }
@@ -696,6 +730,24 @@
     <div class="modal-backdrop" on:click={() => showModal = false} role="presentation">
         <div class="modal-content" on:click={handleModalClick} role="dialog">
             <h2>새 게임 시작</h2>
+            {#if parties.length > 0}
+                <div class="party-selector">
+                    <label for="partySelect">고정팟 불러오기</label>
+                    <select id="partySelect" on:change={(e) => {
+                        const val = e.currentTarget.value;
+                        if (val) {
+                            const party = parties.find(p => p.id === parseInt(val));
+                            if (party) applyPartyToModal(party);
+                        }
+                        e.currentTarget.value = '';
+                    }}>
+                        <option value="">-- 고정팟 선택 --</option>
+                        {#each parties as party}
+                            <option value={party.id}>{party.name} ({party.game_name || party.resolved_game_name || '게임 미지정'})</option>
+                        {/each}
+                    </select>
+                </div>
+            {/if}
             <form method="POST" action="?/createGame" use:enhance={() => {
                 return async ({ result, update }) => {
                     if (result.type === 'failure') {
@@ -765,7 +817,20 @@
                     <p>참여자 선택:</p>
                     {#each (attendees || []) as attendee (attendee.id)}
                         <label class:disabled={attendee.is_playing}>
-                            <input type="checkbox" name="players" value={attendee.id} disabled={attendee.is_playing} />
+                            <input
+                                type="checkbox"
+                                name="players"
+                                value={attendee.id}
+                                disabled={attendee.is_playing}
+                                checked={selectedPlayerIds.includes(attendee.id)}
+                                on:change={(e) => {
+                                    if (e.currentTarget.checked) {
+                                        selectedPlayerIds = [...selectedPlayerIds, attendee.id];
+                                    } else {
+                                        selectedPlayerIds = selectedPlayerIds.filter(id => id !== attendee.id);
+                                    }
+                                }}
+                            />
                             {attendee.name}
                             {#if attendee.is_playing}
                                 <span class="status-text">(게임 중)</span>
@@ -872,7 +937,24 @@
                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px; vertical-align:text-bottom;"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
                 시작 예정 게임 생성
             </h2>
-
+            {#if parties.length > 0}
+                <div class="party-selector">
+                    <label for="scheduledPartySelect">고정팟 불러오기</label>
+                    <select id="scheduledPartySelect" on:change={(e) => {
+                        const val = e.currentTarget.value;
+                        if (val) {
+                            const party = parties.find(p => p.id === parseInt(val));
+                            if (party) applyPartyToScheduledModal(party);
+                        }
+                        e.currentTarget.value = '';
+                    }}>
+                        <option value="">-- 고정팟 선택 --</option>
+                        {#each parties as party}
+                            <option value={party.id}>{party.name} ({party.game_name || party.resolved_game_name || '게임 미지정'})</option>
+                        {/each}
+                    </select>
+                </div>
+            {/if}
             <form method="POST" action="?/createScheduledGame" use:enhance={() => {
                 return async ({ result, update }) => {
                     if (result.type === 'failure') {
@@ -940,6 +1022,25 @@
                     </div>
                 </div>
 
+                {#if scheduledSelectedPlayerIds.length > 0}
+                    <div class="input-group">
+                        <label>함께할 멤버</label>
+                        <div class="selected-members-tags">
+                            {#each scheduledSelectedPlayerIds as playerId}
+                                {#each (attendees || []).filter(a => a.id === playerId) as attendee}
+                                    <span class="member-tag">
+                                        {attendee.name}
+                                        <button type="button" class="tag-remove" on:click={() => {
+                                            scheduledSelectedPlayerIds = scheduledSelectedPlayerIds.filter(id => id !== playerId);
+                                        }}>&times;</button>
+                                    </span>
+                                {/each}
+                                <input type="hidden" name="players" value={playerId} />
+                            {/each}
+                        </div>
+                    </div>
+                {/if}
+
                 <div class="input-group guest-input-group">
                     <label for="scheduledGuestCount">게스트 수</label>
                     <input
@@ -948,10 +1049,11 @@
                         name="guestCount"
                         bind:value={guestCount}
                         min="0"
-                        max="20"
+                        max={Math.max(0, maxPlayers - 1)}
+                        on:input={() => { const limit = Math.max(0, maxPlayers - 1); if (guestCount > limit) guestCount = limit; }}
                         class="number-input"
                     />
-                    <p class="hint">* 미등록 참가자 수 (게스트1, 게스트2... 자동 생성)</p>
+                    <p class="hint">* 미등록 참가자 수 (본인 제외 최대 {Math.max(0, maxPlayers - 1)}명, 게스트1, 게스트2... 자동 생성)</p>
                 </div>
 
                 <div class="modal-actions">
@@ -2394,5 +2496,61 @@
     }
     .btn-modal-close:hover {
         background: #228be6;
+    }
+
+    /* Party Selector */
+    .party-selector {
+        margin-bottom: 1rem;
+        padding-bottom: 1rem;
+        border-bottom: 1px dashed #dee2e6;
+    }
+    .party-selector label {
+        display: block;
+        font-weight: 600;
+        font-size: 0.85rem;
+        color: #555;
+        margin-bottom: 0.4rem;
+    }
+    .party-selector select {
+        width: 100%;
+        padding: 0.6rem 0.75rem;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        font-size: 0.9rem;
+        background: #f8f9fa;
+        cursor: pointer;
+    }
+    .party-selector select:hover {
+        border-color: #adb5bd;
+    }
+
+    /* Selected Members Tags */
+    .selected-members-tags {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.4rem;
+    }
+    .member-tag {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+        background: #e7f5ff;
+        color: #1971c2;
+        padding: 0.2rem 0.6rem;
+        border-radius: 12px;
+        font-size: 0.8rem;
+        font-weight: 500;
+    }
+    .tag-remove {
+        background: none;
+        border: none;
+        color: #74c0fc;
+        cursor: pointer;
+        font-size: 1rem;
+        padding: 0;
+        line-height: 1;
+    }
+    .tag-remove:hover {
+        color: #1864ab;
     }
 </style>

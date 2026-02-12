@@ -3,6 +3,7 @@ import { fail } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { verifyAdminSession, verifyAttendeeSession } from '$lib/server/auth';
 import { TitleService } from '$lib/server/services/titleService';
+import { PartyService } from '$lib/server/services/partyService';
 
 async function canModifyGame(request: Request, gameId: string | number): Promise<boolean> {
     const sessionToken = request.headers.get('cookie')?.match(/admin_session=([^;]+)/)?.[1];
@@ -107,10 +108,11 @@ export const load: PageServerLoad = async ({ locals }) => {
     let userReservation = null;
     let userScheduledGames: any[] = [];
     let userPlayingGame = null;
+    let parties: any[] = [];
 
     if (user) {
         try {
-            const [userStatusRes, titleRes, resResult, schedResult, playingResult] = await Promise.all([
+            const [userStatusRes, titleRes, resResult, schedResult, playingResult, partiesResult] = await Promise.all([
                 query('SELECT can_manage_games, penalty_points, is_blacklisted FROM attendees WHERE id = $1', [user.id]),
                 TitleService.getUserTitle(user.id),
                 query(`
@@ -132,7 +134,8 @@ export const load: PageServerLoad = async ({ locals }) => {
                     FROM session_participants sp
                     JOIN game_sessions gs ON sp.session_id = gs.id
                     WHERE sp.attendee_id = $1 AND gs.status = 'playing'
-                `, [user.id])
+                `, [user.id]),
+                PartyService.getUserParties(user.id)
             ]);
 
             if (userStatusRes.rows.length > 0) {
@@ -144,6 +147,7 @@ export const load: PageServerLoad = async ({ locals }) => {
             userReservation = resResult.rows[0] || null;
             userScheduledGames = schedResult.rows;
             userPlayingGame = playingResult.rows[0] || null;
+            parties = partiesResult;
         } catch (e) {}
     }
 
@@ -161,6 +165,7 @@ export const load: PageServerLoad = async ({ locals }) => {
         userPlayingGame,
         allGames: allGamesResult.rows,
         reservations: reservationsResult.rows,
+        parties,
     };
 };
 
@@ -261,6 +266,7 @@ export const actions: Actions = {
         const minPlayers = parseInt(data.get('minPlayers')?.toString() || '2');
         const maxPlayers = parseInt(data.get('maxPlayers')?.toString() || '4');
         const guestCount = parseInt(data.get('guestCount')?.toString() || '0');
+        const playerIds = data.getAll('players').map(p => p.toString()).filter(p => p);
         const sessionToken = cookies.get('admin_session');
         const isAdmin = sessionToken ? await verifyAdminSession(sessionToken) : false;
         const userSessionToken = cookies.get('user_session');
@@ -275,6 +281,7 @@ export const actions: Actions = {
 
         if (!gameName) return fail(400, { error: '게임 이름을 입력해주세요.' });
         if (!scheduledAt) return fail(400, { error: '시작 예정 시간을 입력해주세요.' });
+        if (guestCount > maxPlayers - 1) return fail(400, { error: `게스트 수가 최대 인원(${maxPlayers}명, 본인 포함)을 초과할 수 없습니다.` });
 
         // 2. Create scheduled session
         await query('BEGIN');
@@ -287,6 +294,11 @@ export const actions: Actions = {
 
             if (creatorId) {
                 await query('INSERT INTO session_participants (session_id, attendee_id) VALUES ($1, $2)', [newSessionId, creatorId]);
+            }
+            for (const playerId of playerIds) {
+                if (playerId !== creatorId?.toString()) {
+                    await query('INSERT INTO session_participants (session_id, attendee_id) VALUES ($1, $2)', [newSessionId, playerId]);
+                }
             }
             for (let i = 1; i <= guestCount; i++) {
                 await query('INSERT INTO session_participants (session_id, attendee_id, guest_name) VALUES ($1, NULL, $2)', [newSessionId, `게스트${i}`]);
@@ -774,8 +786,8 @@ export const actions: Actions = {
         const user = await verifyAttendeeSession(userSessionToken);
         if (!user) return fail(401, { error: 'Invalid session' });
 
-        // Check verification (min 2 players)
-        const countRes = await query('SELECT COUNT(*) as cnt FROM session_participants WHERE session_id = $1', [sessionId]);
+        // Check verification (min 2 registered players, excluding guests)
+        const countRes = await query('SELECT COUNT(*) as cnt FROM session_participants WHERE session_id = $1 AND attendee_id IS NOT NULL', [sessionId]);
         const playerCount = parseInt(countRes.rows[0].cnt, 10);
 
         if (playerCount <= 2) {
