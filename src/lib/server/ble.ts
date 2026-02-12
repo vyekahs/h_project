@@ -456,6 +456,21 @@ async function checkAutoCheckout() {
 export async function processWifiReport(_scannerId: string, devices: { mac: string }[]) {
     await ensureCachesLoaded('WiFi');
 
+    // 오픈 시간 전이면 WiFi 처리도 스킵 (BLE와 동일)
+    const nowCheck = new Date();
+    const kstCheck = new Date(nowCheck.getTime() + 9 * 60 * 60 * 1000);
+    const checkHour = kstCheck.getUTCHours();
+    const checkMinute = kstCheck.getUTCMinutes();
+    const [ohCheck, omCheck] = settingsCache!.openingTime.split(':').map(Number);
+    const currentMinutesTotal = checkHour * 60 + checkMinute;
+    const openMinutesTotal = ohCheck * 60 + omCheck;
+    const beforeOpeningWindow = currentMinutesTotal < (openMinutesTotal - 30);
+
+    if (!settingsCache!.isOpen && beforeOpeningWindow) {
+        console.log(`[WiFi] Gym closed & before opening window, skipping (${devices.length} devices)`);
+        return;
+    }
+
     if (wifiMacCache.size === 0) {
         console.log(`[WiFi] No WiFi MACs registered, skipping`);
         return;

@@ -13,10 +13,9 @@
     let hasWebBluetooth = false;
 
     // --- WiFi 등록 ---
-    let wifiStatus = '';
     let wifiError = '';
-    // ESP32-S3 로컬 HTTPS 서버 주소 (같은 WiFi, 고정 IP, 자체서명 인증서)
-    const ESP32_LOCAL_URL = 'https://192.168.0.200';
+    // ESP32-S3 로컬 HTTP 서버 주소 (같은 WiFi, 고정 IP)
+    const ESP32_LOCAL_URL = 'http://192.168.0.200';
 
     function getDeviceName(): string {
         const ua = navigator.userAgent;
@@ -32,6 +31,15 @@
     onMount(async () => {
         isAndroid = /Android/i.test(navigator.userAgent);
         hasWebBluetooth = isAndroid && !!navigator.bluetooth; // Android + Web Bluetooth API 사용 가능할 때만 (HTTPS 필요)
+
+        // WiFi 등록 완료 후 리다이렉트 처리
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('wifi') === 'done') {
+            // URL에서 파라미터 제거 (히스토리 교체)
+            window.history.replaceState({}, '', window.location.pathname);
+            step = 'wifi_success';
+            return;
+        }
 
         // 페이지 새로고침 시 진행 중인 등록 복원
         const savedRegId = sessionStorage.getItem('reg_regId');
@@ -291,56 +299,28 @@
     // ============================================
     async function startWifiRegistration() {
         wifiError = '';
-        wifiStatus = 'WiFi MAC 주소를 감지합니다...';
 
         try {
-            // 1. ESP32-S3 로컬 서버에 요청 → ARP 캐시에서 MAC 감지
-            const macRes = await fetch(`${ESP32_LOCAL_URL}/mac`, {
-                mode: 'cors',
-                signal: AbortSignal.timeout(5000)
-            });
-
-            if (!macRes.ok) {
-                wifiError = 'MAC 주소를 감지하지 못했습니다. 헬스장 WiFi에 연결되어 있는지 확인하세요.';
-                wifiStatus = '';
-                return;
-            }
-
-            const macData = await macRes.json();
-            const wifiMac = macData.mac;
-
-            if (!wifiMac) {
-                wifiError = 'MAC 주소를 감지하지 못했습니다.';
-                wifiStatus = '';
-                return;
-            }
-
-            wifiStatus = `MAC 감지 완료 (${wifiMac}), 서버에 등록 중...`;
-
-            // 2. 서버에 WiFi MAC 등록
+            // 1. 서버에서 일회용 코드 발급
             const attendeeId = data.user?.id || 1;
-            const regRes = await fetch('/api/devices/register/wifi', {
+            const codeRes = await fetch('/api/wifi/code', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ attendeeId, wifiMac })
+                body: JSON.stringify({ attendeeId })
             });
 
-            const regData = await regRes.json();
+            const codeData = await codeRes.json();
+            if (!codeData.success || !codeData.code) {
+                wifiError = '코드 발급 실패: ' + (codeData.error || '서버 오류');
+                return;
+            }
 
-            if (regData.success) {
-                wifiStatus = '';
-                step = 'wifi_success';
-            } else {
-                wifiError = regData.error || 'WiFi 등록 실패';
-                wifiStatus = '';
-            }
+            // 2. ESP32 로컬 HTTP 서버의 등록 페이지로 이동
+            const callbackUrl = encodeURIComponent(window.location.origin);
+            window.location.href = `${ESP32_LOCAL_URL}/register?code=${codeData.code}&callback=${callbackUrl}`;
+
         } catch (e: any) {
-            if (e.name === 'TimeoutError' || e.name === 'AbortError') {
-                wifiError = 'ESP32 서버에 연결할 수 없습니다. 헬스장 WiFi에 연결되어 있는지 확인하세요.';
-            } else {
-                wifiError = 'WiFi 등록 실패: ' + (e.message || '네트워크 오류');
-            }
-            wifiStatus = '';
+            wifiError = 'WiFi 등록 실패: ' + (e.message || '네트워크 오류');
         }
     }
 
@@ -448,12 +428,8 @@
             <div class="instructions">
                 <p>1. 헬스장 WiFi (<strong>KT_GiGA_3F81</strong>)에 연결하세요</p>
                 <p>2. 아래 <strong>WiFi 등록</strong> 버튼을 누르세요</p>
-                <p>3. 자동으로 MAC 주소가 감지되어 등록됩니다</p>
+                <p>3. 이동한 페이지에서 자동으로 등록됩니다</p>
             </div>
-            {#if wifiStatus}
-                <p class="status-text">{wifiStatus}</p>
-                <div class="pairing-animation"><div class="dot-pulse"></div></div>
-            {/if}
             {#if wifiError}
                 <p class="error">{wifiError}</p>
             {/if}

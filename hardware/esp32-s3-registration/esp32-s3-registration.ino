@@ -15,12 +15,8 @@
 #include "host/ble_hs.h"
 #include "host/ble_store.h"
 #include "services/gap/ble_svc_gap.h"
-// HTTPS Local Server
-#include <HTTPSServer.hpp>
-#include <SSLCert.hpp>
-#include <HTTPRequest.hpp>
-#include <HTTPResponse.hpp>
-using namespace httpsserver;
+// Local HTTP Server (WiFi MAC 등록 페이지용)
+#include <WebServer.h>
 
 // --- CONFIGURATION ---
 const char* SERVER_URL = "https://damonpyo.mooo.com";
@@ -38,9 +34,8 @@ IPAddress gateway(192, 168, 0, 1);
 IPAddress subnet(255, 255, 255, 0);
 IPAddress dns(8, 8, 8, 8);
 
-// Local HTTPS Server (WiFi MAC 자동 감지용, 자체서명 인증서)
-SSLCert *localCert = nullptr;
-HTTPSServer *localServer = nullptr;
+// Local HTTP Server (WiFi MAC 등록 페이지 제공)
+WebServer localServer(80);
 
 // Custom GATT Service UUIDs for IRK retrieval (Web Bluetooth용)
 #define IRK_SERVICE_UUID        "12345678-1234-5678-1234-56789abcdef0"
@@ -289,6 +284,7 @@ void ensureWiFi() {
     if (WiFi.status() == WL_CONNECTED) return;
     Serial.println("WiFi reconnecting...");
     WiFi.disconnect();
+    WiFi.config(staticIP, gateway, subnet, dns);
     WiFi.begin(WIFI_SSID, WIFI_PASS);
     int attempts = 0;
     while (WiFi.status() != WL_CONNECTED && attempts < 20) {
@@ -333,15 +329,9 @@ String getMacFromArp(IPAddress clientIP) {
     return "";
 }
 
-// GET /mac - 요청자의 WiFi MAC 주소 반환
-void handleGetMac(HTTPRequest *req, HTTPResponse *res) {
-    // CORS 헤더 (브라우저에서 ESP32 로컬 서버로 요청 허용)
-    res->setHeader("Access-Control-Allow-Origin", "*");
-    res->setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
-    res->setHeader("Access-Control-Allow-Headers", "Content-Type");
-    res->setHeader("Content-Type", "application/json");
-
-    IPAddress clientIP = req->getClientIP();
+// GET /mac - 요청자의 WiFi MAC 주소 반환 (JSON)
+void handleGetMac() {
+    IPAddress clientIP = localServer.client().remoteIP();
     Serial.printf("[WiFi] MAC request from IP: %s\n", clientIP.toString().c_str());
 
     String mac = getMacFromArp(clientIP);
@@ -352,23 +342,100 @@ void handleGetMac(HTTPRequest *req, HTTPResponse *res) {
         doc["ip"] = clientIP.toString();
         String json;
         serializeJson(doc, json);
-        res->setStatusCode(200);
-        res->print(json);
+        localServer.send(200, "application/json", json);
         Serial.printf("[WiFi] MAC found: %s\n", mac.c_str());
     } else {
-        res->setStatusCode(404);
-        res->print("{\"error\":\"MAC not found in ARP cache\"}");
+        localServer.send(404, "application/json", "{\"error\":\"MAC not found in ARP cache\"}");
         Serial.println("[WiFi] MAC not found in ARP cache");
     }
 }
 
-// OPTIONS /mac - CORS preflight
-void handleMacOptions(HTTPRequest *req, HTTPResponse *res) {
-    res->setHeader("Access-Control-Allow-Origin", "*");
-    res->setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
-    res->setHeader("Access-Control-Allow-Headers", "Content-Type");
-    res->setStatusCode(204);
-    res->print("");
+// GET /register - WiFi MAC 등록 페이지 (ESP32가 직접 HTML 제공)
+void handleRegisterPage() {
+    String code = localServer.arg("code");
+    String callbackUrl = localServer.arg("callback");
+    if (callbackUrl.length() == 0) callbackUrl = String(SERVER_URL);
+
+    String html = R"rawliteral(
+<!DOCTYPE html>
+<html><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WiFi 등록</title>
+<style>
+  body { font-family: -apple-system, sans-serif; max-width: 400px; margin: 0 auto; padding: 20px; text-align: center; background: #f5f5f5; }
+  .card { background: #fff; padding: 30px; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); margin-top: 40px; }
+  .status { color: #007bff; font-weight: 600; margin: 20px 0; }
+  .error { color: #dc3545; font-weight: bold; margin: 20px 0; }
+  .success { color: #28a745; font-weight: bold; margin: 20px 0; font-size: 1.2em; }
+  .spinner { width: 40px; height: 40px; border: 4px solid #e0e0e0; border-top: 4px solid #007bff; border-radius: 50%; animation: spin 1s linear infinite; margin: 20px auto; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .desc { color: #666; font-size: 0.9em; }
+</style>
+</head><body>
+<div class="card">
+  <h2>WiFi 등록</h2>
+  <div id="status" class="status">MAC 주소를 감지하는 중...</div>
+  <div id="spinner" class="spinner"></div>
+  <p class="desc">잠시만 기다려주세요</p>
+</div>
+<script>
+(async function() {
+  const code = ')rawliteral" + code + R"rawliteral(';
+  const callbackUrl = ')rawliteral" + callbackUrl + R"rawliteral(';
+  const statusEl = document.getElementById('status');
+  const spinnerEl = document.getElementById('spinner');
+
+  if (!code) {
+    statusEl.className = 'error';
+    statusEl.textContent = '잘못된 접근입니다. (코드 없음)';
+    spinnerEl.style.display = 'none';
+    return;
+  }
+
+  try {
+    // 1. MAC 감지 (같은 HTTP 서버이므로 Mixed Content 문제 없음)
+    const macRes = await fetch('/mac');
+    if (!macRes.ok) {
+      statusEl.className = 'error';
+      statusEl.textContent = 'MAC 주소를 감지하지 못했습니다. WiFi에 연결되어 있는지 확인하세요.';
+      spinnerEl.style.display = 'none';
+      return;
+    }
+    const macData = await macRes.json();
+    statusEl.textContent = 'MAC 감지 완료 (' + macData.mac + '), 서버에 등록 중...';
+
+    // 2. 외부 서버에 MAC + code 전송
+    const regRes = await fetch(callbackUrl + '/api/devices/register/wifi', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code: code, wifiMac: macData.mac })
+    });
+    const regData = await regRes.json();
+
+    if (regData.success) {
+      statusEl.className = 'success';
+      statusEl.textContent = 'WiFi 등록 완료!';
+      spinnerEl.style.display = 'none';
+      document.querySelector('.desc').textContent = '3초 후 자동으로 돌아갑니다...';
+      setTimeout(() => { window.location.href = callbackUrl + '/devices/register?wifi=done'; }, 3000);
+    } else {
+      statusEl.className = 'error';
+      statusEl.textContent = regData.error || '등록 실패';
+      spinnerEl.style.display = 'none';
+    }
+  } catch (e) {
+    statusEl.className = 'error';
+    statusEl.textContent = '네트워크 오류: ' + e.message;
+    spinnerEl.style.display = 'none';
+  }
+})();
+</script>
+</body></html>
+)rawliteral";
+
+    localServer.send(200, "text/html", html);
+    Serial.printf("[WiFi] Register page served (code=%s)\n", code.c_str());
 }
 
 // ARP 스캔: 서브넷 전체에 ping → ARP 캐시에서 MAC 수집 → 서버 전송
@@ -625,58 +692,12 @@ void setup() {
     NimBLEDevice::setPower(ESP_PWR_LVL_P9);
     NimBLEDevice::startAdvertising();
 
-  // Local HTTPS Server (WiFi MAC 감지용, 자체서명 인증서)
-  // NVS에서 인증서 로드 시도 → 없으면 생성 후 저장 (RSA-2048 생성은 ~30초)
-  {
-      nvs_handle_t certNvs;
-      bool certLoaded = false;
-      if (nvs_open("https_cert", NVS_READWRITE, &certNvs) == ESP_OK) {
-          size_t certLen = 0, pkLen = 0;
-          if (nvs_get_blob(certNvs, "cert", NULL, &certLen) == ESP_OK &&
-              nvs_get_blob(certNvs, "pk", NULL, &pkLen) == ESP_OK &&
-              certLen > 0 && pkLen > 0) {
-              uint8_t* certBuf = (uint8_t*)malloc(certLen);
-              uint8_t* pkBuf = (uint8_t*)malloc(pkLen);
-              if (certBuf && pkBuf &&
-                  nvs_get_blob(certNvs, "cert", certBuf, &certLen) == ESP_OK &&
-                  nvs_get_blob(certNvs, "pk", pkBuf, &pkLen) == ESP_OK) {
-                  localCert = new SSLCert(certBuf, certLen, pkBuf, pkLen);
-                  certLoaded = true;
-                  Serial.printf("Certificate loaded from NVS (cert=%d, pk=%d bytes)\n", certLen, pkLen);
-              }
-              if (!certLoaded) { free(certBuf); free(pkBuf); }
-          }
-          if (!certLoaded) {
-              Serial.println("Generating self-signed certificate (RSA-2048, ~30s)...");
-              localCert = new SSLCert();
-              int certResult = createSelfSignedCert(*localCert, KEYSIZE_2048, "CN=esp32.local,O=HonNol,C=KR", "20250101000000", "20350101000000");
-              if (certResult == 0) {
-                  nvs_set_blob(certNvs, "cert", localCert->getCertData(), localCert->getCertLength());
-                  nvs_set_blob(certNvs, "pk", localCert->getPKData(), localCert->getPKLength());
-                  nvs_commit(certNvs);
-                  certLoaded = true;
-                  Serial.println("Certificate generated and saved to NVS");
-              } else {
-                  Serial.printf("Certificate generation failed: %d\n", certResult);
-                  delete localCert;
-                  localCert = nullptr;
-              }
-          }
-          nvs_close(certNvs);
-      }
-      if (certLoaded && localCert) {
-          localServer = new HTTPSServer(localCert);
-          ResourceNode *macGetNode = new ResourceNode("/mac", "GET", &handleGetMac);
-          ResourceNode *macOptionsNode = new ResourceNode("/mac", "OPTIONS", &handleMacOptions);
-          localServer->registerNode(macGetNode);
-          localServer->registerNode(macOptionsNode);
-          localServer->start();
-          if (localServer->isRunning()) {
-              Serial.println("Local HTTPS server started on port 443");
-              Serial.printf("Access at: https://%s/mac\n", WiFi.localIP().toString().c_str());
-          }
-      }
-  }
+  // Local HTTP Server (WiFi MAC 등록 페이지 제공)
+  localServer.on("/mac", HTTP_GET, handleGetMac);
+  localServer.on("/register", HTTP_GET, handleRegisterPage);
+  localServer.begin();
+  Serial.println("Local HTTP server started on port 80");
+  Serial.printf("Register page: http://%s/register\n", WiFi.localIP().toString().c_str());
 
   // Watchdog Timer (30초 타임아웃 - loop가 30초 이상 멈추면 자동 재시작)
   esp_task_wdt_init(30, true);
@@ -713,8 +734,8 @@ void loop() {
       Serial.println("Started advertising again...");
   }
 
-  // Local HTTPS Server 처리 (비블로킹)
-  if (localServer) localServer->loop();
+  // Local HTTP Server 처리 (비블로킹)
+  localServer.handleClient();
 
   // WiFi ARP 스캔 (idle 상태에서만, 60초마다)
   if (!isRegistering && millis() - lastWifiScanTime > WIFI_SCAN_INTERVAL) {
