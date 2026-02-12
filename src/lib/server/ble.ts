@@ -13,6 +13,7 @@ interface UserDevice {
     attendeeId: number;
     irk: string; // Hex string
     name: string;
+    wifiMac?: string; // WiFi MAC address (XX:XX:XX:XX:XX:XX)
 }
 
 // In-Memory Cache
@@ -22,6 +23,9 @@ const CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes
 
 // IRK Device Cache (서버 시작 후 첫 요청에서 로드, 이후 영구 캐시)
 let irkCache: UserDevice[] | null = null;
+
+// WiFi MAC → AttendeeID 캐시 (IRK 캐시 로드 시 함께 구성)
+const wifiMacCache = new Map<string, number>(); // MAC (uppercase) → attendeeId
 
 // Attendee Cache (기기 등록된 유저 정보 캐시)
 interface AttendeeInfo {
@@ -62,14 +66,18 @@ export function markAllLeft() {
 }
 
 /** 기기 등록 시 IRK 캐시에 즉시 추가 (중복 IRK는 업데이트) */
-export async function addToIrkCache(attendeeId: number, irk: string, name: string) {
+export async function addToIrkCache(attendeeId: number, irk: string, name: string, wifiMac?: string) {
     if (irkCache) {
         const existing = irkCache.findIndex(d => d.irk === irk);
         if (existing >= 0) {
-            irkCache[existing] = { attendeeId, irk, name };
+            irkCache[existing] = { attendeeId, irk, name, wifiMac };
         } else {
-            irkCache.push({ attendeeId, irk, name });
+            irkCache.push({ attendeeId, irk, name, wifiMac });
         }
+    }
+    // WiFi MAC 캐시 동기화
+    if (wifiMac) {
+        wifiMacCache.set(wifiMac.toUpperCase(), attendeeId);
     }
     // attendeeCache에도 추가 (없으면 DB에서 조회)
     if (attendeeCacheLoaded && !attendeeCache.has(attendeeId)) {
@@ -88,6 +96,12 @@ export async function addToIrkCache(attendeeId: number, irk: string, name: strin
 /** 기기 삭제 시 IRK 캐시에서 제거 */
 export function removeFromIrkCache(attendeeId: number, irk?: string) {
     if (irkCache) {
+        // WiFi MAC 캐시에서도 제거
+        const toRemove = irkCache.filter(d => irk ? d.irk === irk : d.attendeeId === attendeeId);
+        for (const dev of toRemove) {
+            if (dev.wifiMac) wifiMacCache.delete(dev.wifiMac.toUpperCase());
+        }
+
         irkCache = irkCache.filter(d =>
             irk ? d.irk !== irk : d.attendeeId !== attendeeId
         );
@@ -95,6 +109,17 @@ export function removeFromIrkCache(attendeeId: number, irk?: string) {
     // 해당 유저의 기기가 더 이상 없으면 attendeeCache에서도 제거
     if (irkCache && !irkCache.some(d => d.attendeeId === attendeeId)) {
         attendeeCache.delete(attendeeId);
+    }
+}
+
+/** WiFi MAC 등록 시 캐시에 추가 */
+export async function addWifiMacToCache(attendeeId: number, wifiMac: string) {
+    const mac = wifiMac.toUpperCase();
+    wifiMacCache.set(mac, attendeeId);
+    // IRK 캐시의 해당 유저 기기에도 wifiMac 업데이트
+    if (irkCache) {
+        const device = irkCache.find(d => d.attendeeId === attendeeId);
+        if (device) device.wifiMac = mac;
     }
 }
 
@@ -203,11 +228,8 @@ function verifyMetric(hash: Buffer, prand: Buffer, key: Buffer, padding: 'Head'|
 }
 
 
-/**
- * Process Scan Results
- */
-export async function processScanResults(scannerId: string, timestamp: number, scans: ScanResult[], isLastBatch: boolean = true) {
-    // 0. Settings Cache 초기화 (첫 요청에서 DB 로드 후 영구 캐시)
+/** 캐시 초기화 (settings, IRK, attendee — 첫 요청에서 DB 로드 후 영구 캐시) */
+async function ensureCachesLoaded(source: string = 'BLE') {
     if (!settingsCache) {
         try {
             const settingsRes = await query("SELECT key, value FROM system_settings WHERE key IN ('is_open', 'opening_time')");
@@ -218,37 +240,26 @@ export async function processScanResults(scannerId: string, timestamp: number, s
                 if (row.key === 'opening_time') openingTime = row.value;
             }
             settingsCache = { isOpen, openingTime };
-            console.log(`[BLE] Settings cache loaded: isOpen=${isOpen}, openingTime=${openingTime}`);
+            console.log(`[${source}] Settings cache loaded: isOpen=${isOpen}, openingTime=${openingTime}`);
         } catch (e) {
             console.error('Failed to fetch settings', e);
             settingsCache = { isOpen: false, openingTime: '09:00' };
         }
     }
-
-    // 오픈 시간 전이면 스캔 처리 완전 스킵
-    const nowCheck = new Date();
-    const kstCheck = new Date(nowCheck.getTime() + 9 * 60 * 60 * 1000);
-    const checkHour = kstCheck.getUTCHours();
-    const checkMinute = kstCheck.getUTCMinutes();
-    const [ohCheck, omCheck] = settingsCache.openingTime.split(':').map(Number);
-    const currentMinutesTotal = checkHour * 60 + checkMinute;
-    const openMinutesTotal = ohCheck * 60 + omCheck;
-    const beforeOpeningWindow = currentMinutesTotal < (openMinutesTotal - 30);
-
-    if (!settingsCache.isOpen && beforeOpeningWindow) {
-        console.log(`[BLE] Gym closed & before opening window, skipping (${scans.length} devices)`);
-        return;
-    }
-
-    // 1. 캐시 초기화 (첫 요청에서 DB 로드 후 영구 캐시)
     if (!irkCache) {
-        const res = await query('SELECT irk, attendee_id, name FROM user_devices');
+        const res = await query('SELECT irk, attendee_id, name, wifi_mac FROM user_devices');
         irkCache = res.rows.map((row: any) => ({
             irk: row.irk,
             attendeeId: row.attendee_id,
-            name: row.name
+            name: row.name,
+            wifiMac: row.wifi_mac || undefined
         })) as UserDevice[];
-        console.log(`[BLE] IRK cache loaded: ${irkCache.length} devices`);
+        for (const dev of irkCache) {
+            if (dev.wifiMac) {
+                wifiMacCache.set(dev.wifiMac.toUpperCase(), dev.attendeeId);
+            }
+        }
+        console.log(`[${source}] IRK cache loaded: ${irkCache.length} devices (${wifiMacCache.size} with WiFi MAC)`);
     }
     if (!attendeeCacheLoaded) {
         const res = await query(`
@@ -265,9 +276,31 @@ export async function processScanResults(scannerId: string, timestamp: number, s
             });
         }
         attendeeCacheLoaded = true;
-        console.log(`[BLE] Attendee cache loaded: ${attendeeCache.size} users`);
+        console.log(`[${source}] Attendee cache loaded: ${attendeeCache.size} users`);
     }
-    const allDevices = irkCache;
+}
+
+/**
+ * Process Scan Results
+ */
+export async function processScanResults(scannerId: string, timestamp: number, scans: ScanResult[], isLastBatch: boolean = true) {
+    await ensureCachesLoaded('BLE');
+
+    // 오픈 시간 전이면 스캔 처리 완전 스킵
+    const nowCheck = new Date();
+    const kstCheck = new Date(nowCheck.getTime() + 9 * 60 * 60 * 1000);
+    const checkHour = kstCheck.getUTCHours();
+    const checkMinute = kstCheck.getUTCMinutes();
+    const [ohCheck, omCheck] = settingsCache!.openingTime.split(':').map(Number);
+    const currentMinutesTotal = checkHour * 60 + checkMinute;
+    const openMinutesTotal = ohCheck * 60 + omCheck;
+    const beforeOpeningWindow = currentMinutesTotal < (openMinutesTotal - 30);
+
+    if (!settingsCache!.isOpen && beforeOpeningWindow) {
+        console.log(`[BLE] Gym closed & before opening window, skipping (${scans.length} devices)`);
+        return;
+    }
+    const allDevices = irkCache!;
 
     console.log(`[BLE] Processing ${scans.length} MACs against ${allDevices.length} registered devices`);
     // Log names if present
@@ -344,7 +377,7 @@ export async function processScanResults(scannerId: string, timestamp: number, s
     const kstNow = new Date(now.getTime() + 9 * 60 * 60 * 1000);
     const currentHour = kstNow.getUTCHours();
     const currentMinute = kstNow.getUTCMinutes();
-    const [openHour, openMinute] = settingsCache.openingTime.split(':').map(Number);
+    const [openHour, openMinute] = settingsCache!.openingTime.split(':').map(Number);
 
     const isPastOpeningTime = (currentHour > openHour) || (currentHour === openHour && currentMinute >= openMinute);
 
@@ -353,13 +386,13 @@ export async function processScanResults(scannerId: string, timestamp: number, s
         if (!attendee) continue;
 
         // Auto-Open Logic
-        if (!settingsCache.isOpen && attendee.isAdmin && isPastOpeningTime) {
+        if (!settingsCache!.isOpen && attendee.isAdmin && isPastOpeningTime) {
             console.log(`[BLE] 🚨 Admin ${attendeeId} (${attendee.name}) detected! Auto-Opening Gym...`);
             await query("INSERT INTO system_settings (key, value) VALUES ('is_open', 'true') ON CONFLICT (key) DO UPDATE SET value = 'true'");
-            settingsCache.isOpen = true;
+            settingsCache!.isOpen = true;
         }
 
-        if (settingsCache.isOpen && attendee.status !== 'present') {
+        if (settingsCache!.isOpen && attendee.status !== 'present') {
             console.log(`[BLE] Auto Checking-in User ${attendeeId}`);
             await query('BEGIN');
             try {
@@ -414,4 +447,69 @@ async function checkAutoCheckout() {
             }
         }
     }
+}
+
+/**
+ * Process WiFi Report (공유기에 연결된 기기 MAC 목록)
+ * BLE와 동일하게 lastSeenMap 업데이트 → 체크인/체크아웃은 동일한 로직 사용
+ */
+export async function processWifiReport(_scannerId: string, devices: { mac: string }[]) {
+    await ensureCachesLoaded('WiFi');
+
+    if (wifiMacCache.size === 0) {
+        console.log(`[WiFi] No WiFi MACs registered, skipping`);
+        return;
+    }
+
+    const detectedAttendeeIds = new Set<number>();
+
+    for (const device of devices) {
+        const mac = device.mac.toUpperCase();
+        const attendeeId = wifiMacCache.get(mac);
+        if (attendeeId) {
+            detectedAttendeeIds.add(attendeeId);
+            lastSeenMap.set(attendeeId, Date.now());
+        }
+    }
+
+    console.log(`[WiFi] ${devices.length} router devices → ${detectedAttendeeIds.size} users matched (${wifiMacCache.size} registered)`);
+
+    if (detectedAttendeeIds.size === 0) return;
+
+    // 체크인 로직 (BLE와 동일)
+    const now = new Date();
+    const kstNow = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+    const currentHour = kstNow.getUTCHours();
+    const currentMinute = kstNow.getUTCMinutes();
+    const [openHour, openMinute] = settingsCache!.openingTime.split(':').map(Number);
+    const isPastOpeningTime = (currentHour > openHour) || (currentHour === openHour && currentMinute >= openMinute);
+
+    for (const attendeeId of detectedAttendeeIds) {
+        const attendee = attendeeCache.get(attendeeId);
+        if (!attendee) continue;
+
+        // Auto-Open (관리자 감지)
+        if (!settingsCache!.isOpen && attendee.isAdmin && isPastOpeningTime) {
+            console.log(`[WiFi] Admin ${attendeeId} (${attendee.name}) detected via WiFi! Auto-Opening...`);
+            await query("INSERT INTO system_settings (key, value) VALUES ('is_open', 'true') ON CONFLICT (key) DO UPDATE SET value = 'true'");
+            settingsCache!.isOpen = true;
+        }
+
+        if (settingsCache!.isOpen && attendee.status !== 'present') {
+            console.log(`[WiFi] Auto Checking-in User ${attendeeId} (${attendee.name}) via WiFi`);
+            await query('BEGIN');
+            try {
+                await query('UPDATE attendees SET status = $1, arrival_time = NOW(), updated_at = NOW() WHERE id = $2', ['present', attendeeId]);
+                await query('INSERT INTO visits (attendee_id, arrival_time) VALUES ($1, NOW())', [attendeeId]);
+                await query('COMMIT');
+                attendee.status = 'present';
+            } catch (e) {
+                await query('ROLLBACK');
+                console.error(`[WiFi] Failed to check-in ${attendeeId}`, e);
+            }
+        }
+    }
+
+    // WiFi report 후에도 체크아웃 검사 실행
+    await checkAutoCheckout();
 }

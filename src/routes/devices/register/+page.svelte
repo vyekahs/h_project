@@ -6,11 +6,17 @@
 
     // --- 공통 상태 ---
     let error = '';
-    let step = 'input'; // 'input' → 'pairing'/'web_bt_connecting' → 'pin_verify' → 'success'
+    let step = 'input'; // 'input' → 'pairing'/'web_bt_connecting' → 'pin_verify' → 'success' → 'wifi_register'
 
     // --- OS 감지 ---
     let isAndroid = false;
     let hasWebBluetooth = false;
+
+    // --- WiFi 등록 ---
+    let wifiStatus = '';
+    let wifiError = '';
+    // ESP32-S3 로컬 HTTPS 서버 주소 (같은 WiFi, 고정 IP, 자체서명 인증서)
+    const ESP32_LOCAL_URL = 'https://192.168.0.200';
 
     function getDeviceName(): string {
         const ua = navigator.userAgent;
@@ -280,6 +286,64 @@
         if (statusInterval) clearInterval(statusInterval);
     }
 
+    // ============================================
+    // WiFi MAC 등록 플로우
+    // ============================================
+    async function startWifiRegistration() {
+        wifiError = '';
+        wifiStatus = 'WiFi MAC 주소를 감지합니다...';
+
+        try {
+            // 1. ESP32-S3 로컬 서버에 요청 → ARP 캐시에서 MAC 감지
+            const macRes = await fetch(`${ESP32_LOCAL_URL}/mac`, {
+                mode: 'cors',
+                signal: AbortSignal.timeout(5000)
+            });
+
+            if (!macRes.ok) {
+                wifiError = 'MAC 주소를 감지하지 못했습니다. 헬스장 WiFi에 연결되어 있는지 확인하세요.';
+                wifiStatus = '';
+                return;
+            }
+
+            const macData = await macRes.json();
+            const wifiMac = macData.mac;
+
+            if (!wifiMac) {
+                wifiError = 'MAC 주소를 감지하지 못했습니다.';
+                wifiStatus = '';
+                return;
+            }
+
+            wifiStatus = `MAC 감지 완료 (${wifiMac}), 서버에 등록 중...`;
+
+            // 2. 서버에 WiFi MAC 등록
+            const attendeeId = data.user?.id || 1;
+            const regRes = await fetch('/api/devices/register/wifi', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ attendeeId, wifiMac })
+            });
+
+            const regData = await regRes.json();
+
+            if (regData.success) {
+                wifiStatus = '';
+                step = 'wifi_success';
+            } else {
+                wifiError = regData.error || 'WiFi 등록 실패';
+                wifiStatus = '';
+            }
+        } catch (e: any) {
+            if (e.name === 'TimeoutError' || e.name === 'AbortError') {
+                wifiError = 'ESP32 서버에 연결할 수 없습니다. 헬스장 WiFi에 연결되어 있는지 확인하세요.';
+            } else {
+                wifiError = 'WiFi 등록 실패: ' + (e.message || '네트워크 오류');
+            }
+            wifiStatus = '';
+        }
+    }
+
     onDestroy(() => {
         stopIntervals();
     });
@@ -370,8 +434,38 @@
     {:else if step === 'success'}
         <div class="card success">
             <div class="success-icon">✅</div>
-            <h2>등록 성공!</h2>
+            <h2>블루투스 등록 성공!</h2>
             <p>기기가 성공적으로 등록되었습니다.</p>
+            <p class="desc">WiFi도 등록하면 체크인 정확도가 높아집니다.</p>
+            <button on:click={() => { step = 'wifi_register'; }}>WiFi도 등록하기</button>
+            <button class="btn-secondary" on:click={() => window.location.href = '/'}>건너뛰기</button>
+        </div>
+
+    {:else if step === 'wifi_register'}
+        <div class="card active">
+            <h2>WiFi 등록</h2>
+            <p class="desc">헬스장 WiFi에 연결된 상태에서 아래 버튼을 눌러주세요.</p>
+            <div class="instructions">
+                <p>1. 헬스장 WiFi (<strong>KT_GiGA_3F81</strong>)에 연결하세요</p>
+                <p>2. 아래 <strong>WiFi 등록</strong> 버튼을 누르세요</p>
+                <p>3. 자동으로 MAC 주소가 감지되어 등록됩니다</p>
+            </div>
+            {#if wifiStatus}
+                <p class="status-text">{wifiStatus}</p>
+                <div class="pairing-animation"><div class="dot-pulse"></div></div>
+            {/if}
+            {#if wifiError}
+                <p class="error">{wifiError}</p>
+            {/if}
+            <button on:click={startWifiRegistration}>WiFi 등록</button>
+            <button class="btn-secondary" on:click={() => window.location.href = '/'}>건너뛰기</button>
+        </div>
+
+    {:else if step === 'wifi_success'}
+        <div class="card success">
+            <div class="success-icon">✅</div>
+            <h2>등록 완료!</h2>
+            <p>블루투스 + WiFi 모두 등록되었습니다.</p>
             <p class="desc">이제 서비스를 이용하실 수 있습니다.</p>
             <button class="btn-primary" on:click={() => window.location.href = '/'}>홈으로 가기</button>
         </div>
@@ -390,6 +484,8 @@
     button:hover { background: #0056b3; }
     .btn-primary { background: #28a745; }
     .btn-primary:hover { background: #218838; }
+    .btn-secondary { background: #6c757d; margin-top: 10px; }
+    .btn-secondary:hover { background: #545b62; }
     .error { color: #dc3545; margin: 10px 0; font-weight: bold; }
     .desc { color: #666; margin-bottom: 20px; font-size: 0.9em; }
     .timer { font-size: 1.2em; color: #ff4d4f; font-weight: bold; margin-bottom: 20px; }

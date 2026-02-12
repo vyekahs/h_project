@@ -1,20 +1,46 @@
 #include <WiFi.h>
 #include <HTTPClient.h>
+#include <WiFiClientSecure.h>
 #include <ArduinoJson.h>
 #include <vector>
 #include <NimBLEDevice.h>
 #include <NimBLEHIDDevice.h>
 #include <esp_bt.h>
+#include <esp_task_wdt.h>
 #include <nvs_flash.h>
+#include <lwip/etharp.h>
+#include <lwip/ip4_addr.h>
+#include <lwip/netif.h>
 // ESP-IDF NimBLE C API headers for direct access to security store
 #include "host/ble_hs.h"
 #include "host/ble_store.h"
 #include "services/gap/ble_svc_gap.h"
+// HTTPS Local Server
+#include <HTTPSServer.hpp>
+#include <SSLCert.hpp>
+#include <HTTPRequest.hpp>
+#include <HTTPResponse.hpp>
+using namespace httpsserver;
 
 // --- CONFIGURATION ---
 const char* SERVER_URL = "https://damonpyo.mooo.com";
 const char* WIFI_SSID = "KT_GiGA_3F81";
 const char* WIFI_PASS = "a4ke01fh66";
+const char* SCANNER_API_KEY = "hproject_scanner_secret_2026";
+
+// WiFi ARP Scan Config
+const unsigned long WIFI_SCAN_INTERVAL = 60000;  // 60초마다 ARP 스캔
+unsigned long lastWifiScanTime = 0;
+
+// Static IP Config
+IPAddress staticIP(192, 168, 0, 200);
+IPAddress gateway(192, 168, 0, 1);
+IPAddress subnet(255, 255, 255, 0);
+IPAddress dns(8, 8, 8, 8);
+
+// Local HTTPS Server (WiFi MAC 자동 감지용, 자체서명 인증서)
+SSLCert *localCert = nullptr;
+HTTPSServer *localServer = nullptr;
 
 // Custom GATT Service UUIDs for IRK retrieval (Web Bluetooth용)
 #define IRK_SERVICE_UUID        "12345678-1234-5678-1234-56789abcdef0"
@@ -27,9 +53,15 @@ uint16_t currentConnId = 0xFFFF;
 
 // Polling Globals
 unsigned long lastPollTime = 0;
-const unsigned long POLL_INTERVAL = 500; // 0.5초마다 체크 (iOS 연결 전에 isRegistering 활성화)
+const unsigned long POLL_INTERVAL_IDLE = 5000;   // idle 상태: 5초마다 폴링 (메모리 절약)
+const unsigned long POLL_INTERVAL_ACTIVE = 500;   // 등록 대기 중: 0.5초마다 폴링
 bool isRegistering = false;
 String myMacAddress = "";
+
+// Stability: 힙 메모리 모니터링
+const size_t HEAP_MIN_THRESHOLD = 30000;  // 30KB 이하면 재시작
+unsigned long lastHeapLogTime = 0;
+const unsigned long HEAP_LOG_INTERVAL = 30000;  // 30초마다 힙 로그
 
 struct RegistrationRequest {
     int regId;
@@ -252,13 +284,215 @@ class MyServerCallbacks: public NimBLEServerCallbacks {
     }
 };
 
+// WiFi 재연결 (C3의 ensureWiFi와 동일)
+void ensureWiFi() {
+    if (WiFi.status() == WL_CONNECTED) return;
+    Serial.println("WiFi reconnecting...");
+    WiFi.disconnect();
+    WiFi.begin(WIFI_SSID, WIFI_PASS);
+    int attempts = 0;
+    while (WiFi.status() != WL_CONNECTED && attempts < 20) {
+        delay(500);
+        Serial.print(".");
+        attempts++;
+    }
+    if (WiFi.status() == WL_CONNECTED) {
+        Serial.println(" Reconnected!");
+    } else {
+        Serial.println(" Failed!");
+    }
+}
+
+// --- Local HTTP Server Handlers ---
+
+// ARP 캐시에서 IP → MAC 매핑 조회
+String getMacFromArp(IPAddress clientIP) {
+    ip4_addr_t ipAddr;
+    ipAddr.addr = (uint32_t)clientIP;
+
+    struct eth_addr *eth_ret = NULL;
+    const ip4_addr_t *ip_ret = NULL;
+
+    // ARP 테이블 조회를 위해 먼저 etharp_request로 갱신 시도
+    struct netif *netif = netif_list;
+    if (netif) {
+        etharp_request(netif, &ipAddr);
+    }
+
+    // 약간의 대기 후 ARP 캐시 조회
+    delay(50);
+
+    int8_t idx = etharp_find_addr(netif, &ipAddr, &eth_ret, &ip_ret);
+    if (idx >= 0 && eth_ret != NULL) {
+        char macStr[18];
+        sprintf(macStr, "%02X:%02X:%02X:%02X:%02X:%02X",
+                eth_ret->addr[0], eth_ret->addr[1], eth_ret->addr[2],
+                eth_ret->addr[3], eth_ret->addr[4], eth_ret->addr[5]);
+        return String(macStr);
+    }
+    return "";
+}
+
+// GET /mac - 요청자의 WiFi MAC 주소 반환
+void handleGetMac(HTTPRequest *req, HTTPResponse *res) {
+    // CORS 헤더 (브라우저에서 ESP32 로컬 서버로 요청 허용)
+    res->setHeader("Access-Control-Allow-Origin", "*");
+    res->setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+    res->setHeader("Access-Control-Allow-Headers", "Content-Type");
+    res->setHeader("Content-Type", "application/json");
+
+    IPAddress clientIP = req->getClientIP();
+    Serial.printf("[WiFi] MAC request from IP: %s\n", clientIP.toString().c_str());
+
+    String mac = getMacFromArp(clientIP);
+
+    if (mac.length() > 0) {
+        DynamicJsonDocument doc(128);
+        doc["mac"] = mac;
+        doc["ip"] = clientIP.toString();
+        String json;
+        serializeJson(doc, json);
+        res->setStatusCode(200);
+        res->print(json);
+        Serial.printf("[WiFi] MAC found: %s\n", mac.c_str());
+    } else {
+        res->setStatusCode(404);
+        res->print("{\"error\":\"MAC not found in ARP cache\"}");
+        Serial.println("[WiFi] MAC not found in ARP cache");
+    }
+}
+
+// OPTIONS /mac - CORS preflight
+void handleMacOptions(HTTPRequest *req, HTTPResponse *res) {
+    res->setHeader("Access-Control-Allow-Origin", "*");
+    res->setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+    res->setHeader("Access-Control-Allow-Headers", "Content-Type");
+    res->setStatusCode(204);
+    res->print("");
+}
+
+// ARP 스캔: 서브넷 전체에 ping → ARP 캐시에서 MAC 수집 → 서버 전송
+void scanLocalDevices() {
+    if (isRegistering) return;
+
+    ensureWiFi();
+    if (WiFi.status() != WL_CONNECTED) return;
+
+    Serial.println("[WiFi] ARP scan starting...");
+    Serial.printf("[WiFi] Free heap before scan: %d\n", ESP.getFreeHeap());
+
+    IPAddress localIP = WiFi.localIP();
+    IPAddress subnet = WiFi.subnetMask();
+    // 서브넷 기반 베이스 IP 계산 (예: 192.168.0.0)
+    uint32_t base = (uint32_t)localIP & (uint32_t)subnet;
+    uint32_t myIP = (uint32_t)localIP;
+
+    // Phase 1: 서브넷 전체에 ARP request (ARP 캐시 채우기)
+    // /24 서브넷 기준 1~254
+    struct netif *netif = netif_list;
+    uint8_t* baseBytes = (uint8_t*)&base;
+    int pingCount = 0;
+    for (int i = 1; i <= 254; i++) {
+        IPAddress target(baseBytes[0], baseBytes[1], baseBytes[2], i);
+
+        if ((uint32_t)target == myIP) continue;  // 자기 자신 스킵
+
+        // ARP request 전송 (실제 ping보다 가볍고 빠름)
+        ip4_addr_t addr;
+        addr.addr = (uint32_t)target;
+        if (netif) {
+            etharp_request(netif, &addr);
+        }
+        pingCount++;
+
+        // 10개마다 약간 대기 (네트워크 부하 분산)
+        if (pingCount % 10 == 0) {
+            delay(5);
+            esp_task_wdt_reset();  // Watchdog 리셋 (스캔이 오래 걸릴 수 있음)
+        }
+    }
+
+    Serial.printf("[WiFi] Sent %d ARP requests, waiting for responses...\n", pingCount);
+    delay(500);  // ARP 응답 대기
+    esp_task_wdt_reset();
+
+    // Phase 2: ARP 캐시에서 MAC 수집
+    std::vector<String> macs;
+    for (int i = 1; i <= 254; i++) {
+        IPAddress target(baseBytes[0], baseBytes[1], baseBytes[2], i);
+        if ((uint32_t)target == myIP) continue;
+
+        ip4_addr_t addr;
+        addr.addr = (uint32_t)target;
+
+        struct eth_addr *eth_ret = NULL;
+        const ip4_addr_t *ip_ret = NULL;
+
+        int8_t idx = etharp_find_addr(netif, &addr, &eth_ret, &ip_ret);
+        if (idx >= 0 && eth_ret != NULL) {
+            char macStr[18];
+            sprintf(macStr, "%02X:%02X:%02X:%02X:%02X:%02X",
+                    eth_ret->addr[0], eth_ret->addr[1], eth_ret->addr[2],
+                    eth_ret->addr[3], eth_ret->addr[4], eth_ret->addr[5]);
+            macs.push_back(String(macStr));
+        }
+    }
+
+    Serial.printf("[WiFi] Found %d devices via ARP scan\n", macs.size());
+
+    if (macs.size() == 0) return;
+
+    // Phase 3: 서버에 전송
+    WiFiClientSecure *client = new WiFiClientSecure;
+    if (!client) return;
+    client->setInsecure();
+
+    HTTPClient https;
+    https.begin(*client, String(SERVER_URL) + "/api/wifi/report");
+    https.setTimeout(15000);
+    https.addHeader("Content-Type", "application/json");
+    https.addHeader("x-api-key", SCANNER_API_KEY);
+
+    DynamicJsonDocument doc(macs.size() * 30 + 256);
+    doc["scanner_id"] = "esp32_s3_wifi";
+    doc["timestamp"] = millis();
+
+    JsonArray devArr = doc.createNestedArray("devices");
+    for (const auto& mac : macs) {
+        JsonObject d = devArr.createNestedObject();
+        d["mac"] = mac;
+    }
+
+    String jsonStr;
+    serializeJson(doc, jsonStr);
+    doc.clear();
+
+    int responseCode = https.POST(jsonStr);
+    Serial.printf("[WiFi] Report sent: %d (%d devices)\n", responseCode, macs.size());
+
+    https.end();
+    delete client;
+
+    Serial.printf("[WiFi] Free heap after scan: %d\n", ESP.getFreeHeap());
+}
+
 void uploadIrk(String irk) {
     if(currentRequest == nullptr) return;
 
+    ensureWiFi();
     if(WiFi.status() == WL_CONNECTED) {
+        WiFiClientSecure *client = new WiFiClientSecure;
+        if (!client) {
+            Serial.println("Error: client alloc failed");
+            currentRequest->status = "failed";
+            return;
+        }
+        client->setInsecure();
+
         HTTPClient http;
         String url = String(SERVER_URL) + "/api/devices/register/complete";
-        http.begin(url);
+        http.begin(*client, url);
+        http.setTimeout(10000);
         http.addHeader("Content-Type", "application/json");
 
         DynamicJsonDocument doc(256);
@@ -281,6 +515,7 @@ void uploadIrk(String irk) {
             currentRequest->status = "failed";
         }
         http.end();
+        delete client;
     }
 }
 
@@ -306,9 +541,10 @@ void setup() {
       Serial.println("NVS bond store cleared");
   }
 
-  // WiFi Setup
+  // WiFi Setup (고정 IP)
   Serial.println("Connecting to WiFi: " + String(WIFI_SSID));
   WiFi.mode(WIFI_STA);
+  WiFi.config(staticIP, gateway, subnet, dns);
   WiFi.begin(WIFI_SSID, WIFI_PASS);
 
   while (WiFi.status() != WL_CONNECTED) {
@@ -316,7 +552,7 @@ void setup() {
     Serial.print(".");
   }
   Serial.println("\nWiFi Connected!");
-  Serial.println(WiFi.localIP());
+  Serial.printf("IP: %s (static)\n", WiFi.localIP().toString().c_str());
 
   // Get MAC
   myMacAddress = WiFi.macAddress();
@@ -389,7 +625,65 @@ void setup() {
     NimBLEDevice::setPower(ESP_PWR_LVL_P9);
     NimBLEDevice::startAdvertising();
 
-  Serial.println("Setup Complete. Waiting for commands...");
+  // Local HTTPS Server (WiFi MAC 감지용, 자체서명 인증서)
+  // NVS에서 인증서 로드 시도 → 없으면 생성 후 저장 (RSA-2048 생성은 ~30초)
+  {
+      nvs_handle_t certNvs;
+      bool certLoaded = false;
+      if (nvs_open("https_cert", NVS_READWRITE, &certNvs) == ESP_OK) {
+          size_t certLen = 0, pkLen = 0;
+          if (nvs_get_blob(certNvs, "cert", NULL, &certLen) == ESP_OK &&
+              nvs_get_blob(certNvs, "pk", NULL, &pkLen) == ESP_OK &&
+              certLen > 0 && pkLen > 0) {
+              uint8_t* certBuf = (uint8_t*)malloc(certLen);
+              uint8_t* pkBuf = (uint8_t*)malloc(pkLen);
+              if (certBuf && pkBuf &&
+                  nvs_get_blob(certNvs, "cert", certBuf, &certLen) == ESP_OK &&
+                  nvs_get_blob(certNvs, "pk", pkBuf, &pkLen) == ESP_OK) {
+                  localCert = new SSLCert(certBuf, certLen, pkBuf, pkLen);
+                  certLoaded = true;
+                  Serial.printf("Certificate loaded from NVS (cert=%d, pk=%d bytes)\n", certLen, pkLen);
+              }
+              if (!certLoaded) { free(certBuf); free(pkBuf); }
+          }
+          if (!certLoaded) {
+              Serial.println("Generating self-signed certificate (RSA-2048, ~30s)...");
+              localCert = new SSLCert();
+              int certResult = createSelfSignedCert(*localCert, KEYSIZE_2048, "CN=esp32.local,O=HonNol,C=KR", "20250101000000", "20350101000000");
+              if (certResult == 0) {
+                  nvs_set_blob(certNvs, "cert", localCert->getCertData(), localCert->getCertLength());
+                  nvs_set_blob(certNvs, "pk", localCert->getPKData(), localCert->getPKLength());
+                  nvs_commit(certNvs);
+                  certLoaded = true;
+                  Serial.println("Certificate generated and saved to NVS");
+              } else {
+                  Serial.printf("Certificate generation failed: %d\n", certResult);
+                  delete localCert;
+                  localCert = nullptr;
+              }
+          }
+          nvs_close(certNvs);
+      }
+      if (certLoaded && localCert) {
+          localServer = new HTTPSServer(localCert);
+          ResourceNode *macGetNode = new ResourceNode("/mac", "GET", &handleGetMac);
+          ResourceNode *macOptionsNode = new ResourceNode("/mac", "OPTIONS", &handleMacOptions);
+          localServer->registerNode(macGetNode);
+          localServer->registerNode(macOptionsNode);
+          localServer->start();
+          if (localServer->isRunning()) {
+              Serial.println("Local HTTPS server started on port 443");
+              Serial.printf("Access at: https://%s/mac\n", WiFi.localIP().toString().c_str());
+          }
+      }
+  }
+
+  // Watchdog Timer (30초 타임아웃 - loop가 30초 이상 멈추면 자동 재시작)
+  esp_task_wdt_init(30, true);
+  esp_task_wdt_add(NULL);
+
+  Serial.printf("Setup Complete. Free heap: %d bytes\n", ESP.getFreeHeap());
+  Serial.println("Waiting for commands...");
 }
 
 void loop() {
@@ -419,55 +713,94 @@ void loop() {
       Serial.println("Started advertising again...");
   }
 
+  // Local HTTPS Server 처리 (비블로킹)
+  if (localServer) localServer->loop();
+
+  // WiFi ARP 스캔 (idle 상태에서만, 60초마다)
+  if (!isRegistering && millis() - lastWifiScanTime > WIFI_SCAN_INTERVAL) {
+      lastWifiScanTime = millis();
+      scanLocalDevices();
+  }
+
+  // Watchdog 리셋 (loop가 정상 동작 중임을 알림)
+  esp_task_wdt_reset();
+
+  // 힙 메모리 모니터링
+  if (millis() - lastHeapLogTime > HEAP_LOG_INTERVAL) {
+      lastHeapLogTime = millis();
+      size_t freeHeap = ESP.getFreeHeap();
+      Serial.printf("[HEAP] Free: %d bytes\n", freeHeap);
+      if (freeHeap < HEAP_MIN_THRESHOLD) {
+          Serial.println("[HEAP] Critical! Restarting...");
+          delay(100);
+          ESP.restart();
+      }
+  }
+
   // 1. Poll Server
-  if (WiFi.status() == WL_CONNECTED && !isRegistering &&
-      millis() - lastPollTime > POLL_INTERVAL) {
+  unsigned long pollInterval = isRegistering ? POLL_INTERVAL_ACTIVE : POLL_INTERVAL_IDLE;
+  if (!isRegistering && millis() - lastPollTime > pollInterval) {
       lastPollTime = millis();
 
-      HTTPClient http;
-      String shortId = myMacAddress.substring(myMacAddress.length() - 4);
-      http.begin(String(SERVER_URL) + "/api/devices/poll?deviceId=" + shortId);
-      int code = http.GET();
+      ensureWiFi();
+      if (WiFi.status() != WL_CONNECTED) goto poll_end;
 
-      if(code == 200) {
-          String payload = http.getString();
-          DynamicJsonDocument doc(512);
-          deserializeJson(doc, payload);
+      {
+          WiFiClientSecure *client = new WiFiClientSecure;
+          if (!client) {
+              Serial.println("Error: poll client alloc failed");
+              goto poll_end;
+          }
+          client->setInsecure();
 
-          if(doc["found"]) {
-              int regId = doc["regId"];
-              const char* pin = doc["pin"];
+          HTTPClient http;
+          String shortId = myMacAddress.substring(myMacAddress.length() - 4);
+          http.begin(*client, String(SERVER_URL) + "/api/devices/poll?deviceId=" + shortId);
+          http.setTimeout(10000);
+          int code = http.GET();
 
-              Serial.println("Registration detected! regId: " + String(regId));
-              Serial.println("Server PIN: " + String(pin));
+          if(code == 200) {
+              String payload = http.getString();
+              DynamicJsonDocument doc(512);
+              deserializeJson(doc, payload);
 
-              // 서버 PIN을 BLE passkey로 설정 (iOS에서 이 번호 입력)
-              currentPasskey = atoi(pin);
-              NimBLEDevice::setSecurityPasskey(currentPasskey);
-              Serial.printf("BLE Passkey set to: %d\n", currentPasskey);
+              if(doc["found"]) {
+                  int regId = doc["regId"];
+                  const char* pin = doc["pin"];
 
-              // Start Registration Session
-              isRegistering = true;
+                  Serial.println("Registration detected! regId: " + String(regId));
+                  Serial.println("Server PIN: " + String(pin));
 
-              if(currentRequest != nullptr) delete currentRequest;
-              currentRequest = new RegistrationRequest();
-              currentRequest->regId = regId;
-              currentRequest->status = "waiting";
+                  // 서버 PIN을 BLE passkey로 설정 (iOS에서 이 번호 입력)
+                  currentPasskey = atoi(pin);
+                  NimBLEDevice::setSecurityPasskey(currentPasskey);
+                  Serial.printf("BLE Passkey set to: %d\n", currentPasskey);
 
-              // Reset State
-              uploadNeeded = false;
-              pendingDisconnect = false;
-              irkCaptured = false;
-              capturedIrk = "";
-              authStartTime = 0;
+                  // Start Registration Session
+                  isRegistering = true;
 
-              // Clear Bonds
-              if (NimBLEDevice::getNumBonds() > 0) {
-                clearAllBonds();
+                  if(currentRequest != nullptr) delete currentRequest;
+                  currentRequest = new RegistrationRequest();
+                  currentRequest->regId = regId;
+                  currentRequest->status = "waiting";
+
+                  // Reset State
+                  uploadNeeded = false;
+                  pendingDisconnect = false;
+                  irkCaptured = false;
+                  capturedIrk = "";
+                  authStartTime = 0;
+
+                  // Clear Bonds
+                  if (NimBLEDevice::getNumBonds() > 0) {
+                    clearAllBonds();
+                  }
               }
           }
+          http.end();
+          delete client;
       }
-      http.end();
+      poll_end:;
   }
 
   // 2. Handle IRK Upload (iOS 플로우 - ESP32가 서버에 직접 업로드)
