@@ -1138,7 +1138,6 @@
         margin: 0;
         display: flex;
         justify-content: space-between;
-        width: 100%;
         align-items: center;
     }
     .header-actions {
