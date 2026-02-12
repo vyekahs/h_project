@@ -8,6 +8,7 @@
     let showModal = false;
     let selectedGameName = '';
     let selectedDuration = '';
+    let guestCount = 0;
 
     let selectedGameId = '';
 
@@ -62,6 +63,7 @@
     function openScheduledGameModal() {
         showScheduledGameModal = true;
         scheduledGameName = '';
+        guestCount = 0;
         dropdownOpen = false;
         
         // Set default time to 30 minutes from now, rounded to 10 minutes
@@ -375,7 +377,7 @@
                         <h3>{g.game_name}</h3>
                         <p class="start-time">예정: <strong>{formatScheduledTime(g.scheduled_at)}</strong></p>
                         <p class="participants-list">인원: (최소 {g.min_players} / 최대 {g.max_players})</p>
-                        <p class="participants-list">참여자 ({(g.participants || []).length}): {(g.participants || []).map(p => p.name).join(', ')}</p>
+                        <p class="participants-list">참여자 ({(g.participants || []).length}): {(g.participants || []).map((p: any) => p.is_guest ? `${p.name}(G)` : p.name).join(', ')}</p>
                     </div>
                 </div>
                 <div class="game-actions-container">
@@ -478,6 +480,7 @@
             selectedGameName = '';
             selectedDuration = '';
             selectedGameId = '';
+            guestCount = 0;
             dropdownOpen = false;
         }}>+ 새 게임 시작</button>
     </div>
@@ -494,7 +497,7 @@
                     {/if}
                     <div class="game-details">
                         <h3>{game.game_name}</h3>
-                        <p class="players-list">참여자: {game.players.map(p => p.name).join(', ')}</p>
+                        <p class="players-list">참여자: {game.players.map((p: any) => p.is_guest ? `${p.name}(G)` : p.name).join(', ')}</p>
                         <p class="end-time">종료 예정: {new Date(game.end_time).toLocaleTimeString()} <span class="time-remaining">({getTimeRemaining(game.end_time)})</span></p>
                     </div>
                 </div>
@@ -624,7 +627,13 @@
                         </label>
                     {/each}
                 </div>
-                
+
+                <div class="input-group guest-input-group">
+                    <label for="guestCount">게스트 수</label>
+                    <input type="number" id="guestCount" name="guestCount" bind:value={guestCount} min="0" max="20" class="number-input" />
+                    <p class="hint">* 미등록 참가자 수 (게스트1, 게스트2... 자동 생성)</p>
+                </div>
+
                 <div class="modal-actions">
                     <button type="button" on:click={() => showModal = false} class="btn-cancel">취소</button>
                     <button type="submit" class="btn-primary">게임 시작</button>
@@ -669,15 +678,19 @@
                 
                 <div class="player-select">
                     {#each (selectedEndGame?.players || []) as player}
+                        {@const pl = player as any}
                         <div class="winner-row">
                             <label class="winner-option">
-                                <input type="checkbox" name="winnerIds" value={player.id} />
-                                <span class="player-name">{player.name}</span>
+                                <input type="checkbox" name="winnerIds" value={pl.id} />
+                                <span class="player-name">
+                                    {pl.name}
+                                    {#if pl.is_guest}<span class="guest-badge">G</span>{/if}
+                                </span>
                                 <span class="medal">
                                     <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="7"/><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"/></svg>
                                 </span>
                             </label>
-                            <input type="number" name="score_{player.id}" placeholder="점수" class="score-input" />
+                            <input type="number" name="score_{pl.id}" placeholder="점수" class="score-input" />
                         </div>
                     {/each}
                 </div>
@@ -825,7 +838,14 @@
                         <input type="number" id="maxPlayers" name="maxPlayers" min="1" bind:value={maxPlayers} required class="number-input">
                     </div>
                 </div>
-                
+
+                <div class="input-group guest-input-group">
+                    <label for="scheduledGuestCount">게스트 수</label>
+                    <input type="number" id="scheduledGuestCount" name="guestCount" bind:value={guestCount} min="0" max={maxPlayers} class="number-input"
+                        on:input={() => { if (guestCount > maxPlayers) guestCount = maxPlayers; }} />
+                    <p class="hint">* 미등록 참가자 수 (최대 {maxPlayers}명, 게스트1, 게스트2... 자동 생성)</p>
+                </div>
+
                 <div class="modal-actions">
                     <button type="button" on:click={() => showScheduledGameModal = false} class="btn-cancel">취소</button>
                     <button type="submit" class="btn-primary">예약 생성</button>
@@ -1586,6 +1606,36 @@
         font-size: 0.85rem;
         font-weight: 600;
         color: #555;
+    }
+    .guest-badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        background: #868e96;
+        color: white;
+        font-size: 10px;
+        font-weight: bold;
+        margin-left: 4px;
+        vertical-align: middle;
+    }
+    .guest-input-group {
+        margin-top: 0.5rem;
+        padding-top: 0.5rem;
+        border-top: 1px solid #eee;
+    }
+    .number-input {
+        width: 80px;
+        padding: 0.5rem;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+    }
+    .hint {
+        font-size: 0.8rem;
+        color: #888;
+        margin-top: 0.25rem;
     }
 
 </style>

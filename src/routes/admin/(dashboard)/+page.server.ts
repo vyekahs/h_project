@@ -48,7 +48,12 @@ export const load: PageServerLoad = async () => {
     `);
 
     const gamesResult = await query(`
-        SELECT gs.*, g.image_url, json_agg(json_build_object('id', a.id, 'name', a.name)) as players
+        SELECT gs.*, g.image_url,
+            COALESCE(json_agg(json_build_object(
+                'id', COALESCE(a.id, -sp.id),
+                'name', COALESCE(a.name, sp.guest_name),
+                'is_guest', (sp.attendee_id IS NULL)
+            )) FILTER (WHERE sp.id IS NOT NULL), '[]') as players
         FROM game_sessions gs
         LEFT JOIN session_participants sp ON gs.id = sp.session_id
         LEFT JOIN attendees a ON sp.attendee_id = a.id
@@ -60,7 +65,11 @@ export const load: PageServerLoad = async () => {
 
     const scheduledGamesResult = await query(`
         SELECT gs.id, gs.game_name, gs.game_id, gs.min_players, gs.max_players, gs.scheduled_at, g.image_url,
-               COALESCE(json_agg(json_build_object('id', a.id, 'name', a.name)) FILTER (WHERE a.id IS NOT NULL), '[]') as participants
+               COALESCE(json_agg(json_build_object(
+                   'id', COALESCE(a.id, -sp.id),
+                   'name', COALESCE(a.name, sp.guest_name),
+                   'is_guest', (sp.attendee_id IS NULL)
+               )) FILTER (WHERE sp.id IS NOT NULL), '[]') as participants
         FROM game_sessions gs
         LEFT JOIN session_participants sp ON gs.id = sp.session_id
         LEFT JOIN attendees a ON sp.attendee_id = a.id
@@ -210,8 +219,9 @@ export const actions: Actions = {
         const gameId = data.get('gameId') ? parseInt(data.get('gameId') as string) : null;
         const duration = parseInt(data.get('duration')?.toString() || '0');
         const playerIds = data.getAll('players').map(p => p.toString());
+        const guestCount = parseInt(data.get('guestCount')?.toString() || '0');
 
-        if (!gameName || duration <= 0 || playerIds.length === 0) {
+        if (!gameName || duration <= 0 || (playerIds.length === 0 && guestCount === 0)) {
             return fail(400, { missing: true });
         }
 
@@ -256,6 +266,9 @@ export const actions: Actions = {
             for (const playerId of playerIds) {
                 await query('INSERT INTO session_participants (session_id, attendee_id) VALUES ($1, $2)', [newGameId, playerId]);
             }
+            for (let i = 1; i <= guestCount; i++) {
+                await query('INSERT INTO session_participants (session_id, attendee_id, guest_name) VALUES ($1, NULL, $2)', [newGameId, `게스트${i}`]);
+            }
             await query('COMMIT');
         } catch (error) {
             await query('ROLLBACK');
@@ -289,16 +302,29 @@ export const actions: Actions = {
         try {
             await query('BEGIN');
             await query('UPDATE game_sessions SET status = $1, end_time = NOW() WHERE id = $2', ['finished', id]);
-            
-            if (winnerIds.length > 0) {
-                await query('UPDATE session_participants SET is_winner = true WHERE session_id = $1 AND attendee_id = ANY($2)', [id, winnerIds]);
+
+            // Separate regular winners (positive IDs) from guest winners (negative IDs)
+            const regularWinnerIds = winnerIds.filter(wid => parseInt(wid) > 0);
+            const guestWinnerSpIds = winnerIds.filter(wid => parseInt(wid) < 0).map(wid => Math.abs(parseInt(wid)));
+
+            if (regularWinnerIds.length > 0) {
+                await query('UPDATE session_participants SET is_winner = true WHERE session_id = $1 AND attendee_id = ANY($2)', [id, regularWinnerIds]);
+            }
+            if (guestWinnerSpIds.length > 0) {
+                await query('UPDATE session_participants SET is_winner = true WHERE session_id = $1 AND id = ANY($2)', [id, guestWinnerSpIds]);
             }
 
             // Update scores
-            for (const [attendeeId, score] of Object.entries(scores)) {
-                await query('UPDATE session_participants SET score = $1 WHERE session_id = $2 AND attendee_id = $3', [score, id, attendeeId]);
+            for (const [participantId, score] of Object.entries(scores)) {
+                const numId = parseInt(participantId);
+                if (numId > 0) {
+                    await query('UPDATE session_participants SET score = $1 WHERE session_id = $2 AND attendee_id = $3', [score, id, participantId]);
+                } else {
+                    // Guest: negative ID represents session_participants.id
+                    await query('UPDATE session_participants SET score = $1 WHERE session_id = $2 AND id = $3', [score, id, Math.abs(numId)]);
+                }
             }
-            
+
             await query('COMMIT');
         } catch (error) {
             await query('ROLLBACK');
