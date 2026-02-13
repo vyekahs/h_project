@@ -52,14 +52,7 @@
                 isAutostart = true;
                 const diff = params.get('difficulty');
                 if (diff) game.difficulty = diff as any;
-                // If saved game exists (e.g. page refresh), resume instead of starting new
-                const saved = localStorage.getItem('sudoku_save');
-                if (saved) {
-                    user.refresh();
-                    game.loadSavedGame();
-                } else {
-                    user.refresh().then(() => game.startGame());
-                }
+                user.refresh().then(() => game.startGame());
                 return () => { game.clearTimerInterval(); };
             }
             if (params.get('resume') === 'true') {
