@@ -60,7 +60,36 @@ export function getRandomLevel(difficulty: string): UnblockLevel {
                : difficulty === 'hard' ? HARD_LEVELS
                : difficulty === 'expert' ? EXPERT_LEVELS
                : MASTER_LEVELS;
-    return pool[Math.floor(Math.random() * pool.length)];
+
+    // 쉬움/보통: 균등 랜덤
+    if (difficulty === 'easy' || difficulty === 'medium') {
+        return pool[Math.floor(Math.random() * pool.length)];
+    }
+
+    // 어려움/전문가/마스터: 높은 이동수 레벨에 가중치 부여
+    let minMoves = pool[0].moves, maxMoves = pool[0].moves;
+    for (const level of pool) {
+        if (level.moves < minMoves) minMoves = level.moves;
+        if (level.moves > maxMoves) maxMoves = level.moves;
+    }
+    const range = maxMoves - minMoves;
+    if (range === 0) return pool[Math.floor(Math.random() * pool.length)];
+
+    // weight: 최소 이동수 = 1.0, 최대 이동수 = 3.0
+    let totalWeight = 0;
+    const weights: number[] = [];
+    for (const level of pool) {
+        const w = 1 + 2 * ((level.moves - minMoves) / range);
+        weights.push(w);
+        totalWeight += w;
+    }
+
+    let rand = Math.random() * totalWeight;
+    for (let i = 0; i < pool.length; i++) {
+        rand -= weights[i];
+        if (rand <= 0) return pool[i];
+    }
+    return pool[pool.length - 1];
 }
 
 export const EASY_LEVELS: UnblockLevel[] = [

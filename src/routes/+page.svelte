@@ -32,7 +32,7 @@
         games: GameSession[];
         scheduledGames: GameSession[];
         userReservation: Reservation | null;
-        userScheduledGames: GameSession[]; // Changed from userScheduledGame
+        userScheduledGames: GameSession[];
         userPlayingGame: GameSession | null;
         user: User | null;
         isOpen: boolean;
@@ -40,8 +40,9 @@
         userPenaltyInfo: { penalty_points: number } | null;
         isAdmin: boolean;
         reservations: Reservation[];
-        allGames: any[]; // Using any[] for simplicity or define Game interface
+        allGames: any[];
         parties: Party[];
+        userPartyIds: number[];
     };
 
     interface Attendee {
@@ -62,8 +63,9 @@
         min_players: number;
         max_players: number;
         created_by: number;
-        participants: { id: number; name: string }[];
-        players: { id: number; name: string }[];
+        party_id: number | null;
+        participants: { id: number; name: string; is_guest?: boolean }[];
+        players: { id: number; name: string; is_guest?: boolean }[];
         scheduled_at: string;
     }
 
@@ -527,7 +529,7 @@
             <div class="tables-grid">
                 {#each games.slice(0, limitGames) as game}
                     {@const gameReservations = getGameReservations(game.id)}
-                    {@const isParticipant = data.user && (game.players || []).some(p => p.id === data.user.id)}
+                    {@const isParticipant = data.user && (game.players || []).some(p => p.id === data.user?.id)}
                     {@const myReservation = data.user && gameReservations.find((r: any) => r.attendee_id === data.user?.id)}
                     
                     <div class="table-card playing">

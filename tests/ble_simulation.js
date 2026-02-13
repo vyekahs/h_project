@@ -14,7 +14,7 @@ const TEST_IRK = '00112233445566778899aabbccddeeff'; // 128 bit key
 const TEST_USER_NAME = 'BLE_TEST_USER';
 let testUserId;
 
-function generateRPA(irkHex) {
+function generateRPA(/** @type {string} */ irkHex) {
     const key = Buffer.from(irkHex, 'hex');
     const prand = crypto.randomBytes(3); 
     

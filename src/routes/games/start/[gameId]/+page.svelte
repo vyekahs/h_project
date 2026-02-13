@@ -39,7 +39,7 @@
     
     let visibleTutorials = $derived(
         (tutorialData && tutorialOrder)
-        ? tutorialOrder.filter(tid => tutorialData[tid] && unlockedTutorialIDs.has(tid))
+        ? tutorialOrder.filter(tid => tutorialData![tid] && unlockedTutorialIDs.has(tid))
         : []
     );
 

@@ -84,7 +84,7 @@
          if (draggingBlockId === null || !boardEl) return;
         e.preventDefault();
 
-        const blockIndex = blocks.findIndex(b => b.id === draggingBlockId);
+        const blockIndex = blocks.findIndex((b: Block) => b.id === draggingBlockId);
         if (blockIndex === -1) return;
         const block = blocks[blockIndex];
 
@@ -111,7 +111,7 @@
 
     function handleEnd() {
         if (draggingBlockId !== null) {
-            const block = blocks.find(b => b.id === draggingBlockId);
+            const block = blocks.find((b: Block) => b.id === draggingBlockId);
             if (block) {
                 if (block.x !== startBlockX || block.y !== startBlockY) {
                     onmove();
