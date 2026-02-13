@@ -1,6 +1,7 @@
 import { query } from './db';
 import { applyPenalty, promoteWaitlist } from './reservations';
 import { updateSettingsCache, markAllLeft } from './ble';
+import { emitLiveEvent } from './liveEvents';
 
 let intervalId: NodeJS.Timeout | null = null;
 let isRunning = false;
@@ -104,6 +105,8 @@ async function performCloseDay(businessDate: string) {
         // Record the last auto-close date
         await query("INSERT INTO system_settings (key, value) VALUES ('last_auto_close_date', $1) ON CONFLICT (key) DO UPDATE SET value = $1", [businessDate]);
         await query('COMMIT');
+        emitLiveEvent('visitors');
+        emitLiveEvent('games');
         console.log(`Auto-Close Complete for ${businessDate}.`);
     } catch (error) {
         await query('ROLLBACK');
@@ -161,6 +164,7 @@ async function checkReservations() {
                 [row.id]
             );
             await query("UPDATE reservations SET status = 'confirmed' WHERE session_id = $1 AND status = 'pending'", [row.id]);
+            emitLiveEvent('games');
             console.log(`Auto-started session ${row.id} (${row.game_name}, ${duration}min, ${row.current_players} players)`);
         }
 

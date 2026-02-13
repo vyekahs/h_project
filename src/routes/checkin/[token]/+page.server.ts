@@ -2,6 +2,7 @@ import { query } from '$lib/server/db';
 import { redirect } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
 import { verifyAttendeeSession } from '$lib/server/auth';
+import { emitLiveEvent } from '$lib/server/liveEvents';
 
 export const load: PageServerLoad = async ({ params, cookies, url }) => {
     const token = params.token;
@@ -72,6 +73,7 @@ export const load: PageServerLoad = async ({ params, cookies, url }) => {
         await query('INSERT INTO visits (attendee_id, arrival_time) VALUES ($1, NOW())', [user.id]);
         await query('COMMIT');
 
+        emitLiveEvent('visitors');
         return {
             success: true,
             user

@@ -4,6 +4,7 @@ import QRCode from 'qrcode';
 import type { Actions, PageServerLoad } from './$types';
 import { verifyAdminSession, verifyAttendeeSession } from '$lib/server/auth';
 import { updateSettingsCache, markAllLeft } from '$lib/server/ble';
+import { emitLiveEvent } from '$lib/server/liveEvents';
 
 async function canModifyGame(request: Request, gameId: string | number): Promise<boolean> {
     const sessionToken = request.headers.get('cookie')?.match(/admin_session=([^;]+)/)?.[1];
@@ -183,6 +184,7 @@ export const actions: Actions = {
                 throw e;
             }
         }
+        emitLiveEvent('visitors');
     },
 
     removeAttendee: async ({ request }) => {
@@ -207,6 +209,8 @@ export const actions: Actions = {
             }
 
             await query('COMMIT');
+            emitLiveEvent('visitors');
+            if (endGame && gameId) emitLiveEvent('games');
         } catch (e) {
             await query('ROLLBACK');
             return fail(500, { error: 'Failed to remove attendee' });
@@ -270,6 +274,7 @@ export const actions: Actions = {
                 await query('INSERT INTO session_participants (session_id, attendee_id, guest_name) VALUES ($1, NULL, $2)', [newGameId, `게스트${i}`]);
             }
             await query('COMMIT');
+            emitLiveEvent('games');
         } catch (error) {
             await query('ROLLBACK');
             return fail(500, { error: 'Failed to create game' });
@@ -326,6 +331,7 @@ export const actions: Actions = {
             }
 
             await query('COMMIT');
+            emitLiveEvent('games');
         } catch (error) {
             await query('ROLLBACK');
             return fail(500, { error: 'Failed to end game' });
@@ -371,6 +377,7 @@ export const actions: Actions = {
                 'UPDATE game_sessions SET end_time = end_time + interval \'' + minutes + ' minutes\' WHERE id = $1',
                 [id]
             );
+            emitLiveEvent('games');
         } catch (error) {
             return fail(500, { error: 'Failed to extend game' });
         }
@@ -424,6 +431,8 @@ export const actions: Actions = {
             await query("INSERT INTO system_settings (key, value) VALUES ('last_auto_close_date', $1) ON CONFLICT (key) DO UPDATE SET value = $1", [businessDate]);
 
             await query('COMMIT');
+            emitLiveEvent('visitors');
+            emitLiveEvent('games');
         } catch (error) {
             await query('ROLLBACK');
             return fail(500, { error: 'Failed to close day' });
@@ -433,6 +442,7 @@ export const actions: Actions = {
         try {
             await query("INSERT INTO system_settings (key, value) VALUES ('is_open', 'true') ON CONFLICT (key) DO UPDATE SET value = 'true'");
             updateSettingsCache(true);
+            emitLiveEvent('visitors');
         } catch (error) {
             return fail(500, { error: 'Failed to open day' });
         }
@@ -475,6 +485,7 @@ export const actions: Actions = {
             await query('DELETE FROM reservations WHERE session_id = $1', [sessionId]);
             await query('DELETE FROM game_sessions WHERE id = $1', [sessionId]);
             await query('COMMIT');
+            emitLiveEvent('games');
             return { success: true };
         } catch (e) {
             await query('ROLLBACK');
@@ -499,6 +510,7 @@ export const actions: Actions = {
             // Confirm all pending reservations for this session (if any)
             await query("UPDATE reservations SET status = 'confirmed' WHERE session_id = $1 AND status = 'pending'", [sessionId]);
             await query('COMMIT');
+            emitLiveEvent('games');
             return { success: true };
         } catch (e) {
             await query('ROLLBACK');

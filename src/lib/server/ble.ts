@@ -1,6 +1,7 @@
 
 import { query } from '$lib/server/db';
 import crypto from 'crypto';
+import { emitLiveEvent } from '$lib/server/liveEvents';
 
 // Types
 interface ScanResult {
@@ -401,6 +402,7 @@ export async function processScanResults(scannerId: string, timestamp: number, s
                 await query('COMMIT');
                 // 캐시 업데이트
                 attendee.status = 'present';
+                emitLiveEvent('visitors');
             } catch (e) {
                 await query('ROLLBACK');
                 console.error(`[BLE] Failed to check-in ${attendeeId}`, e);
@@ -441,6 +443,7 @@ async function checkAutoCheckout() {
                 await query('COMMIT');
                 // 캐시 업데이트
                 attendee.status = 'left';
+                emitLiveEvent('visitors');
             } catch (e) {
                 await query('ROLLBACK');
                 console.error(`[BLE] Failed to check-out ${attendee.id}`, e);
@@ -518,6 +521,7 @@ export async function processWifiReport(_scannerId: string, devices: { mac: stri
                 await query('INSERT INTO visits (attendee_id, arrival_time) VALUES ($1, NOW())', [attendeeId]);
                 await query('COMMIT');
                 attendee.status = 'present';
+                emitLiveEvent('visitors');
             } catch (e) {
                 await query('ROLLBACK');
                 console.error(`[WiFi] Failed to check-in ${attendeeId}`, e);
