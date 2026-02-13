@@ -100,6 +100,10 @@
 	}
 
 	function connectSSE() {
+		if (eventSource) {
+			eventSource.close();
+		}
+
 		eventSource = new EventSource('/api/sse/admin/monitor');
 
 		eventSource.onmessage = (event) => {

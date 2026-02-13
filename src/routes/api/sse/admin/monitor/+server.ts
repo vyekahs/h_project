@@ -106,25 +106,36 @@ export async function GET({ request, cookies }: { request: Request; cookies: any
 			const encoder = new TextEncoder();
 			let closed = false;
 			let intervalTimer: ReturnType<typeof setInterval> | null = null;
+			let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
 
 			incrementSSECount();
 
-			function send(data: any) {
+			function send(data: string) {
 				if (closed) return;
 				try {
-					controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
+					controller.enqueue(encoder.encode(data));
 				} catch {
 					cleanup();
 				}
+			}
+
+			function sendData(data: any) {
+				send(`data: ${JSON.stringify(data)}\n\n`);
+			}
+
+			function sendHeartbeat() {
+				// Send a comment to keep the connection alive and detect disconnects
+				send(': heartbeat\n\n');
 			}
 
 			async function pushMetrics() {
 				if (closed) return;
 				try {
 					const metrics = await collectMetrics();
-					send(metrics);
+					sendData(metrics);
 				} catch (e) {
 					console.error('[Monitor SSE] Failed to collect metrics:', e);
+					cleanup();
 				}
 			}
 
@@ -134,11 +145,15 @@ export async function GET({ request, cookies }: { request: Request; cookies: any
 			// Push metrics every 5 seconds
 			intervalTimer = setInterval(pushMetrics, 5000);
 
+			// Send heartbeat every 1 second to detect broken connections quickly
+			heartbeatTimer = setInterval(sendHeartbeat, 1000);
+
 			function cleanup() {
 				if (closed) return;
 				closed = true;
 				decrementSSECount();
 				if (intervalTimer) clearInterval(intervalTimer);
+				if (heartbeatTimer) clearInterval(heartbeatTimer);
 				try { controller.close(); } catch {}
 			}
 
