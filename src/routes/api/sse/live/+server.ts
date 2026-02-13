@@ -1,5 +1,5 @@
 import { query } from '$lib/server/db';
-import { getLiveEmitter } from '$lib/server/liveEvents';
+import { getLiveEmitter, incrementSSECount, decrementSSECount } from '$lib/server/liveEvents';
 
 async function getVisitorData() {
 	const result = await query(`
@@ -33,6 +33,8 @@ export function GET({ request }: { request: Request }) {
 			let closed = false;
 			let debounceTimer: ReturnType<typeof setTimeout> | null = null;
 			let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+
+			incrementSSECount();
 
 			function send(event: string, data: any) {
 				if (closed) return;
@@ -86,6 +88,7 @@ export function GET({ request }: { request: Request }) {
 			function cleanup() {
 				if (closed) return;
 				closed = true;
+				decrementSSECount();
 				emitter.off('change', onChange);
 				if (debounceTimer) clearTimeout(debounceTimer);
 				if (heartbeatTimer) clearInterval(heartbeatTimer);
