@@ -169,6 +169,11 @@ async function migrate() {
         await pool.query('ALTER TABLE game_sessions ADD COLUMN IF NOT EXISTS party_id INTEGER REFERENCES game_parties(id) ON DELETE SET NULL;');
         await pool.query('CREATE INDEX IF NOT EXISTS idx_game_sessions_party ON game_sessions(party_id);');
 
+        // 17. WiFi MAC on user_devices (BLE+WiFi 이중 체크인)
+        console.log('[17] Adding wifi_mac to user_devices...');
+        await pool.query('ALTER TABLE user_devices ADD COLUMN IF NOT EXISTS wifi_mac VARCHAR(17);');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_user_devices_wifi_mac ON user_devices(wifi_mac) WHERE wifi_mac IS NOT NULL;');
+
     } catch (err) {
         console.error('Migration failed:', err);
         process.exit(1);
