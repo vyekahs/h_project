@@ -24,6 +24,13 @@
             tagline: '슬라이딩 블록 퍼즐',
             url: '/games/start/unblock-me',
             accentColor: '#f87171'
+        },
+        {
+            id: 'tichu',
+            name: '티츄',
+            tagline: '4인 실시간 카드게임',
+            url: '/games/tichu',
+            accentColor: '#22c55e'
         }
     ];
 </script>
@@ -61,6 +68,12 @@
                                     <rect x="2" y="2" width="20" height="20" rx="2" stroke-opacity="0.1"/>
                                     <rect x="5" y="9" width="10" height="6" rx="1.5" fill="currentColor" stroke="none"/>
                                     <path d="M16 12h5m-2-2l2 2l-2 2" stroke-width="2.5"/>
+                                </svg>
+                            {:else if game.id === 'tichu'}
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <rect x="3" y="2" width="12" height="17" rx="2"/>
+                                    <rect x="9" y="5" width="12" height="17" rx="2" fill="rgba(255,255,255,0.3)"/>
+                                    <text x="7" y="13" font-size="7" font-weight="bold" fill="currentColor" stroke="none">T</text>
                                 </svg>
                             {/if}
                         </div>
