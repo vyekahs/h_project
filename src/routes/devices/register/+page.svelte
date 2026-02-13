@@ -411,16 +411,16 @@
             <button on:click={verifyPin}>확인</button>
         </div>
 
-    {:else if step === 'success'}
+    {:else }
         <div class="card success">
             <div class="success-icon">✅</div>
             <h2>블루투스 등록 성공!</h2>
             <p>기기가 성공적으로 등록되었습니다.</p>
-            <p class="desc">WiFi도 등록하면 체크인 정확도가 높아집니다.</p>
-            <button on:click={() => { step = 'wifi_register'; }}>WiFi도 등록하기</button>
+            <!-- <p class="desc">WiFi도 등록하면 체크인 정확도가 높아집니다.</p>
+            <button on:click={() => { step = 'wifi_register'; }}>WiFi도 등록하기</button> -->
             <button class="btn-secondary" on:click={() => window.location.href = '/'}>건너뛰기</button>
         </div>
-
+<!-- 
     {:else if step === 'wifi_register'}
         <div class="card active">
             <h2>WiFi 등록</h2>
@@ -445,7 +445,7 @@
             <p class="desc">이제 서비스를 이용하실 수 있습니다.</p>
             <button class="btn-primary" on:click={() => window.location.href = '/'}>홈으로 가기</button>
         </div>
-    {/if}
+    {/if} -->
 </div>
 
 <style>
