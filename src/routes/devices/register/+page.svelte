@@ -445,7 +445,8 @@
             <p class="desc">이제 서비스를 이용하실 수 있습니다.</p>
             <button class="btn-primary" on:click={() => window.location.href = '/'}>홈으로 가기</button>
         </div>
-    {/if} -->
+    -->
+    {/if}
 </div>
 
 <style>
