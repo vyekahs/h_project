@@ -4,6 +4,7 @@ import type { Actions, PageServerLoad } from './$types';
 import { verifyAdminSession, verifyAttendeeSession } from '$lib/server/auth';
 import { TitleService } from '$lib/server/services/titleService';
 import { PartyService } from '$lib/server/services/partyService';
+import { emitLiveEvent } from '$lib/server/liveEvents';
 
 async function canModifyGame(request: Request, gameId: string | number): Promise<boolean> {
     const sessionToken = request.headers.get('cookie')?.match(/admin_session=([^;]+)/)?.[1];
@@ -264,6 +265,7 @@ export const actions: Actions = {
                 [sessionId, attendeeId, status]
             );
 
+            emitLiveEvent('games');
             return { success: true };
         } catch (e: any) {
             console.error('reserveGame Error:', e);
@@ -318,6 +320,7 @@ export const actions: Actions = {
             }
 
             await query('COMMIT');
+            emitLiveEvent('games');
             return { success: true };
         } catch (e) {
             await query('ROLLBACK');
@@ -431,6 +434,7 @@ export const actions: Actions = {
                 'INSERT INTO reservations (session_id, attendee_id, status) VALUES ($1, $2, $3)',
                 [sessionId, finalAttendeeId, 'waitlisted']
             );
+            emitLiveEvent('games');
             return { success: true, waitlisted: true };
         }
 
@@ -445,6 +449,7 @@ export const actions: Actions = {
             await query('ROLLBACK');
             throw e;
         }
+        emitLiveEvent('games');
         return { success: true };
     },
 
@@ -503,10 +508,11 @@ export const actions: Actions = {
         }
 
         await query('DELETE FROM session_participants WHERE session_id = $1 AND attendee_id = $2', [sessionId, user.id]);
-        
+
         const { promoteWaitlist } = await import('$lib/server/reservations');
         await promoteWaitlist(Number(sessionId));
 
+        emitLiveEvent('games');
         return { success: true };
     },
 
@@ -574,6 +580,7 @@ export const actions: Actions = {
                 await query('INSERT INTO session_participants (session_id, attendee_id, guest_name) VALUES ($1, NULL, $2)', [newGameId, `게스트${i}`]);
             }
             await query('COMMIT');
+            emitLiveEvent('games');
             return { success: true };
         } catch (error) {
             await query('ROLLBACK');
@@ -623,6 +630,7 @@ export const actions: Actions = {
                 }
             }
             await query('COMMIT');
+            emitLiveEvent('games');
             return { success: true };
         } catch (error) {
             await query('ROLLBACK');
@@ -643,6 +651,7 @@ export const actions: Actions = {
                 'UPDATE game_sessions SET end_time = end_time + interval \'' + minutes + ' minutes\' WHERE id = $1',
                 [id]
             );
+            emitLiveEvent('games');
             return { success: true };
         } catch (error) {
             return fail(500, { error: 'Failed to extend game' });
@@ -661,6 +670,7 @@ export const actions: Actions = {
             await query('DELETE FROM reservations WHERE session_id = $1', [sessionId]);
             await query('DELETE FROM game_sessions WHERE id = $1', [sessionId]);
             await query('COMMIT');
+            emitLiveEvent('games');
             return { success: true };
         } catch (e) {
             await query('ROLLBACK');
@@ -684,6 +694,7 @@ export const actions: Actions = {
             );
             await query("UPDATE reservations SET status = 'confirmed' WHERE session_id = $1 AND status = 'pending'", [sessionId]);
             await query('COMMIT');
+            emitLiveEvent('games');
             return { success: true };
         } catch (e) {
             await query('ROLLBACK');
@@ -746,6 +757,7 @@ export const actions: Actions = {
                 const { attendee_id, session_id } = r.rows[0];
                 await query('INSERT INTO session_participants (session_id, attendee_id) VALUES ($1, $2)', [session_id, attendee_id]);
                 await query('COMMIT');
+                emitLiveEvent('games');
                 return { success: true };
             } else {
                 await query('ROLLBACK');
@@ -817,6 +829,7 @@ export const actions: Actions = {
         }
 
         await query('DELETE FROM session_participants WHERE session_id = $1 AND attendee_id = $2', [sessionId, user.id]);
+        emitLiveEvent('games');
         return { success: true };
     },
 

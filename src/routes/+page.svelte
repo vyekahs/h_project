@@ -1,12 +1,16 @@
 <script lang="ts">
     import type { PageData } from './$types';
-    import { onMount } from 'svelte';
+    import { onMount, onDestroy } from 'svelte';
     import { enhance, applyAction } from '$app/forms';
     import { invalidateAll } from '$app/navigation';
 
-
-
     let lastUpdated = new Date();
+
+    // SSE 실시간 카운트
+    let liveVisitorCount: number | null = null;
+    let liveGameCount: number | null = null;
+    let eventSource: EventSource | null = null;
+    let refreshTimer: ReturnType<typeof setTimeout> | null = null;
 
     interface User {
         id: number;
@@ -32,7 +36,7 @@
         games: GameSession[];
         scheduledGames: GameSession[];
         userReservation: Reservation | null;
-        userScheduledGames: GameSession[]; // Changed from userScheduledGame
+        userScheduledGames: GameSession[];
         userPlayingGame: GameSession | null;
         user: User | null;
         isOpen: boolean;
@@ -40,8 +44,9 @@
         userPenaltyInfo: { penalty_points: number } | null;
         isAdmin: boolean;
         reservations: Reservation[];
-        allGames: any[]; // Using any[] for simplicity or define Game interface
+        allGames: any[];
         parties: Party[];
+        userPartyIds: number[];
     };
 
     interface Attendee {
@@ -62,8 +67,9 @@
         min_players: number;
         max_players: number;
         created_by: number;
-        participants: { id: number; name: string }[];
-        players: { id: number; name: string }[];
+        party_id: number | null;
+        participants: { id: number; name: string; is_guest?: boolean }[];
+        players: { id: number; name: string; is_guest?: boolean }[];
         scheduled_at: string;
     }
 
@@ -161,6 +167,38 @@
         isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
         isStandalone = window.matchMedia('(display-mode: standalone)').matches
             || (navigator as any).standalone === true;
+
+        // SSE 연결
+        eventSource = new EventSource('/api/sse/live');
+        eventSource.addEventListener('visitors', (e: MessageEvent) => {
+            const d = JSON.parse(e.data);
+            const prevCount = liveVisitorCount;
+            liveVisitorCount = d.count;
+            if (prevCount !== null && prevCount !== d.count) {
+                scheduleRefresh();
+            }
+        });
+        eventSource.addEventListener('games', (e: MessageEvent) => {
+            const d = JSON.parse(e.data);
+            const prevCount = liveGameCount;
+            liveGameCount = d.count;
+            if (prevCount !== null && prevCount !== d.count) {
+                scheduleRefresh();
+            }
+        });
+    });
+
+    function scheduleRefresh() {
+        if (refreshTimer) clearTimeout(refreshTimer);
+        refreshTimer = setTimeout(() => {
+            invalidateAll();
+            lastUpdated = new Date();
+        }, 1000);
+    }
+
+    onDestroy(() => {
+        if (eventSource) eventSource.close();
+        if (refreshTimer) clearTimeout(refreshTimer);
     });
 
     // Limit visible games
@@ -474,7 +512,7 @@
         {/if}
 
         <section class="attendees-section">
-            <h2>현재 참여 인원 ({(data.attendees || []).length})</h2>
+            <h2>현재 참여 인원 ({liveVisitorCount ?? (data.attendees || []).length})</h2>
             <div class="attendee-grid">
                 {#each (data.attendees || []) as attendee}
                     {@const a = attendee as Attendee}
@@ -508,7 +546,7 @@
 
         <section class="tables-section">
             <div class="section-header">
-                <h2>진행 중인 게임 ({games.length})</h2>
+                <h2>진행 중인 게임 ({liveGameCount ?? games.length})</h2>
                 {#if data.user && (data.user.can_manage_games || data.isAdmin)}
                     <button class="btn-create" on:click={() => {
                         showModal = true;
@@ -527,7 +565,7 @@
             <div class="tables-grid">
                 {#each games.slice(0, limitGames) as game}
                     {@const gameReservations = getGameReservations(game.id)}
-                    {@const isParticipant = data.user && (game.players || []).some(p => p.id === data.user.id)}
+                    {@const isParticipant = data.user && (game.players || []).some(p => p.id === data.user?.id)}
                     {@const myReservation = data.user && gameReservations.find((r: any) => r.attendee_id === data.user?.id)}
                     
                     <div class="table-card playing">

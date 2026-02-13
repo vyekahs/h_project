@@ -10,6 +10,10 @@
 		onselect: (cell: Cell) => void 
 	}>();
 
+    function getTopLeftCell(cells: { row: number; col: number }[]) {
+        return cells.reduce((min, c) => (c.row < min.row || (c.row === min.row && c.col < min.col)) ? c : min, cells[0]);
+    }
+
     // Optimize selection logic: Pre-calculate indices
     let sRow = $derived(selectedCell?.row ?? -1);
     let sCol = $derived(selectedCell?.col ?? -1);
@@ -91,7 +95,7 @@
 
         // 2. Trace the perimeter
         // Start from top-left-most cell's top edge
-        let startCell = cage.cells.reduce((min, c) => (c.row < min.row || (c.row === min.row && c.col < min.col)) ? c : min, cage.cells[0]);
+        let startCell = getTopLeftCell(cage.cells);
         let currR = startCell.row;
         let currC = startCell.col;
         let currDir = 0; // Start at top edge
@@ -453,7 +457,7 @@
                 {@const pathData = getCagePath(cage)}
                 {#if pathData}
                 <!-- Find Top-Left Cell for Label -->
-                {@const c0 = cage.cells.reduce((min, c) => (c.row < min.row || (c.row === min.row && c.col < min.col)) ? c : min, cage.cells[0])}
+                {@const c0 = getTopLeftCell(cage.cells)}
                 <!-- Raise sum label higher to cover line (y + 0.04) -->
                 {@const pos = { x: c0.col + 0.05, y: c0.row + 0.04 }}
                 

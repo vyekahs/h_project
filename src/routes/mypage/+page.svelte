@@ -29,9 +29,9 @@
     // Season Pass Logic
     $: hasSeasonPass = data.user.season_pass_expires_at && new Date(data.user.season_pass_expires_at) > new Date();
     $: seasonPassDaysLeft = hasSeasonPass
-        ? Math.ceil((new Date(data.user.season_pass_expires_at).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))
+        ? Math.ceil((new Date(data.user.season_pass_expires_at!).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24))
         : 0;
-    $: seasonPassEndDate = hasSeasonPass ? new Date(data.user.season_pass_expires_at).toLocaleDateString() : '';
+    $: seasonPassEndDate = hasSeasonPass ? new Date(data.user.season_pass_expires_at!).toLocaleDateString() : '';
 
     // Expired Pass Logic (show if expired within 2 months)
     $: expiredPass = (() => {

@@ -30,7 +30,7 @@
 
     onMount(async () => {
         isAndroid = /Android/i.test(navigator.userAgent);
-        hasWebBluetooth = isAndroid && !!navigator.bluetooth; // Android + Web Bluetooth API 사용 가능할 때만 (HTTPS 필요)
+        hasWebBluetooth = isAndroid && !!(navigator as any).bluetooth; // Android + Web Bluetooth API 사용 가능할 때만 (HTTPS 필요)
 
         // WiFi 등록 완료 후 리다이렉트 처리
         const urlParams = new URLSearchParams(window.location.search);
@@ -90,14 +90,14 @@
         step = 'web_bt_connecting';
 
         try {
-            if (!navigator.bluetooth) {
+            if (!(navigator as any).bluetooth) {
                 error = 'HTTPS 환경에서만 블루투스를 사용할 수 있습니다. (https:// 주소로 접속해주세요)';
                 step = 'input';
                 return;
             }
 
             // 1. Web Bluetooth로 ESP32 선택 (사용자가 직접 선택 = 본인 확인)
-            const device = await navigator.bluetooth.requestDevice({
+            const device = await (navigator as any).bluetooth.requestDevice({
                 filters: [
                     { services: ['12345678-1234-5678-1234-56789abcdef0'] },
                     { name: 'HN_SETUP' }

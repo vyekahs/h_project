@@ -16,13 +16,7 @@
         if (params.get('autostart') === 'true') {
             const diff = params.get('difficulty');
             if (diff) game.difficulty = diff as Difficulty;
-            // If saved game exists (e.g. page refresh), resume instead of starting new
-            const saved = localStorage.getItem('unblockme_save');
-            if (saved) {
-                game.loadGame();
-            } else {
-                game.startGame();
-            }
+            game.startGame();
         } else if (params.get('resume') === 'true') {
             game.loadGame();
         } else {
