@@ -14,6 +14,7 @@ COPY --from=builder /app/node_modules node_modules/
 COPY package.json .
 COPY database/ database/
 COPY scripts/ scripts/
+COPY server.js .
 COPY start.sh .
 
 RUN chmod +x start.sh

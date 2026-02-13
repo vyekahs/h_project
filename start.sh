@@ -6,5 +6,8 @@ node scripts/migrate_game_system.js
 echo "Running Feedback System migrations..."
 node scripts/migrate_feedback.js
 
+echo "Running Tichu migrations..."
+node scripts/migrate_tichu.js
+
 echo "Starting application..."
-node build
+node server.js
