@@ -207,16 +207,55 @@ export function generateKillerSudoku(difficulty: Difficulty = 'medium'): KillerP
     // 2. Apply random transformations (solution + cages synchronized)
     const { solution, cages } = transformKillerSeed(baseSolution, baseCages);
 
-    // 3. Create initial board with random reveals
+    // 3. Create initial board with reveals
     const revealCount = INITIAL_REVEAL_COUNTS[difficulty];
-
-    const coords: { r: number; c: number }[] = [];
-    for (let r = 0; r < 9; r++) for (let c = 0; c < 9; c++) coords.push({ r, c });
-    coords.sort(() => Math.random() - 0.5);
-
     const revealed = new Set<string>();
-    for (let i = 0; i < revealCount; i++) {
-        revealed.add(`${coords[i].r},${coords[i].c}`);
+
+    if (revealCount > 0 && (difficulty === 'hard' || difficulty === 'expert')) {
+        // 케이지 인식 공개: 한 케이지가 거의 다 공개되어 나머지가 자동 해결되는 것을 방지
+        const cellCageMap = new Map<string, Cage>();
+        for (const cage of cages) {
+            for (const { row, col } of cage.cells) {
+                cellCageMap.set(`${row},${col}`, cage);
+            }
+        }
+        const cageRevealCount = new Map<number, number>();
+        for (const cage of cages) {
+            cageRevealCount.set(cage.id, 0);
+        }
+
+        const allCoords: { r: number; c: number }[] = [];
+        for (let r = 0; r < 9; r++) for (let c = 0; c < 9; c++) allCoords.push({ r, c });
+        allCoords.sort(() => Math.random() - 0.5);
+
+        // 1차: 케이지 제약을 만족하는 셀만 공개
+        for (const { r, c } of allCoords) {
+            if (revealed.size >= revealCount) break;
+            const key = `${r},${c}`;
+            const cage = cellCageMap.get(key);
+            if (cage) {
+                const cur = cageRevealCount.get(cage.id) || 0;
+                if (cur >= cage.cells.length - 1) continue;
+                const maxPerCage = Math.max(1, Math.floor(cage.cells.length / 2));
+                if (cur >= maxPerCage) continue;
+                cageRevealCount.set(cage.id, cur + 1);
+            }
+            revealed.add(key);
+        }
+        // 2차: 제약으로 부족하면 나머지 채움
+        for (const { r, c } of allCoords) {
+            if (revealed.size >= revealCount) break;
+            const key = `${r},${c}`;
+            if (!revealed.has(key)) revealed.add(key);
+        }
+    } else if (revealCount > 0) {
+        // 쉬움/보통: 기존 무작위 공개
+        const coords: { r: number; c: number }[] = [];
+        for (let r = 0; r < 9; r++) for (let c = 0; c < 9; c++) coords.push({ r, c });
+        coords.sort(() => Math.random() - 0.5);
+        for (let i = 0; i < revealCount; i++) {
+            revealed.add(`${coords[i].r},${coords[i].c}`);
+        }
     }
 
     const initialBoard: Board = Array.from({ length: 9 }, (_, rIdx) =>

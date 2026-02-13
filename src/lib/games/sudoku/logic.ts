@@ -199,11 +199,7 @@ function analyzeDifficulty(boardInput: number[][]): number {
         }
         if (madeProgress) continue;
 
-        // Check Cols (Skipping for brevity if Row suffices, usually mixed)
-        // Check Boxes... (omitted for speed, adds to '2')
-        
-        // If we really want full Hidden Single check we need cols/boxes too.
-        // Let's adding Cols quickly.
+        // Check Cols
         for(let c=0; c<9; c++) {
             const counts = Array(10).fill(0);
             const positions = Array(10).fill(null).map(() => [] as number[]);
@@ -222,6 +218,35 @@ function analyzeDifficulty(boardInput: number[][]): number {
                     board[r][c] = num;
                     madeProgress = true;
                     maxTechnique = Math.max(maxTechnique, 2);
+                }
+            }
+        }
+        if (madeProgress) continue;
+
+        // Check 3x3 Boxes
+        for(let boxR=0; boxR<9; boxR+=3) {
+            for(let boxC=0; boxC<9; boxC+=3) {
+                const counts = Array(10).fill(0);
+                const positions = Array(10).fill(null).map(() => [] as {r:number,c:number}[]);
+                for(let dr=0; dr<3; dr++) {
+                    for(let dc=0; dc<3; dc++) {
+                        const r = boxR+dr, c = boxC+dc;
+                        if(board[r][c] === 0) {
+                            const cands = getCandidates(board, r, c);
+                            cands.forEach(num => {
+                                counts[num]++;
+                                positions[num].push({r, c});
+                            });
+                        }
+                    }
+                }
+                for(let num=1; num<=9; num++) {
+                    if(counts[num] === 1) {
+                        const {r, c} = positions[num][0];
+                        board[r][c] = num;
+                        madeProgress = true;
+                        maxTechnique = Math.max(maxTechnique, 2);
+                    }
                 }
             }
         }
@@ -287,31 +312,10 @@ export function transformBoard(board: number[][]): number[][] {
         newBoard.forEach(row => row.reverse()); // Horizontal flip
     }
 
-    // 4. Band/Stack Shuffling
-    for (let b=0; b<3; b++) {
-        if (Math.random() > 0.5) { // Shuffle rows in band
-            const rows = [0,1,2].sort(() => Math.random() - 0.5);
-            const bandStart = b * 3;
-            const bandRows = [newBoard[bandStart], newBoard[bandStart+1], newBoard[bandStart+2]];
-            newBoard[bandStart] = bandRows[rows[0]];
-            newBoard[bandStart+1] = bandRows[rows[1]];
-            newBoard[bandStart+2] = bandRows[rows[2]];
-        }
-    }
-    
-    // Shuffle columns in stack
-    for (let s=0; s<3; s++) {
-        if (Math.random() > 0.5) {
-             const cols = [0,1,2].sort(() => Math.random() - 0.5);
-             const stackStart = s * 3;
-             const oldBoard = newBoard.map(row => [...row]);
-             for(let r=0; r<9; r++) {
-                 newBoard[r][stackStart] = oldBoard[r][stackStart + cols[0]];
-                 newBoard[r][stackStart+1] = oldBoard[r][stackStart + cols[1]];
-                 newBoard[r][stackStart+2] = oldBoard[r][stackStart + cols[2]];
-             }
-        }
-    }
+    // NOTE: Band/Stack 셔플링은 의도적으로 제외.
+    // 밴드 내 행이나 스택 내 열을 섞으면 빈 칸의 위치가 변경되어
+    // 퍼즐의 논리적 풀이 경로와 난이도가 달라질 수 있음.
+    // 숫자 재배치(9!) × 회전(4) × 거울(4) = 1,451,520가지 변형으로 충분한 다양성 확보.
 
     return newBoard;
 }
