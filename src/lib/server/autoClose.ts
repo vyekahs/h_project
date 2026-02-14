@@ -79,9 +79,6 @@ async function checkAndClose() {
     const currentMinutes = getMinutesSince9AM(currentHour, currentMinute);
     const targetMinutes = getMinutesSince9AM(targetHour, targetMinute);
 
-    console.log(`[AutoClose Debug] Now(UTC): ${now.toISOString()}, KST_Shifted: ${kstNow.toISOString()}`);
-    console.log(`[AutoClose Debug] Current: ${currentHour}:${currentMinute} (${currentMinutes}m), Target: ${targetTime} (${targetMinutes}m), Day: ${businessDay}, BusinessDate: ${businessDate}`);
-
     // Check if current time is past the closing time
     if (currentMinutes >= targetMinutes) {
         console.log(`Auto-Closing Day... (Current: ${currentHour}:${currentMinute}, Target: ${targetTime}, Business Day: ${businessDay}, Date: ${businessDate})`);

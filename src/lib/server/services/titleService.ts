@@ -147,7 +147,6 @@ export const TitleService = {
                             DELETE FROM minigame_user_titles 
                             WHERE user_id = $1 AND title_id = $2
                         `, [userId, title.id]);
-                        // console.log(`Revoked title ${title.title_code} from user ${userId}`);
                     } catch (e) {
                         console.error(`Failed to revoke title ${title.title_code}`, e);
                     }
