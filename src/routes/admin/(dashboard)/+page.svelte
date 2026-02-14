@@ -1,9 +1,41 @@
 <script lang="ts">
     import type { PageData } from './$types';
     import { enhance } from '$app/forms';
+    import { invalidateAll } from '$app/navigation';
+    import { onMount, onDestroy } from 'svelte';
 
     export let data: PageData;
     if (!data) throw new Error('Data is required');
+
+    // SSE 실시간 연결 — 변경 신호 수신 시 서버 데이터 재로드
+    // (SSE 데이터는 간소화 구조라 대시보드 전체 필드를 못 채우므로 invalidateAll 사용)
+    let eventSource: EventSource | null = null;
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+    function debouncedInvalidate() {
+        if (debounceTimer) clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => { invalidateAll(); }, 300);
+    }
+
+    onMount(() => {
+        eventSource = new EventSource('/api/sse/live');
+        eventSource.addEventListener('visitors', debouncedInvalidate);
+        eventSource.addEventListener('games', debouncedInvalidate);
+        eventSource.onerror = () => {
+            if (eventSource) {
+                eventSource.close();
+                eventSource = null;
+            }
+        };
+    });
+
+    onDestroy(() => {
+        if (debounceTimer) clearTimeout(debounceTimer);
+        if (eventSource) {
+            eventSource.close();
+            eventSource = null;
+        }
+    });
 
     let showModal = false;
     let selectedGameName = '';

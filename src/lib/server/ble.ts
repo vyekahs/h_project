@@ -45,7 +45,7 @@ const lastSeenMap = new Map<number, number>();
 let settingsCache: { isOpen: boolean; openingTime: string } | null = null;
 
 // Constants
-const CHECKOUT_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes
+const CHECKOUT_TIMEOUT_MS = 20 * 60 * 1000; // 20 minutes
 
 /** 한국 시간 타임스탬프 (HH:mm:ss) */
 function kstTime(): string {
