@@ -2,6 +2,7 @@ import os from 'os';
 import { pool, query } from '$lib/server/db';
 import { getSSEConnectionCount, incrementSSECount, decrementSSECount } from '$lib/server/liveEvents';
 import { verifyAdminSession } from '$lib/server/auth';
+import { getAutoCheckinLogs } from '$lib/server/ble';
 
 // CPU snapshot for delta-based usage calculation
 let prevCpuIdle = 0;
@@ -46,6 +47,16 @@ function queryWithTimeout(sql: string, timeoutMs = 3000): Promise<any> {
 	]);
 }
 
+// Metrics history ring buffer (최근 60개 = 5분 @ 5초 간격)
+interface MetricsSnapshot {
+	cpu: number;
+	memPercent: number;
+	sse: number;
+	timestamp: number;
+}
+const metricsHistory: MetricsSnapshot[] = [];
+const MAX_HISTORY = 60;
+
 async function collectMetrics() {
 	let dbLatency = -1;
 	let dbTotal = 0, dbIdle = 0, dbWaiting = 0;
@@ -66,10 +77,18 @@ async function collectMetrics() {
 
 	const io = (globalThis as any).__socketIO;
 	const socketCount = io ? io.sockets.sockets.size : 0;
+	const cpuUsage = updateCpuUsage();
+	const sseCount = getSSEConnectionCount();
+	const memPercent = Math.round(((totalMem - freeMem) / totalMem) * 100);
+	const ts = Date.now();
+
+	// Push to history
+	metricsHistory.push({ cpu: cpuUsage, memPercent, sse: sseCount, timestamp: ts });
+	if (metricsHistory.length > MAX_HISTORY) metricsHistory.shift();
 
 	return {
 		cpu: {
-			usage: updateCpuUsage(),
+			usage: cpuUsage,
 			cores: os.cpus().length
 		},
 		memory: {
@@ -88,10 +107,12 @@ async function collectMetrics() {
 		},
 		connections: {
 			socketIO: socketCount,
-			sse: getSSEConnectionCount()
+			sse: sseCount
 		},
 		uptime: Math.floor(process.uptime()),
-		timestamp: Date.now()
+		timestamp: ts,
+		history: metricsHistory,
+		autoLogs: getAutoCheckinLogs()
 	};
 }
 
@@ -100,6 +121,8 @@ export async function GET({ request, cookies }: { request: Request; cookies: any
 	if (!adminToken || !(await verifyAdminSession(adminToken))) {
 		return new Response('Unauthorized', { status: 401 });
 	}
+
+	let cleanupFn: (() => void) | null = null;
 
 	const stream = new ReadableStream({
 		start(controller) {
@@ -124,7 +147,6 @@ export async function GET({ request, cookies }: { request: Request; cookies: any
 			}
 
 			function sendHeartbeat() {
-				// Send a comment to keep the connection alive and detect disconnects
 				send(': heartbeat\n\n');
 			}
 
@@ -157,7 +179,12 @@ export async function GET({ request, cookies }: { request: Request; cookies: any
 				try { controller.close(); } catch {}
 			}
 
+			cleanupFn = cleanup;
 			request.signal.addEventListener('abort', cleanup);
+		},
+		cancel() {
+			// Called when the client disconnects / stream is cancelled
+			if (cleanupFn) cleanupFn();
 		}
 	});
 

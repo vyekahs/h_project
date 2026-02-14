@@ -38,7 +38,17 @@ export const load: PageServerLoad = async ({ params, cookies, url }) => {
         };
     }
 
-    // 3. Process Check-in
+    // 3. Check if gym is open
+    const settingsResult = await query("SELECT value FROM system_settings WHERE key = 'is_open'");
+    const isOpen = settingsResult.rows.length > 0 && settingsResult.rows[0].value === 'true';
+    if (!isOpen) {
+        return {
+            success: false,
+            error: '현재 마감 상태입니다. 운영 시간에 다시 시도해주세요.'
+        };
+    }
+
+    // 4. Process Check-in
     try {
         await query('BEGIN');
 

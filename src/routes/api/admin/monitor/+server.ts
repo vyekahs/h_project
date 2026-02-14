@@ -3,6 +3,7 @@ import os from 'os';
 import { pool, query } from '$lib/server/db';
 import { getSSEConnectionCount } from '$lib/server/liveEvents';
 import { verifyAdminSession } from '$lib/server/auth';
+import { getAutoCheckinLogs } from '$lib/server/ble';
 
 // CPU snapshot for delta-based usage calculation
 let prevCpuIdle = 0;
@@ -97,7 +98,8 @@ export async function GET({ cookies }: { cookies: any }) {
 		},
 		uptime: Math.floor(process.uptime()),
 		responseTime: Math.round(performance.now() - start),
-		timestamp: Date.now()
+		timestamp: Date.now(),
+		autoLogs: getAutoCheckinLogs()
 	};
 
 	return json(data);

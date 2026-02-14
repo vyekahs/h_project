@@ -45,7 +45,32 @@ const lastSeenMap = new Map<number, number>();
 let settingsCache: { isOpen: boolean; openingTime: string } | null = null;
 
 // Constants
-const CHECKOUT_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes (RPA 변경으로 간헐적 매칭 실패 대비)
+const CHECKOUT_TIMEOUT_MS = 15 * 60 * 1000; // 15 minutes
+
+/** 한국 시간 타임스탬프 (HH:mm:ss) */
+function kstTime(): string {
+    return new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(11, 19);
+}
+
+// Auto check-in/checkout log ring buffer (최근 100건)
+interface AutoLog {
+    time: string;
+    type: 'checkin' | 'checkout' | 'auto-open';
+    source: 'BLE' | 'WiFi';
+    userName: string;
+    attendeeId: number;
+}
+const autoLogs: AutoLog[] = [];
+const MAX_AUTO_LOGS = 100;
+
+function pushAutoLog(type: AutoLog['type'], source: AutoLog['source'], userName: string, attendeeId: number) {
+    autoLogs.unshift({ time: kstTime(), type, source, userName, attendeeId });
+    if (autoLogs.length > MAX_AUTO_LOGS) autoLogs.length = MAX_AUTO_LOGS;
+}
+
+export function getAutoCheckinLogs(): AutoLog[] {
+    return autoLogs;
+}
 
 /** 설정 캐시 업데이트 (외부에서 is_open 변경 시 호출) */
 export function updateSettingsCache(isOpen: boolean, openingTime?: string) {
@@ -241,7 +266,7 @@ async function ensureCachesLoaded(source: string = 'BLE') {
                 if (row.key === 'opening_time') openingTime = row.value;
             }
             settingsCache = { isOpen, openingTime };
-            console.log(`[${source}] Settings cache loaded: isOpen=${isOpen}, openingTime=${openingTime}`);
+            console.log(`[${kstTime()}][${source}] Settings cache loaded: isOpen=${isOpen}, openingTime=${openingTime}`);
         } catch (e) {
             console.error('Failed to fetch settings', e);
             settingsCache = { isOpen: false, openingTime: '09:00' };
@@ -260,7 +285,7 @@ async function ensureCachesLoaded(source: string = 'BLE') {
                 wifiMacCache.set(dev.wifiMac.toUpperCase(), dev.attendeeId);
             }
         }
-        console.log(`[${source}] IRK cache loaded: ${irkCache.length} devices (${wifiMacCache.size} with WiFi MAC)`);
+        console.log(`[${kstTime()}][${source}] IRK cache loaded: ${irkCache.length} devices (${wifiMacCache.size} with WiFi MAC)`);
     }
     if (!attendeeCacheLoaded) {
         const res = await query(`
@@ -277,7 +302,7 @@ async function ensureCachesLoaded(source: string = 'BLE') {
             });
         }
         attendeeCacheLoaded = true;
-        console.log(`[${source}] Attendee cache loaded: ${attendeeCache.size} users`);
+        console.log(`[${kstTime()}][${source}] Attendee cache loaded: ${attendeeCache.size} users`);
     }
 }
 
@@ -298,16 +323,16 @@ export async function processScanResults(scannerId: string, timestamp: number, s
     const beforeOpeningWindow = currentMinutesTotal < (openMinutesTotal - 30);
 
     if (!settingsCache!.isOpen && beforeOpeningWindow) {
-        console.log(`[BLE] Gym closed & before opening window, skipping (${scans.length} devices)`);
+        console.log(`[${kstTime()}][BLE] Gym closed & before opening window, skipping (${scans.length} devices)`);
         return;
     }
     const allDevices = irkCache!;
 
-    console.log(`[BLE] Processing ${scans.length} MACs against ${allDevices.length} registered devices`);
+    console.log(`[${kstTime()}][BLE] Processing ${scans.length} MACs against ${allDevices.length} registered devices`);
     // Log names if present
     const namedDevices = scans.filter(s => s.name && s.name.length > 0);
     if (namedDevices.length > 0) {
-        console.log(`[BLE] Named Devices: ${namedDevices.map(d => `${d.name} (${d.mac})`).join(', ')}`);
+        console.log(`[${kstTime()}][BLE] Named Devices: ${namedDevices.map(d => `${d.name} (${d.mac})`).join(', ')}`);
     }
 
     const detectedAttendeeIds = new Set<number>();
@@ -347,15 +372,15 @@ export async function processScanResults(scannerId: string, timestamp: number, s
             // Update last seen (메모리만, DB 불필요)
             lastSeenMap.set(attendeeId, Date.now());
             if (isFirst) {
-                console.log(`[BLE] ✅ Matched: ${scan.mac} (${scan.rssi}dBm) → User ${attendeeId}`);
+                console.log(`[${kstTime()}][BLE] ✅ Matched: ${scan.mac} (${scan.rssi}dBm) → User ${attendeeId}`);
             }
         }
     }
 
     // Diagnostic: Log match summary
-    console.log(`[BLE] Match Summary: ${detectedAttendeeIds.size} users matched out of ${scans.length} scanned devices`);
+    console.log(`[${kstTime()}][BLE] Match Summary: ${detectedAttendeeIds.size} users matched out of ${scans.length} scanned devices`);
     if (detectedAttendeeIds.size > 0) {
-        console.log(`[BLE] Matched Users: ${[...detectedAttendeeIds].join(', ')}`);
+        console.log(`[${kstTime()}][BLE] Matched Users: ${[...detectedAttendeeIds].join(', ')}`);
     }
 
     // Diagnostic: Check missing users only on last batch (전체 사이클 기준으로 판단)
@@ -367,7 +392,7 @@ export async function processScanResults(scannerId: string, timestamp: number, s
             return !lastSeen || lastSeen < recentThreshold;
         });
         if (missingUsers.length > 0) {
-            console.log(`[BLE] ⚠️ Present users NOT detected recently: ${missingUsers.map(u => `${u.name}(${u.id})`).join(', ')}`);
+            console.log(`[${kstTime()}][BLE] ⚠️ Present users NOT detected recently: ${missingUsers.map(u => `${u.name}(${u.id})`).join(', ')}`);
         }
     }
 
@@ -388,13 +413,14 @@ export async function processScanResults(scannerId: string, timestamp: number, s
 
         // Auto-Open Logic
         if (!settingsCache!.isOpen && attendee.isAdmin && isPastOpeningTime) {
-            console.log(`[BLE] 🚨 Admin ${attendeeId} (${attendee.name}) detected! Auto-Opening Gym...`);
+            console.log(`[${kstTime()}][BLE] 🚨 Admin ${attendeeId} (${attendee.name}) detected! Auto-Opening Gym...`);
             await query("INSERT INTO system_settings (key, value) VALUES ('is_open', 'true') ON CONFLICT (key) DO UPDATE SET value = 'true'");
             settingsCache!.isOpen = true;
+            pushAutoLog('auto-open', 'BLE', attendee.name, attendeeId);
         }
 
         if (settingsCache!.isOpen && attendee.status !== 'present') {
-            console.log(`[BLE] Auto Checking-in User ${attendeeId}`);
+            console.log(`[${kstTime()}][BLE] Auto Checking-in User ${attendeeId}`);
             await query('BEGIN');
             try {
                 await query('UPDATE attendees SET status = $1, arrival_time = NOW(), updated_at = NOW() WHERE id = $2', ['present', attendeeId]);
@@ -402,6 +428,7 @@ export async function processScanResults(scannerId: string, timestamp: number, s
                 await query('COMMIT');
                 // 캐시 업데이트
                 attendee.status = 'present';
+                pushAutoLog('checkin', 'BLE', attendee.name, attendeeId);
                 emitLiveEvent('visitors');
             } catch (e) {
                 await query('ROLLBACK');
@@ -434,7 +461,7 @@ async function checkAutoCheckout() {
         const minutesSinceLastSeen = Math.round((now - lastSeen) / 60000);
 
         if (lastSeen < timeoutThreshold) {
-            console.log(`[BLE] Auto Checking-out User ${attendee.id} (${attendee.name}). Last seen: ${minutesSinceLastSeen}분 전`);
+            console.log(`[${kstTime()}][BLE] Auto Checking-out User ${attendee.id} (${attendee.name}). Last seen: ${minutesSinceLastSeen}분 전`);
 
             await query('BEGIN');
             try {
@@ -443,6 +470,7 @@ async function checkAutoCheckout() {
                 await query('COMMIT');
                 // 캐시 업데이트
                 attendee.status = 'left';
+                pushAutoLog('checkout', 'BLE', attendee.name, attendee.id);
                 emitLiveEvent('visitors');
             } catch (e) {
                 await query('ROLLBACK');
@@ -470,12 +498,12 @@ export async function processWifiReport(_scannerId: string, devices: { mac: stri
     const beforeOpeningWindow = currentMinutesTotal < (openMinutesTotal - 30);
 
     if (!settingsCache!.isOpen && beforeOpeningWindow) {
-        console.log(`[WiFi] Gym closed & before opening window, skipping (${devices.length} devices)`);
+        console.log(`[${kstTime()}][WiFi] Gym closed & before opening window, skipping (${devices.length} devices)`);
         return;
     }
 
     if (wifiMacCache.size === 0) {
-        console.log(`[WiFi] No WiFi MACs registered, skipping`);
+        console.log(`[${kstTime()}][WiFi] No WiFi MACs registered, skipping`);
         return;
     }
 
@@ -490,7 +518,7 @@ export async function processWifiReport(_scannerId: string, devices: { mac: stri
         }
     }
 
-    console.log(`[WiFi] ${devices.length} router devices → ${detectedAttendeeIds.size} users matched (${wifiMacCache.size} registered)`);
+    console.log(`[${kstTime()}][WiFi] ${devices.length} router devices → ${detectedAttendeeIds.size} users matched (${wifiMacCache.size} registered)`);
 
     if (detectedAttendeeIds.size === 0) return;
 
@@ -508,19 +536,21 @@ export async function processWifiReport(_scannerId: string, devices: { mac: stri
 
         // Auto-Open (관리자 감지)
         if (!settingsCache!.isOpen && attendee.isAdmin && isPastOpeningTime) {
-            console.log(`[WiFi] Admin ${attendeeId} (${attendee.name}) detected via WiFi! Auto-Opening...`);
+            console.log(`[${kstTime()}][WiFi] Admin ${attendeeId} (${attendee.name}) detected via WiFi! Auto-Opening...`);
             await query("INSERT INTO system_settings (key, value) VALUES ('is_open', 'true') ON CONFLICT (key) DO UPDATE SET value = 'true'");
             settingsCache!.isOpen = true;
+            pushAutoLog('auto-open', 'WiFi', attendee.name, attendeeId);
         }
 
         if (settingsCache!.isOpen && attendee.status !== 'present') {
-            console.log(`[WiFi] Auto Checking-in User ${attendeeId} (${attendee.name}) via WiFi`);
+            console.log(`[${kstTime()}][WiFi] Auto Checking-in User ${attendeeId} (${attendee.name}) via WiFi`);
             await query('BEGIN');
             try {
                 await query('UPDATE attendees SET status = $1, arrival_time = NOW(), updated_at = NOW() WHERE id = $2', ['present', attendeeId]);
                 await query('INSERT INTO visits (attendee_id, arrival_time) VALUES ($1, NOW())', [attendeeId]);
                 await query('COMMIT');
                 attendee.status = 'present';
+                pushAutoLog('checkin', 'WiFi', attendee.name, attendeeId);
                 emitLiveEvent('visitors');
             } catch (e) {
                 await query('ROLLBACK');
