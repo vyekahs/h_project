@@ -45,6 +45,10 @@
 	let history: MetricsSnapshot[] = [];
 	let autoLogs: AutoLog[] = [];
 
+	// Modal state
+	let showMemModal = false;
+	let showSseModal = false;
+
 	function formatBytes(bytes: number): string {
 		if (bytes < 1024) return bytes + ' B';
 		if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
@@ -71,12 +75,12 @@
 		return '#f44336';
 	}
 
-	function systemMemUsed(metrics: Metrics): number {
-		return metrics.memory.systemTotal - metrics.memory.systemFree;
+	function systemMemUsed(m: Metrics): number {
+		return m.memory.systemTotal - m.memory.systemFree;
 	}
 
-	function memPercent(metrics: Metrics): number {
-		return Math.round((systemMemUsed(metrics) / metrics.memory.systemTotal) * 100);
+	function memPercent(m: Metrics): number {
+		return Math.round((systemMemUsed(m) / m.memory.systemTotal) * 100);
 	}
 
 	function memColor(percent: number): string {
@@ -85,15 +89,15 @@
 		return '#f44336';
 	}
 
-	function dbStatusText(metrics: Metrics): string {
-		if (metrics.db.latencyMs < 0) return 'Error';
-		if (metrics.db.waitingCount > 0) return 'Busy';
+	function dbStatusText(m: Metrics): string {
+		if (m.db.latencyMs < 0) return 'Error';
+		if (m.db.waitingCount > 0) return 'Busy';
 		return 'OK';
 	}
 
-	function dbStatusColor(metrics: Metrics): string {
-		if (metrics.db.latencyMs < 0) return '#f44336';
-		if (metrics.db.waitingCount > 0) return '#ff9800';
+	function dbStatusColor(m: Metrics): string {
+		if (m.db.latencyMs < 0) return '#f44336';
+		if (m.db.waitingCount > 0) return '#ff9800';
 		return '#4caf50';
 	}
 
@@ -209,7 +213,6 @@
 	}
 
 	onMount(() => {
-		// 즉시 REST로 데이터 로드 (SSE 연결 전이라도 화면에 표시)
 		fetchMetrics();
 		connectSSE();
 	});
@@ -240,148 +243,7 @@
 	</div>
 
 	{#if metrics}
-		<!-- KPI row: DB, Uptime -->
-		<div class="kpi-grid">
-			<div class="kpi-card">
-				<h3>DB 연결</h3>
-				<div class="value" style="color: {dbStatusColor(metrics)}">{dbStatusText(metrics)}</div>
-				<div class="db-details">
-					<span>활성 {metrics.db.totalCount - metrics.db.idleCount}</span>
-					<span>유휴 {metrics.db.idleCount}</span>
-					<span>대기 {metrics.db.waitingCount}</span>
-				</div>
-				<div class="label">Ping {metrics.db.latencyMs >= 0 ? metrics.db.latencyMs + 'ms' : 'N/A'}</div>
-			</div>
-
-			<div class="kpi-card">
-				<h3>업타임</h3>
-				<div class="value uptime">{formatUptime(metrics.uptime)}</div>
-				<div class="label">서버 가동 시간</div>
-			</div>
-		</div>
-
-		<!-- Combined Chart Cards: value + graph -->
-		<div class="charts-grid">
-			<div class="chart-card">
-				<div class="chart-header">
-					<div class="chart-title">CPU 사용률</div>
-					<div class="chart-value" style="color: {cpuColor(metrics.cpu.usage)}">{metrics.cpu.usage}<span class="chart-unit">%</span></div>
-					<div class="chart-sub">{metrics.cpu.cores}코어</div>
-				</div>
-				<svg viewBox="0 0 {CHART_W} {CHART_H}" class="chart-svg">
-					{#each yLabels(100) as yl}
-						<line x1={CHART_PAD} y1={yl.y} x2={CHART_W} y2={yl.y} stroke="#eee" stroke-width="1" />
-						<text x={CHART_PAD - 4} y={yl.y + 4} text-anchor="end" fill="#999" font-size="10">{yl.label}</text>
-					{/each}
-					{#if cpuData.length >= 2}
-						<path d={buildAreaPath(cpuData, 100)} fill="rgba(76,175,80,0.1)" />
-						<path d={buildPath(cpuData, 100)} fill="none" stroke="#4caf50" stroke-width="2" />
-					{/if}
-				</svg>
-			</div>
-
-			<div class="chart-card">
-				<div class="chart-header">
-					<div class="chart-title">시스템 메모리</div>
-					<div class="chart-value" style="color: {memColor(memPercent(metrics))}">{memPercent(metrics)}<span class="chart-unit">%</span></div>
-					<div class="chart-sub">{formatBytes(systemMemUsed(metrics))} / {formatBytes(metrics.memory.systemTotal)}</div>
-				</div>
-				<svg viewBox="0 0 {CHART_W} {CHART_H}" class="chart-svg">
-					{#each yLabels(100) as yl}
-						<line x1={CHART_PAD} y1={yl.y} x2={CHART_W} y2={yl.y} stroke="#eee" stroke-width="1" />
-						<text x={CHART_PAD - 4} y={yl.y + 4} text-anchor="end" fill="#999" font-size="10">{yl.label}</text>
-					{/each}
-					{#if memData.length >= 2}
-						<path d={buildAreaPath(memData, 100)} fill="rgba(33,150,243,0.1)" />
-						<path d={buildPath(memData, 100)} fill="none" stroke="#2196f3" stroke-width="2" />
-					{/if}
-				</svg>
-			</div>
-
-			<div class="chart-card">
-				<div class="chart-header">
-					<div class="chart-title">SSE 활성 스트림</div>
-					<div class="chart-value" style="color: #ff9800">{metrics.connections.sse}<span class="chart-unit">개</span></div>
-				</div>
-				<svg viewBox="0 0 {CHART_W} {CHART_H}" class="chart-svg">
-					{#each yLabels(sseMax) as yl}
-						<line x1={CHART_PAD} y1={yl.y} x2={CHART_W} y2={yl.y} stroke="#eee" stroke-width="1" />
-						<text x={CHART_PAD - 4} y={yl.y + 4} text-anchor="end" fill="#999" font-size="10">{yl.label}</text>
-					{/each}
-					{#if sseData.length >= 2}
-						<path d={buildAreaPath(sseData, sseMax)} fill="rgba(255,152,0,0.1)" />
-						<path d={buildPath(sseData, sseMax)} fill="none" stroke="#ff9800" stroke-width="2" />
-					{/if}
-				</svg>
-			</div>
-		</div>
-
-		<!-- Detail Cards -->
-		<div class="detail-grid">
-			<div class="detail-card">
-				<h3>
-					<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px; vertical-align:text-bottom;"><path d="M6 19v-3"/><path d="M10 19v-3"/><path d="M14 19v-6"/><path d="M18 19v-6"/><path d="M6 13v-2"/><path d="M10 13v-2"/><rect x="2" y="3" width="20" height="18" rx="2"/></svg>
-					메모리 상세
-				</h3>
-				<div class="detail-list">
-					<div class="detail-row">
-						<span>시스템 사용</span>
-						<span class="detail-value">{formatBytes(systemMemUsed(metrics))} / {formatBytes(metrics.memory.systemTotal)}</span>
-					</div>
-					<div class="detail-row">
-						<span>시스템 여유</span>
-						<span class="detail-value">{formatBytes(metrics.memory.systemFree)}</span>
-					</div>
-					<div class="detail-row separator">
-						<span>Node.js RSS</span>
-						<span class="detail-value">{formatBytes(metrics.memory.rss)}</span>
-					</div>
-					<div class="detail-row">
-						<span>Heap Used</span>
-						<span class="detail-value">{formatBytes(metrics.memory.heapUsed)}</span>
-					</div>
-					<div class="detail-row">
-						<span>Heap Total</span>
-						<span class="detail-value">{formatBytes(metrics.memory.heapTotal)}</span>
-					</div>
-					<div class="detail-row">
-						<span>External</span>
-						<span class="detail-value">{formatBytes(metrics.memory.external)}</span>
-					</div>
-				</div>
-			</div>
-
-			<div class="detail-card">
-				<h3>
-					<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px; vertical-align:text-bottom;"><path d="M18 20V6a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v14"/><path d="M2 20h20"/><path d="M14 12v.01"/></svg>
-					연결 상세
-				</h3>
-				<div class="detail-list">
-					<div class="detail-row">
-						<span>SSE 스트림</span>
-						<span class="detail-value">{metrics.connections.sse}개</span>
-					</div>
-					<div class="detail-row separator">
-						<span>DB 활성 연결</span>
-						<span class="detail-value">{metrics.db.totalCount - metrics.db.idleCount}개</span>
-					</div>
-					<div class="detail-row">
-						<span>DB 유휴 연결</span>
-						<span class="detail-value">{metrics.db.idleCount}개</span>
-					</div>
-					<div class="detail-row">
-						<span>DB 대기 요청</span>
-						<span class="detail-value">{metrics.db.waitingCount}개</span>
-					</div>
-					<div class="detail-row">
-						<span>DB 응답 시간</span>
-						<span class="detail-value">{metrics.db.latencyMs >= 0 ? metrics.db.latencyMs + 'ms' : 'Error'}</span>
-					</div>
-				</div>
-			</div>
-		</div>
-
-		<!-- Auto Check-in Logs -->
+		<!-- 0. 자동 체크인/체크아웃 기록 -->
 		<div class="detail-card log-card">
 			<h3>
 				<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px; vertical-align:text-bottom;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/><path d="M16 13H8"/><path d="M16 17H8"/><path d="M10 9H8"/></svg>
@@ -415,6 +277,85 @@
 			{/if}
 		</div>
 
+		<!-- 1~3. Chart Cards: CPU, RAM(clickable), SSE(clickable) -->
+		<div class="charts-grid">
+			<!-- 1. CPU -->
+			<div class="chart-card">
+				<div class="chart-header">
+					<div class="chart-title">CPU 사용률</div>
+					<div class="chart-value" style="color: {cpuColor(metrics.cpu.usage)}">{metrics.cpu.usage}<span class="chart-unit">%</span></div>
+					<div class="chart-sub">{metrics.cpu.cores}코어</div>
+				</div>
+				<svg viewBox="0 0 {CHART_W} {CHART_H}" class="chart-svg">
+					{#each yLabels(100) as yl}
+						<line x1={CHART_PAD} y1={yl.y} x2={CHART_W} y2={yl.y} stroke="#eee" stroke-width="1" />
+						<text x={CHART_PAD - 4} y={yl.y + 4} text-anchor="end" fill="#999" font-size="10">{yl.label}</text>
+					{/each}
+					{#if cpuData.length >= 2}
+						<path d={buildAreaPath(cpuData, 100)} fill="rgba(76,175,80,0.1)" />
+						<path d={buildPath(cpuData, 100)} fill="none" stroke="#4caf50" stroke-width="2" />
+					{/if}
+				</svg>
+			</div>
+
+			<!-- 2. RAM (clickable) -->
+			<button class="chart-card clickable" on:click={() => showMemModal = true}>
+				<div class="chart-header">
+					<div class="chart-title">시스템 메모리 <span class="tap-hint">상세보기</span></div>
+					<div class="chart-value" style="color: {memColor(memPercent(metrics))}">{memPercent(metrics)}<span class="chart-unit">%</span></div>
+					<div class="chart-sub">{formatBytes(systemMemUsed(metrics))} / {formatBytes(metrics.memory.systemTotal)}</div>
+				</div>
+				<svg viewBox="0 0 {CHART_W} {CHART_H}" class="chart-svg">
+					{#each yLabels(100) as yl}
+						<line x1={CHART_PAD} y1={yl.y} x2={CHART_W} y2={yl.y} stroke="#eee" stroke-width="1" />
+						<text x={CHART_PAD - 4} y={yl.y + 4} text-anchor="end" fill="#999" font-size="10">{yl.label}</text>
+					{/each}
+					{#if memData.length >= 2}
+						<path d={buildAreaPath(memData, 100)} fill="rgba(33,150,243,0.1)" />
+						<path d={buildPath(memData, 100)} fill="none" stroke="#2196f3" stroke-width="2" />
+					{/if}
+				</svg>
+			</button>
+
+			<!-- 3. SSE (clickable) -->
+			<button class="chart-card clickable" on:click={() => showSseModal = true}>
+				<div class="chart-header">
+					<div class="chart-title">SSE 활성 스트림 <span class="tap-hint">상세보기</span></div>
+					<div class="chart-value" style="color: #ff9800">{metrics.connections.sse}<span class="chart-unit">개</span></div>
+				</div>
+				<svg viewBox="0 0 {CHART_W} {CHART_H}" class="chart-svg">
+					{#each yLabels(sseMax) as yl}
+						<line x1={CHART_PAD} y1={yl.y} x2={CHART_W} y2={yl.y} stroke="#eee" stroke-width="1" />
+						<text x={CHART_PAD - 4} y={yl.y + 4} text-anchor="end" fill="#999" font-size="10">{yl.label}</text>
+					{/each}
+					{#if sseData.length >= 2}
+						<path d={buildAreaPath(sseData, sseMax)} fill="rgba(255,152,0,0.1)" />
+						<path d={buildPath(sseData, sseMax)} fill="none" stroke="#ff9800" stroke-width="2" />
+					{/if}
+				</svg>
+			</button>
+		</div>
+
+		<!-- 4~5. KPI row: DB, Uptime -->
+		<div class="kpi-grid">
+			<div class="kpi-card">
+				<h3>DB 연결</h3>
+				<div class="value" style="color: {dbStatusColor(metrics)}">{dbStatusText(metrics)}</div>
+				<div class="db-details">
+					<span>활성 {metrics.db.totalCount - metrics.db.idleCount}</span>
+					<span>유휴 {metrics.db.idleCount}</span>
+					<span>대기 {metrics.db.waitingCount}</span>
+				</div>
+				<div class="label">Ping {metrics.db.latencyMs >= 0 ? metrics.db.latencyMs + 'ms' : 'N/A'}</div>
+			</div>
+
+			<div class="kpi-card">
+				<h3>업타임</h3>
+				<div class="value uptime">{formatUptime(metrics.uptime)}</div>
+				<div class="label">서버 가동 시간</div>
+			</div>
+		</div>
+
 		<div class="last-update">
 			마지막 갱신: {new Date(metrics.timestamp).toLocaleTimeString('ko-KR')}
 		</div>
@@ -424,6 +365,82 @@
 		</div>
 	{/if}
 </div>
+
+<!-- Memory Detail Modal -->
+{#if showMemModal && metrics}
+	<div class="modal-backdrop" on:click={() => showMemModal = false} on:keydown={(e) => e.key === 'Escape' && (showMemModal = false)} role="button" tabindex="-1">
+		<div class="modal" on:click|stopPropagation role="dialog" aria-label="메모리 상세">
+			<div class="modal-header">
+				<h3>메모리 상세</h3>
+				<button class="modal-close" on:click={() => showMemModal = false}>&times;</button>
+			</div>
+			<div class="detail-list">
+				<div class="detail-row">
+					<span>시스템 사용</span>
+					<span class="detail-value">{formatBytes(systemMemUsed(metrics))} / {formatBytes(metrics.memory.systemTotal)}</span>
+				</div>
+				<div class="detail-row">
+					<span>시스템 여유</span>
+					<span class="detail-value">{formatBytes(metrics.memory.systemFree)}</span>
+				</div>
+				<div class="detail-row">
+					<span>사용률</span>
+					<span class="detail-value" style="color: {memColor(memPercent(metrics))}">{memPercent(metrics)}%</span>
+				</div>
+				<div class="detail-row separator">
+					<span>Node.js RSS</span>
+					<span class="detail-value">{formatBytes(metrics.memory.rss)}</span>
+				</div>
+				<div class="detail-row">
+					<span>Heap Used</span>
+					<span class="detail-value">{formatBytes(metrics.memory.heapUsed)}</span>
+				</div>
+				<div class="detail-row">
+					<span>Heap Total</span>
+					<span class="detail-value">{formatBytes(metrics.memory.heapTotal)}</span>
+				</div>
+				<div class="detail-row">
+					<span>External</span>
+					<span class="detail-value">{formatBytes(metrics.memory.external)}</span>
+				</div>
+			</div>
+		</div>
+	</div>
+{/if}
+
+<!-- SSE / Connection Detail Modal -->
+{#if showSseModal && metrics}
+	<div class="modal-backdrop" on:click={() => showSseModal = false} on:keydown={(e) => e.key === 'Escape' && (showSseModal = false)} role="button" tabindex="-1">
+		<div class="modal" on:click|stopPropagation role="dialog" aria-label="연결 상세">
+			<div class="modal-header">
+				<h3>연결 상세</h3>
+				<button class="modal-close" on:click={() => showSseModal = false}>&times;</button>
+			</div>
+			<div class="detail-list">
+				<div class="detail-row">
+					<span>SSE 스트림</span>
+					<span class="detail-value">{metrics.connections.sse}개</span>
+				</div>
+				<div class="detail-row separator">
+					<span>DB 활성 연결</span>
+					<span class="detail-value">{metrics.db.totalCount - metrics.db.idleCount}개</span>
+				</div>
+				<div class="detail-row">
+					<span>DB 유휴 연결</span>
+					<span class="detail-value">{metrics.db.idleCount}개</span>
+				</div>
+				<div class="detail-row">
+					<span>DB 대기 요청</span>
+					<span class="detail-value">{metrics.db.waitingCount}개</span>
+				</div>
+				<div class="detail-row">
+					<span>DB 응답 시간</span>
+					<span class="detail-value">{metrics.db.latencyMs >= 0 ? metrics.db.latencyMs + 'ms' : 'Error'}</span>
+				</div>
+			</div>
+		</div>
+	</div>
+{/if}
 
 <style>
 	.monitor-page {
@@ -465,6 +482,66 @@
 	@keyframes pulse {
 		0%, 100% { opacity: 1; }
 		50% { opacity: 0.4; }
+	}
+
+	/* Charts */
+	.charts-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+		gap: 1rem;
+		margin-bottom: 1.5rem;
+	}
+	.chart-card {
+		background: white;
+		padding: 1.25rem;
+		border-radius: 12px;
+		box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+		border: 1px solid #eee;
+		text-align: left;
+		width: 100%;
+		font-family: inherit;
+		font-size: inherit;
+		color: inherit;
+	}
+	button.chart-card {
+		cursor: pointer;
+		transition: border-color 0.15s, box-shadow 0.15s;
+	}
+	button.chart-card:hover {
+		border-color: #ccc;
+		box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+	}
+	.chart-header {
+		margin-bottom: 0.75rem;
+	}
+	.chart-title {
+		font-size: 0.85rem;
+		color: #666;
+		font-weight: normal;
+	}
+	.tap-hint {
+		font-size: 0.7rem;
+		color: #aaa;
+		margin-left: 4px;
+	}
+	.chart-value {
+		font-size: 2.2rem;
+		font-weight: bold;
+		line-height: 1.2;
+	}
+	.chart-unit {
+		font-size: 1rem;
+		font-weight: 600;
+		margin-left: 2px;
+	}
+	.chart-sub {
+		font-size: 0.75rem;
+		color: #999;
+		margin-top: 2px;
+	}
+	.chart-svg {
+		width: 100%;
+		height: auto;
 	}
 
 	/* KPI Grid */
@@ -510,55 +587,7 @@
 		margin: 0.25rem 0;
 	}
 
-	/* Charts */
-	.charts-grid {
-		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-		gap: 1rem;
-		margin-bottom: 1.5rem;
-	}
-	.chart-card {
-		background: white;
-		padding: 1.25rem;
-		border-radius: 12px;
-		box-shadow: 0 2px 8px rgba(0,0,0,0.05);
-		border: 1px solid #eee;
-	}
-	.chart-header {
-		margin-bottom: 0.75rem;
-	}
-	.chart-title {
-		font-size: 0.85rem;
-		color: #666;
-		font-weight: normal;
-	}
-	.chart-value {
-		font-size: 2.2rem;
-		font-weight: bold;
-		line-height: 1.2;
-	}
-	.chart-unit {
-		font-size: 1rem;
-		font-weight: 600;
-		margin-left: 2px;
-	}
-	.chart-sub {
-		font-size: 0.75rem;
-		color: #999;
-		margin-top: 2px;
-	}
-	.chart-svg {
-		width: 100%;
-		height: auto;
-	}
-
-	/* Detail Grid */
-	.detail-grid {
-		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
-		gap: 1.5rem;
-		margin-bottom: 1.5rem;
-	}
+	/* Log Card */
 	.detail-card {
 		background: white;
 		padding: 1.5rem;
@@ -571,29 +600,6 @@
 		font-size: 1rem;
 		color: #333;
 	}
-	.detail-list {
-		display: flex;
-		flex-direction: column;
-		gap: 0.5rem;
-	}
-	.detail-row {
-		display: flex;
-		justify-content: space-between;
-		font-size: 0.9rem;
-		color: #555;
-		padding: 0.25rem 0;
-	}
-	.detail-row.separator {
-		border-top: 1px solid #eee;
-		padding-top: 0.5rem;
-		margin-top: 0.25rem;
-	}
-	.detail-value {
-		font-weight: 600;
-		color: #333;
-	}
-
-	/* Log Card */
 	.log-card {
 		margin-bottom: 1.5rem;
 	}
@@ -664,6 +670,70 @@
 		padding: 2rem;
 	}
 
+	/* Modal */
+	.modal-backdrop {
+		position: fixed;
+		inset: 0;
+		background: rgba(0,0,0,0.4);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		z-index: 1000;
+		padding: 1rem;
+	}
+	.modal {
+		background: white;
+		border-radius: 16px;
+		padding: 1.5rem;
+		width: 100%;
+		max-width: 420px;
+		box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+	}
+	.modal-header {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		margin-bottom: 1rem;
+	}
+	.modal-header h3 {
+		margin: 0;
+		font-size: 1.1rem;
+		color: #333;
+	}
+	.modal-close {
+		background: none;
+		border: none;
+		font-size: 1.5rem;
+		color: #999;
+		cursor: pointer;
+		padding: 0 0.25rem;
+		line-height: 1;
+	}
+	.modal-close:hover {
+		color: #333;
+	}
+	.detail-list {
+		display: flex;
+		flex-direction: column;
+		gap: 0.5rem;
+	}
+	.detail-row {
+		display: flex;
+		justify-content: space-between;
+		font-size: 0.9rem;
+		color: #555;
+		padding: 0.25rem 0;
+	}
+	.detail-row.separator {
+		border-top: 1px solid #eee;
+		padding-top: 0.5rem;
+		margin-top: 0.25rem;
+	}
+	.detail-value {
+		font-weight: 600;
+		color: #333;
+	}
+
 	.last-update {
 		text-align: center;
 		font-size: 0.8rem;
@@ -685,9 +755,6 @@
 			grid-template-columns: 1fr 1fr;
 		}
 		.charts-grid {
-			grid-template-columns: 1fr;
-		}
-		.detail-grid {
 			grid-template-columns: 1fr;
 		}
 	}
