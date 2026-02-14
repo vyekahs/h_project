@@ -480,8 +480,8 @@ async function checkAutoCheckout() {
                 await query('UPDATE attendees SET status = $1, updated_at = NOW() WHERE id = $2', ['left', attendee.id]);
                 await query('UPDATE visits SET departure_time = NOW() WHERE attendee_id = $1 AND departure_time IS NULL', [attendee.id]);
                 await query('COMMIT');
-                // 캐시 업데이트
                 attendee.status = 'left';
+                lastSeenMap.delete(attendee.id);
                 pushAutoLog('checkout', 'BLE', attendee.name, attendee.id);
                 emitLiveEvent('visitors');
             } catch (e) {
@@ -520,17 +520,26 @@ export async function processWifiReport(_scannerId: string, devices: { mac: stri
     }
 
     const detectedAttendeeIds = new Set<number>();
+    const reportedMacs = devices.map(d => d.mac.toUpperCase());
+    const registeredMacs = [...wifiMacCache.keys()];
 
+    const matchedMacs: string[] = [];
     for (const device of devices) {
         const mac = device.mac.toUpperCase();
         const attendeeId = wifiMacCache.get(mac);
         if (attendeeId) {
             detectedAttendeeIds.add(attendeeId);
             lastSeenMap.set(attendeeId, Date.now());
+            matchedMacs.push(mac);
         }
     }
 
-    console.log(`[${kstTime()}][WiFi] ${devices.length} router devices → ${detectedAttendeeIds.size} users matched (${wifiMacCache.size} registered)`);
+    console.log(`[${kstTime()}][WiFi] ${devices.length} scanned → ${detectedAttendeeIds.size} matched (${wifiMacCache.size} registered)`);
+    if (detectedAttendeeIds.size > 0) {
+        console.log(`[${kstTime()}][WiFi] Matched MACs: ${matchedMacs.join(', ')}`);
+    }
+    console.log(`[${kstTime()}][WiFi] Registered: ${registeredMacs.join(', ')}`);
+    console.log(`[${kstTime()}][WiFi] Scanned: ${reportedMacs.join(', ')}`);
 
     if (detectedAttendeeIds.size === 0) return;
 

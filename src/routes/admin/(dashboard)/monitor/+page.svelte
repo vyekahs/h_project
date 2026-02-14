@@ -199,6 +199,8 @@
 				connected = true;
 				if (data.history) history = data.history;
 				if (data.autoLogs) autoLogs = data.autoLogs;
+				// SSE 복구되면 폴링 중지
+				if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
 			} catch {}
 		};
 
@@ -209,6 +211,10 @@
 				eventSource = null;
 			}
 			startPolling();
+			// 3초 후 SSE 재연결 시도
+			if (!destroyed) {
+				setTimeout(connectSSE, 3000);
+			}
 		};
 	}
 

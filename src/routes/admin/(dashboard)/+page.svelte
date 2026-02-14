@@ -11,30 +11,38 @@
     // (SSE 데이터는 간소화 구조라 대시보드 전체 필드를 못 채우므로 invalidateAll 사용)
     let eventSource: EventSource | null = null;
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    let sseReconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let sseDestroyed = false;
 
     function debouncedInvalidate() {
         if (debounceTimer) clearTimeout(debounceTimer);
         debounceTimer = setTimeout(() => { invalidateAll(); }, 300);
     }
 
-    onMount(() => {
+    function connectSSE() {
+        if (sseDestroyed) return;
+        if (eventSource) eventSource.close();
+
         eventSource = new EventSource('/api/sse/live');
         eventSource.addEventListener('visitors', debouncedInvalidate);
         eventSource.addEventListener('games', debouncedInvalidate);
         eventSource.onerror = () => {
-            if (eventSource) {
-                eventSource.close();
-                eventSource = null;
+            if (eventSource) { eventSource.close(); eventSource = null; }
+            if (!sseDestroyed) {
+                sseReconnectTimer = setTimeout(connectSSE, 3000);
             }
         };
+    }
+
+    onMount(() => {
+        connectSSE();
     });
 
     onDestroy(() => {
+        sseDestroyed = true;
         if (debounceTimer) clearTimeout(debounceTimer);
-        if (eventSource) {
-            eventSource.close();
-            eventSource = null;
-        }
+        if (sseReconnectTimer) clearTimeout(sseReconnectTimer);
+        if (eventSource) { eventSource.close(); eventSource = null; }
     });
 
     let showModal = false;

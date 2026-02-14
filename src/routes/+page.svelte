@@ -11,6 +11,8 @@
     let liveGameCount: number | null = null;
     let eventSource: EventSource | null = null;
     let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+    let sseReconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let sseDestroyed = false;
 
     interface User {
         id: number;
@@ -168,7 +170,13 @@
         isStandalone = window.matchMedia('(display-mode: standalone)').matches
             || (navigator as any).standalone === true;
 
-        // SSE 연결
+        connectSSE();
+    });
+
+    function connectSSE() {
+        if (sseDestroyed) return;
+        if (eventSource) eventSource.close();
+
         eventSource = new EventSource('/api/sse/live');
         eventSource.addEventListener('visitors', (e: MessageEvent) => {
             const d = JSON.parse(e.data);
@@ -186,7 +194,13 @@
                 scheduleRefresh();
             }
         });
-    });
+        eventSource.onerror = () => {
+            if (eventSource) { eventSource.close(); eventSource = null; }
+            if (!sseDestroyed) {
+                sseReconnectTimer = setTimeout(connectSSE, 3000);
+            }
+        };
+    }
 
     function scheduleRefresh() {
         if (refreshTimer) clearTimeout(refreshTimer);
@@ -197,8 +211,10 @@
     }
 
     onDestroy(() => {
-        if (eventSource) eventSource.close();
+        sseDestroyed = true;
+        if (eventSource) { eventSource.close(); eventSource = null; }
         if (refreshTimer) clearTimeout(refreshTimer);
+        if (sseReconnectTimer) clearTimeout(sseReconnectTimer);
     });
 
     // Limit visible games
