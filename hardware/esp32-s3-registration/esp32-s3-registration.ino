@@ -3,10 +3,12 @@
 #include <WiFiClientSecure.h>
 #include <ArduinoJson.h>
 #include <vector>
+#include <set>
 #include <NimBLEDevice.h>
 #include <NimBLEHIDDevice.h>
 #include <esp_bt.h>
 #include <esp_task_wdt.h>
+#include "esp_wifi.h"
 #include <nvs_flash.h>
 #include <lwip/etharp.h>
 #include <lwip/ip4_addr.h>
@@ -25,9 +27,46 @@ const char* WIFI_SSID = "U+NetE836";
 const char* WIFI_PASS = "7356361EM!";
 const char* SCANNER_API_KEY = "hproject_scanner_secret_2026";
 
-// WiFi ARP Scan Config
-const unsigned long WIFI_SCAN_INTERVAL = 60000;  // 60초마다 ARP 스캔
+// WiFi Promiscuous Scan Config
+const unsigned long WIFI_SCAN_INTERVAL = 60000;  // 60초마다 스캔
 unsigned long lastWifiScanTime = 0;
+
+// WiFi Promiscuous Mode - MAC 수집
+std::set<String> promiscCollectedMacs;
+String ownMacUpper = "";      // ESP32 자신의 MAC (필터용)
+String gatewayMacUpper = "";  // 공유기 MAC (필터용)
+
+// Promiscuous 콜백 — WiFi 태스크에서 실행되므로 최대한 가볍게
+void IRAM_ATTR wifiPromiscuousCallback(void* buf, wifi_promiscuous_pkt_type_t type) {
+    // 관리 프레임과 데이터 프레임만 처리 (컨트롤 프레임은 MAC 정보 없음)
+    if (type != WIFI_PKT_MGMT && type != WIFI_PKT_DATA) return;
+
+    const wifi_promiscuous_pkt_t* pkt = (wifi_promiscuous_pkt_t*)buf;
+    const uint8_t* frame = pkt->payload;
+
+    // 최소 802.11 헤더 크기 확인
+    if (pkt->rx_ctrl.sig_len < 24) return;
+
+    // addr2 (송신자 MAC) = 802.11 헤더 오프셋 10
+    const uint8_t* addr2 = frame + 10;
+
+    // 브로드캐스트 필터
+    if (addr2[0] == 0xFF && addr2[1] == 0xFF && addr2[2] == 0xFF &&
+        addr2[3] == 0xFF && addr2[4] == 0xFF && addr2[5] == 0xFF) return;
+
+    // 멀티캐스트 필터 (첫 바이트 비트 0 = 멀티캐스트/브로드캐스트)
+    if (addr2[0] & 0x01) return;
+
+    char macStr[18];
+    snprintf(macStr, sizeof(macStr), "%02X:%02X:%02X:%02X:%02X:%02X",
+             addr2[0], addr2[1], addr2[2], addr2[3], addr2[4], addr2[5]);
+    String mac(macStr);
+
+    // 자기 자신과 공유기 필터
+    if (mac == ownMacUpper || mac == gatewayMacUpper) return;
+
+    promiscCollectedMacs.insert(mac);
+}
 
 // Static IP Config
 IPAddress staticIP(192, 168, 219, 200);
@@ -500,78 +539,37 @@ void handleRegisterPage() {
     Serial.printf("[WiFi] Register page served (code=%s)\n", code.c_str());
 }
 
-// ARP 스캔: 서브넷 전체에 ping → ARP 캐시에서 MAC 수집 → 서버 전송
+// WiFi Promiscuous 스캔: 802.11 프레임 캡처로 주변 기기 MAC 수집 → 서버 전송
+// AP isolation과 무관하게 동작 (패킷을 엿듣는 방식)
 void scanLocalDevices() {
     if (isRegistering) return;
 
     ensureWiFi();
     if (WiFi.status() != WL_CONNECTED) return;
 
-    Serial.println("[WiFi] ARP scan starting...");
+    Serial.println("[WiFi] Promiscuous scan starting...");
     Serial.printf("[WiFi] Free heap before scan: %d\n", ESP.getFreeHeap());
 
-    IPAddress localIP = WiFi.localIP();
-    IPAddress subnet = WiFi.subnetMask();
-    // 서브넷 기반 베이스 IP 계산 (예: 192.168.0.0)
-    uint32_t base = (uint32_t)localIP & (uint32_t)subnet;
-    uint32_t myIP = (uint32_t)localIP;
+    // Phase 1: Promiscuous mode로 15초간 MAC 수집
+    promiscCollectedMacs.clear();
 
-    // Phase 1: 서브넷 전체에 ARP request (ARP 캐시 채우기)
-    // /24 서브넷 기준 1~254
-    struct netif *netif = netif_list;
-    uint8_t* baseBytes = (uint8_t*)&base;
-    int pingCount = 0;
-    for (int i = 1; i <= 254; i++) {
-        IPAddress target(baseBytes[0], baseBytes[1], baseBytes[2], i);
+    esp_wifi_set_promiscuous_rx_cb(wifiPromiscuousCallback);
+    esp_wifi_set_promiscuous(true);
 
-        if ((uint32_t)target == myIP) continue;  // 자기 자신 스킵
-
-        // ARP request 전송 (실제 ping보다 가볍고 빠름)
-        ip4_addr_t addr;
-        addr.addr = (uint32_t)target;
-        if (netif) {
-            LOCK_TCPIP_CORE();
-            etharp_request(netif, &addr);
-            UNLOCK_TCPIP_CORE();
-        }
-        pingCount++;
-
-        // 10개마다 약간 대기 (네트워크 부하 분산)
-        if (pingCount % 10 == 0) {
-            delay(5);
-            esp_task_wdt_reset();  // Watchdog 리셋 (스캔이 오래 걸릴 수 있음)
-        }
+    Serial.println("[WiFi] Promiscuous mode ON, scanning for 15 seconds...");
+    unsigned long scanStart = millis();
+    while (millis() - scanStart < 15000) {
+        delay(1000);
+        esp_task_wdt_reset();
+        localServer.handleClient();  // WiFi 등록 요청 처리 유지
     }
 
-    Serial.printf("[WiFi] Sent %d ARP requests, waiting for responses...\n", pingCount);
-    delay(500);  // ARP 응답 대기
-    esp_task_wdt_reset();
+    esp_wifi_set_promiscuous(false);
+    Serial.printf("[WiFi] Promiscuous mode OFF, captured %d unique MACs\n", promiscCollectedMacs.size());
 
-    // Phase 2: ARP 캐시에서 MAC 수집
-    std::vector<String> macs;
-    LOCK_TCPIP_CORE();
-    for (int i = 1; i <= 254; i++) {
-        IPAddress target(baseBytes[0], baseBytes[1], baseBytes[2], i);
-        if ((uint32_t)target == myIP) continue;
-
-        ip4_addr_t addr;
-        addr.addr = (uint32_t)target;
-
-        struct eth_addr *eth_ret = NULL;
-        const ip4_addr_t *ip_ret = NULL;
-
-        int8_t idx = etharp_find_addr(netif, &addr, &eth_ret, &ip_ret);
-        if (idx >= 0 && eth_ret != NULL) {
-            char macStr[18];
-            sprintf(macStr, "%02X:%02X:%02X:%02X:%02X:%02X",
-                    eth_ret->addr[0], eth_ret->addr[1], eth_ret->addr[2],
-                    eth_ret->addr[3], eth_ret->addr[4], eth_ret->addr[5]);
-            macs.push_back(String(macStr));
-        }
-    }
-    UNLOCK_TCPIP_CORE();
-
-    Serial.printf("[WiFi] Found %d devices via ARP scan\n", macs.size());
+    // Phase 2: set → vector 변환
+    std::vector<String> macs(promiscCollectedMacs.begin(), promiscCollectedMacs.end());
+    promiscCollectedMacs.clear();  // 메모리 해제
 
     if (macs.size() == 0) return;
 
@@ -738,6 +736,13 @@ void setup() {
   myMacAddress = WiFi.macAddress();
   myMacAddress.replace(":", "");
   Serial.println("MAC: " + myMacAddress);
+
+  // Promiscuous 필터용 MAC 캡처
+  ownMacUpper = WiFi.macAddress();  // "XX:XX:XX:XX:XX:XX" 형태
+  delay(500);
+  gatewayMacUpper = getMacFromArp(gateway);  // 게이트웨이 MAC (ARP 1회)
+  Serial.println("[WiFi] Own MAC: " + ownMacUpper);
+  Serial.println("[WiFi] Gateway MAC: " + gatewayMacUpper);
 
     // BLE Init (NimBLE)
     NimBLEDevice::init("HN_SETUP");
