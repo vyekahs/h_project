@@ -1,6 +1,7 @@
 
 <script lang="ts">
     import { onDestroy, onMount } from 'svelte';
+    import { browser } from '$app/environment';
 
     export let data: any;
 
@@ -114,30 +115,62 @@
             const service = await server.getPrimaryService('12345678-1234-5678-1234-56789abcdef0');
             const characteristic = await service.getCharacteristic('12345678-1234-5678-1234-56789abcdef1');
 
-            // 2. 페어링 완료 대기 후 IRK 폴링
+            // 2. 페어링 완료 대기 후 IRK 읽기
             let irk = '';
-            const maxRetries = 30; // 최대 30초
 
-            // 페어링이 완료될 때까지 잠시 대기
+            // 페어링이 완료될 때까지 대기
             await new Promise(r => setTimeout(r, 3000));
 
-            for (let i = 0; i < maxRetries; i++) {
-                webBtStatus = `기기등록 중... (${i + 1}/${maxRetries})`;
+            // 첫 연결에서 IRK 읽기 시도
+            for (let i = 0; i < 5; i++) {
+                webBtStatus = `기기등록 중... (${i + 1}/5)`;
                 try {
                     const value = await characteristic.readValue();
                     const decoder = new TextDecoder();
                     irk = decoder.decode(value);
-
-                    // 빈 IRK(00000...)가 아닌 실제 값이 세팅되었는지 확인
                     if (irk && irk.length === 32 && irk !== '00000000000000000000000000000000') {
                         break;
                     }
                     irk = '';
                 } catch (readErr: any) {
-                    console.warn('IRK read retry:', readErr.message);
+                    console.warn('IRK read attempt:', readErr.message);
                     irk = '';
                 }
                 await new Promise(r => setTimeout(r, 1000));
+            }
+
+            // 첫 연결에서 못 읽었으면 재연결 시도
+            if (!irk) {
+                webBtStatus = '재연결 중...';
+                if (device.gatt?.connected) {
+                    device.gatt.disconnect();
+                }
+                await new Promise(r => setTimeout(r, 2000));
+
+                try {
+                    const server2 = await device.gatt!.connect();
+                    const service2 = await server2.getPrimaryService('12345678-1234-5678-1234-56789abcdef0');
+                    const char2 = await service2.getCharacteristic('12345678-1234-5678-1234-56789abcdef1');
+
+                    for (let i = 0; i < 10; i++) {
+                        webBtStatus = `기기등록 중... (재연결 ${i + 1}/10)`;
+                        try {
+                            const value = await char2.readValue();
+                            const decoder = new TextDecoder();
+                            irk = decoder.decode(value);
+                            if (irk && irk.length === 32 && irk !== '00000000000000000000000000000000') {
+                                break;
+                            }
+                            irk = '';
+                        } catch (readErr: any) {
+                            console.warn('IRK reconnect read:', readErr.message);
+                            irk = '';
+                        }
+                        await new Promise(r => setTimeout(r, 1000));
+                    }
+                } catch (reconErr: any) {
+                    console.warn('Reconnect failed:', reconErr.message);
+                }
             }
 
             // 연결 해제
@@ -347,7 +380,9 @@
 
     onDestroy(() => {
         stopIntervals();
-        document.removeEventListener('visibilitychange', handleVisibilityChange);
+        if (browser) {
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+        }
     });
 </script>
 
