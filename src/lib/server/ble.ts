@@ -420,13 +420,25 @@ export async function processScanResults(scannerId: string, timestamp: number, s
         }
 
         if (settingsCache!.isOpen && attendee.status !== 'present') {
+            // 오늘 이미 열린 visit이 있으면 새로 만들지 않음
+            const existing = await query(
+                `SELECT id FROM visits WHERE attendee_id = $1 AND departure_time IS NULL AND arrival_time::date = (NOW() AT TIME ZONE 'Asia/Seoul')::date`,
+                [attendeeId]
+            );
+            if (existing.rows.length > 0) {
+                console.log(`[${kstTime()}][BLE] User ${attendeeId} already has open visit today, updating status only`);
+                await query('UPDATE attendees SET status = $1, updated_at = NOW() WHERE id = $2', ['present', attendeeId]);
+                attendee.status = 'present';
+                emitLiveEvent('visitors');
+                continue;
+            }
+
             console.log(`[${kstTime()}][BLE] Auto Checking-in User ${attendeeId}`);
             await query('BEGIN');
             try {
                 await query('UPDATE attendees SET status = $1, arrival_time = NOW(), updated_at = NOW() WHERE id = $2', ['present', attendeeId]);
                 await query('INSERT INTO visits (attendee_id, arrival_time) VALUES ($1, NOW())', [attendeeId]);
                 await query('COMMIT');
-                // 캐시 업데이트
                 attendee.status = 'present';
                 pushAutoLog('checkin', 'BLE', attendee.name, attendeeId);
                 emitLiveEvent('visitors');
@@ -543,6 +555,19 @@ export async function processWifiReport(_scannerId: string, devices: { mac: stri
         }
 
         if (settingsCache!.isOpen && attendee.status !== 'present') {
+            // 오늘 이미 열린 visit이 있으면 새로 만들지 않음
+            const existing = await query(
+                `SELECT id FROM visits WHERE attendee_id = $1 AND departure_time IS NULL AND arrival_time::date = (NOW() AT TIME ZONE 'Asia/Seoul')::date`,
+                [attendeeId]
+            );
+            if (existing.rows.length > 0) {
+                console.log(`[${kstTime()}][WiFi] User ${attendeeId} (${attendee.name}) already has open visit today, updating status only`);
+                await query('UPDATE attendees SET status = $1, updated_at = NOW() WHERE id = $2', ['present', attendeeId]);
+                attendee.status = 'present';
+                emitLiveEvent('visitors');
+                continue;
+            }
+
             console.log(`[${kstTime()}][WiFi] Auto Checking-in User ${attendeeId} (${attendee.name}) via WiFi`);
             await query('BEGIN');
             try {

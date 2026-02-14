@@ -42,7 +42,7 @@ export const load: PageServerLoad = async ({ locals }) => {
         sysRes
     ] = await Promise.all([
         query(`
-            SELECT a.id, a.name, v.arrival_time,
+            SELECT DISTINCT ON (a.id) a.id, a.name, v.arrival_time,
                    t.title_name,
                    EXISTS(SELECT 1 FROM session_participants sp JOIN game_sessions gs ON sp.session_id = gs.id WHERE sp.attendee_id = a.id AND gs.status = 'playing') as is_playing
             FROM visits v
@@ -50,7 +50,7 @@ export const load: PageServerLoad = async ({ locals }) => {
             LEFT JOIN minigame_user_points up ON a.id = up.user_id
             LEFT JOIN minigame_titles t ON up.equipped_title_id = t.id
             WHERE v.departure_time IS NULL
-            ORDER BY v.arrival_time DESC
+            ORDER BY a.id, v.arrival_time DESC
         `),
         query(`
             SELECT gs.id, gs.game_name, gs.end_time, gs.created_by, gs.party_id,
