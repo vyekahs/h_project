@@ -48,14 +48,22 @@ export async function POST({ request }: { request: Request }) {
         );
 
         if (deviceRes.rows.length === 0) {
-            return json({ error: 'No registered device found. Register BLE first.' }, { status: 400, headers: corsHeaders });
+            // BLE 기기 없이 WiFi만 등록 — 새 user_devices 레코드 생성
+            // irk는 NOT NULL이므로 WiFi 전용 플레이스홀더 사용
+            const wifiOnlyIrk = 'WIFI' + mac.replace(/:/g, '').padEnd(28, '0');
+            await query(
+                `INSERT INTO user_devices (attendee_id, irk, name, wifi_mac)
+                 VALUES ($1, $2, 'WiFi Device', $3)
+                 ON CONFLICT (irk) DO UPDATE SET wifi_mac = $3, last_seen_at = NOW()`,
+                [attendeeId, wifiOnlyIrk, mac]
+            );
+        } else {
+            // 기존 BLE 기기에 WiFi MAC 추가
+            await query(
+                'UPDATE user_devices SET wifi_mac = $1 WHERE attendee_id = $2',
+                [mac, attendeeId]
+            );
         }
-
-        // WiFi MAC 업데이트
-        await query(
-            'UPDATE user_devices SET wifi_mac = $1 WHERE attendee_id = $2',
-            [mac, attendeeId]
-        );
 
         await addWifiMacToCache(attendeeId, mac);
 
