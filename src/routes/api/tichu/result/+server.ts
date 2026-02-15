@@ -11,18 +11,19 @@ export async function POST({ request, cookies }: { request: Request; cookies: an
     if (!user) {
         return json({ error: '세션이 만료되었습니다' }, { status: 401 });
     }
-    if (!user.can_manage_games && !user.is_admin) {
+    const { winner, scoreA, scoreB, playerData, isAiGame } = await request.json();
+
+    // AI games can be saved by any authenticated user; multiplayer requires admin
+    if (!isAiGame && !user.can_manage_games && !user.is_admin) {
         return json({ error: '게임 관리 권한이 필요합니다' }, { status: 403 });
     }
-
-    const { winner, scoreA, scoreB, playerData } = await request.json();
 
     // Type validation
     if (typeof winner !== 'string' || !['A', 'B'].includes(winner)) {
         return json({ error: 'winner must be "A" or "B"' }, { status: 400 });
     }
-    if (typeof scoreA !== 'number' || typeof scoreB !== 'number') {
-        return json({ error: 'scoreA and scoreB must be numbers' }, { status: 400 });
+    if (typeof scoreA !== 'number' || typeof scoreB !== 'number' || !Number.isFinite(scoreA) || !Number.isFinite(scoreB)) {
+        return json({ error: 'scoreA and scoreB must be finite numbers' }, { status: 400 });
     }
     if (!Array.isArray(playerData) || playerData.length === 0) {
         return json({ error: 'playerData must be a non-empty array' }, { status: 400 });
@@ -38,7 +39,7 @@ export async function POST({ request, cookies }: { request: Request; cookies: an
         await client.query('BEGIN');
 
         // Always create a new game session
-        const creatorId = playerData.find((p: any) => p.id > 0)?.id || null;
+        const creatorId = playerData.find((p: any) => p.id > 0)?.id ?? (isAiGame ? user.id : null);
         const result = await client.query(
             `INSERT INTO game_sessions (game_name, status, end_time, created_by)
              VALUES ($1, $2, NOW(), $3) RETURNING id`,
@@ -64,7 +65,7 @@ export async function POST({ request, cookies }: { request: Request; cookies: an
     } catch (e: any) {
         await client.query('ROLLBACK');
         console.error('[Tichu Result Error]', e);
-        return json({ error: e.message }, { status: 500 });
+        return json({ error: '게임 결과 저장에 실패했습니다' }, { status: 500 });
     } finally {
         client.release();
     }

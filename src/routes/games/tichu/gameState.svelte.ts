@@ -1,10 +1,10 @@
-import { TichuSocketClient, type ConnectionStatus } from './socketClient';
 import type {
-	TichuClientState, RoomListItem, Card, Combination,
-	SeatIndex, TeamId, TichuRoundResult, ExchangeCards, GamePhase
+	Card, SeatIndex, TeamId, TichuRoundResult, ExchangeCards, GamePhase
 } from '$lib/games/tichu/types';
+import type { AiStrategy, AiSpeed } from '$lib/games/tichu/ai/types';
+import { LocalGameEngine, type LocalGameConfig, type GameEvent } from '$lib/games/tichu/ai/localGameEngine';
 
-export type GameView = 'lobby' | 'waiting' | 'game';
+export type GameView = 'setup' | 'game';
 export type ToastType = 'info' | 'success' | 'error' | 'warning';
 
 export interface Toast {
@@ -13,33 +13,22 @@ export interface Toast {
 	type: ToastType;
 }
 
-export interface ChatMessage {
-	seat: SeatIndex;
-	message: string;
-	isEmote: boolean;
-	timestamp: number;
-}
-
 export function createTichuGameState() {
-	// Connection
-	let connectionStatus = $state<ConnectionStatus>('disconnected');
-	let reconnectAttempt = $state(0);
-	let reconnectFailed = $state(false);
+	// View
+	let view = $state<GameView>('setup');
 
-	// View management
-	let view = $state<GameView>('lobby');
+	// Game engine
+	let engine = $state<LocalGameEngine | null>(null);
+	let stateVersion = $state(0); // incremented on every engine state change to trigger reactivity
 
-	// Lobby
-	let rooms = $state<RoomListItem[]>([]);
-	let currentRoomId = $state<string | null>(null);
-
-	// Game state from server
-	let gameState = $state<TichuClientState | null>(null);
+	// Setup state
+	let partnerStrategy = $state<AiStrategy>('balanced');
+	let aiSpeed = $state<AiSpeed>('normal');
+	let targetScore = $state(1000);
 
 	// UI state
 	let selectedCards = $state<Set<string>>(new Set());
-	let grandTichuTimer = $state(0);
-	let grandTichuTimerInterval: ReturnType<typeof setInterval> | null = null;
+	let actionInProgress = $state(false);
 
 	// Exchange phase
 	let exchangePartner = $state<string | null>(null);
@@ -58,48 +47,113 @@ export function createTichuGameState() {
 	let toasts = $state<Toast[]>([]);
 	let toastIdCounter = 0;
 
-	// Chat
-	let chatMessages = $state<ChatMessage[]>([]);
-	let showChat = $state(false);
+	// Last game action (for visual feedback: pass, trick won, etc.)
+	let lastEvent = $state<GameEvent | null>(null);
+	let lastEventTimer: ReturnType<typeof setTimeout> | null = null;
 
-	// Socket client
-	const client = new TichuSocketClient();
+	// Derived states — all use getState() helper which accesses stateVersion
+	// to ensure reactivity, since engine.state is a mutable object (same reference)
+	// and $derived on it won't propagate changes to dependents.
+	function getState() {
+		void stateVersion;
+		return engine?.state ?? null;
+	}
 
-	// Derived states
-	const isConnected = $derived(connectionStatus === 'connected');
-	const isReconnecting = $derived(connectionStatus === 'reconnecting');
-	const isMyTurn = $derived(
-		gameState !== null &&
-		gameState.phase === 'playing' &&
-		gameState.currentSeat === gameState.mySeat
-	);
-	const myTeam = $derived(gameState?.players.find(p => p.seat === gameState?.mySeat)?.team ?? 'A');
-	const partnerSeat = $derived<SeatIndex>(
-		gameState ? (((gameState.mySeat + 2) % 4) as SeatIndex) : 0 as SeatIndex
-	);
-	const canDeclareSmallTichu = $derived(
-		gameState !== null &&
-		(gameState.phase === 'exchange' || gameState.phase === 'playing') &&
-		!gameState.players[gameState.mySeat]?.smallTichu &&
-		!gameState.players[gameState.mySeat]?.hasPlayedFirstCard
-	);
+	const gameState = $derived.by(() => getState());
 
-	// Sort hand for display
+	const phase = $derived.by(() => getState()?.phase ?? null);
+
+	const isMyTurn = $derived.by(() => {
+		const s = getState();
+		return s !== null &&
+			s.phase === 'playing' &&
+			s.round?.currentSeat === 0;
+	});
+
+	const myTeam = 'A' as TeamId; // Human is always Team A (seat 0)
+	const partnerSeat = 2 as SeatIndex; // Always seat 2
+
+	const isGrandTichuPhase = $derived.by(() => {
+		const s = getState();
+		return s !== null &&
+			s.phase === 'grand_tichu_window' &&
+			s.players[0]?.grandTichu === null;
+	});
+
+	const canDeclareSmallTichu = $derived.by(() => {
+		const s = getState();
+		return s !== null &&
+			(s.phase === 'exchange' || s.phase === 'playing') &&
+			!s.players[0]?.smallTichu &&
+			!s.players[0]?.hasPlayedFirstCard &&
+			s.players[0]?.grandTichu !== true;
+	});
+
+	const myHand = $derived.by(() => getState()?.players[0]?.hand ?? []);
+
 	const sortedHand = $derived.by(() => {
-		if (!gameState?.myHand) return [];
-		return [...gameState.myHand].sort((a, b) => {
-			// Specials first: mahjong, dog, phoenix, dragon
+		const hand = getState()?.players[0]?.hand ?? [];
+		if (!hand.length) return [];
+		return [...hand].sort((a, b) => {
 			const specialOrder: Record<string, number> = { mahjong: 0, dog: 1, phoenix: 2, dragon: 3 };
 			if (a.type === 'special' && b.type === 'special') {
 				return specialOrder[a.special] - specialOrder[b.special];
 			}
 			if (a.type === 'special') return -1;
 			if (b.type === 'special') return 1;
-			// Normal cards: by rank, then suit
 			if (a.rank !== b.rank) return a.rank - b.rank;
 			const suitOrder: Record<string, number> = { jade: 0, pagoda: 1, star: 2, sword: 3 };
 			return suitOrder[a.suit] - suitOrder[b.suit];
 		});
+	});
+
+	const exchangeReady = $derived(
+		exchangePartner !== null && exchangeLeft !== null && exchangeRight !== null
+	);
+
+	// Track phase changes for UI reactions
+	let lastPhase = $state<GamePhase | null>(null);
+
+	$effect(() => {
+		const s = getState();
+		const currentPhase = s?.phase ?? null;
+		if (currentPhase && currentPhase !== lastPhase) {
+			// Reset selection on phase change
+			selectedCards = new Set();
+
+			if (currentPhase === 'exchange') {
+				exchangePartner = null;
+				exchangeLeft = null;
+				exchangeRight = null;
+			}
+
+			if (currentPhase === 'wish_declare' && s?.round?.currentSeat === 0) {
+				showWishModal = true;
+			}
+
+			if (currentPhase === 'dragon_gift' && s?.round?.dragonGiftSeat === 0) {
+				showDragonGiftModal = true;
+			}
+
+			if (currentPhase === 'round_end' && s) {
+				const rounds = s.completedRounds;
+				if (rounds.length > 0) {
+					roundResult = rounds[rounds.length - 1];
+					showRoundEndModal = true;
+				}
+			}
+
+			if (currentPhase === 'game_end' && s && s.winner) {
+				gameEndData = {
+					winner: s.winner,
+					scoreA: s.cumulativeScoreA,
+					scoreB: s.cumulativeScoreB
+				};
+				showGameOverModal = true;
+			}
+
+			lastPhase = currentPhase;
+		}
 	});
 
 	function addToast(message: string, type: ToastType = 'info') {
@@ -110,276 +164,63 @@ export function createTichuGameState() {
 		}, 3000);
 	}
 
-	function connect() {
-		client.connect({
-			onConnect: () => {
-				connectionStatus = 'connected';
-				reconnectAttempt = 0;
-				reconnectFailed = false;
-				client.listRooms();
-			},
-			onDisconnect: (reason) => {
-				connectionStatus = 'disconnected';
-				if (reason === 'io server disconnect') {
-					addToast('서버에서 연결이 끊겼습니다', 'error');
-				}
-			},
-			onReconnecting: (attempt) => {
-				connectionStatus = 'reconnecting';
-				reconnectAttempt = attempt;
-				if (attempt >= 30) {
-					reconnectFailed = true;
-				}
-			},
-			onReconnected: () => {
-				connectionStatus = 'connected';
-				reconnectAttempt = 0;
-				reconnectFailed = false;
-				addToast('재연결되었습니다!', 'success');
-			},
+	// ===== Game Lifecycle =====
 
-			// Lobby
-			onRoomList: (list) => { rooms = list; },
-			onRoomCreated: (data) => {
-				currentRoomId = data.roomId;
-				if (data.state) gameState = data.state;
-				view = 'waiting';
-			},
-			onRoomJoined: (data) => {
-				currentRoomId = data.roomId;
-				if (data.state) gameState = data.state;
-				view = 'waiting';
-			},
-			onRoomLeft: () => {
-				currentRoomId = null;
-				gameState = null;
-				view = 'lobby';
-				client.listRooms();
-			},
-			onRoomUpdated: (data) => {
-				// Update lobby room list only
-				if (data.roomId) {
-					rooms = rooms.map(r => r.roomId === data.roomId ? data : r);
-				}
-			},
-			onRoomStart: () => {
-				view = 'game';
-			},
-			onRoomError: (msg) => {
-				addToast(msg, 'error');
-			},
+	function startGame() {
+		if (engine) {
+			engine.destroy();
+		}
 
-			// Game state
-			onStateSync: (state) => {
-				gameState = state;
-				if (state.phase === 'lobby' || state.phase === 'ready_check') {
-					view = 'waiting';
-				} else {
-					view = 'game';
-				}
-				// Trigger modals based on phase (server doesn't emit separate events for these)
-				if (state.phase === 'wish_declare' && state.currentSeat === state.mySeat) {
-					showWishModal = true;
-				}
-				if (state.phase === 'dragon_gift' && state.dragonGiftPending && state.dragonGiftSeat === state.mySeat) {
-					showDragonGiftModal = true;
-				}
+		engine = new LocalGameEngine({
+			partnerStrategy,
+			targetScore,
+			aiSpeed,
+			playerName: '나',
+			onStateChange: () => {
+				stateVersion++;
 			},
-			onPhaseChange: (phase) => {
-				if (gameState) {
-					gameState = { ...gameState, phase: phase as GamePhase };
-				}
-				// Reset UI state on phase transitions
-				selectedCards = new Set();
-				if (phase === 'exchange') {
-					exchangePartner = null;
-					exchangeLeft = null;
-					exchangeRight = null;
-				}
-			},
-			onCardsDealt: (cards) => {
-				if (gameState) {
-					gameState = { ...gameState, myHand: cards };
-				}
-			},
-			onRemainingDealt: (cards) => {
-				if (gameState) {
-					gameState = { ...gameState, myHand: [...gameState.myHand, ...cards] };
-				}
-			},
-			onGrandTichuWindow: (timeoutMs) => {
-				grandTichuTimer = Math.ceil(timeoutMs / 1000);
-				if (grandTichuTimerInterval) clearInterval(grandTichuTimerInterval);
-				grandTichuTimerInterval = setInterval(() => {
-					grandTichuTimer--;
-					if (grandTichuTimer <= 0 && grandTichuTimerInterval) {
-						clearInterval(grandTichuTimerInterval);
-						grandTichuTimerInterval = null;
-						// Auto-pass when timer expires
-						client.passGrandTichu();
-					}
-				}, 1000);
-			},
-			onPlayerDeclaredGrandTichu: (seat) => {
-				if (gameState) {
-					const players = [...gameState.players];
-					players[seat] = { ...players[seat], grandTichu: true };
-					gameState = { ...gameState, players };
-				}
-				const name = gameState?.players[seat]?.name;
-				addToast(`${name}이(가) 그랜드 티츄를 선언했습니다!`, 'warning');
-			},
-			onPlayerDeclaredSmallTichu: (seat) => {
-				if (gameState) {
-					const players = [...gameState.players];
-					players[seat] = { ...players[seat], smallTichu: true };
-					gameState = { ...gameState, players };
-				}
-				const name = gameState?.players[seat]?.name;
-				addToast(`${name}이(가) 스몰 티츄를 선언했습니다!`, 'info');
-			},
-			onExchangeReceived: (cards) => {
-				if (gameState) {
-					gameState = { ...gameState, myHand: [...gameState.myHand, ...cards] };
-				}
-				addToast('교환 카드를 받았습니다', 'info');
-			},
-
-			// Playing
-			onTurnStart: (seat) => {
-				if (gameState) {
-					gameState = { ...gameState, currentSeat: seat };
-				}
-			},
-			onCardsPlayed: (data) => {
-				if (gameState) {
-					const players = [...gameState.players];
-					// Card count update will come via stateSync
-					const trick = gameState.trick ? {
-						...gameState.trick,
-						plays: [...gameState.trick.plays, { seat: data.seat, combination: data.combination }],
-						passCount: 0
-					} : {
-						plays: [{ seat: data.seat, combination: data.combination }],
-						passCount: 0,
-						leadSeat: data.seat,
-						currentSeat: data.seat
-					};
-					gameState = { ...gameState, trick, players };
-				}
-			},
-			onPlayerPassed: (seat) => {
-				if (gameState?.trick) {
-					gameState = {
-						...gameState,
-						trick: { ...gameState.trick, passCount: gameState.trick.passCount + 1 }
-					};
-				}
-			},
-			onTrickWon: (data) => {
-				const name = gameState?.players[data.seat]?.name;
-				addToast(`${name}이(가) 트릭을 가져갔습니다`, 'info');
-			},
-			onDragonGiftRequired: (seat) => {
-				if (gameState && seat === gameState.mySeat) {
-					showDragonGiftModal = true;
-				}
-				if (gameState) {
-					gameState = { ...gameState, dragonGiftPending: true, dragonGiftSeat: seat };
-				}
-			},
-			onWishActivated: (data) => {
-				if (gameState) {
-					gameState = {
-						...gameState,
-						wish: { active: true, requestedRank: data.rank as any, requestedBy: data.by }
-					};
-				}
-				const rankNames: Record<number, string> = {
-					2: '2', 3: '3', 4: '4', 5: '5', 6: '6', 7: '7', 8: '8',
-					9: '9', 10: '10', 11: 'J', 12: 'Q', 13: 'K', 14: 'A'
-				};
-				addToast(`소원: ${rankNames[data.rank] ?? data.rank}`, 'info');
-			},
-			onWishFulfilled: () => {
-				if (gameState) {
-					gameState = {
-						...gameState,
-						wish: { active: false, requestedRank: null, requestedBy: null }
-					};
-				}
-			},
-			onPlayerFinished: (data) => {
-				if (gameState) {
-					const players = [...gameState.players];
-					players[data.seat] = { ...players[data.seat], finishOrder: data.order };
-					gameState = { ...gameState, players };
-				}
-				const name = gameState?.players[data.seat]?.name;
-				addToast(`${name}이(가) ${data.order}등으로 완주!`, 'success');
-			},
-			onBombPlayed: (data) => {
-				const name = gameState?.players[data.seat]?.name;
-				addToast(`💣 ${name}이(가) 폭탄을 터뜨렸습니다!`, 'warning');
-			},
-
-			// Round/Game end
-			onRoundEnd: (result) => {
-				roundResult = result;
-				showRoundEndModal = true;
-				if (gameState) {
-					gameState = {
-						...gameState,
-						completedRounds: [...gameState.completedRounds, result],
-						cumulativeScoreA: gameState.cumulativeScoreA + result.teamAScore,
-						cumulativeScoreB: gameState.cumulativeScoreB + result.teamBScore
-					};
-				}
-			},
-			onGameEnd: (data) => {
-				gameEndData = data;
-				showGameOverModal = true;
-			},
-			onGameError: (msg) => {
-				addToast(msg, 'error');
-			},
-
-			// Social
-			onPlayerDisconnected: (data) => {
-				addToast(`${data.name}의 연결이 끊겼습니다`, 'warning');
-				if (gameState) {
-					const players = gameState.players.map(p =>
-						p.seat === data.seat ? { ...p, connected: false } : p
-					);
-					gameState = { ...gameState, players };
-				}
-			},
-			onPlayerReconnected: (data) => {
-				addToast(`${data.name}이(가) 재연결되었습니다`, 'success');
-				if (gameState) {
-					const players = gameState.players.map(p =>
-						p.seat === data.seat ? { ...p, connected: true } : p
-					);
-					gameState = { ...gameState, players };
-				}
-			},
-			onChatMessage: (data) => {
-				chatMessages = [...chatMessages.slice(-49), {
-					seat: data.seat,
-					message: data.message,
-					isEmote: false,
-					timestamp: Date.now()
-				}];
-			},
-			onChatEmote: (data) => {
-				chatMessages = [...chatMessages.slice(-49), {
-					seat: data.seat,
-					message: data.emote,
-					isEmote: true,
-					timestamp: Date.now()
-				}];
+			onEvent: (event: GameEvent) => {
+				// Don't overwrite trick_won with subsequent play/pass events
+				if (lastEvent?.type === 'trick_won' && event.type !== 'trick_won') return;
+				lastEvent = event;
+				if (lastEventTimer) clearTimeout(lastEventTimer);
+				const duration = event.type === 'trick_won' ? 1200 : 800;
+				lastEventTimer = setTimeout(() => { lastEvent = null; }, duration);
 			}
 		});
+
+		lastPhase = null;
+		lastEvent = null;
+		view = 'game';
+		engine.startGame();
+	}
+
+	function startNextRound() {
+		showRoundEndModal = false;
+		roundResult = null;
+		engine?.startNextRound();
+	}
+
+	function backToSetup() {
+		if (engine) {
+			engine.destroy();
+			engine = null;
+		}
+		view = 'setup';
+		showRoundEndModal = false;
+		showGameOverModal = false;
+		roundResult = null;
+		gameEndData = null;
+		lastPhase = null;
+		stateVersion = 0;
+	}
+
+	function cleanup() {
+		if (lastEventTimer) clearTimeout(lastEventTimer);
+		if (engine) {
+			engine.destroy();
+			engine = null;
+		}
 	}
 
 	// ===== Card Selection =====
@@ -401,7 +242,6 @@ export function createTichuGameState() {
 	// ===== Exchange =====
 
 	function setExchangeCard(target: 'partner' | 'left' | 'right', cardId: string | null) {
-		// Clear this card from other slots if already assigned
 		if (cardId) {
 			if (exchangePartner === cardId && target !== 'partner') exchangePartner = null;
 			if (exchangeLeft === cardId && target !== 'left') exchangeLeft = null;
@@ -412,55 +252,105 @@ export function createTichuGameState() {
 		else exchangeRight = cardId;
 	}
 
-	const exchangeReady = $derived(
-		exchangePartner !== null && exchangeLeft !== null && exchangeRight !== null
-	);
-
 	function submitExchange() {
 		if (!exchangePartner || !exchangeLeft || !exchangeRight) return;
-		client.exchangeCards({
+		const result = engine?.humanSubmitExchange({
 			toPartner: exchangePartner,
 			toLeft: exchangeLeft,
 			toRight: exchangeRight
 		});
-	}
-
-	// ===== Actions =====
-
-	function playSelectedCards() {
-		if (selectedCards.size === 0) return;
-		client.playCards(Array.from(selectedCards));
-		selectedCards = new Set();
-	}
-
-	function disconnect() {
-		if (grandTichuTimerInterval) {
-			clearInterval(grandTichuTimerInterval);
-			grandTichuTimerInterval = null;
+		if (result) {
+			addToast('카드를 교환했습니다', 'info');
 		}
-		client.disconnect();
-		connectionStatus = 'disconnected';
 	}
 
-	function backToLobby() {
-		client.leaveRoom();
-		gameState = null;
-		currentRoomId = null;
-		view = 'lobby';
-		reconnectFailed = false;
+	// ===== Game Actions =====
+
+	async function playSelectedCards() {
+		if (selectedCards.size === 0 || !engine || actionInProgress) return;
+		actionInProgress = true;
+		try {
+			const cardIds = Array.from(selectedCards);
+			const result = await engine.humanPlayCards(cardIds);
+			if (result.success) {
+				selectedCards = new Set();
+			} else {
+				addToast(result.error || '카드를 낼 수 없습니다', 'error');
+			}
+		} finally {
+			actionInProgress = false;
+		}
+	}
+
+	function pass() {
+		if (!engine || actionInProgress) return;
+		const result = engine.humanPass();
+		if (!result.success) {
+			addToast(result.error || '패스할 수 없습니다', 'error');
+		}
+	}
+
+	function declareGrandTichu() {
+		const result = engine?.humanDeclareGrandTichu();
+		if (result) {
+			addToast('그랜드 티츄를 선언했습니다!', 'success');
+		}
+	}
+
+	function passGrandTichu() {
+		engine?.humanPassGrandTichu();
+	}
+
+	function declareSmallTichu() {
+		if (engine?.humanDeclareSmallTichu()) {
+			addToast('스몰 티츄를 선언했습니다!', 'success');
+		}
+	}
+
+	function setWish(rank: number | null) {
+		showWishModal = false;
+		engine?.humanSetWish(rank);
+	}
+
+	function giftDragon(seat: SeatIndex) {
+		showDragonGiftModal = false;
+		engine?.humanGiftDragon(seat);
+	}
+
+	async function playBomb(cardIds: string[]) {
+		if (!engine || actionInProgress) return;
+		actionInProgress = true;
+		try {
+			const result = await engine.humanPlayBomb(cardIds);
+			if (result.success) {
+				selectedCards = new Set();
+				addToast('💣 폭탄!', 'warning');
+			} else {
+				addToast(result.error || '폭탄을 사용할 수 없습니다', 'error');
+			}
+		} finally {
+			actionInProgress = false;
+		}
 	}
 
 	return {
-		// State (read-only externally via getters)
-		get connectionStatus() { return connectionStatus; },
-		get reconnectAttempt() { return reconnectAttempt; },
-		get reconnectFailed() { return reconnectFailed; },
+		// View & setup
 		get view() { return view; },
-		get rooms() { return rooms; },
-		get currentRoomId() { return currentRoomId; },
+		get partnerStrategy() { return partnerStrategy; },
+		set partnerStrategy(v: AiStrategy) { partnerStrategy = v; },
+		get aiSpeed() { return aiSpeed; },
+		set aiSpeed(v: AiSpeed) { aiSpeed = v; },
+		get targetScore() { return targetScore; },
+		set targetScore(v: number) { targetScore = v; },
+
+		// Game state (derived from engine)
+		// Access stateVersion to subscribe to engine state changes in components
+		get stateVersion() { return stateVersion; },
 		get gameState() { return gameState; },
+		get phase() { return phase; },
+
+		// UI state
 		get selectedCards() { return selectedCards; },
-		get grandTichuTimer() { return grandTichuTimer; },
 		get exchangePartner() { return exchangePartner; },
 		get exchangeLeft() { return exchangeLeft; },
 		get exchangeRight() { return exchangeRight; },
@@ -476,48 +366,35 @@ export function createTichuGameState() {
 		get roundResult() { return roundResult; },
 		get gameEndData() { return gameEndData; },
 		get toasts() { return toasts; },
-		get chatMessages() { return chatMessages; },
-		get showChat() { return showChat; },
-		set showChat(v: boolean) { showChat = v; },
+		get lastEvent() { return lastEvent; },
 
 		// Derived
-		get isConnected() { return isConnected; },
-		get isReconnecting() { return isReconnecting; },
 		get isMyTurn() { return isMyTurn; },
+		get isGrandTichuPhase() { return isGrandTichuPhase; },
+		get actionInProgress() { return actionInProgress; },
 		get myTeam() { return myTeam; },
 		get partnerSeat() { return partnerSeat; },
 		get canDeclareSmallTichu() { return canDeclareSmallTichu; },
 		get sortedHand() { return sortedHand; },
+		get myHand() { return myHand; },
 
 		// Actions
-		connect,
-		disconnect,
-		backToLobby,
+		startGame,
+		startNextRound,
+		backToSetup,
+		cleanup,
 		toggleCard,
 		clearSelection,
 		setExchangeCard,
 		submitExchange,
 		playSelectedCards,
-		addToast,
-
-		// Socket actions (proxy to client)
-		listRooms: () => client.listRooms(),
-		createRoom: (targetScore?: number) => client.createRoom(targetScore),
-		joinRoom: (roomId: string) => client.joinRoom(roomId),
-		leaveRoom: () => client.leaveRoom(),
-		setReady: () => client.setReady(),
-		setUnready: () => client.setUnready(),
-		startGame: () => client.startGame(),
-		swapSeat: (targetSeat: SeatIndex) => client.swapSeat(targetSeat),
-		shuffleSeats: () => client.shuffleSeats(),
-		declareGrandTichu: () => client.declareGrandTichu(),
-		passGrandTichu: () => client.passGrandTichu(),
-		declareSmallTichu: () => client.declareSmallTichu(),
-		pass: () => client.pass(),
-		setWish: (rank: number | null) => client.setWish(rank),
-		giftDragon: (seat: SeatIndex) => client.giftDragon(seat),
-		playBomb: (cardIds: string[]) => { client.playBomb(cardIds); selectedCards = new Set(); },
-		sendMessage: (msg: string) => client.sendMessage(msg),
-		sendEmote: (emote: string) => client.sendEmote(emote)
+		pass,
+		declareGrandTichu,
+		passGrandTichu,
+		declareSmallTichu,
+		setWish,
+		giftDragon,
+		playBomb,
+		addToast
 	};
 }

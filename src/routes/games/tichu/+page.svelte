@@ -1,24 +1,17 @@
 <script lang="ts">
-	import { onMount, onDestroy } from 'svelte';
-	import { goto } from '$app/navigation';
+	import { onDestroy } from 'svelte';
 	import { createTichuGameState } from './gameState.svelte';
-	import TichuLobby from './components/TichuLobby.svelte';
-	import TichuWaitingRoom from './components/TichuWaitingRoom.svelte';
+	import GameSetup from './components/GameSetup.svelte';
 	import TichuTable from './components/TichuTable.svelte';
 	import DragonGiftModal from './components/DragonGiftModal.svelte';
 	import WishModal from './components/WishModal.svelte';
 	import ScoreBoard from './components/ScoreBoard.svelte';
 	import GameOverModal from './components/GameOverModal.svelte';
-	import ChatPanel from './components/ChatPanel.svelte';
 
 	const game = createTichuGameState();
 
-	onMount(() => {
-		game.connect();
-	});
-
 	onDestroy(() => {
-		game.disconnect();
+		game.cleanup();
 	});
 </script>
 
@@ -27,41 +20,10 @@
 </svelte:head>
 
 <div class="tichu-page">
-	<!-- Connection Status Bar -->
-	{#if game.isReconnecting}
-		<div class="connection-bar reconnecting">
-			<span class="pulse-dot"></span>
-			재연결 중... (시도 {game.reconnectAttempt})
-		</div>
-	{:else if game.connectionStatus === 'disconnected'}
-		<div class="connection-bar disconnected">
-			연결 끊김
-			{#if game.reconnectFailed}
-				<button class="btn-back" onclick={() => goto('/games')}>로비로 돌아가기</button>
-			{/if}
-		</div>
-	{/if}
-
-	<!-- Main Content -->
-	{#if game.view === 'lobby'}
-		<TichuLobby {game} />
-	{:else if game.view === 'waiting'}
-		<TichuWaitingRoom {game} />
+	{#if game.view === 'setup'}
+		<GameSetup {game} />
 	{:else if game.view === 'game' && game.gameState}
 		<TichuTable {game} />
-	{/if}
-
-	<!-- Overlay when reconnecting -->
-	{#if game.isReconnecting && game.view === 'game'}
-		<div class="reconnect-overlay">
-			<div class="reconnect-content">
-				<div class="spinner"></div>
-				<p>재연결 중...</p>
-				{#if game.reconnectFailed}
-					<button class="btn-back" onclick={() => game.backToLobby()}>로비로 돌아가기</button>
-				{/if}
-			</div>
-		</div>
 	{/if}
 
 	<!-- Modals -->
@@ -79,11 +41,6 @@
 
 	{#if game.showGameOverModal && game.gameEndData}
 		<GameOverModal {game} />
-	{/if}
-
-	<!-- Chat -->
-	{#if game.showChat && game.gameState}
-		<ChatPanel {game} />
 	{/if}
 
 	<!-- Toast Notifications -->
@@ -104,80 +61,6 @@
 		color: white;
 		position: relative;
 		overflow: hidden;
-	}
-
-	/* Connection Status */
-	.connection-bar {
-		position: fixed;
-		top: 0;
-		left: 0;
-		right: 0;
-		z-index: 1000;
-		padding: 6px 16px;
-		text-align: center;
-		font-size: 0.85rem;
-		font-weight: 500;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		gap: 8px;
-	}
-	.connection-bar.reconnecting {
-		background: #f59e0b;
-		color: #000;
-	}
-	.connection-bar.disconnected {
-		background: #ef4444;
-		color: white;
-	}
-	.pulse-dot {
-		width: 8px;
-		height: 8px;
-		border-radius: 50%;
-		background: #000;
-		animation: pulse 1s infinite;
-	}
-	@keyframes pulse {
-		0%, 100% { opacity: 1; }
-		50% { opacity: 0.3; }
-	}
-
-	.btn-back {
-		margin-left: 12px;
-		padding: 4px 12px;
-		border: 1px solid rgba(255,255,255,0.5);
-		border-radius: 4px;
-		background: rgba(255,255,255,0.2);
-		color: white;
-		font-size: 0.8rem;
-		cursor: pointer;
-	}
-
-	/* Reconnect Overlay */
-	.reconnect-overlay {
-		position: fixed;
-		inset: 0;
-		z-index: 900;
-		background: rgba(0,0,0,0.6);
-		display: flex;
-		align-items: center;
-		justify-content: center;
-	}
-	.reconnect-content {
-		text-align: center;
-		padding: 2rem;
-	}
-	.spinner {
-		width: 40px;
-		height: 40px;
-		border: 3px solid rgba(255,255,255,0.3);
-		border-top-color: white;
-		border-radius: 50%;
-		animation: spin 0.8s linear infinite;
-		margin: 0 auto 1rem;
-	}
-	@keyframes spin {
-		to { transform: rotate(360deg); }
 	}
 
 	/* Toast */
