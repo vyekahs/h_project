@@ -3,12 +3,12 @@
 
 	let { game } = $props<{ game: any }>();
 
-	const mySeat = $derived(game.gameState?.mySeat ?? 0);
-	// Opponents are left and right of me
-	const leftSeat = $derived(((mySeat + 3) % 4) as SeatIndex);
-	const rightSeat = $derived(((mySeat + 1) % 4) as SeatIndex);
-	const leftPlayer = $derived(game.gameState?.players[leftSeat]);
-	const rightPlayer = $derived(game.gameState?.players[rightSeat]);
+	// Human is always seat 0. Opponents are seats 1 (right) and 3 (left).
+	const leftSeat = 3 as SeatIndex;
+	const rightSeat = 1 as SeatIndex;
+	// Access stateVersion for reactivity on mutable engine state
+	const leftPlayer = $derived.by(() => { void game.stateVersion; return game.gameState?.players[leftSeat]; });
+	const rightPlayer = $derived.by(() => { void game.stateVersion; return game.gameState?.players[rightSeat]; });
 
 	function gift(seat: SeatIndex) {
 		game.giftDragon(seat);

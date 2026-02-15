@@ -1,13 +1,46 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
+
 	let { game } = $props<{ game: any }>();
 
 	const data = $derived(game.gameEndData);
 	const myTeam = $derived(game.myTeam);
 	const isWinner = $derived(data?.winner === myTeam);
 
-	function goToLobby() {
+	let saved = $state(false);
+
+	onMount(() => {
+		saveResult();
+	});
+
+	async function saveResult() {
+		if (saved || !data) return;
+		try {
+			await fetch('/api/tichu/result', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					winner: data.winner,
+					scoreA: data.scoreA,
+					scoreB: data.scoreB,
+					isAiGame: true,
+					playerData: [{ id: -1, team: 'A' }]
+				})
+			});
+			saved = true;
+		} catch {
+			// silently fail — result saving is best-effort
+		}
+	}
+
+	function newGame() {
 		game.showGameOverModal = false;
-		game.backToLobby();
+		game.startGame();
+	}
+
+	function goToSetup() {
+		game.showGameOverModal = false;
+		game.backToSetup();
 	}
 
 	function dismiss() {
@@ -19,16 +52,16 @@
 	<div class="modal-content" class:victory={isWinner}>
 		<div class="result-icon">{isWinner ? '🏆' : '😢'}</div>
 		<h2>{isWinner ? '승리!' : '패배'}</h2>
-		<p class="winner-team">Team {data?.winner} 승리</p>
+		<p class="winner-team">{isWinner ? '우리 팀 승리!' : '상대 팀 승리'}</p>
 
 		<div class="final-scores">
 			<div class="final-team">
-				<span class="team-label">Team A</span>
+				<span class="team-label">우리 팀</span>
 				<span class="final-score">{data?.scoreA ?? 0}</span>
 			</div>
 			<div class="final-divider">vs</div>
 			<div class="final-team">
-				<span class="team-label">Team B</span>
+				<span class="team-label">상대 팀</span>
 				<span class="final-score">{data?.scoreB ?? 0}</span>
 			</div>
 		</div>
@@ -37,8 +70,11 @@
 			<button class="btn-review" onclick={dismiss}>
 				결과 확인
 			</button>
-			<button class="btn-ok" onclick={goToLobby}>
-				로비로 돌아가기
+			<button class="btn-ok" onclick={newGame}>
+				새 게임
+			</button>
+			<button class="btn-setup" onclick={goToSetup}>
+				설정으로
 			</button>
 		</div>
 	</div>
@@ -124,10 +160,20 @@
 		padding: 12px 32px;
 		border-radius: 10px;
 		border: none;
-		background: #3b82f6;
-		color: white;
+		background: #f59e0b;
+		color: #000;
 		font-weight: 600;
 		font-size: 1rem;
+		cursor: pointer;
+		width: 100%;
+	}
+	.btn-setup {
+		padding: 10px 32px;
+		border-radius: 10px;
+		border: 1px solid rgba(255,255,255,0.2);
+		background: transparent;
+		color: rgba(255,255,255,0.7);
+		font-size: 0.85rem;
 		cursor: pointer;
 		width: 100%;
 	}

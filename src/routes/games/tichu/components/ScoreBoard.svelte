@@ -1,11 +1,13 @@
 <script lang="ts">
 	let { game } = $props<{ game: any }>();
 
+	function gs() { void game.stateVersion; return game.gameState; }
+
 	const result = $derived(game.roundResult);
-	const completedRounds = $derived(game.gameState?.completedRounds ?? []);
+	const completedRounds = $derived.by(() => gs()?.completedRounds ?? []);
 
 	function close() {
-		game.showRoundEndModal = false;
+		game.startNextRound();
 	}
 </script>
 
@@ -17,13 +19,13 @@
 			<!-- Round Score -->
 			<div class="round-score">
 				<div class="team-score team-a">
-					<span class="team-label">Team A</span>
+					<span class="team-label">우리 팀</span>
 					<span class="score" class:positive={result.teamAScore > 0} class:negative={result.teamAScore < 0}>
 						{result.teamAScore > 0 ? '+' : ''}{result.teamAScore}
 					</span>
 				</div>
 				<div class="team-score team-b">
-					<span class="team-label">Team B</span>
+					<span class="team-label">상대 팀</span>
 					<span class="score" class:positive={result.teamBScore > 0} class:negative={result.teamBScore < 0}>
 						{result.teamBScore > 0 ? '+' : ''}{result.teamBScore}
 					</span>
@@ -32,16 +34,16 @@
 
 			<!-- Special events -->
 			{#if result.oneTwo}
-				<div class="event one-two">원투! Team {result.oneTwo} (+200)</div>
+				<div class="event one-two">원투! {result.oneTwo === 'A' ? '우리 팀' : '상대 팀'} (+200)</div>
 			{/if}
 			{#each result.grandTichuDeclarations as gt}
 				<div class="event" class:success={gt.success} class:fail={!gt.success}>
-					{game.gameState?.players[gt.seat]?.name ?? `P${gt.seat + 1}`} 그랜드 티츄 {gt.success ? '성공! (+200)' : '실패 (-200)'}
+					{gs()?.players[gt.seat]?.name ?? `P${gt.seat + 1}`} 그랜드 티츄 {gt.success ? '성공! (+200)' : '실패 (-200)'}
 				</div>
 			{/each}
 			{#each result.smallTichuDeclarations as st}
 				<div class="event" class:success={st.success} class:fail={!st.success}>
-					{game.gameState?.players[st.seat]?.name ?? `P${st.seat + 1}`} 스몰 티츄 {st.success ? '성공! (+100)' : '실패 (-100)'}
+					{gs()?.players[st.seat]?.name ?? `P${st.seat + 1}`} 스몰 티츄 {st.success ? '성공! (+100)' : '실패 (-100)'}
 				</div>
 			{/each}
 		{/if}
@@ -51,13 +53,13 @@
 			<h3>누적 점수</h3>
 			<div class="cumulative-scores">
 				<div class="cum-team">
-					<span class="team-label">Team A</span>
-					<span class="cum-score">{game.gameState?.cumulativeScoreA ?? 0}</span>
+					<span class="team-label">우리 팀</span>
+					<span class="cum-score">{gs()?.cumulativeScoreA ?? 0}</span>
 				</div>
 				<div class="cum-divider">:</div>
 				<div class="cum-team">
-					<span class="team-label">Team B</span>
-					<span class="cum-score">{game.gameState?.cumulativeScoreB ?? 0}</span>
+					<span class="team-label">상대 팀</span>
+					<span class="cum-score">{gs()?.cumulativeScoreB ?? 0}</span>
 				</div>
 			</div>
 		</div>
@@ -68,7 +70,7 @@
 				<h4>라운드 히스토리</h4>
 				<table>
 					<thead>
-						<tr><th>R</th><th>A</th><th>B</th></tr>
+						<tr><th>R</th><th>우리</th><th>상대</th></tr>
 					</thead>
 					<tbody>
 						{#each completedRounds as round}

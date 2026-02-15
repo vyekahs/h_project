@@ -2,18 +2,20 @@
 	import type { Combination, SeatIndex } from '$lib/games/tichu/types';
 	import CardComponent from './CardComponent.svelte';
 
-	let { trick, mySeat, isMyTurn = false } = $props<{
+	let { trick, lastPlay = null, mySeat, playerNames = {}, isMyTurn = false } = $props<{
 		trick: {
 			plays: { seat: SeatIndex; combination: Combination }[];
 			passCount: number;
 			leadSeat: SeatIndex;
 			currentSeat: SeatIndex;
 		} | null;
+		lastPlay?: { seat: SeatIndex; combination: Combination } | null;
 		mySeat: SeatIndex;
+		playerNames?: Record<number, string>;
 		isMyTurn?: boolean;
 	}>();
 
-	const lastPlay = $derived(trick?.plays[trick.plays.length - 1] ?? null);
+	const lastPlayName = $derived(lastPlay ? (lastPlay.seat === mySeat ? '나' : (playerNames[lastPlay.seat] ?? '')) : '');
 
 	// Position of a seat relative to me (me=bottom, partner=top, etc.)
 	function seatPosition(seat: SeatIndex): string {
@@ -28,6 +30,7 @@
 <div class="trick-area">
 	{#if trick && lastPlay}
 		<div class="trick-display pos-{seatPosition(lastPlay.seat)}">
+			<div class="trick-player">{lastPlayName}</div>
 			<div class="trick-cards">
 				{#each lastPlay.combination.cards as card (card.id)}
 					<CardComponent {card} small />
@@ -60,6 +63,13 @@
 		align-items: center;
 		gap: 4px;
 		animation: cardSlide 0.3s ease-out;
+	}
+
+	.trick-player {
+		font-size: 0.65rem;
+		opacity: 0.7;
+		font-weight: 500;
+		min-height: 14px;
 	}
 
 	.trick-cards {

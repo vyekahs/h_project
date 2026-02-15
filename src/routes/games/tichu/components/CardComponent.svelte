@@ -69,38 +69,41 @@
 
 <style>
 	.card {
-		width: 52px;
-		height: 72px;
-		border-radius: 6px;
+		width: 44px;
+		height: 62px;
+		border-radius: 5px;
 		background: white;
 		border: 2px solid #e5e7eb;
 		display: flex;
 		flex-direction: column;
 		align-items: center;
 		justify-content: center;
-		gap: 2px;
+		gap: 1px;
 		cursor: pointer;
 		transition: transform 0.15s, box-shadow 0.15s;
 		position: relative;
 		flex-shrink: 0;
-		padding: 2px;
+		padding: 1px;
 	}
-	.card:not(:disabled):hover {
-		transform: translateY(-4px);
-		box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+	/* Only apply hover effect on devices with hover capability (not mobile) */
+	@media (hover: hover) {
+		.card:not(:disabled):not(.selected):hover {
+			transform: translateY(-3px);
+			box-shadow: 0 3px 8px rgba(0,0,0,0.3);
+		}
 	}
 	.card:disabled {
 		cursor: default;
 	}
 	.card.selected {
-		transform: translateY(-10px);
+		transform: translateY(-8px);
 		border-color: #f59e0b;
-		box-shadow: 0 4px 16px rgba(245,158,11,0.4);
+		box-shadow: 0 3px 12px rgba(245,158,11,0.4);
 	}
 	.card.small {
-		width: 36px;
-		height: 50px;
-		font-size: 0.75rem;
+		width: 32px;
+		height: 44px;
+		font-size: 0.7rem;
 	}
 	.card.special {
 		border-color: var(--card-color);
@@ -108,25 +111,25 @@
 	}
 
 	.card-rank {
-		font-size: 1.1rem;
+		font-size: 1rem;
 		font-weight: 700;
 		line-height: 1;
 	}
 	.card-suit {
-		font-size: 0.85rem;
+		font-size: 0.75rem;
 		line-height: 1;
 	}
 	.card-symbol {
-		font-size: 1.4rem;
+		font-size: 1.2rem;
 		line-height: 1;
 	}
 	.card-name {
-		font-size: 0.55rem;
+		font-size: 0.5rem;
 		color: var(--card-color);
 		font-weight: 600;
 	}
-	.small .card-rank { font-size: 0.8rem; }
-	.small .card-suit { font-size: 0.65rem; }
-	.small .card-symbol { font-size: 1rem; }
-	.small .card-name { font-size: 0.45rem; }
+	.small .card-rank { font-size: 0.75rem; }
+	.small .card-suit { font-size: 0.55rem; }
+	.small .card-symbol { font-size: 0.9rem; }
+	.small .card-name { font-size: 0.4rem; }
 </style>

@@ -1,25 +1,20 @@
 <script lang="ts">
-	import type { SeatIndex } from '$lib/games/tichu/types';
+	import type { TichuPlayer } from '$lib/games/tichu/types';
 
-	let { player, isCurrentTurn = false, position } = $props<{
-		player: {
-			seat: SeatIndex;
-			name: string;
-			team: string;
-			cardCount: number;
-			grandTichu: boolean | null;
-			smallTichu: boolean;
-			finishOrder: number | null;
-			connected: boolean;
-		};
+	let { player, isCurrentTurn = false, position, isPartner = false, stateVersion = 0 } = $props<{
+		player: TichuPlayer;
 		isCurrentTurn?: boolean;
 		position: 'left' | 'top' | 'right';
+		isPartner?: boolean;
+		stateVersion?: number;
 	}>();
 
+	// player is a mutable object — access stateVersion to force reactivity
+	const cardCount = $derived.by(() => { void stateVersion; return player.hand.length; });
 	const finishLabel: Record<number, string> = { 1: '1등', 2: '2등', 3: '3등', 4: '4등' };
 </script>
 
-<div class="opponent {position}" class:current-turn={isCurrentTurn} class:disconnected={!player.connected}>
+<div class="opponent {position}" class:current-turn={isCurrentTurn}>
 	<div class="opponent-info">
 		<div class="avatar team-{player.team}" class:finished={player.finishOrder !== null}>
 			{#if player.finishOrder !== null}
@@ -30,12 +25,13 @@
 		</div>
 		<div class="name-area">
 			<span class="name">{player.name}</span>
-			{#if !player.connected}
-				<span class="offline-dot" title="오프라인"></span>
-			{/if}
+			{#if isPartner}<span class="partner-badge">파트너</span>{/if}
 		</div>
-		{#if player.cardCount > 0}
-			<div class="card-count">{player.cardCount}장</div>
+		{#if cardCount > 0}
+			<div class="card-count">{cardCount}장</div>
+		{/if}
+		{#if isCurrentTurn && cardCount > 0}
+			<div class="thinking">생각 중…</div>
 		{/if}
 	</div>
 
@@ -48,9 +44,9 @@
 	{/if}
 
 	<!-- Card backs -->
-	{#if player.cardCount > 0 && player.finishOrder === null}
+	{#if cardCount > 0 && player.finishOrder === null}
 		<div class="card-backs">
-			{#each Array(Math.min(player.cardCount, 8)) as _}
+			{#each Array(Math.min(cardCount, 8)) as _}
 				<div class="card-back"></div>
 			{/each}
 		</div>
@@ -70,9 +66,6 @@
 	.opponent.current-turn {
 		background: rgba(245,158,11,0.15);
 		box-shadow: 0 0 12px rgba(245,158,11,0.3);
-	}
-	.opponent.disconnected {
-		opacity: 0.5;
 	}
 
 	.opponent-info {
@@ -104,20 +97,32 @@
 	.name {
 		font-size: 0.75rem;
 		font-weight: 500;
-		max-width: 60px;
+		max-width: 80px;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
 	}
-	.offline-dot {
-		width: 6px;
-		height: 6px;
-		border-radius: 50%;
-		background: #ef4444;
+	.partner-badge {
+		font-size: 0.55rem;
+		background: rgba(239,68,68,0.3);
+		color: #fca5a5;
+		padding: 0 4px;
+		border-radius: 3px;
+		font-weight: 600;
 	}
 	.card-count {
 		font-size: 0.65rem;
 		opacity: 0.6;
+	}
+
+	.thinking {
+		font-size: 0.6rem;
+		opacity: 0.7;
+		animation: thinkPulse 1.2s infinite;
+	}
+	@keyframes thinkPulse {
+		0%, 100% { opacity: 0.7; }
+		50% { opacity: 0.3; }
 	}
 
 	.declaration {

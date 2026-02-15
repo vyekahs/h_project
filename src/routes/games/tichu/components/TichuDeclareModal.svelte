@@ -1,21 +1,24 @@
 <script lang="ts">
 	let { game } = $props<{ game: any }>();
 
-	const timerDisplay = $derived(game.grandTichuTimer);
+	function handleDeclare() {
+		game.declareGrandTichu();
+	}
+
+	function handlePass() {
+		game.passGrandTichu();
+	}
 </script>
 
 <div class="declare-overlay">
 	<div class="declare-content">
 		<h2>그랜드 티츄</h2>
 		<p class="desc">8장을 보고 선언합니다.<br>성공 +200 / 실패 -200</p>
-		{#if timerDisplay > 0}
-			<div class="timer">{timerDisplay}초</div>
-		{/if}
 		<div class="declare-actions">
-			<button class="btn-declare" onclick={() => game.declareGrandTichu()}>
+			<button class="btn-declare" onclick={handleDeclare}>
 				선언!
 			</button>
-			<button class="btn-pass-declare" onclick={() => game.passGrandTichu()}>
+			<button class="btn-pass-declare" onclick={handlePass}>
 				패스
 			</button>
 		</div>
@@ -51,12 +54,6 @@
 		opacity: 0.7;
 		margin: 0 0 16px;
 		line-height: 1.5;
-	}
-	.timer {
-		font-size: 2rem;
-		font-weight: 700;
-		color: #f59e0b;
-		margin-bottom: 16px;
 	}
 	.declare-actions {
 		display: flex;
