@@ -1,28 +1,8 @@
 import { startAutoCloseScheduler } from '$lib/server/autoClose';
 import { verifyAdminSession, verifyAttendeeSession } from '$lib/server/auth';
-import { TichuRoomManager } from '$lib/server/tichu/TichuRoomManager';
-import { setupSocketHandlers } from '$lib/server/tichu/socketHandlers';
-import type { Server as SocketIOServer, Socket } from 'socket.io';
 
 // Start the scheduler when the server starts
 startAutoCloseScheduler();
-
-// Initialize Tichu multiplayer system
-const tichuManager = new TichuRoomManager();
-
-(globalThis as any).__saveAllGames = async () => {
-	await tichuManager.saveAllSnapshots();
-};
-
-// Restore active games from DB, then register socket handler
-tichuManager.init().then(() => {
-	// Register socket handler only after snapshots are fully restored
-	(globalThis as any).__tichuHandler = (io: SocketIOServer, socket: Socket, userId: number, userName: string) => {
-		socket.data.userId = userId;
-		socket.data.userName = userName;
-		setupSocketHandlers(io, socket, tichuManager);
-	};
-}).catch(e => console.error('[Tichu] Init error:', e));
 
 /** @type {import('@sveltejs/kit').Handle} */
 export async function handle({ event, resolve }) {

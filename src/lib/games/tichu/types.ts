@@ -142,53 +142,6 @@ export interface TichuRoomState {
 	createdAt: number;
 }
 
-// ===== Client View (filtered state) =====
-
-export interface TichuClientState {
-	roomId: string;
-	phase: GamePhase;
-	config: RoomConfig;
-	mySeat: SeatIndex;
-	myHand: Card[];
-	players: {
-		seat: SeatIndex;
-		name: string;
-		team: TeamId;
-		cardCount: number;
-		grandTichu: boolean | null;
-		smallTichu: boolean;
-		hasPlayedFirstCard: boolean;
-		finishOrder: number | null;
-		connected: boolean;
-	}[];
-	readyStatus: boolean[];
-	trick: {
-		plays: { seat: SeatIndex; combination: Combination }[];
-		passCount: number;
-		leadSeat: SeatIndex;
-		currentSeat: SeatIndex;
-	} | null;
-	wish: WishState;
-	currentSeat: SeatIndex;
-	completedRounds: TichuRoundResult[];
-	cumulativeScoreA: number;
-	cumulativeScoreB: number;
-	winner: TeamId | null;
-	dragonGiftPending: boolean;
-	dragonGiftSeat: SeatIndex | null;
-	turnDeadline: number | null;
-}
-
-// ===== Socket.IO Event Payloads =====
-
-export interface RoomListItem {
-	roomId: string;
-	playerCount: number;
-	players: { name: string; seat: SeatIndex; team: TeamId }[];
-	phase: GamePhase;
-	config: RoomConfig;
-}
-
 export interface ExchangeCards {
 	toPartner: string; // card id
 	toLeft: string;
