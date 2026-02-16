@@ -22,10 +22,13 @@
 #include <WebServer.h>
 
 // --- CONFIGURATION ---
-const char* SERVER_URL = "http://192.168.219.103:3000";
-const char* WIFI_SSID = "U+NetE836";
-const char* WIFI_PASS = "7356361EM!";
+const char* SERVER_URL = "https://damonpyo.mooo.com";
+const char* WIFI_SSID = "KT_GiGA_3F81";
+const char* WIFI_PASS = "a4ke01fh66";
+
+// Server Config
 const char* SCANNER_API_KEY = "hproject_scanner_secret_2026";
+
 
 // WiFi Promiscuous Scan Config
 const unsigned long WIFI_SCAN_INTERVAL = 60000;  // 60초마다 스캔
@@ -68,11 +71,11 @@ void IRAM_ATTR wifiPromiscuousCallback(void* buf, wifi_promiscuous_pkt_type_t ty
     promiscCollectedMacs.insert(mac);
 }
 
-// Static IP Config
-IPAddress staticIP(192, 168, 219, 200);
-IPAddress gateway(192, 168, 219, 1);
+// Static IP Config (네트워크 대역: 172.30.1.x)
+IPAddress staticIP(172, 30, 1, 200);
+IPAddress gateway(172, 30, 1, 254);
 IPAddress subnet(255, 255, 255, 0);
-IPAddress dns(8, 8, 8, 8);
+IPAddress dns(168, 126, 63, 1);
 
 // Local HTTP Server (WiFi MAC 등록 페이지 제공)
 WebServer localServer(80);
@@ -160,10 +163,11 @@ int customStoreWriteCb(int obj_type, const union ble_store_value *val) {
             Serial.print("IRK intercepted from bond store write: ");
             Serial.println(capturedIrk);
 
-            // IRK를 GATT 캐릭터리스틱에 즉시 세팅
+            // IRK를 GATT 캐릭터리스틱에 즉시 세팅 + 알림
             if (pIrkCharacteristic != NULL) {
                 pIrkCharacteristic->setValue((uint8_t*)buf, 32);
-                Serial.println("IRK written to GATT characteristic (from store callback)");
+                pIrkCharacteristic->notify();
+                Serial.println("IRK written + notified via GATT characteristic (from store callback)");
             }
         }
     }
@@ -202,10 +206,11 @@ bool tryCaptureIrkFromBondStore() {
             Serial.println(capturedIrk);
             irkCaptured = true;
 
-            // IRK를 GATT 캐릭터리스틱에도 세팅 (Web Bluetooth용)
+            // IRK를 GATT 캐릭터리스틱에도 세팅 + 알림 (Web Bluetooth용)
             if (pIrkCharacteristic != NULL) {
                 pIrkCharacteristic->setValue((uint8_t*)buf, 32);
-                Serial.println("IRK written to GATT characteristic");
+                pIrkCharacteristic->notify();
+                Serial.println("IRK written + notified via GATT characteristic");
             }
 
             return true;
@@ -231,11 +236,12 @@ class MyServerCallbacks: public NimBLEServerCallbacks {
         // Web Bluetooth 플로우
         if (!isRegistering) {
             if (isWebBtFlow && irkCaptured) {
-                // 재연결: IRK 이미 캡처됨 → 캐릭터리스틱에 IRK 세팅 유지
+                // 재연결: IRK 이미 캡처됨 → 캐릭터리스틱에 IRK 세팅 + 알림
                 Serial.println("Web BT reconnect - IRK already captured, ready to read");
                 if (pIrkCharacteristic != NULL && capturedIrk.length() == 32) {
                     pIrkCharacteristic->setValue((uint8_t*)capturedIrk.c_str(), 32);
-                    Serial.println("IRK re-set in characteristic for reconnect read");
+                    pIrkCharacteristic->notify();
+                    Serial.println("IRK re-set + notified in characteristic for reconnect");
                 }
             } else {
                 // 첫 연결: JustWorks 페어링 설정
@@ -553,19 +559,42 @@ void scanLocalDevices() {
     // Phase 1: Promiscuous mode로 15초간 MAC 수집
     promiscCollectedMacs.clear();
 
+    // BLE 광고 일시 중단 (Promiscuous 모드와 BLE 동시 사용 시 간섭)
+    NimBLEDevice::stopAdvertising();
+    Serial.println("[WiFi] BLE advertising paused for scan");
+
     esp_wifi_set_promiscuous_rx_cb(wifiPromiscuousCallback);
     esp_wifi_set_promiscuous(true);
 
     Serial.println("[WiFi] Promiscuous mode ON, scanning for 15 seconds...");
+    bool scanAborted = false;
     unsigned long scanStart = millis();
     while (millis() - scanStart < 15000) {
-        delay(1000);
+        delay(100);  // 100ms 간격으로 체크 (BLE 연결 빠르게 감지)
         esp_task_wdt_reset();
         localServer.handleClient();  // WiFi 등록 요청 처리 유지
+        // BLE 연결 감지 시 스캔 즉시 중단
+        if (currentConnId != 0xFFFF || isRegistering) {
+            Serial.println("[WiFi] BLE connection detected, stopping scan early");
+            scanAborted = true;
+            break;
+        }
     }
 
     esp_wifi_set_promiscuous(false);
     Serial.printf("[WiFi] Promiscuous mode OFF, captured %d unique MACs\n", promiscCollectedMacs.size());
+
+    // BLE 광고 재시작 (BLE 연결 중이 아닐 때만)
+    if (currentConnId == 0xFFFF && !isRegistering) {
+        NimBLEDevice::startAdvertising();
+        Serial.println("[WiFi] BLE advertising resumed");
+    }
+
+    // BLE 연결로 스캔이 중단된 경우 불완전한 데이터 전송 스킵
+    if (scanAborted) {
+        promiscCollectedMacs.clear();
+        return;
+    }
 
     // Phase 2: set → vector 변환
     std::vector<String> macs(promiscCollectedMacs.begin(), promiscCollectedMacs.end());
@@ -642,7 +671,9 @@ void pollServer() {
 
     HTTPClient http;
     String shortId = myMacAddress.substring(myMacAddress.length() - 4);
-    http.begin(getHttpClient(), String(SERVER_URL) + "/api/devices/poll?deviceId=" + shortId);
+    String baseUrl = String(SERVER_URL);
+    String url = baseUrl + "/api/devices/poll?deviceId=" + shortId;
+    http.begin(getHttpClient(), url);
     http.setTimeout(10000);
     int code = http.GET();
 
@@ -789,7 +820,7 @@ void setup() {
     NimBLEService* pIrkService = pServer->createService(IRK_SERVICE_UUID);
     pIrkCharacteristic = pIrkService->createCharacteristic(
         IRK_CHAR_UUID,
-        NIMBLE_PROPERTY::READ_ENC  // 암호화된 연결에서만 IRK 읽기 허용
+        NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY  // 읽기 + 알림 (Web Bluetooth 호환)
     );
     const char* emptyIrk = "00000000000000000000000000000000";
     pIrkCharacteristic->setValue((uint8_t*)emptyIrk, 32);

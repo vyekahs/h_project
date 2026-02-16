@@ -16,7 +16,7 @@
     // --- WiFi 등록 ---
     let wifiError = '';
     // ESP32-S3 로컬 HTTP 서버 주소 (같은 WiFi, 고정 IP)
-    const ESP32_LOCAL_URL = 'http://192.168.219.200';
+    const ESP32_LOCAL_URL = 'http://172.30.1.200';
 
     function getDeviceName(): string {
         const ua = navigator.userAgent;
@@ -92,6 +92,8 @@
         webBtStatus = '블루투스 기기를 검색합니다...';
         step = 'web_bt_connecting';
 
+        let device: any = null;
+
         try {
             if (!(navigator as any).bluetooth) {
                 error = 'HTTPS 환경에서만 블루투스를 사용할 수 있습니다. (https:// 주소로 접속해주세요)';
@@ -100,7 +102,7 @@
             }
 
             // 1. Web Bluetooth로 ESP32 선택 (사용자가 직접 선택 = 본인 확인)
-            const device = await (navigator as any).bluetooth.requestDevice({
+            device = await (navigator as any).bluetooth.requestDevice({
                 filters: [
                     { services: ['12345678-1234-5678-1234-56789abcdef0'] },
                     { name: 'HN_SETUP' }
@@ -108,38 +110,91 @@
                 optionalServices: ['12345678-1234-5678-1234-56789abcdef0']
             });
 
+            // GATT 연결 (ESP32 WiFi 스캔 중이면 실패할 수 있으므로 재시도)
             webBtStatus = '기기에 연결 중...';
-            const server = await device.gatt!.connect();
+            let server: any = null;
+            for (let attempt = 1; attempt <= 3; attempt++) {
+                try {
+                    server = await device.gatt!.connect();
+                    break;
+                } catch (connErr: any) {
+                    console.warn(`GATT connect attempt ${attempt}/3 failed:`, connErr.message);
+                    if (attempt === 3) throw connErr;
+                    webBtStatus = `연결 재시도 중... (${attempt}/3)`;
+                    await new Promise(r => setTimeout(r, 2000));
+                }
+            }
 
             webBtStatus = '기기등록 중...';
             const service = await server.getPrimaryService('12345678-1234-5678-1234-56789abcdef0');
             const characteristic = await service.getCharacteristic('12345678-1234-5678-1234-56789abcdef1');
 
-            // 2. 페어링 완료 대기 후 IRK 읽기
+            // 2. IRK 수신 (notification + polling 병행)
             let irk = '';
 
-            // 페어링이 완료될 때까지 대기
-            await new Promise(r => setTimeout(r, 3000));
+            // IRK를 notification + polling 병행으로 수신
+            async function waitForIrk(char: any, timeoutMs: number): Promise<string> {
+                return new Promise<string>((resolve) => {
+                    let resolved = false;
+                    let pollInterval: ReturnType<typeof setInterval>;
 
-            // 첫 연결에서 IRK 읽기 시도
-            for (let i = 0; i < 5; i++) {
-                webBtStatus = `기기등록 중... (${i + 1}/5)`;
-                try {
-                    const value = await characteristic.readValue();
-                    const decoder = new TextDecoder();
-                    irk = decoder.decode(value);
-                    if (irk && irk.length === 32 && irk !== '00000000000000000000000000000000') {
-                        break;
-                    }
-                    irk = '';
-                } catch (readErr: any) {
-                    console.warn('IRK read attempt:', readErr.message);
-                    irk = '';
-                }
-                await new Promise(r => setTimeout(r, 1000));
+                    const cleanup = () => {
+                        clearInterval(pollInterval);
+                        try { char.removeEventListener('characteristicvaluechanged', onNotify); } catch {}
+                        try { char.stopNotifications(); } catch {}
+                    };
+
+                    const done = (val: string) => {
+                        if (resolved) return;
+                        resolved = true;
+                        clearTimeout(timer);
+                        cleanup();
+                        resolve(val);
+                    };
+
+                    // 타임아웃
+                    const timer = setTimeout(() => done(''), timeoutMs);
+
+                    // Notification 리스너
+                    const onNotify = (event: any) => {
+                        const decoder = new TextDecoder();
+                        const val = decoder.decode(event.target.value);
+                        console.log('IRK notification:', val);
+                        if (val && val.length === 32 && val !== '00000000000000000000000000000000') {
+                            done(val);
+                        }
+                    };
+
+                    // Notification 구독 (비동기이지만 Promise 체인 불필요)
+                    (async () => {
+                        try {
+                            char.addEventListener('characteristicvaluechanged', onNotify);
+                            await char.startNotifications();
+                            console.log('Notifications started');
+                        } catch (e: any) {
+                            console.warn('Notification setup failed, polling only:', e.message);
+                        }
+                    })();
+
+                    // Polling 병행 (1.5초 간격, notification 실패 대비)
+                    pollInterval = setInterval(async () => {
+                        if (resolved) return;
+                        try {
+                            const value = await char.readValue();
+                            const decoder = new TextDecoder();
+                            const val = decoder.decode(value);
+                            if (val && val.length === 32 && val !== '00000000000000000000000000000000') {
+                                done(val);
+                            }
+                        } catch {}
+                    }, 1500);
+                });
             }
 
-            // 첫 연결에서 못 읽었으면 재연결 시도
+            webBtStatus = '기기등록 중... (IRK 대기)';
+            irk = await waitForIrk(characteristic, 15000);
+
+            // 첫 연결에서 못 받았으면 재연결 시도
             if (!irk) {
                 webBtStatus = '재연결 중...';
                 if (device.gatt?.connected) {
@@ -152,29 +207,15 @@
                     const service2 = await server2.getPrimaryService('12345678-1234-5678-1234-56789abcdef0');
                     const char2 = await service2.getCharacteristic('12345678-1234-5678-1234-56789abcdef1');
 
-                    for (let i = 0; i < 10; i++) {
-                        webBtStatus = `기기등록 중... (재연결 ${i + 1}/10)`;
-                        try {
-                            const value = await char2.readValue();
-                            const decoder = new TextDecoder();
-                            irk = decoder.decode(value);
-                            if (irk && irk.length === 32 && irk !== '00000000000000000000000000000000') {
-                                break;
-                            }
-                            irk = '';
-                        } catch (readErr: any) {
-                            console.warn('IRK reconnect read:', readErr.message);
-                            irk = '';
-                        }
-                        await new Promise(r => setTimeout(r, 1000));
-                    }
+                    webBtStatus = '기기등록 중... (재연결 IRK 대기)';
+                    irk = await waitForIrk(char2, 15000);
                 } catch (reconErr: any) {
                     console.warn('Reconnect failed:', reconErr.message);
                 }
             }
 
             // 연결 해제
-            if (device.gatt?.connected) {
+            if (device?.gatt?.connected) {
                 device.gatt.disconnect();
             }
 
@@ -213,6 +254,13 @@
                 error = '블루투스 연결 실패: ' + (e.message || '알 수 없는 오류');
             }
             step = 'input';
+        } finally {
+            // 성공/실패 무관하게 BLE 연결 확실히 해제
+            try {
+                if (device?.gatt?.connected) {
+                    device.gatt.disconnect();
+                }
+            } catch {}
         }
     }
 
