@@ -468,7 +468,7 @@
             {/if}
         </div>
 
-        <!-- WiFi 등록 (보조) -->
+        <!-- WiFi 등록 (사용 안 함 - 주석 처리)
         <div class="card alt">
             <p><strong>WiFi 등록</strong></p>
             <p class="desc">블루투스가 안 될 경우 WiFi로도 등록할 수 있습니다.</p>
@@ -477,6 +477,7 @@
             {/if}
             <button class="btn-alt" on:click={startWifiRegistration}>WiFi로 등록</button>
         </div>
+        -->
 
     {:else if step === 'web_bt_connecting'}
         <!-- Android Web Bluetooth 진행 중 -->
