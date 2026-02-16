@@ -81,6 +81,7 @@ export const load: PageServerLoad = async () => {
         FROM visits v
         JOIN attendees a ON a.id = v.attendee_id
         WHERE a.is_admin = false
+          AND v.arrival_time >= DATE_TRUNC('month', NOW() AT TIME ZONE 'Asia/Seoul') AT TIME ZONE 'Asia/Seoul'
         GROUP BY a.id, a.name
         ORDER BY visit_count DESC
         LIMIT 10
