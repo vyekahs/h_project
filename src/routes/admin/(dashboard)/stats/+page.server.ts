@@ -92,7 +92,8 @@ export const load: PageServerLoad = async () => {
                 WHERE a.is_admin = false AND v.arrival_time >= NOW() - INTERVAL '30 days'
                 GROUP BY v.attendee_id HAVING COUNT(*) >= 2
             ) sub) as active_users,
-            (SELECT COUNT(*) FROM attendees WHERE is_admin = false) as total_users
+            (SELECT COUNT(*) FROM attendees WHERE is_admin = false) as total_users,
+            (SELECT COUNT(*) FROM attendees WHERE is_admin = false AND season_pass_expires_at IS NOT NULL AND season_pass_expires_at > NOW()) as season_pass_users
     `);
 
     return {
@@ -110,6 +111,7 @@ export const load: PageServerLoad = async () => {
             avgMonthlyVisits: parseFloat(avgMonthlyResult.rows[0]?.avg_monthly) || 0,
             activeUsers: parseInt(activeUsersResult.rows[0]?.active_users) || 0,
             totalUsers: parseInt(activeUsersResult.rows[0]?.total_users) || 0,
+            seasonPassUsers: parseInt(activeUsersResult.rows[0]?.season_pass_users) || 0,
             topVisitors: topVisitorsResult.rows
         }
     };
