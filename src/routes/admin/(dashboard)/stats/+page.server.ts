@@ -88,7 +88,11 @@ export const load: PageServerLoad = async () => {
 
     const activeUsersResult = await query(`
         SELECT
-            (SELECT COUNT(DISTINCT v.attendee_id) FROM visits v JOIN attendees a ON a.id = v.attendee_id WHERE a.is_admin = false AND v.arrival_time >= NOW() - INTERVAL '30 days') as active_users,
+            (SELECT COUNT(*) FROM (
+                SELECT v.attendee_id FROM visits v JOIN attendees a ON a.id = v.attendee_id
+                WHERE a.is_admin = false AND v.arrival_time >= NOW() - INTERVAL '30 days'
+                GROUP BY v.attendee_id HAVING COUNT(*) >= 2
+            ) sub) as active_users,
             (SELECT COUNT(*) FROM attendees WHERE is_admin = false) as total_users
     `);
 

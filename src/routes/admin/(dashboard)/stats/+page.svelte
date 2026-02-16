@@ -172,7 +172,7 @@
         <div class="kpi-card">
             <h3>활성 유저</h3>
             <div class="value">{data.userStats.activeUsers}<span class="unit">명</span></div>
-            <div class="label">최근 30일 / 전체 {data.userStats.totalUsers}명</div>
+            <div class="label">30일 내 2회 이상 / 전체 {data.userStats.totalUsers}명</div>
         </div>
         <div class="kpi-card">
             <h3>활성 비율</h3>
