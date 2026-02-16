@@ -51,6 +51,47 @@ export const load: PageServerLoad = async () => {
         return { hour: i, count: found ? parseInt(found.count) : 0 };
     });
 
+    // 6. User Stats (non-admin users only)
+    const avgWeeklyResult = await query(`
+        SELECT ROUND(AVG(weekly_count)::numeric, 1) as avg_weekly
+        FROM (
+            SELECT v.attendee_id,
+                COUNT(*)::float / GREATEST(EXTRACT(EPOCH FROM (NOW() - MIN(v.arrival_time))) / 604800, 1) as weekly_count
+            FROM visits v
+            JOIN attendees a ON a.id = v.attendee_id
+            WHERE a.is_admin = false
+            GROUP BY v.attendee_id
+        ) sub
+    `);
+
+    const avgMonthlyResult = await query(`
+        SELECT ROUND(AVG(monthly_count)::numeric, 1) as avg_monthly
+        FROM (
+            SELECT v.attendee_id,
+                COUNT(*)::float / GREATEST(EXTRACT(EPOCH FROM (NOW() - MIN(v.arrival_time))) / 2592000, 1) as monthly_count
+            FROM visits v
+            JOIN attendees a ON a.id = v.attendee_id
+            WHERE a.is_admin = false
+            GROUP BY v.attendee_id
+        ) sub
+    `);
+
+    const topVisitorsResult = await query(`
+        SELECT a.name, COUNT(*) as visit_count
+        FROM visits v
+        JOIN attendees a ON a.id = v.attendee_id
+        WHERE a.is_admin = false
+        GROUP BY a.id, a.name
+        ORDER BY visit_count DESC
+        LIMIT 10
+    `);
+
+    const activeUsersResult = await query(`
+        SELECT
+            (SELECT COUNT(DISTINCT v.attendee_id) FROM visits v JOIN attendees a ON a.id = v.attendee_id WHERE a.is_admin = false AND v.arrival_time >= NOW() - INTERVAL '30 days') as active_users,
+            (SELECT COUNT(*) FROM attendees WHERE is_admin = false) as total_users
+    `);
+
     return {
         kpis: {
             totalVisits: totalVisitsResult.rows[0]?.count || 0,
@@ -59,7 +100,14 @@ export const load: PageServerLoad = async () => {
         },
         dailyTrend: dailyTrendResult.rows,
         monthlyTrend: monthlyTrendResult.rows,
-        peakHours: hourlyData, // Return processed data
-        popularGames: popularGamesResult.rows
+        peakHours: hourlyData,
+        popularGames: popularGamesResult.rows,
+        userStats: {
+            avgWeeklyVisits: parseFloat(avgWeeklyResult.rows[0]?.avg_weekly) || 0,
+            avgMonthlyVisits: parseFloat(avgMonthlyResult.rows[0]?.avg_monthly) || 0,
+            activeUsers: parseInt(activeUsersResult.rows[0]?.active_users) || 0,
+            totalUsers: parseInt(activeUsersResult.rows[0]?.total_users) || 0,
+            topVisitors: topVisitorsResult.rows
+        }
     };
 };

@@ -9,6 +9,8 @@
     $: maxTrend = Math.max(...currentTrendData.map((d: any) => parseInt(d.count)), 1);
     $: maxHourly = Math.max(...data.peakHours.map((h: any) => parseInt(h.count)), 1);
     $: maxGame = Math.max(...data.popularGames.map((g: any) => parseInt(g.count)), 1);
+    $: maxVisitor = Math.max(...(data.userStats?.topVisitors || []).map((v: any) => parseInt(v.visit_count)), 1);
+    $: activeRate = data.userStats?.totalUsers > 0 ? Math.round((data.userStats.activeUsers / data.userStats.totalUsers) * 100) : 0;
 </script>
 
 <div class="stats-page">
@@ -141,6 +143,64 @@
                     </div>
                 {/each}
                 {#if data.popularGames.length === 0}
+                    <div class="empty-chart">데이터가 없습니다.</div>
+                {/if}
+            </div>
+        </div>
+    </div>
+
+    <!-- User Stats Section -->
+    <div class="section-header">
+        <h2>
+            <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px; vertical-align:text-bottom;"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            유저 현황
+        </h2>
+        <span class="section-hint">일반 유저 (관리자 제외)</span>
+    </div>
+
+    <div class="kpi-grid kpi-grid-4">
+        <div class="kpi-card">
+            <h3>평균 주간 방문</h3>
+            <div class="value">{data.userStats.avgWeeklyVisits}<span class="unit">회</span></div>
+            <div class="label">유저 1인당 / 주</div>
+        </div>
+        <div class="kpi-card">
+            <h3>평균 월간 방문</h3>
+            <div class="value">{data.userStats.avgMonthlyVisits}<span class="unit">회</span></div>
+            <div class="label">유저 1인당 / 월</div>
+        </div>
+        <div class="kpi-card">
+            <h3>활성 유저</h3>
+            <div class="value">{data.userStats.activeUsers}<span class="unit">명</span></div>
+            <div class="label">최근 30일 / 전체 {data.userStats.totalUsers}명</div>
+        </div>
+        <div class="kpi-card">
+            <h3>활성 비율</h3>
+            <div class="value">{activeRate}<span class="unit">%</span></div>
+            <div class="label">30일 내 방문 비율</div>
+        </div>
+    </div>
+
+    <div class="charts-grid">
+        <div class="chart-card">
+            <h3>
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px; vertical-align:text-bottom;"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+                Top 10 방문자
+            </h3>
+            <div class="ranking-list">
+                {#each data.userStats.topVisitors as visitor, i}
+                    <div class="rank-item">
+                        <div class="rank-info">
+                            <span class="rank-num">{i + 1}</span>
+                            <span class="game-name">{visitor.name}</span>
+                            <span class="play-count">{visitor.visit_count}회</span>
+                        </div>
+                        <div class="progress-bg">
+                            <div class="progress-bar visitor-bar" style="width: {(parseInt(visitor.visit_count) / maxVisitor) * 100}%"></div>
+                        </div>
+                    </div>
+                {/each}
+                {#if data.userStats.topVisitors.length === 0}
                     <div class="empty-chart">데이터가 없습니다.</div>
                 {/if}
             </div>
@@ -357,5 +417,39 @@
         justify-content: center;
         color: #999;
         font-size: 0.9rem;
+    }
+
+    /* Section Header */
+    .section-header {
+        display: flex;
+        align-items: baseline;
+        gap: 0.75rem;
+        margin-top: 3rem;
+        margin-bottom: 1.5rem;
+    }
+    .section-header h2 {
+        margin: 0;
+        font-size: 1.3rem;
+        color: #333;
+    }
+    .section-hint {
+        font-size: 0.8rem;
+        color: #999;
+    }
+
+    /* 4-column KPI grid */
+    .kpi-grid-4 {
+        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    }
+    .kpi-card .unit {
+        font-size: 1.2rem;
+        font-weight: normal;
+        color: #666;
+        margin-left: 2px;
+    }
+
+    /* Visitor progress bar color */
+    .visitor-bar {
+        background: #007bff;
     }
 </style>
