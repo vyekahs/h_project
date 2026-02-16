@@ -27,9 +27,6 @@ async function canModifyGame(request: Request, gameId: string | number): Promise
 }
 
 export const load: PageServerLoad = async () => {
-    // Auto-finish expired games
-    await query("UPDATE game_sessions SET status = 'finished' WHERE status = 'playing' AND end_time < NOW()");
-
     const attendeesResult = await query(`
         SELECT a.id, a.name, a.arrival_time, a.status, a.penalty_points, a.is_blacklisted, a.can_manage_games,
                MAX(g.id) as game_id,
