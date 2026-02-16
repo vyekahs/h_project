@@ -53,25 +53,23 @@ export const load: PageServerLoad = async () => {
 
     // 6. User Stats (non-admin users only)
     const avgWeeklyResult = await query(`
-        SELECT ROUND(AVG(weekly_count)::numeric, 1) as avg_weekly
+        SELECT ROUND(AVG(visit_count)::numeric / GREATEST(30.0 / 7, 1), 1) as avg_weekly
         FROM (
-            SELECT v.attendee_id,
-                COUNT(*)::float / GREATEST(EXTRACT(EPOCH FROM (NOW() - MIN(v.arrival_time))) / 604800, 1) as weekly_count
+            SELECT v.attendee_id, COUNT(*) as visit_count
             FROM visits v
             JOIN attendees a ON a.id = v.attendee_id
-            WHERE a.is_admin = false
+            WHERE a.is_admin = false AND v.arrival_time >= NOW() - INTERVAL '30 days'
             GROUP BY v.attendee_id
         ) sub
     `);
 
     const avgMonthlyResult = await query(`
-        SELECT ROUND(AVG(monthly_count)::numeric, 1) as avg_monthly
+        SELECT ROUND(AVG(visit_count)::numeric, 1) as avg_monthly
         FROM (
-            SELECT v.attendee_id,
-                COUNT(*)::float / GREATEST(EXTRACT(EPOCH FROM (NOW() - MIN(v.arrival_time))) / 2592000, 1) as monthly_count
+            SELECT v.attendee_id, COUNT(*) as visit_count
             FROM visits v
             JOIN attendees a ON a.id = v.attendee_id
-            WHERE a.is_admin = false
+            WHERE a.is_admin = false AND v.arrival_time >= NOW() - INTERVAL '30 days'
             GROUP BY v.attendee_id
         ) sub
     `);
