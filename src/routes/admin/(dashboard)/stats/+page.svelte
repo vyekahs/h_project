@@ -61,20 +61,20 @@
         <!-- svelte-ignore a11y-no-static-element-interactions -->
         <div class="kpi-card clickable" on:click={() => showPeakHoursModal = true}>
             <h3>평균 주간 방문</h3>
-            <div class="value">{data.userStats.avgWeeklyVisits}<span class="unit">회</span></div>
-            <div class="label">클릭하면 시간대별 혼잡도</div>
+            <div class="value">{data.userStats.avgWeeklyVisits}<span class="unit">일</span></div>
+            <div class="label">1인당 주 평균 방문 일수 · 클릭→시간대별</div>
         </div>
         <!-- svelte-ignore a11y-click-events-have-key-events -->
         <!-- svelte-ignore a11y-no-static-element-interactions -->
         <div class="kpi-card clickable" on:click={() => showDailyTrendModal = true}>
             <h3>평균 월간 방문</h3>
-            <div class="value">{data.userStats.avgMonthlyVisits}<span class="unit">회</span></div>
-            <div class="label">클릭하면 30일 추이</div>
+            <div class="value">{data.userStats.avgMonthlyVisits}<span class="unit">일</span></div>
+            <div class="label">1인당 월 평균 방문 일수 · 클릭→30일 추이</div>
         </div>
         <div class="kpi-card">
             <h3>활성 유저</h3>
             <div class="value">{data.userStats.activeUsers}<span class="unit">명</span> <span class="sub-value">({activeRate}%)</span></div>
-            <div class="label">30일 내 2회 이상 / 전체 {data.userStats.totalUsers}명</div>
+            <div class="label">30일 내 2일 이상 방문 / 전체 {data.userStats.totalUsers}명</div>
         </div>
         <div class="kpi-card">
             <h3>정기권 보유</h3>
