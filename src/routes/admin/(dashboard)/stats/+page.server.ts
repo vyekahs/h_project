@@ -3,7 +3,12 @@ import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async () => {
     // 1. KPIs
-    const totalVisitsResult = await query('SELECT COUNT(*) as count FROM visits');
+    const totalVisitsResult = await query(`
+        SELECT COUNT(*) as count FROM (
+            SELECT DISTINCT attendee_id, DATE(arrival_time AT TIME ZONE 'Asia/Seoul')
+            FROM visits
+        ) sub
+    `);
     const totalMembersResult = await query('SELECT COUNT(*) as count FROM attendees');
     const avgDurationResult = await query(`
         SELECT ROUND(AVG(EXTRACT(EPOCH FROM (COALESCE(departure_time, NOW()) - arrival_time))/60)) as avg_minutes
@@ -12,7 +17,8 @@ export const load: PageServerLoad = async () => {
 
     // 2. Daily Trend (Last 30 Days)
     const dailyTrendResult = await query(`
-        SELECT TO_CHAR(arrival_time AT TIME ZONE 'Asia/Seoul', 'YYYY-MM-DD') as date, COUNT(*) as count
+        SELECT TO_CHAR(arrival_time AT TIME ZONE 'Asia/Seoul', 'YYYY-MM-DD') as date,
+               COUNT(DISTINCT attendee_id) as count
         FROM visits
         WHERE arrival_time >= NOW() - INTERVAL '30 days'
         GROUP BY date
@@ -21,7 +27,8 @@ export const load: PageServerLoad = async () => {
 
     // 2.5 Monthly Trend (Last 12 Months)
     const monthlyTrendResult = await query(`
-        SELECT TO_CHAR(arrival_time AT TIME ZONE 'Asia/Seoul', 'YYYY-MM') as date, COUNT(*) as count
+        SELECT TO_CHAR(arrival_time AT TIME ZONE 'Asia/Seoul', 'YYYY-MM') as date,
+               COUNT(DISTINCT attendee_id) as count
         FROM visits
         WHERE arrival_time >= NOW() - INTERVAL '12 months'
         GROUP BY date
@@ -30,8 +37,12 @@ export const load: PageServerLoad = async () => {
 
     // 3. Peak Hours
     const peakHoursResult = await query(`
-        SELECT EXTRACT(HOUR FROM arrival_time AT TIME ZONE 'Asia/Seoul') as hour, COUNT(*) as count
-        FROM visits
+        SELECT hour, COUNT(*) as count FROM (
+            SELECT DISTINCT attendee_id,
+                   DATE(arrival_time AT TIME ZONE 'Asia/Seoul'),
+                   EXTRACT(HOUR FROM arrival_time AT TIME ZONE 'Asia/Seoul') as hour
+            FROM visits
+        ) sub
         GROUP BY hour
         ORDER BY hour ASC
     `);
@@ -55,7 +66,7 @@ export const load: PageServerLoad = async () => {
     const avgWeeklyResult = await query(`
         SELECT ROUND(AVG(visit_count)::numeric / GREATEST(30.0 / 7, 1), 1) as avg_weekly
         FROM (
-            SELECT v.attendee_id, COUNT(*) as visit_count
+            SELECT v.attendee_id, COUNT(DISTINCT DATE(v.arrival_time AT TIME ZONE 'Asia/Seoul')) as visit_count
             FROM visits v
             JOIN attendees a ON a.id = v.attendee_id
             WHERE a.is_admin = false AND v.arrival_time >= NOW() - INTERVAL '30 days'
@@ -66,7 +77,7 @@ export const load: PageServerLoad = async () => {
     const avgMonthlyResult = await query(`
         SELECT ROUND(AVG(visit_count)::numeric, 1) as avg_monthly
         FROM (
-            SELECT v.attendee_id, COUNT(*) as visit_count
+            SELECT v.attendee_id, COUNT(DISTINCT DATE(v.arrival_time AT TIME ZONE 'Asia/Seoul')) as visit_count
             FROM visits v
             JOIN attendees a ON a.id = v.attendee_id
             WHERE a.is_admin = false AND v.arrival_time >= NOW() - INTERVAL '30 days'
@@ -75,7 +86,7 @@ export const load: PageServerLoad = async () => {
     `);
 
     const topVisitorsResult = await query(`
-        SELECT a.name, COUNT(*) as visit_count
+        SELECT a.name, COUNT(DISTINCT DATE(v.arrival_time AT TIME ZONE 'Asia/Seoul')) as visit_count
         FROM visits v
         JOIN attendees a ON a.id = v.attendee_id
         WHERE a.is_admin = false
@@ -90,7 +101,7 @@ export const load: PageServerLoad = async () => {
             (SELECT COUNT(*) FROM (
                 SELECT v.attendee_id FROM visits v JOIN attendees a ON a.id = v.attendee_id
                 WHERE a.is_admin = false AND v.arrival_time >= NOW() - INTERVAL '30 days'
-                GROUP BY v.attendee_id HAVING COUNT(*) >= 2
+                GROUP BY v.attendee_id HAVING COUNT(DISTINCT DATE(v.arrival_time AT TIME ZONE 'Asia/Seoul')) >= 2
             ) sub) as active_users,
             (SELECT COUNT(*) FROM attendees WHERE is_admin = false) as total_users,
             (SELECT COUNT(*) FROM attendees WHERE is_admin = false AND season_pass_expires_at IS NOT NULL AND season_pass_expires_at > NOW()) as season_pass_users

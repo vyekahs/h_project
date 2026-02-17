@@ -355,27 +355,42 @@ class MyServerCallbacks: public NimBLEServerCallbacks {
     }
 };
 
-// 서버에 자신의 IP 등록
+// 서버에 자신의 IP 등록 (최대 3회 재시도)
 void registerIp() {
     if (WiFi.status() != WL_CONNECTED) return;
 
-    HTTPClient http;
-    String url = String(SERVER_URL) + "/api/esp32/register-ip";
-    http.begin(getHttpClient(), url);
-    http.setTimeout(10000);
-    http.addHeader("Content-Type", "application/json");
-    http.addHeader("x-api-key", SCANNER_API_KEY);
+    Serial.printf("[IP] Registering IP: %s\n", WiFi.localIP().toString().c_str());
 
-    DynamicJsonDocument doc(256);
-    doc["scanner_id"] = "esp32_s3_registration";
-    doc["ip"] = WiFi.localIP().toString();
+    for (int attempt = 1; attempt <= 3; attempt++) {
+        HTTPClient http;
+        String url = String(SERVER_URL) + "/api/esp32/register-ip";
+        http.begin(getHttpClient(), url);
+        http.setTimeout(10000);
+        http.addHeader("Content-Type", "application/json");
+        http.addHeader("x-api-key", SCANNER_API_KEY);
 
-    String json;
-    serializeJson(doc, json);
+        DynamicJsonDocument doc(256);
+        doc["scanner_id"] = "esp32_s3_registration";
+        doc["ip"] = WiFi.localIP().toString();
 
-    int code = http.POST(json);
-    Serial.printf("[IP] Register result: %d (IP: %s)\n", code, WiFi.localIP().toString().c_str());
-    http.end();
+        String json;
+        serializeJson(doc, json);
+
+        int code = http.POST(json);
+        Serial.printf("[IP] Attempt %d/3: HTTP %d\n", attempt, code);
+        http.end();
+
+        if (code == 200) {
+            Serial.println("[IP] Registered successfully");
+            return;
+        }
+
+        if (attempt < 3) {
+            Serial.println("[IP] Retrying in 2s...");
+            delay(2000);
+        }
+    }
+    Serial.println("[IP] Registration failed after 3 attempts");
 }
 
 // WiFi 재연결 (C3의 ensureWiFi와 동일)
