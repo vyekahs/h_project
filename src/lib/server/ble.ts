@@ -38,8 +38,10 @@ interface AttendeeInfo {
 const attendeeCache = new Map<number, AttendeeInfo>();
 let attendeeCacheLoaded = false;
 
-// Last Seen Map for Auto-Checkout (AttendeeID -> timestamp ms)
-const lastSeenMap = new Map<number, number>();
+// Last Seen Maps for Auto-Checkout (AttendeeID -> timestamp ms)
+// BLE/WiFi 분리: 둘 중 하나라도 최근 감지되면 체크아웃 방지 (OR 조건)
+const lastSeenBleMap = new Map<number, number>();
+const lastSeenWifiMap = new Map<number, number>();
 
 // System Settings Cache (영구 캐시, 변경 시 updateSettingsCache 호출)
 let settingsCache: { isOpen: boolean; openingTime: string } | null = null;
@@ -89,6 +91,8 @@ export function markAllLeft() {
             attendee.status = 'left';
         }
     }
+    lastSeenBleMap.clear();
+    lastSeenWifiMap.clear();
 }
 
 /** 기기 등록 시 IRK 캐시에 즉시 추가 (중복 IRK는 업데이트) */
@@ -370,7 +374,7 @@ export async function processScanResults(scannerId: string, timestamp: number, s
             const isFirst = !detectedAttendeeIds.has(attendeeId);
             detectedAttendeeIds.add(attendeeId);
             // Update last seen (메모리만, DB 불필요)
-            lastSeenMap.set(attendeeId, Date.now());
+            lastSeenBleMap.set(attendeeId, Date.now());
             if (isFirst) {
                 console.log(`[${kstTime()}][BLE] ✅ Matched: ${scan.mac} (${scan.rssi}dBm) → User ${attendeeId}`);
             }
@@ -388,11 +392,20 @@ export async function processScanResults(scannerId: string, timestamp: number, s
         const recentThreshold = Date.now() - 2 * 60 * 1000; // 2분 이내
         const missingUsers = [...attendeeCache.values()].filter(a => {
             if (a.status !== 'present') return false;
-            const lastSeen = lastSeenMap.get(a.id);
-            return !lastSeen || lastSeen < recentThreshold;
+            const bleSeen = lastSeenBleMap.get(a.id) ?? 0;
+            const wifiSeen = lastSeenWifiMap.get(a.id) ?? 0;
+            const lastSeen = Math.max(bleSeen, wifiSeen);
+            return lastSeen === 0 || lastSeen < recentThreshold;
         });
         if (missingUsers.length > 0) {
-            console.log(`[${kstTime()}][BLE] ⚠️ Present users NOT detected recently: ${missingUsers.map(u => `${u.name}(${u.id})`).join(', ')}`);
+            const details = missingUsers.map(u => {
+                const ble = lastSeenBleMap.get(u.id);
+                const wifi = lastSeenWifiMap.get(u.id);
+                const bleAgo = ble ? `${Math.round((Date.now() - ble) / 60000)}m` : '-';
+                const wifiAgo = wifi ? `${Math.round((Date.now() - wifi) / 60000)}m` : '-';
+                return `${u.name}(${u.id}, BLE:${bleAgo}, WiFi:${wifiAgo})`;
+            }).join(', ');
+            console.log(`[${kstTime()}][BLE] ⚠️ Present users NOT detected recently: ${details}`);
         }
     }
 
@@ -462,18 +475,23 @@ async function checkAutoCheckout() {
     const now = Date.now();
     const timeoutThreshold = now - CHECKOUT_TIMEOUT_MS;
 
-    // 캐시에서 present 유저 중 lastSeenMap 기준으로 타임아웃 체크
+    // 캐시에서 present 유저 중 BLE/WiFi 감지 기준으로 타임아웃 체크
     const presentUsers = [...attendeeCache.values()].filter(a => a.status === 'present');
 
     for (const attendee of presentUsers) {
-        const lastSeen = lastSeenMap.get(attendee.id);
-        // lastSeen이 없으면 아직 스캐너가 감지 못한 상태 → 체크아웃하지 않음
-        if (!lastSeen) continue;
+        const bleSeen = lastSeenBleMap.get(attendee.id) ?? 0;
+        const wifiSeen = lastSeenWifiMap.get(attendee.id) ?? 0;
+        const lastSeen = Math.max(bleSeen, wifiSeen);
 
-        const minutesSinceLastSeen = Math.round((now - lastSeen) / 60000);
+        // 두 소스 모두 아직 감지 못한 상태 → 체크아웃하지 않음
+        if (lastSeen === 0) continue;
 
+        // 둘 중 하나라도 최근 감지됐으면 체크아웃 안 함 (OR 조건)
         if (lastSeen < timeoutThreshold) {
-            console.log(`[${kstTime()}][BLE] Auto Checking-out User ${attendee.id} (${attendee.name}). Last seen: ${minutesSinceLastSeen}분 전`);
+            const bleAgo = bleSeen ? `${Math.round((now - bleSeen) / 60000)}분 전` : 'never';
+            const wifiAgo = wifiSeen ? `${Math.round((now - wifiSeen) / 60000)}분 전` : 'never';
+            const lastSource = bleSeen >= wifiSeen ? 'BLE' : 'WiFi';
+            console.log(`[${kstTime()}][AUTO] Checking-out User ${attendee.id} (${attendee.name}). BLE: ${bleAgo}, WiFi: ${wifiAgo}`);
 
             await query('BEGIN');
             try {
@@ -481,12 +499,13 @@ async function checkAutoCheckout() {
                 await query('UPDATE visits SET departure_time = NOW() WHERE attendee_id = $1 AND departure_time IS NULL', [attendee.id]);
                 await query('COMMIT');
                 attendee.status = 'left';
-                lastSeenMap.delete(attendee.id);
-                pushAutoLog('checkout', 'BLE', attendee.name, attendee.id);
+                lastSeenBleMap.delete(attendee.id);
+                lastSeenWifiMap.delete(attendee.id);
+                pushAutoLog('checkout', lastSource, attendee.name, attendee.id);
                 emitLiveEvent('visitors');
             } catch (e) {
                 await query('ROLLBACK');
-                console.error(`[BLE] Failed to check-out ${attendee.id}`, e);
+                console.error(`[AUTO] Failed to check-out ${attendee.id}`, e);
             }
         }
     }
@@ -494,7 +513,7 @@ async function checkAutoCheckout() {
 
 /**
  * Process WiFi Report (공유기에 연결된 기기 MAC 목록)
- * BLE와 동일하게 lastSeenMap 업데이트 → 체크인/체크아웃은 동일한 로직 사용
+ * lastSeenWifiMap 업데이트 → BLE과 OR 조건으로 체크아웃 판단
  */
 export async function processWifiReport(_scannerId: string, devices: { mac: string }[]) {
     await ensureCachesLoaded('WiFi');
@@ -529,7 +548,7 @@ export async function processWifiReport(_scannerId: string, devices: { mac: stri
         const attendeeId = wifiMacCache.get(mac);
         if (attendeeId) {
             detectedAttendeeIds.add(attendeeId);
-            lastSeenMap.set(attendeeId, Date.now());
+            lastSeenWifiMap.set(attendeeId, Date.now());
             matchedMacs.push(mac);
         }
     }

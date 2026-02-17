@@ -31,7 +31,7 @@ const char* SCANNER_API_KEY = "hproject_scanner_secret_2026";
 
 
 // WiFi Promiscuous Scan Config
-const unsigned long WIFI_SCAN_INTERVAL = 60000;  // 60초마다 스캔
+const unsigned long WIFI_SCAN_INTERVAL = 300000;  // 5분마다 스캔
 unsigned long lastWifiScanTime = 0;
 
 // WiFi Promiscuous Mode - MAC 수집
