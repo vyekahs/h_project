@@ -5,3 +5,7 @@
 damonpyo.mooo.com {
     reverse_proxy app:3000
 }
+
+honnol.org {
+    reverse_proxy app:3000
+}
