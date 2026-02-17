@@ -1,5 +1,6 @@
 import os from 'os';
-import { pool, query } from '$lib/server/db';
+import { db, pgClient } from '$lib/server/db/index';
+import { sql } from 'drizzle-orm';
 import { getSSEConnectionCount, incrementSSECount, decrementSSECount } from '$lib/server/liveEvents';
 import { verifyAdminSession } from '$lib/server/auth';
 import { getAutoCheckinLogs } from '$lib/server/ble';
@@ -40,9 +41,9 @@ function updateCpuUsage(): number {
 	prevCpuTotal = snap.total;
 })();
 
-function queryWithTimeout(sql: string, timeoutMs = 3000): Promise<any> {
+function queryWithTimeout(timeoutMs = 3000): Promise<any> {
 	return Promise.race([
-		query(sql),
+		db.execute(sql`SELECT 1`),
 		new Promise((_, reject) => setTimeout(() => reject(new Error('DB timeout')), timeoutMs))
 	]);
 }
@@ -62,11 +63,13 @@ async function collectMetrics() {
 	let dbTotal = 0, dbIdle = 0, dbWaiting = 0;
 	try {
 		const dbStart = performance.now();
-		await queryWithTimeout('SELECT 1');
+		await queryWithTimeout();
 		dbLatency = Math.round(performance.now() - dbStart);
-		dbTotal = pool.totalCount;
-		dbIdle = pool.idleCount;
-		dbWaiting = pool.waitingCount;
+		// postgres-js doesn't expose pool stats directly, use connection count
+		const conn = (pgClient as any).connections ?? {};
+		dbTotal = conn.open ?? 0;
+		dbIdle = conn.idle ?? 0;
+		dbWaiting = conn.busy ?? 0;
 	} catch {
 		dbLatency = -1;
 	}
@@ -82,7 +85,6 @@ async function collectMetrics() {
 	const memPercent = Math.round(((totalMem - freeMem) / totalMem) * 100);
 	const ts = Date.now();
 
-	// Push to history
 	metricsHistory.push({ cpu: cpuUsage, memPercent, sse: sseCount, timestamp: ts });
 	if (metricsHistory.length > MAX_HISTORY) metricsHistory.shift();
 
@@ -161,13 +163,10 @@ export async function GET({ request, cookies }: { request: Request; cookies: any
 				}
 			}
 
-			// Send initial data immediately
 			pushMetrics();
 
-			// Push metrics every 5 seconds
 			intervalTimer = setInterval(pushMetrics, 5000);
 
-			// Send heartbeat every 1 second to detect broken connections quickly
 			heartbeatTimer = setInterval(sendHeartbeat, 1000);
 
 			function cleanup() {
@@ -183,7 +182,6 @@ export async function GET({ request, cookies }: { request: Request; cookies: any
 			request.signal.addEventListener('abort', cleanup);
 		},
 		cancel() {
-			// Called when the client disconnects / stream is cancelled
 			if (cleanupFn) cleanupFn();
 		}
 	});
