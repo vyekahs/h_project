@@ -15,8 +15,6 @@
 
     // --- WiFi 등록 ---
     let wifiError = '';
-    // ESP32-S3 로컬 HTTP 서버 주소 (같은 WiFi, 고정 IP)
-    const ESP32_LOCAL_URL = 'http://172.30.1.200';
 
     function getDeviceName(): string {
         const ua = navigator.userAgent;
@@ -403,7 +401,16 @@
         wifiError = '';
 
         try {
-            // 1. 서버에서 일회용 코드 발급
+            // 1. 서버에서 ESP32 IP 조회
+            const ipRes = await fetch('/api/esp32/ip?scanner_id=esp32_s3_registration');
+            const ipData = await ipRes.json();
+            if (!ipRes.ok || !ipData.ip) {
+                wifiError = 'ESP32 기기를 찾을 수 없습니다. 기기가 켜져 있는지 확인해주세요.';
+                return;
+            }
+            const esp32Url = `http://${ipData.ip}`;
+
+            // 2. 서버에서 일회용 코드 발급
             const attendeeId = data.user?.id || 1;
             const codeRes = await fetch('/api/wifi/code', {
                 method: 'POST',
@@ -417,9 +424,9 @@
                 return;
             }
 
-            // 2. ESP32 로컬 HTTP 서버의 등록 페이지로 이동
+            // 3. ESP32 로컬 HTTP 서버의 등록 페이지로 이동
             const callbackUrl = encodeURIComponent(window.location.origin);
-            window.location.href = `${ESP32_LOCAL_URL}/register?code=${codeData.code}&callback=${callbackUrl}`;
+            window.location.href = `${esp32Url}/register?code=${codeData.code}&callback=${callbackUrl}`;
 
         } catch (e: any) {
             wifiError = 'WiFi 등록 실패: ' + (e.message || '네트워크 오류');
@@ -468,7 +475,7 @@
             {/if}
         </div>
 
-        <!-- WiFi 등록 (사용 안 함 - 주석 처리)
+        <!-- WiFi 등록 (보조) -->
         <div class="card alt">
             <p><strong>WiFi 등록</strong></p>
             <p class="desc">블루투스가 안 될 경우 WiFi로도 등록할 수 있습니다.</p>
@@ -477,7 +484,6 @@
             {/if}
             <button class="btn-alt" on:click={startWifiRegistration}>WiFi로 등록</button>
         </div>
-        -->
 
     {:else if step === 'web_bt_connecting'}
         <!-- Android Web Bluetooth 진행 중 -->

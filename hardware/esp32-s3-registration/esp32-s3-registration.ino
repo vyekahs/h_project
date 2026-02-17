@@ -355,6 +355,29 @@ class MyServerCallbacks: public NimBLEServerCallbacks {
     }
 };
 
+// 서버에 자신의 IP 등록
+void registerIp() {
+    if (WiFi.status() != WL_CONNECTED) return;
+
+    HTTPClient http;
+    String url = String(SERVER_URL) + "/api/esp32/register-ip";
+    http.begin(getHttpClient(), url);
+    http.setTimeout(10000);
+    http.addHeader("Content-Type", "application/json");
+    http.addHeader("x-api-key", SCANNER_API_KEY);
+
+    DynamicJsonDocument doc(256);
+    doc["scanner_id"] = "esp32_s3_registration";
+    doc["ip"] = WiFi.localIP().toString();
+
+    String json;
+    serializeJson(doc, json);
+
+    int code = http.POST(json);
+    Serial.printf("[IP] Register result: %d (IP: %s)\n", code, WiFi.localIP().toString().c_str());
+    http.end();
+}
+
 // WiFi 재연결 (C3의 ensureWiFi와 동일)
 void ensureWiFi() {
     if (WiFi.status() == WL_CONNECTED) return;
@@ -370,6 +393,7 @@ void ensureWiFi() {
     }
     if (WiFi.status() == WL_CONNECTED) {
         Serial.println(" Reconnected!");
+        registerIp();  // 재연결 시 IP 재등록
     } else {
         Serial.println(" Failed!");
     }
@@ -762,6 +786,9 @@ void setup() {
   }
   Serial.println("\nWiFi Connected!");
   Serial.printf("IP: %s\n", WiFi.localIP().toString().c_str());
+
+  // 서버에 IP 등록
+  registerIp();
 
   // Get MAC
   myMacAddress = WiFi.macAddress();
