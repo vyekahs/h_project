@@ -8,10 +8,8 @@ const connectionString = env.DATABASE_URL || 'postgres://user:password@localhost
 const sql = postgres(connectionString, {
 	max: 20,
 	idle_timeout: 30,
-	connect_timeout: 5,
-	connection: {
-		statement_timeout: 10000
-	}
+	connect_timeout: 10,
+	max_lifetime: 60 * 5,
 });
 
 export const db = drizzle(sql, { schema });

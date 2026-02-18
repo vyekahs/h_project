@@ -37,8 +37,10 @@ self.addEventListener('fetch', (e) => {
 
 	const url = new URL(event.request.url);
 
-	// Skip: API requests, different origins
+	// Skip: API requests, different origins, data requests, navigation
 	if (url.pathname.startsWith('/api') || url.origin !== self.location.origin) return;
+	if (url.pathname.includes('__data.json')) return;
+	if (event.request.mode === 'navigate') return;
 
 	async function respond() {
 		const cache = await caches.open(CACHE);
@@ -47,17 +49,6 @@ self.addEventListener('fetch', (e) => {
 		if (ASSETS.includes(url.pathname)) {
 			const response = await cache.match(event.request);
 			if (response) return response;
-		}
-
-		// 데이터 요청 및 페이지 네비게이션 → network only (항상 최신 데이터)
-		// SvelteKit __data.json, 페이지 HTML 등은 캐시하지 않음
-		if (url.pathname.includes('__data.json') ||
-			event.request.headers.get('accept')?.includes('text/html')) {
-			try {
-				return await fetch(event.request);
-			} catch {
-				return new Response('Offline', { status: 408 });
-			}
 		}
 
 		// 기타 리소스 (이미지, 폰트 등) → network first, 오프라인 시 캐시

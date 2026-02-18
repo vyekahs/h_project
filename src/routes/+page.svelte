@@ -577,7 +577,7 @@
                 <!-- svelte-ignore a11y-click-events-have-key-events -->
                 <!-- svelte-ignore a11y-no-static-element-interactions -->
                 <div class="main-games-toggle-header" on:click={() => { if (mainGames.length > 1) showAllMainGames = !showAllMainGames; }}>
-                    <h2>예정된 정기 게임</h2>
+                    <h2>이번주 혼놀데이</h2>
                     {#if mainGames.length > 1}
                         <span class="expand-icon" class:rotated={showAllMainGames}>{showAllMainGames ? '접기' : `+${mainGames.length - 1}개 더보기`}</span>
                     {/if}
