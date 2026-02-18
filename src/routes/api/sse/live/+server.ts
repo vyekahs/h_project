@@ -82,7 +82,11 @@ export function GET({ request }: { request: Request }) {
 
 			heartbeatTimer = setInterval(() => {
 				if (closed) return;
-				sendAll();
+				try {
+					controller.enqueue(encoder.encode(`: ping\n\n`));
+				} catch {
+					cleanup();
+				}
 			}, 30000);
 
 			function cleanup() {

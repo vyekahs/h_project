@@ -13,6 +13,7 @@
     let refreshTimer: ReturnType<typeof setTimeout> | null = null;
     let sseReconnectTimer: ReturnType<typeof setTimeout> | null = null;
     let sseDestroyed = false;
+    let sseReconnectDelay = 3000;
 
     interface User {
         id: number;
@@ -202,6 +203,7 @@
 
         eventSource = new EventSource('/api/sse/live');
         eventSource.addEventListener('visitors', (e: MessageEvent) => {
+            sseReconnectDelay = 3000;
             const d = JSON.parse(e.data);
             const prevCount = liveVisitorCount;
             liveVisitorCount = d.count;
@@ -210,6 +212,7 @@
             }
         });
         eventSource.addEventListener('games', (e: MessageEvent) => {
+            sseReconnectDelay = 3000;
             const d = JSON.parse(e.data);
             const prevCount = liveGameCount;
             liveGameCount = d.count;
@@ -220,7 +223,8 @@
         eventSource.onerror = () => {
             if (eventSource) { eventSource.close(); eventSource = null; }
             if (!sseDestroyed) {
-                sseReconnectTimer = setTimeout(connectSSE, 3000);
+                sseReconnectTimer = setTimeout(connectSSE, sseReconnectDelay);
+                sseReconnectDelay = Math.min(sseReconnectDelay * 2, 30000);
             }
         };
     }
@@ -608,7 +612,13 @@
 
                                         {#if !hasConflict && canJoinGame(game)}
                                             <div class="actions">
-                                                <form method="POST" action="?/joinScheduledGame">
+                                                <form method="POST" action="?/joinScheduledGame"
+                                                    use:enhance={() => {
+                                                        return async ({ result }) => {
+                                                            await applyAction(result);
+                                                            await invalidateAll();
+                                                        };
+                                                    }}>
                                                     <input type="hidden" name="sessionId" value={game.id}>
                                                     <button type="submit" class="btn-join">
                                                         {(game.participants || []).length >= game.max_players ? '대기열 합류' : '참여하기'}
@@ -947,7 +957,13 @@
                                     
                                     {#if !hasConflict && canJoinGame(game)}
                                         <div class="actions">
-                                            <form method="POST" action="?/joinScheduledGame">
+                                            <form method="POST" action="?/joinScheduledGame"
+                                                use:enhance={() => {
+                                                    return async ({ result }) => {
+                                                        await applyAction(result);
+                                                        await invalidateAll();
+                                                    };
+                                                }}>
                                                 <input type="hidden" name="sessionId" value={game.id}>
                                                 <button type="submit" class="btn-join">
                                                     {(game.participants || []).length >= game.max_players ? '대기열 합류' : '참여하기'}
