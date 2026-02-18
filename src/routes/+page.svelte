@@ -109,6 +109,7 @@
 
     // --- Tab System ---
     let activeTab: 'home' | 'games' = 'home';
+    let showAllMainGames = false;
 
     // --- Game Management Logic ---
     let showModal = false;
@@ -508,14 +509,15 @@
                                 <span class="value">{game.game_name}</span>
                                 <span class="sub-value"><span class="highlight-orange">{time.relative}</span> ({time.absolute} 시작)</span>
                                 <form method="POST" action="?/leaveScheduledGame"
-                                    use:enhance={({ cancel }) => {
+                                    use:enhance={async ({ cancel }) => {
                                         const scheduledAt = new Date(game.scheduled_at).getTime();
                                         const now = Date.now();
+                                        let msg = '정말 참여를 취소하시겠습니까?';
                                         if (scheduledAt - now < 10 * 60 * 1000) {
-                                            if (!confirm('시작 10분 전입니다. 지금 취소하면 페널티가 부여됩니다. 정말 취소하시겠습니까?')) { cancel(); return; }
-                                        } else {
-                                            if (!confirm('정말 참여를 취소하시겠습니까?')) { cancel(); return; }
+                                            msg = '시작 10분 전입니다. 지금 취소하면 페널티가 부여됩니다. 정말 취소하시겠습니까?';
                                         }
+                                        const ok = await showConfirm(msg);
+                                        if (!ok) { cancel(); return; }
                                         return async ({ result }) => {
                                             await applyAction(result);
                                             await invalidateAll();
@@ -548,8 +550,9 @@
                                  data.userReservation.status === 'waitlisted' ? '대기 순번' : '확정'}
                             </span>
                             <form method="POST" action="?/cancelReservation"
-                                use:enhance={({ cancel }) => {
-                                    if (!confirm('정말 예약을 취소하시겠습니까? (시작 10분 전 이내인 경우 페널티가 부여될 수 있습니다)')) { cancel(); return; }
+                                use:enhance={async ({ cancel }) => {
+                                    const ok = await showConfirm('정말 예약을 취소하시겠습니까? (시작 10분 전 이내인 경우 페널티가 부여될 수 있습니다)');
+                                    if (!ok) { cancel(); return; }
                                     return async ({ result }) => {
                                         await applyAction(result);
                                         await invalidateAll();
@@ -564,74 +567,19 @@
             </section>
         {/if}
 
-        <section class="attendees-section">
-            <h2>현재 참여 인원 ({liveVisitorCount ?? (data.attendees || []).length})</h2>
-            <div class="attendee-grid">
-                {#each (data.attendees || []) as attendee}
-                    {@const a = attendee as Attendee}
-                    <div class="attendee-card {a.is_playing ? 'playing' : ''}">
-                        <div class="attendee-info">
-                            {#if a.title_name}
-                                <span class="mini-title">[{a.title_name}]</span>
-                            {/if}
-                            <span class="name">{a.name}</span>
-                        </div>
-                        <span class="time">
-                            {new Date(a.arrival_time).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                            {#if a.is_playing}
-                                <br><span class="playing-text">게임 중</span>
-                            {/if}
-                        </span>
-                    </div>
-                {/each}
-                {#if (data.attendees || []).length === 0}
-                    {#if !data.isOpen}
-                        <p class="empty-state closed-state">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px; vertical-align:middle; display: inline-block; position: relative; top: -1px;"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
-                            금일 마감되었습니다. 오픈 전입니다.
-                        </p>
-                    {:else}
-                        <p class="empty-state">아직 아무도 없어요. 첫 번째로 오세요!</p>
-                    {/if}
-                {/if}
-            </div>
-        </section>
-
-        <section class="visit-plan-section">
-            <div class="section-header">
-                <h2>오늘 갈예정 ({(data.dailyVisitPlans || []).length})</h2>
-                {#if data.user && !(data.attendees || []).some((a: any) => a.id === data.user!.id)}
-                    <form method="POST" action="?/toggleVisitPlan" use:enhance={() => {
-                        return async ({ result, update }) => {
-                            await update();
-                        };
-                    }}>
-                        <button type="submit" class="btn-visit-plan" class:active={data.userHasVisitPlan}>
-                            {data.userHasVisitPlan ? '취소하기' : '나도 갈예정!'}
-                        </button>
-                    </form>
-                {/if}
-            </div>
-            <div class="visit-plan-grid">
-                {#each (data.dailyVisitPlans || []) as plan}
-                    <div class="visit-plan-card">
-                        {#if plan.title_name}
-                            <span class="mini-title">[{plan.title_name}]</span>
-                        {/if}
-                        <span class="name">{plan.name}</span>
-                    </div>
-                {/each}
-                {#if (data.dailyVisitPlans || []).length === 0}
-                    <p class="empty-state">아직 아무도 올 예정이 없어요.</p>
-                {/if}
-            </div>
-        </section>
-
         {#if (data.mainScheduledGames || []).length > 0}
+            {@const mainGames = data.mainScheduledGames || []}
             <section class="tables-section">
-                <h2>예정된 정기 게임</h2>
+                <!-- svelte-ignore a11y-click-events-have-key-events -->
+                <!-- svelte-ignore a11y-no-static-element-interactions -->
+                <div class="main-games-toggle-header" on:click={() => { if (mainGames.length > 1) showAllMainGames = !showAllMainGames; }}>
+                    <h2>예정된 정기 게임</h2>
+                    {#if mainGames.length > 1}
+                        <span class="expand-icon" class:rotated={showAllMainGames}>{showAllMainGames ? '접기' : `+${mainGames.length - 1}개 더보기`}</span>
+                    {/if}
+                </div>
                 <div class="tables-grid">
-                    {#each (data.mainScheduledGames || []) as game}
+                    {#each showAllMainGames ? mainGames : mainGames.slice(0, 1) as game}
                         {@const time = formatScheduledTime(game.scheduled_at)}
                         <div class="table-card available">
                             <div class="table-header">
@@ -704,6 +652,69 @@
             </section>
         {/if}
 
+        <section class="attendees-section">
+            <h2>현재 참여 인원 ({liveVisitorCount ?? (data.attendees || []).length})</h2>
+            <div class="attendee-grid">
+                {#each (data.attendees || []) as attendee}
+                    {@const a = attendee as Attendee}
+                    <div class="attendee-card {a.is_playing ? 'playing' : ''}">
+                        <div class="attendee-info">
+                            {#if a.title_name}
+                                <span class="mini-title">[{a.title_name}]</span>
+                            {/if}
+                            <span class="name">{a.name}</span>
+                        </div>
+                        <span class="time">
+                            {new Date(a.arrival_time).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                            {#if a.is_playing}
+                                <br><span class="playing-text">게임 중</span>
+                            {/if}
+                        </span>
+                    </div>
+                {/each}
+                {#if (data.attendees || []).length === 0}
+                    {#if !data.isOpen}
+                        <p class="empty-state closed-state">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px; vertical-align:middle; display: inline-block; position: relative; top: -1px;"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+                            금일 마감되었습니다. 오픈 전입니다.
+                        </p>
+                    {:else}
+                        <p class="empty-state">아직 아무도 없어요. 첫 번째로 오세요!</p>
+                    {/if}
+                {/if}
+            </div>
+        </section>
+
+        <section class="visit-plan-section">
+            <div class="section-header">
+                <h2>오늘 갈예정 ({(data.dailyVisitPlans || []).length})</h2>
+                {#if data.user && !(data.attendees || []).some((a: any) => a.id === data.user!.id)}
+                    <form method="POST" action="?/toggleVisitPlan" use:enhance={() => {
+                        return async ({ result, update }) => {
+                            await update();
+                        };
+                    }}>
+                        <button type="submit" class="btn-visit-plan" class:active={data.userHasVisitPlan}>
+                            {data.userHasVisitPlan ? '취소하기' : '나도 갈예정!'}
+                        </button>
+                    </form>
+                {/if}
+            </div>
+            <div class="visit-plan-grid">
+                {#each (data.dailyVisitPlans || []) as plan}
+                    <div class="visit-plan-card">
+                        {#if plan.title_name}
+                            <span class="mini-title">[{plan.title_name}]</span>
+                        {/if}
+                        <span class="name">{plan.name}</span>
+                    </div>
+                {/each}
+                {#if (data.dailyVisitPlans || []).length === 0}
+                    <p class="empty-state">아직 아무도 올 예정이 없어요.</p>
+                {/if}
+            </div>
+        </section>
+
         {:else}
 
         <section class="tables-section">
@@ -749,13 +760,15 @@
                                     <div class="user-actions">
                                         {#if isParticipant}
                                              <form method="POST" action="?/leavePlayingGame"
-                                                use:enhance={({ cancel }) => {
+                                                use:enhance={async ({ cancel }) => {
                                                     const registeredCount = (game.players || []).filter((p: any) => !p.is_guest).length;
                                                     if (registeredCount <= 2) {
-                                                        alert('게임을 진행하기 위한 최소 인원(2명)이므로 나갈 수 없습니다.');
+                                                        alertMessage = '게임을 진행하기 위한 최소 인원(2명)이므로 나갈 수 없습니다.';
+                                                        alertVisible = true;
                                                         cancel(); return;
                                                     }
-                                                    if (!confirm('정말 게임에서 나가시겠습니까?')) { cancel(); return; }
+                                                    const ok = await showConfirm('정말 게임에서 나가시겠습니까?');
+                                                    if (!ok) { cancel(); return; }
                                                     return async ({ result }) => {
                                                         await applyAction(result);
                                                         await invalidateAll();
@@ -1540,6 +1553,24 @@
         height: 3px;
         background: #e67700;
         border-radius: 3px 3px 0 0;
+    }
+
+    /* Main Games Toggle Header */
+    .main-games-toggle-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        cursor: pointer;
+        user-select: none;
+        margin-bottom: 0.75rem;
+    }
+    .main-games-toggle-header h2 {
+        margin: 0;
+    }
+    .expand-icon {
+        font-size: 0.8rem;
+        color: #e67700;
+        font-weight: 600;
     }
     .container {
         max-width: 600px;

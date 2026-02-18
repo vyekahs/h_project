@@ -405,7 +405,23 @@ export const actions: Actions = {
             // If there was a reservation for this session, confirm it
             await tx.execute(sql`UPDATE reservations SET status = 'confirmed' WHERE session_id = ${sessionId} AND attendee_id = ${finalAttendeeId} AND status != 'cancelled'`);
         });
+
+        // 4. Auto-register daily visit plan (고정팟 제외, 오늘 날짜만)
+        const isPartyGame = !!(targetSession[0] as any).party_id;
+        const isToday = new Date((targetSession[0] as any).scheduled_at).toDateString() === new Date().toDateString();
+        if (!isPartyGame && isToday) {
+            const statusCheck = await db.execute(sql`SELECT status FROM attendees WHERE id = ${finalAttendeeId}`);
+            if ((statusCheck[0] as any)?.status !== 'present') {
+                await db.execute(sql`
+                    INSERT INTO daily_visit_plans (attendee_id, plan_date)
+                    VALUES (${finalAttendeeId}, CURRENT_DATE)
+                    ON CONFLICT DO NOTHING
+                `);
+            }
+        }
+
         emitLiveEvent('games');
+        emitLiveEvent('visitors');
         return { success: true };
     },
 
