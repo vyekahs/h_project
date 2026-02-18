@@ -1,4 +1,5 @@
-import { query } from '$lib/server/db';
+import { db } from '$lib/server/db/index';
+import { sql } from 'drizzle-orm';
 import { verifyAttendeeSession } from '$lib/server/auth';
 import { removeFromIrkCache } from '$lib/server/ble';
 import { PartyService } from '$lib/server/services/partyService';
@@ -13,61 +14,61 @@ export const load: PageServerLoad = async ({ parent }) => {
     }
 
     // Fetch Game History
-    const historyResult = await query(`
-        SELECT 
-            gs.id, 
-            gs.game_name, 
+    const historyResult = await db.execute(sql`
+        SELECT
+            gs.id,
+            gs.game_name,
             gs.end_time,
-            sp.score as my_score, 
+            sp.score as my_score,
             sp.is_winner as is_winner,
             (
                 SELECT json_agg(json_build_object(
-                    'name', a2.name, 
-                    'score', sp2.score, 
+                    'name', a2.name,
+                    'score', sp2.score,
                     'is_winner', sp2.is_winner
                 ))
                 FROM session_participants sp2
                 JOIN attendees a2 ON sp2.attendee_id = a2.id
-                WHERE sp2.session_id = gs.id AND sp2.attendee_id != $1
+                WHERE sp2.session_id = gs.id AND sp2.attendee_id != ${user.id}
             ) as opponents
         FROM session_participants sp
         JOIN game_sessions gs ON sp.session_id = gs.id
-        WHERE sp.attendee_id = $1 AND gs.status = 'finished'
+        WHERE sp.attendee_id = ${user.id} AND gs.status = 'finished'
         ORDER BY gs.end_time DESC
-    `, [user.id]);
+    `);
 
     // Fetch Stats
-    const statsResult = await query(`
-        SELECT 
+    const statsResult = await db.execute(sql`
+        SELECT
             COUNT(*) as total_games,
             COUNT(*) FILTER (WHERE is_winner = true) as total_wins
         FROM session_participants sp
         JOIN game_sessions gs ON sp.session_id = gs.id
-        WHERE sp.attendee_id = $1 AND gs.status = 'finished'
-    `, [user.id]);
+        WHERE sp.attendee_id = ${user.id} AND gs.status = 'finished'
+    `);
 
-    const stats = statsResult.rows[0];
+    const stats = statsResult[0] as any;
 
     // Fetch Registered Devices & Parties & All Attendees & All Games
     const [devicesResult, parties, allAttendeesResult, allGamesResult] = await Promise.all([
-        query('SELECT id, name, created_at, last_seen_at FROM user_devices WHERE attendee_id = $1 ORDER BY created_at DESC', [user.id]),
+        db.execute(sql`SELECT id, name, created_at, last_seen_at FROM user_devices WHERE attendee_id = ${user.id} ORDER BY created_at DESC`),
         PartyService.getUserParties(user.id).catch(() => []),
-        query(`
+        db.execute(sql`
             SELECT DISTINCT a.id, a.name
             FROM attendees a
-            WHERE a.id = $1
+            WHERE a.id = ${user.id}
                OR a.id IN (
                    SELECT sp2.attendee_id
                    FROM session_participants sp1
                    JOIN game_sessions gs ON sp1.session_id = gs.id
                    JOIN session_participants sp2 ON sp2.session_id = gs.id
-                   WHERE sp1.attendee_id = $1
-                     AND sp2.attendee_id != $1
+                   WHERE sp1.attendee_id = ${user.id}
+                     AND sp2.attendee_id != ${user.id}
                      AND gs.status = 'finished'
                )
             ORDER BY a.name ASC
-        `, [user.id]),
-        query('SELECT id, name, playtime_min, image_url FROM games ORDER BY name ASC')
+        `),
+        db.execute(sql`SELECT id, name, playtime_min, image_url FROM games ORDER BY name ASC`)
     ]);
     // Trigger Title Check (Background)
     try {
@@ -78,12 +79,12 @@ export const load: PageServerLoad = async ({ parent }) => {
 
     return {
         user,
-        history: historyResult.rows,
+        history: historyResult as any[],
         stats,
-        devices: devicesResult.rows,
-        parties,
-        allAttendees: allAttendeesResult.rows,
-        allGames: allGamesResult.rows
+        devices: devicesResult as any[],
+        parties: parties as any[],
+        allAttendees: allAttendeesResult as any[],
+        allGames: allGamesResult as any[]
     };
 };
 
@@ -169,10 +170,10 @@ export const actions: Actions = {
         if (!deviceId) return { error: 'Invalid ID' };
 
         try {
-            const devRes = await query('SELECT irk FROM user_devices WHERE id = $1 AND attendee_id = $2', [deviceId, user.id]);
-            await query('DELETE FROM user_devices WHERE id = $1 AND attendee_id = $2', [deviceId, user.id]);
-            if (devRes.rows.length > 0) {
-                removeFromIrkCache(user.id, devRes.rows[0].irk);
+            const devRes = await db.execute(sql`SELECT irk FROM user_devices WHERE id = ${deviceId} AND attendee_id = ${user.id}`);
+            await db.execute(sql`DELETE FROM user_devices WHERE id = ${deviceId} AND attendee_id = ${user.id}`);
+            if (devRes.length > 0) {
+                removeFromIrkCache(user.id, (devRes[0] as any).irk);
             }
             return { success: true };
         } catch (e) {

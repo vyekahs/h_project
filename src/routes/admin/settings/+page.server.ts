@@ -1,11 +1,12 @@
-import { query } from '$lib/server/db';
+import { db } from '$lib/server/db/index';
+import { sql } from 'drizzle-orm';
 import { fail } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { updateSettingsCache } from '$lib/server/ble';
 
 export const load: PageServerLoad = async () => {
-    const settingsResult = await query('SELECT key, value FROM system_settings');
-    const settings = settingsResult.rows.reduce((acc: any, row: any) => {
+    const settingsResult = await db.execute(sql`SELECT key, value FROM system_settings`);
+    const settings = (settingsResult as any[]).reduce((acc: any, row: any) => {
         acc[row.key] = row.value;
         return acc;
     }, {
@@ -38,23 +39,21 @@ export const actions: Actions = {
         ];
 
         try {
-            await query('BEGIN');
-            for (const key of updates) {
-                const value = data.get(key)?.toString();
-                if (value !== undefined) {
-                    await query(
-                        'INSERT INTO system_settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = $2',
-                        [key, value]
-                    );
+            await db.transaction(async (tx) => {
+                for (const key of updates) {
+                    const value = data.get(key)?.toString();
+                    if (value !== undefined) {
+                        await tx.execute(
+                            sql`INSERT INTO system_settings (key, value) VALUES (${key}, ${value}) ON CONFLICT (key) DO UPDATE SET value = ${value}`
+                        );
+                    }
                 }
-            }
-            await query('COMMIT');
+            });
             // BLE 설정 캐시 동기화
             const openingTime = data.get('opening_time')?.toString();
             if (openingTime) updateSettingsCache(true, openingTime);
             return { success: true };
         } catch (e) {
-            await query('ROLLBACK');
             return fail(500, { error: '설정 저장 실패' });
         }
     }

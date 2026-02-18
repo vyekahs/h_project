@@ -1,5 +1,6 @@
 import { json } from '@sveltejs/kit';
-import { query } from '$lib/server/db';
+import { db } from '$lib/server/db/index';
+import { sql } from 'drizzle-orm';
 import { addWifiMacToCache } from '$lib/server/ble';
 import { verifyWifiCode } from '$lib/server/wifi-codes';
 
@@ -42,26 +43,23 @@ export async function POST({ request }: { request: Request }) {
         const mac = wifiMac.toUpperCase();
 
         // 해당 유저의 기기가 있는지 확인
-        const deviceRes = await query(
-            'SELECT id FROM user_devices WHERE attendee_id = $1 LIMIT 1',
-            [attendeeId]
+        const deviceRes = await db.execute(
+            sql`SELECT id FROM user_devices WHERE attendee_id = ${attendeeId} LIMIT 1`
         );
 
-        if (deviceRes.rows.length === 0) {
+        if (deviceRes.length === 0) {
             // BLE 기기 없이 WiFi만 등록 — 새 user_devices 레코드 생성
             // irk는 NOT NULL이므로 WiFi 전용 플레이스홀더 사용
             const wifiOnlyIrk = 'WIFI' + mac.replace(/:/g, '').padEnd(28, '0');
-            await query(
-                `INSERT INTO user_devices (attendee_id, irk, name, wifi_mac)
-                 VALUES ($1, $2, 'WiFi Device', $3)
-                 ON CONFLICT (irk) DO UPDATE SET wifi_mac = $3, last_seen_at = NOW()`,
-                [attendeeId, wifiOnlyIrk, mac]
+            await db.execute(
+                sql`INSERT INTO user_devices (attendee_id, irk, name, wifi_mac)
+                 VALUES (${attendeeId}, ${wifiOnlyIrk}, 'WiFi Device', ${mac})
+                 ON CONFLICT (irk) DO UPDATE SET wifi_mac = ${mac}, last_seen_at = NOW()`
             );
         } else {
             // 기존 BLE 기기에 WiFi MAC 추가
-            await query(
-                'UPDATE user_devices SET wifi_mac = $1 WHERE attendee_id = $2',
-                [mac, attendeeId]
+            await db.execute(
+                sql`UPDATE user_devices SET wifi_mac = ${mac} WHERE attendee_id = ${attendeeId}`
             );
         }
 

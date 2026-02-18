@@ -1,5 +1,6 @@
 import { json } from '@sveltejs/kit';
-import { query } from '$lib/server/db';
+import { db } from '$lib/server/db/index';
+import { sql } from 'drizzle-orm';
 
 export async function POST({ request }: { request: Request }) {
     const { winner, scoreA, scoreB, playerData } = await request.json();
@@ -9,34 +10,29 @@ export async function POST({ request }: { request: Request }) {
     }
 
     try {
-        await query('BEGIN');
+        await db.transaction(async (tx) => {
+            // Always create a new game session
+            const creatorId = playerData.find((p: any) => p.id > 0)?.id || null;
+            const result = await tx.execute(
+                sql`INSERT INTO game_sessions (game_name, status, end_time, created_by)
+                 VALUES ('티츄', 'finished', NOW(), ${creatorId}) RETURNING id`
+            );
+            const newSessionId = (result[0] as any).id;
 
-        // Always create a new game session
-        const creatorId = playerData.find((p: any) => p.id > 0)?.id || null;
-        const result = await query(
-            `INSERT INTO game_sessions (game_name, status, end_time, created_by)
-             VALUES ($1, $2, NOW(), $3) RETURNING id`,
-            ['티츄', 'finished', creatorId]
-        );
-        const newSessionId = result.rows[0].id;
+            for (const player of playerData) {
+                const isWinner = player.team === winner;
+                const score = player.team === 'A' ? scoreA : scoreB;
 
-        for (const player of playerData) {
-            const isWinner = player.team === winner;
-            const score = player.team === 'A' ? scoreA : scoreB;
-
-            if (player.id > 0) {
-                await query(
-                    `INSERT INTO session_participants (session_id, attendee_id, is_winner, score)
-                     VALUES ($1, $2, $3, $4)`,
-                    [newSessionId, player.id, isWinner, score]
-                );
+                if (player.id > 0) {
+                    await tx.execute(
+                        sql`INSERT INTO session_participants (session_id, attendee_id, is_winner, score)
+                         VALUES (${newSessionId}, ${player.id}, ${isWinner}, ${score})`
+                    );
+                }
             }
-        }
-
-        await query('COMMIT');
+        });
         return json({ success: true });
     } catch (e: any) {
-        await query('ROLLBACK');
         console.error('[Tichu Result Error]', e);
         return json({ error: e.message }, { status: 500 });
     }

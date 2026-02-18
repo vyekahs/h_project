@@ -1,9 +1,10 @@
-import { query } from '$lib/server/db';
+import { db } from '$lib/server/db/index';
+import { sql } from 'drizzle-orm';
 import type { PageServerLoad } from './$types';
 
 export const load: PageServerLoad = async () => {
     // 1. Overall Rankings (Most Wins)
-    const overallRankings = await query(`
+    const overallRankings = await db.execute(sql`
         SELECT a.name, COUNT(*) as wins
         FROM session_participants sp
         JOIN attendees a ON sp.attendee_id = a.id
@@ -16,9 +17,9 @@ export const load: PageServerLoad = async () => {
     `);
 
     // 2. Win Rate Rankings (Min 5 games)
-    const winRateRankings = await query(`
-        SELECT 
-            a.name, 
+    const winRateRankings = await db.execute(sql`
+        SELECT
+            a.name,
             COUNT(*) as total_games,
             SUM(CASE WHEN sp.is_winner THEN 1 ELSE 0 END) as wins,
             ROUND((SUM(CASE WHEN sp.is_winner THEN 1 ELSE 0 END)::decimal / COUNT(*)) * 100, 1) as win_rate
@@ -34,7 +35,7 @@ export const load: PageServerLoad = async () => {
     `);
 
     // 3. Game Titles (Most wins per game)
-    const gameTitles = await query(`
+    const gameTitles = await db.execute(sql`
         SELECT DISTINCT ON (gs.game_name)
             gs.game_name,
             a.name as holder_name,
@@ -49,8 +50,8 @@ export const load: PageServerLoad = async () => {
     `);
 
     return {
-        overallRankings: overallRankings.rows,
-        winRateRankings: winRateRankings.rows,
-        gameTitles: gameTitles.rows
+        overallRankings,
+        winRateRankings,
+        gameTitles
     };
 };

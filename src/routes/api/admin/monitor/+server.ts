@@ -1,6 +1,7 @@
 import { json } from '@sveltejs/kit';
 import os from 'os';
-import { pool, query } from '$lib/server/db';
+import { db, pgClient } from '$lib/server/db/index';
+import { sql } from 'drizzle-orm';
 import { getSSEConnectionCount } from '$lib/server/liveEvents';
 import { verifyAdminSession } from '$lib/server/auth';
 import { getAutoCheckinLogs } from '$lib/server/ble';
@@ -55,13 +56,13 @@ export async function GET({ cookies }: { cookies: any }) {
 	try {
 		const dbStart = performance.now();
 		await Promise.race([
-			query('SELECT 1'),
+			db.execute(sql`SELECT 1`),
 			new Promise((_, reject) => setTimeout(() => reject(new Error('DB timeout')), 3000))
 		]);
 		dbLatency = Math.round(performance.now() - dbStart);
-		dbTotal = pool.totalCount;
-		dbIdle = pool.idleCount;
-		dbWaiting = pool.waitingCount;
+		dbTotal = (pgClient as any).connections?.open ?? 0;
+		dbIdle = (pgClient as any).connections?.idle ?? 0;
+		dbWaiting = (pgClient as any).connections?.busy ?? 0;
 	} catch {
 		dbLatency = -1;
 	}

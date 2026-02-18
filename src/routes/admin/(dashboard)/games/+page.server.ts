@@ -1,13 +1,14 @@
-import { query } from '$lib/server/db';
+import { db } from '$lib/server/db/index';
+import { sql } from 'drizzle-orm';
 import { fail } from '@sveltejs/kit';
 import type { PageServerLoad, Actions } from './$types';
 import * as cheerio from 'cheerio';
 import { translate } from 'google-translate-api-x';
 
 export const load: PageServerLoad = async () => {
-    const result = await query('SELECT * FROM games ORDER BY name ASC');
+    const result = await db.execute(sql`SELECT * FROM games ORDER BY name ASC`);
     return {
-        games: result.rows
+        games: result as any[]
     };
 };
 
@@ -30,11 +31,10 @@ export const actions: Actions = {
         const includedDlcs = data.get('included_dlcs');
 
         try {
-            await query(
-                `INSERT INTO games (name, min_players, max_players, playtime_min, complexity, description, image_url, included_dlcs) 
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-                [name, minPlayers, maxPlayers, playtimeMin, complexity, description, imageUrl, includedDlcs]
-            );
+            await db.execute(sql`
+                INSERT INTO games (name, min_players, max_players, playtime_min, complexity, description, image_url, included_dlcs)
+                VALUES (${name}, ${minPlayers}, ${maxPlayers}, ${playtimeMin}, ${complexity}, ${description}, ${imageUrl}, ${includedDlcs})
+            `);
             return { success: true };
         } catch (err) {
             console.error(err);
@@ -55,13 +55,12 @@ export const actions: Actions = {
         const includedDlcs = data.get('included_dlcs');
 
         try {
-            await query(
-                `UPDATE games SET 
-                 name = $1, min_players = $2, max_players = $3, playtime_min = $4, 
-                 complexity = $5, description = $6, image_url = $7, included_dlcs = $8
-                 WHERE id = $9`,
-                [name, minPlayers, maxPlayers, playtimeMin, complexity, description, imageUrl, includedDlcs, id]
-            );
+            await db.execute(sql`
+                UPDATE games SET
+                name = ${name}, min_players = ${minPlayers}, max_players = ${maxPlayers}, playtime_min = ${playtimeMin},
+                complexity = ${complexity}, description = ${description}, image_url = ${imageUrl}, included_dlcs = ${includedDlcs}
+                WHERE id = ${id}
+            `);
             return { success: true };
         } catch (err) {
             console.error(err);
@@ -75,15 +74,15 @@ export const actions: Actions = {
 
         try {
             // Check if the game has any sessions
-            const sessions = await query('SELECT id FROM game_sessions WHERE game_id = $1 LIMIT 1', [id]);
-            
-            if (sessions.rows.length > 0) {
+            const sessions = await db.execute(sql`SELECT id FROM game_sessions WHERE game_id = ${id} LIMIT 1`);
+
+            if (sessions.length > 0) {
                 // If it has sessions, just deactivate it
-                await query('UPDATE games SET is_active = false WHERE id = $1', [id]);
+                await db.execute(sql`UPDATE games SET is_active = false WHERE id = ${id}`);
                 return { success: true, deactivated: true };
             } else {
                 // If no sessions, delete the record
-                await query('DELETE FROM games WHERE id = $1', [id]);
+                await db.execute(sql`DELETE FROM games WHERE id = ${id}`);
                 return { success: true, deleted: true };
             }
         } catch (err) {
@@ -97,7 +96,7 @@ export const actions: Actions = {
         const id = data.get('id');
 
         try {
-            await query('UPDATE games SET is_active = true WHERE id = $1', [id]);
+            await db.execute(sql`UPDATE games SET is_active = true WHERE id = ${id}`);
             return { success: true };
         } catch (err) {
             console.error(err);
@@ -162,11 +161,11 @@ export const actions: Actions = {
             });
             const html = await response.text();
             const $ = cheerio.load(html);
-            
+
             // Extract data from GEEK.geekitemPreload
             const scripts = $('script').map((i, el) => $(el).html()).get();
             const preloadScript = scripts.find(s => s && s.includes('GEEK.geekitemPreload'));
-            
+
             if (!preloadScript) {
                 throw new Error('Could not find game data on BGG page');
             }
@@ -179,14 +178,14 @@ export const actions: Actions = {
 
             const gameData = JSON.parse(match[1]);
             const item = gameData.item;
-            
+
             let name = item.name;
             const minPlayers = parseInt(item.minplayers || '0');
             const maxPlayers = parseInt(item.maxplayers || '0');
             const playtimeMin = parseInt(item.minplaytime || '0');
             const playtimeMax = parseInt(item.maxplaytime || '0');
             const minAge = parseInt(item.minage || '0');
-            
+
             // Clean Description (remove HTML)
             let description = item.description || '';
             // Decode HTML entities and strip tags
@@ -212,14 +211,14 @@ export const actions: Actions = {
                         translate(name, { to: 'ko' }),
                         translate(description, { to: 'ko' })
                     ]);
-                    
+
                     // @ts-ignore
                     const translatedName = nameRes.text;
                     // Combine Korean and English name if they are different
                     if (translatedName && translatedName.trim() !== name.trim()) {
                         name = `${translatedName} (${name})`;
                     }
-                    
+
                     // @ts-ignore
                     description = descRes.text;
                 }
@@ -227,7 +226,7 @@ export const actions: Actions = {
                 console.error('[Translation Error]', tErr);
                 // Fallback to original if translation fails
             }
-            
+
             // Image
             let imageUrl = $('meta[property="og:image"]').attr('content') || '';
 
@@ -247,16 +246,15 @@ export const actions: Actions = {
                 }).join(', ');
             }
 
-            await query(
-                `INSERT INTO games (name, min_players, max_players, playtime_min, max_playtime, min_age, complexity, best_players, description, image_url, bgg_id) 
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-                 ON CONFLICT (bgg_id) DO UPDATE SET
-                 name = EXCLUDED.name, min_players = EXCLUDED.min_players, max_players = EXCLUDED.max_players,
-                 playtime_min = EXCLUDED.playtime_min, max_playtime = EXCLUDED.max_playtime, min_age = EXCLUDED.min_age,
-                 complexity = EXCLUDED.complexity, best_players = EXCLUDED.best_players, description = EXCLUDED.description,
-                 image_url = EXCLUDED.image_url`,
-                [name, minPlayers, maxPlayers, playtimeMin, playtimeMax, minAge, complexity.toFixed(2), bestPlayers, description, imageUrl, bggId]
-            );
+            await db.execute(sql`
+                INSERT INTO games (name, min_players, max_players, playtime_min, max_playtime, min_age, complexity, best_players, description, image_url, bgg_id)
+                VALUES (${name}, ${minPlayers}, ${maxPlayers}, ${playtimeMin}, ${playtimeMax}, ${minAge}, ${complexity.toFixed(2)}, ${bestPlayers}, ${description}, ${imageUrl}, ${bggId})
+                ON CONFLICT (bgg_id) DO UPDATE SET
+                name = EXCLUDED.name, min_players = EXCLUDED.min_players, max_players = EXCLUDED.max_players,
+                playtime_min = EXCLUDED.playtime_min, max_playtime = EXCLUDED.max_playtime, min_age = EXCLUDED.min_age,
+                complexity = EXCLUDED.complexity, best_players = EXCLUDED.best_players, description = EXCLUDED.description,
+                image_url = EXCLUDED.image_url
+            `);
 
             return { success: true, imported: true };
         } catch (err) {

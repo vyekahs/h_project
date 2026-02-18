@@ -1,6 +1,7 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
-import { query } from '$lib/server/db';
+import { db } from '$lib/server/db/index';
+import { sql } from 'drizzle-orm';
 
 const SCANNER_API_KEY = process.env.SCANNER_API_KEY || 'hproject_scanner_secret_2026';
 
@@ -24,12 +25,12 @@ export const POST: RequestHandler = async ({ request }) => {
             return json({ error: 'Invalid IP format' }, { status: 400 });
         }
 
-        await query(`
+        await db.execute(sql`
             INSERT INTO scanners (id, ip_address, last_seen_at, status)
-            VALUES ($1, $2, NOW(), 'active')
+            VALUES (${scanner_id}, ${ip}, NOW(), 'active')
             ON CONFLICT (id) DO UPDATE
-            SET ip_address = $2, last_seen_at = NOW(), status = 'active'
-        `, [scanner_id, ip]);
+            SET ip_address = ${ip}, last_seen_at = NOW(), status = 'active'
+        `);
 
         console.log(`[ESP32] IP registered: ${scanner_id} → ${ip}`);
         return json({ success: true });

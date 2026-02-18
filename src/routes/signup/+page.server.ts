@@ -1,6 +1,7 @@
 import { fail, redirect } from '@sveltejs/kit';
 import type { Actions } from './$types';
-import { query } from '$lib/server/db';
+import { db } from '$lib/server/db/index';
+import { sql } from 'drizzle-orm';
 import bcrypt from 'bcryptjs';
 import { createAttendeeSession } from '$lib/server/auth';
 
@@ -20,25 +21,24 @@ export const actions: Actions = {
         }
 
         // Check if name already exists
-        const existing = await query('SELECT id FROM attendees WHERE name = $1', [name]);
-        if (existing.rows.length > 0) {
+        const existing = await db.execute(sql`SELECT id FROM attendees WHERE name = ${name}`);
+        if (existing.length > 0) {
             return fail(400, { error: '이미 존재하는 이름입니다.' });
         }
 
         try {
             const hashedPassword = await bcrypt.hash(password, 10);
-            
+
             // Insert new user with status 'left' (not currently present)
-            const result = await query(
-                'INSERT INTO attendees (name, password, status) VALUES ($1, $2, $3) RETURNING id, name',
-                [name, hashedPassword, 'left']
-            );
-            
-            const newUser = result.rows[0];
+            const result = await db.execute(sql`
+                INSERT INTO attendees (name, password, status) VALUES (${name}, ${hashedPassword}, ${'left'}) RETURNING id, name
+            `);
+
+            const newUser = result[0] as any;
 
             // Auto-login: Set user session cookie
             const token = await createAttendeeSession(newUser.id);
-            
+
             cookies.set('user_session', token, {
                 path: '/',
                 httpOnly: true,
@@ -46,7 +46,7 @@ export const actions: Actions = {
                 secure: false,
                 maxAge: 60 * 60 * 24 * 365 // 1 year
             });
-            
+
             // Clean up old insecure cookie
             cookies.delete('user_auth', { path: '/' });
 

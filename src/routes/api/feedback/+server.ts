@@ -2,7 +2,8 @@ import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { sendMail } from '$lib/server/mail';
 import { env } from '$env/dynamic/private';
-import { query } from '$lib/server/db';
+import { db } from '$lib/server/db/index';
+import { sql } from 'drizzle-orm';
 
 export const POST: RequestHandler = async ({ request, locals }) => {
     const user = locals.user;
@@ -15,12 +16,11 @@ export const POST: RequestHandler = async ({ request, locals }) => {
     // 1. Store in Database
     let feedbackId: number;
     try {
-        const result = await query(
-            `INSERT INTO feedback (user_id, message, status) 
-             VALUES ($1, $2, 'pending') RETURNING id`,
-            [user?.id || null, message]
+        const result = await db.execute(
+            sql`INSERT INTO feedback (user_id, message, status)
+             VALUES (${user?.id || null}, ${message}, 'pending') RETURNING id`
         );
-        feedbackId = result.rows[0].id;
+        feedbackId = (result[0] as any).id;
     } catch (e) {
         console.error('Database error:', e);
         return json({ error: 'Database error' }, { status: 500 });
@@ -44,17 +44,17 @@ ${message}
         `;
 
         await sendMail(env.SMTP_TO, subject, body);
-        
+
         // 3. Update Status to 'sent'
-        await query(`UPDATE feedback SET status = 'sent', sent_at = NOW() WHERE id = $1`, [feedbackId]);
-        
+        await db.execute(sql`UPDATE feedback SET status = 'sent', sent_at = NOW() WHERE id = ${feedbackId}`);
+
         return json({ success: true });
     } catch (error) {
         console.error('Feedback email failed:', error);
-        
+
         // 3. Update Status to 'failed'
         try {
-            await query(`UPDATE feedback SET status = 'failed' WHERE id = $1`, [feedbackId]);
+            await db.execute(sql`UPDATE feedback SET status = 'failed' WHERE id = ${feedbackId}`);
         } catch (dbError) {
             console.error('Failed to update feedback status:', dbError);
         }

@@ -1,15 +1,16 @@
 
 import { json } from '@sveltejs/kit';
 import { DeviceRegistrationService } from '$lib/server/deviceRegistration';
-import { query } from '$lib/server/db'; // Assuming access to verify user
+import { db } from '$lib/server/db/index';
+import { sql } from 'drizzle-orm';
 
 // POST /api/devices/register/start
 // User starts the flow.
 export async function POST({ request, locals }) {
-    // NOTE: In a real app we check locals.user or similar. 
+    // NOTE: In a real app we check locals.user or similar.
     // For now assuming the client sends attendee_id or we use session.
     // Let's require body: { deviceId, attendeeId }
-    
+
     try {
         const { deviceId, attendeeId, deviceName } = await request.json();
 
@@ -18,16 +19,16 @@ export async function POST({ request, locals }) {
         }
 
         // Check if attendee exists
-        const userCheck = await query('SELECT id FROM attendees WHERE id = $1', [attendeeId]);
-        if (userCheck.rows.length === 0) {
+        const userCheck = await db.execute(sql`SELECT id FROM attendees WHERE id = ${attendeeId}`);
+        if (userCheck.length === 0) {
             return json({ error: 'Invalid user' }, { status: 404 });
         }
 
         const result = await DeviceRegistrationService.startRegistration(deviceId, attendeeId, deviceName || 'Phone');
-        
-        return json({ 
-            success: true, 
-            pin: result.pin, 
+
+        return json({
+            success: true,
+            pin: result.pin,
             expiresAt: result.expiresAt,
             regId: result.regId // Updated to match service change
         });
