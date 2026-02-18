@@ -558,7 +558,7 @@ export const actions: Actions = {
                     FROM session_participants sp
                     JOIN game_sessions gs ON sp.session_id = gs.id
                     JOIN attendees a ON sp.attendee_id = a.id
-                    WHERE gs.status = 'playing' AND sp.attendee_id = ANY(${playerIds}::int[])
+                    WHERE gs.status = 'playing' AND sp.attendee_id = ANY(${'{' + playerIds.join(',') + '}'}::int[])
                 `);
 
                 if (playingCheck.length > 0) {
@@ -586,6 +586,7 @@ export const actions: Actions = {
             emitLiveEvent('games');
             return { success: true };
         } catch (error) {
+            console.error('Failed to create game:', error);
             return fail(500, { error: 'Failed to create game' });
         }
     },
@@ -617,10 +618,10 @@ export const actions: Actions = {
                 const guestWinnerSpIds = winnerIds.filter(wid => parseInt(wid) < 0).map(wid => Math.abs(parseInt(wid)));
 
                 if (regularWinnerIds.length > 0) {
-                    await tx.execute(sql`UPDATE session_participants SET is_winner = true WHERE session_id = ${id} AND attendee_id = ANY(${regularWinnerIds}::int[])`);
+                    await tx.execute(sql`UPDATE session_participants SET is_winner = true WHERE session_id = ${id} AND attendee_id = ANY(${'{' + regularWinnerIds.join(',') + '}'}::int[])`);
                 }
                 if (guestWinnerSpIds.length > 0) {
-                    await tx.execute(sql`UPDATE session_participants SET is_winner = true WHERE session_id = ${id} AND id = ANY(${guestWinnerSpIds}::int[])`);
+                    await tx.execute(sql`UPDATE session_participants SET is_winner = true WHERE session_id = ${id} AND id = ANY(${'{' + guestWinnerSpIds.join(',') + '}'}::int[])`);
                 }
                 for (const [participantId, score] of Object.entries(scores)) {
                     const numId = parseInt(participantId);

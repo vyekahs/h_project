@@ -37,12 +37,12 @@ export async function POST() {
 
                     // Update game history to point to Master ID
                     await tx.execute(
-                        sql`UPDATE session_participants SET attendee_id = ${masterId} WHERE attendee_id = ANY(${duplicateIds}::int[])`
+                        sql`UPDATE session_participants SET attendee_id = ${masterId} WHERE attendee_id = ANY(${'{' + duplicateIds.join(',') + '}'}::int[])`
                     );
 
                     // Delete duplicates
                     await tx.execute(
-                        sql`DELETE FROM attendees WHERE id = ANY(${duplicateIds}::int[])`
+                        sql`DELETE FROM attendees WHERE id = ANY(${'{' + duplicateIds.join(',') + '}'}::int[])`
                     );
                 }
 
