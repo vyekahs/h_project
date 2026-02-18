@@ -49,6 +49,9 @@
         allGames: any[];
         parties: Party[];
         userPartyIds: number[];
+        dailyVisitPlans: { id: number; attendee_id: number; name: string; title_name?: string }[];
+        mainScheduledGames: GameSession[];
+        userHasVisitPlan: boolean;
     };
 
     interface Attendee {
@@ -103,6 +106,9 @@
     function getGameReservations(gameId: number) {
         return (data.reservations || []).filter((r: any) => r.session_id === gameId);
     }
+
+    // --- Tab System ---
+    let activeTab: 'home' | 'games' = 'home';
 
     // --- Game Management Logic ---
     let showModal = false;
@@ -159,6 +165,22 @@
 
     let alertVisible = false;
     let alertMessage = '';
+
+    // Confirm Modal
+    let confirmVisible = false;
+    let confirmMessage = '';
+    let confirmResolve: ((value: boolean) => void) | null = null;
+
+    function showConfirm(msg: string): Promise<boolean> {
+        confirmMessage = msg;
+        confirmVisible = true;
+        return new Promise((resolve) => { confirmResolve = resolve; });
+    }
+
+    function handleConfirm(result: boolean) {
+        confirmVisible = false;
+        if (confirmResolve) { confirmResolve(result); confirmResolve = null; }
+    }
 
     // PWA Install Guide
     let showInstallGuide = false;
@@ -445,6 +467,19 @@
     {/if} -->
 
     <main>
+        <div class="tab-bar">
+            <button class="tab-btn" class:active={activeTab === 'home'} on:click={() => activeTab = 'home'}>
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px; vertical-align:text-bottom;"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                홈
+            </button>
+            <button class="tab-btn" class:active={activeTab === 'games'} on:click={() => activeTab = 'games'}>
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px; vertical-align:text-bottom;"><line x1="6" y1="12" x2="10" y2="12"/><line x1="8" y1="10" x2="8" y2="14"/><line x1="15" y1="13" x2="15.01" y2="13"/><line x1="18" y1="11" x2="18.01" y2="11"/><rect x="2" y="6" width="20" height="12" rx="2"/></svg>
+                게임
+            </button>
+        </div>
+
+        {#if activeTab === 'home'}
+
         {#if data.user && ((data.userPenaltyInfo && data.userPenaltyInfo.penalty_points > 0) || (data.userScheduledGames && data.userScheduledGames.length > 0) || data.userPlayingGame || data.userReservation)}
             <section class="my-status-section">
                 <h2>나의 예약 현황</h2>
@@ -472,20 +507,20 @@
                                 </span>
                                 <span class="value">{game.game_name}</span>
                                 <span class="sub-value"><span class="highlight-orange">{time.relative}</span> ({time.absolute} 시작)</span>
-                                <form method="POST" action="?/leaveScheduledGame" on:submit|preventDefault={(e) => {
-                                    const scheduledAt = new Date(game.scheduled_at).getTime();
-                                    const now = Date.now();
-                                    const form = e.target as HTMLFormElement;
-                                    if (scheduledAt - now < 10 * 60 * 1000) {
-                                        if (confirm('시작 10분 전입니다. 지금 취소하면 페널티가 부여됩니다. 정말 취소하시겠습니까?')) {
-                                            form.submit();
+                                <form method="POST" action="?/leaveScheduledGame"
+                                    use:enhance={({ cancel }) => {
+                                        const scheduledAt = new Date(game.scheduled_at).getTime();
+                                        const now = Date.now();
+                                        if (scheduledAt - now < 10 * 60 * 1000) {
+                                            if (!confirm('시작 10분 전입니다. 지금 취소하면 페널티가 부여됩니다. 정말 취소하시겠습니까?')) { cancel(); return; }
+                                        } else {
+                                            if (!confirm('정말 참여를 취소하시겠습니까?')) { cancel(); return; }
                                         }
-                                    } else {
-                                        if (confirm('정말 참여를 취소하시겠습니까?')) {
-                                            form.submit();
-                                        }
-                                    }
-                                }}>
+                                        return async ({ result }) => {
+                                            await applyAction(result);
+                                            await invalidateAll();
+                                        };
+                                    }}>
                                     <input type="hidden" name="sessionId" value={game.id}>
                                     <button type="submit" class="btn-cancel-small">참여 취소</button>
                                 </form>
@@ -512,12 +547,14 @@
                                 {data.userReservation.status === 'pending' ? '대기 중' : 
                                  data.userReservation.status === 'waitlisted' ? '대기 순번' : '확정'}
                             </span>
-                            <form method="POST" action="?/cancelReservation" on:submit|preventDefault={(e) => {
-                                if (confirm('정말 예약을 취소하시겠습니까? (시작 10분 전 이내인 경우 페널티가 부여될 수 있습니다)')) {
-                                    const target = e.target as HTMLFormElement;
-                                    target.submit();
-                                }
-                            }}>
+                            <form method="POST" action="?/cancelReservation"
+                                use:enhance={({ cancel }) => {
+                                    if (!confirm('정말 예약을 취소하시겠습니까? (시작 10분 전 이내인 경우 페널티가 부여될 수 있습니다)')) { cancel(); return; }
+                                    return async ({ result }) => {
+                                        await applyAction(result);
+                                        await invalidateAll();
+                                    };
+                                }}>
                                 <input type="hidden" name="reservationId" value={data.userReservation.id}>
                                 <button type="submit" class="btn-cancel-small">예약 취소</button>
                             </form>
@@ -559,6 +596,115 @@
                 {/if}
             </div>
         </section>
+
+        <section class="visit-plan-section">
+            <div class="section-header">
+                <h2>오늘 갈예정 ({(data.dailyVisitPlans || []).length})</h2>
+                {#if data.user}
+                    <form method="POST" action="?/toggleVisitPlan" use:enhance={() => {
+                        return async ({ result, update }) => {
+                            await update();
+                        };
+                    }}>
+                        <button type="submit" class="btn-visit-plan" class:active={data.userHasVisitPlan}>
+                            {data.userHasVisitPlan ? '취소하기' : '나도 갈예정!'}
+                        </button>
+                    </form>
+                {/if}
+            </div>
+            <div class="visit-plan-grid">
+                {#each (data.dailyVisitPlans || []) as plan}
+                    <div class="visit-plan-card">
+                        {#if plan.title_name}
+                            <span class="mini-title">[{plan.title_name}]</span>
+                        {/if}
+                        <span class="name">{plan.name}</span>
+                    </div>
+                {/each}
+                {#if (data.dailyVisitPlans || []).length === 0}
+                    <p class="empty-state">아직 아무도 올 예정이 없어요.</p>
+                {/if}
+            </div>
+        </section>
+
+        {#if (data.mainScheduledGames || []).length > 0}
+            <section class="tables-section">
+                <h2>예정된 정기 게임</h2>
+                <div class="tables-grid">
+                    {#each (data.mainScheduledGames || []) as game}
+                        {@const time = formatScheduledTime(game.scheduled_at)}
+                        <div class="table-card available">
+                            <div class="table-header">
+                                <h3>
+                                    <span class="game-title-text">{game.game_name}</span>
+                                    {#if game.party_id}<span class="party-badge">고정팟</span>{/if}
+                                    <span class="sub-text">({(game.participants || []).length} / {game.max_players})</span>
+                                </h3>
+                                <div class="header-meta-row">
+                                    {#if data.user && !(game.participants || []).some((p: any) => p.id === data.user!.id)}
+                                        {@const hasConflict = (() => {
+                                            const targetDate = new Date(game.scheduled_at).toDateString();
+                                            if (data.userPlayingGame) {
+                                                const today = new Date().toDateString();
+                                                if (targetDate === today) return true;
+                                            }
+                                            const conflicts = [
+                                                ...(data.userScheduledGames || []),
+                                                ...(data.userReservation ? [data.userReservation] : [])
+                                            ];
+                                            return conflicts.some(c => {
+                                                if (!c.scheduled_at) return false;
+                                                return new Date(c.scheduled_at).toDateString() === targetDate;
+                                            });
+                                        })()}
+
+                                        {#if !hasConflict && canJoinGame(game)}
+                                            <div class="actions">
+                                                <form method="POST" action="?/joinScheduledGame">
+                                                    <input type="hidden" name="sessionId" value={game.id}>
+                                                    <button type="submit" class="btn-join">
+                                                        {(game.participants || []).length >= game.max_players ? '대기열 합류' : '참여하기'}
+                                                    </button>
+                                                </form>
+                                            </div>
+                                        {/if}
+                                    {/if}
+                                </div>
+                            </div>
+
+                            <div class="table-content">
+                                <div class="session-info next">
+                                    <div class="session-header">
+                                        <span class="start-time">
+                                            <span class="highlight-green">{time.relative}</span>
+                                            <span class="sub-text">({time.absolute} 시작)</span>
+                                        </span>
+                                    </div>
+                                    <div class="participants">
+                                        <div class="participant-list">
+                                            {#each (game.participants || []) as p}
+                                                {@const participant = p as any}
+                                                <span class="p-name" class:guest-name={participant.is_guest}>
+                                                    {#if participant.title_name}
+                                                        <span class="p-title">[{participant.title_name}]</span>
+                                                    {/if}
+                                                    {participant.name}
+                                                    {#if participant.is_guest}
+                                                        <span class="guest-badge">G</span>
+                                                    {/if}
+                                                </span>
+                                            {/each}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    {/each}
+                </div>
+            </section>
+        {/if}
+
+        {:else}
 
         <section class="tables-section">
             <div class="section-header">
@@ -602,19 +748,35 @@
                                 {#if data.user}
                                     <div class="user-actions">
                                         {#if isParticipant}
-                                             <form method="POST" action="?/leavePlayingGame" on:submit|preventDefault={(e) => {
-                                                  const registeredCount = (game.players || []).filter((p: any) => !p.is_guest).length;
-                                                  if (registeredCount <= 2) {
-                                                      alert('게임을 진행하기 위한 최소 인원(2명)이므로 나갈 수 없습니다.');
-                                                      return;
-                                                  }
-                                                  if(confirm('정말 게임에서 나가시겠습니까?')) e.currentTarget.submit();
-                                              }}>
+                                             <form method="POST" action="?/leavePlayingGame"
+                                                use:enhance={({ cancel }) => {
+                                                    const registeredCount = (game.players || []).filter((p: any) => !p.is_guest).length;
+                                                    if (registeredCount <= 2) {
+                                                        alert('게임을 진행하기 위한 최소 인원(2명)이므로 나갈 수 없습니다.');
+                                                        cancel(); return;
+                                                    }
+                                                    if (!confirm('정말 게임에서 나가시겠습니까?')) { cancel(); return; }
+                                                    return async ({ result }) => {
+                                                        await applyAction(result);
+                                                        await invalidateAll();
+                                                    };
+                                                }}>
                                                 <input type="hidden" name="sessionId" value={game.id}>
                                                 <button class="btn-cancel-small">나가기</button>
                                             </form>
                                         {:else if myReservation && myReservation.status === 'pending_approval'}
-                                            <span class="status-text">요청 대기 중...</span>
+                                            <form method="POST" action="?/cancelReservation" class="cancel-form-inline"
+                                                use:enhance={async ({ cancel }) => {
+                                                    const ok = await showConfirm('참여 요청을 취소하시겠습니까?');
+                                                    if (!ok) { cancel(); return; }
+                                                    return async ({ result }) => {
+                                                        await applyAction(result);
+                                                        await invalidateAll();
+                                                    };
+                                                }}>
+                                                <input type="hidden" name="reservationId" value={myReservation.id}>
+                                                <button class="btn-pending-cancel">신청 취소</button>
+                                            </form>
                                         {:else if !myReservation && canJoinGame(game)}
                                             <form method="POST" action="?/reserveGame" use:enhance={handleJoinRequest}>
                                                 <input type="hidden" name="sessionId" value={game.id}>
@@ -827,6 +989,8 @@
                 </div>
             {/if}
         </section>
+
+        {/if}
     </main>
 </div>
 
@@ -1212,6 +1376,22 @@
     </div>
 {/if}
 
+<!-- Confirm Modal -->
+{#if confirmVisible}
+    <!-- svelte-ignore a11y-click-events-have-key-events -->
+    <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
+    <div class="modal-backdrop" on:click={() => handleConfirm(false)} role="presentation">
+        <div class="modal-content alert-modal" on:click|stopPropagation role="alertdialog">
+            <h3>확인</h3>
+            <p>{confirmMessage}</p>
+            <div class="modal-actions">
+                <button class="btn-cancel" on:click={() => handleConfirm(false)}>아니오</button>
+                <button class="btn-danger" on:click={() => handleConfirm(true)}>네</button>
+            </div>
+        </div>
+    </div>
+{/if}
+
 {#if showInstallGuide}
     <div class="modal-backdrop" on:click|self={() => showInstallGuide = false}>
         <div class="modal-content install-guide-modal">
@@ -1275,6 +1455,91 @@
         font-family: 'Inter', system-ui, -apple-system, sans-serif;
         background: #f0f2f5;
         color: #333;
+    }
+    /* Visit Plan Section */
+    .visit-plan-section {
+        margin-bottom: 2rem;
+    }
+    .visit-plan-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+        gap: 0.75rem;
+    }
+    .visit-plan-card {
+        background: white;
+        padding: 0.75rem;
+        border-radius: 12px;
+        text-align: center;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        overflow: hidden;
+    }
+    .btn-visit-plan {
+        background: #fff3e0;
+        color: #e67700;
+        border: 1px solid #ffe0b2;
+        padding: 0.4rem 0.8rem;
+        border-radius: 8px;
+        font-weight: 600;
+        font-size: 0.85rem;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    .btn-visit-plan:hover {
+        background: #ffe0b2;
+    }
+    .btn-visit-plan.active {
+        background: #e67700;
+        color: white;
+        border-color: #e67700;
+    }
+    .btn-visit-plan.active:hover {
+        background: #cc6a00;
+    }
+
+    /* Tab System */
+    .tab-bar {
+        display: flex;
+        background: white;
+        border-radius: 12px;
+        margin-bottom: 1.5rem;
+        overflow: hidden;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        border: 1px solid #eee;
+    }
+    .tab-btn {
+        flex: 1;
+        padding: 0.75rem;
+        border: none;
+        background: white;
+        font-size: 0.95rem;
+        font-weight: 600;
+        color: #888;
+        cursor: pointer;
+        transition: all 0.2s;
+        position: relative;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .tab-btn:hover {
+        background: #fafafa;
+    }
+    .tab-btn.active {
+        color: #e67700;
+        background: #fff8f0;
+    }
+    .tab-btn.active::after {
+        content: '';
+        position: absolute;
+        bottom: 0;
+        left: 20%;
+        width: 60%;
+        height: 3px;
+        background: #e67700;
+        border-radius: 3px 3px 0 0;
     }
     .container {
         max-width: 600px;
@@ -2102,6 +2367,22 @@
     .btn-reserve:hover {
         background: #f08c00;
     }
+    .btn-pending-cancel {
+        padding: 0.3rem 0.8rem;
+        font-size: 0.8rem;
+        border-radius: 6px;
+        color: black;
+        border: none;
+        cursor: pointer;
+        white-space: nowrap;
+        flex-shrink: 0;
+        width: 100%;
+        border-radius: 8px;
+        font-weight: 700;
+        cursor: pointer;
+        transition: background 0.2s;
+        
+    }
     .btn-tichu-counter {
         display: inline-block;
         margin-top: 0.5rem;
@@ -2232,6 +2513,18 @@
         cursor: pointer;
     }
 
+    .btn-danger {
+        background: #e03131;
+        color: white;
+        border: none;
+        padding: 0.75rem 1.5rem;
+        border-radius: 8px;
+        font-weight: bold;
+        cursor: pointer;
+    }
+    .btn-danger:hover {
+        background: #c92a2a;
+    }
 
     .player-select {
         display: flex;

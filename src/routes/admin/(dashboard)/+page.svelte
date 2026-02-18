@@ -65,22 +65,16 @@
     let removeModalVisible = false;
     let removeTarget: Attendee | null = null;
 
-    function handleRemove(attendee: Attendee) {
+    async function handleRemove(attendee: Attendee) {
         if (attendee.is_playing) {
             removeTarget = attendee;
             removeModalVisible = true;
         } else {
             // Instant remove for non-playing users
-            const form = document.createElement('form');
-            form.method = 'POST';
-            form.action = '?/removeAttendee';
-            const input = document.createElement('input');
-            input.type = 'hidden';
-            input.name = 'id';
-            input.value = String(attendee.id);
-            form.appendChild(input);
-            document.body.appendChild(form);
-            form.submit();
+            const formData = new FormData();
+            formData.append('id', String(attendee.id));
+            await fetch('?/removeAttendee', { method: 'POST', body: formData });
+            await invalidateAll();
         }
     }
 
@@ -99,6 +93,7 @@
     let scheduledAt = '';
     let minPlayers = 2;
     let maxPlayers = 4;
+    let isRecurring = false;
 
     function openScheduledGameModal() {
         showScheduledGameModal = true;
@@ -265,12 +260,15 @@
     let savedMembers: SavedMember[];
     let tables: Table[];
 
+    const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
+
     $: attendees = data.attendees as Attendee[];
     $: allUsers = (data as any).allUsers || [];
     $: games = data.games as GameSession[];
     $: scheduledGames = data.scheduledGames as GameSession[];
     $: reservations = data.reservations as Reservation[];
     $: savedMembers = data.savedMembers as SavedMember[];
+    $: recurringSchedules = (data as any).recurringSchedules || [];
 </script>
 
 
@@ -458,6 +456,70 @@
             <p class="empty-state">예정된 게임이 없습니다.</p>
         {/if}
     </div>
+</section>
+
+<section>
+    <div class="section-header">
+        <h2>
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>
+            반복 게임 관리 ({recurringSchedules.length})
+        </h2>
+    </div>
+    {#if recurringSchedules.length > 0}
+        <div class="recurring-list">
+            {#each recurringSchedules as schedule (schedule.id)}
+                <div class="recurring-item" class:inactive={!schedule.is_active}>
+                    <div class="recurring-info">
+                        <strong>{schedule.game_name}</strong>
+                        <span class="recurring-meta">
+                            매주 {dayNames[schedule.day_of_week]}요일 {schedule.scheduled_time.slice(0, 5)}
+                            | {schedule.min_players}-{schedule.max_players}인
+                            {#if schedule.show_on_main}
+                                | <span class="badge-main">메인표시</span>
+                            {/if}
+                        </span>
+                        <span class="recurring-status">
+                            {schedule.is_active ? '활성' : '비활성'}
+                        </span>
+                    </div>
+                    <div class="recurring-actions">
+                        <form method="POST" action="?/skipRecurringWeek" use:enhance={() => {
+                            return async ({ result, update }) => {
+                                if (result.type === 'failure') {
+                                    showAlert((result as any).data?.error || '오류가 발생했습니다.');
+                                } else {
+                                    showAlert('이번주 스킵 처리되었습니다.');
+                                }
+                                await update();
+                            };
+                        }} style="display:inline;">
+                            <input type="hidden" name="scheduleId" value={schedule.id} />
+                            <button type="submit" class="btn-skip">이번주 빼기</button>
+                        </form>
+                        <form method="POST" action="?/toggleRecurringActive" use:enhance style="display:inline;">
+                            <input type="hidden" name="scheduleId" value={schedule.id} />
+                            <button type="submit" class="btn-toggle-active">
+                                {schedule.is_active ? '비활성화' : '활성화'}
+                            </button>
+                        </form>
+                        <form method="POST" action="?/deleteRecurringSchedule" use:enhance={() => {
+                            return async ({ result, update }) => {
+                                if (result.type === 'failure') {
+                                    showAlert((result as any).data?.error || '삭제 실패');
+                                }
+                                await update();
+                            };
+                        }} style="display:inline;">
+                            <input type="hidden" name="scheduleId" value={schedule.id} />
+                            <button type="submit" class="btn-delete">삭제</button>
+                        </form>
+                    </div>
+                </div>
+            {/each}
+        </div>
+    {:else}
+        <p class="empty-state">등록된 반복 게임이 없습니다.</p>
+    {/if}
 </section>
 
 <!-- <section>
@@ -810,7 +872,7 @@
                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
                 시작 예정 게임 생성
             </h2>
-            <form method="POST" action="/?/createScheduledGame" use:enhance={() => {
+            <form method="POST" action="?/createScheduledGame" use:enhance={() => {
                 return async ({ result, update }: { result: any, update: (options?: { reset?: boolean }) => Promise<void> }) => {
                     if (result.type === 'failure') {
                         const data = result.data as { error?: string };
@@ -883,6 +945,18 @@
                     <input type="number" id="scheduledGuestCount" name="guestCount" bind:value={guestCount} min="0" max={maxPlayers} class="number-input"
                         on:input={() => { if (guestCount > maxPlayers) guestCount = maxPlayers; }} />
                     <p class="hint">* 미등록 참가자 수 (최대 {maxPlayers}명, 게스트1, 게스트2... 자동 생성)</p>
+                </div>
+
+                <div class="admin-options">
+                    <h4 class="admin-options-title">관리자 옵션</h4>
+                    <label class="checkbox-option">
+                        <input type="checkbox" name="showOnMain" value="true" />
+                        메인페이지에 보이기
+                    </label>
+                    <label class="checkbox-option">
+                        <input type="checkbox" name="isRecurring" value="true" bind:checked={isRecurring} />
+                        매주 반복 (같은 요일에 자동 생성)
+                    </label>
                 </div>
 
                 <div class="modal-actions">
@@ -1675,6 +1749,113 @@
         font-size: 0.8rem;
         color: #888;
         margin-top: 0.25rem;
+    }
+
+    /* Recurring Game Management */
+    .recurring-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+    .recurring-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.75rem 1rem;
+        background: white;
+        border-radius: 8px;
+        border: 1px solid #e0e0e0;
+        border-left: 4px solid #4caf50;
+    }
+    .recurring-item.inactive {
+        opacity: 0.6;
+        border-left-color: #9e9e9e;
+    }
+    .recurring-info {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+    }
+    .recurring-meta {
+        font-size: 0.85rem;
+        color: #666;
+    }
+    .recurring-status {
+        font-size: 0.75rem;
+        color: #888;
+    }
+    .badge-main {
+        background: #e3f2fd;
+        color: #1565c0;
+        padding: 0.1rem 0.4rem;
+        border-radius: 4px;
+        font-size: 0.75rem;
+        font-weight: 600;
+    }
+    .recurring-actions {
+        display: flex;
+        gap: 0.25rem;
+        align-items: center;
+    }
+    .btn-skip {
+        background: #ff9800;
+        color: white;
+        border: none;
+        padding: 0.3rem 0.6rem;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 0.8rem;
+    }
+    .btn-toggle-active {
+        background: #607d8b;
+        color: white;
+        border: none;
+        padding: 0.3rem 0.6rem;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 0.8rem;
+    }
+    @media (max-width: 600px) {
+        .recurring-item {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 0.5rem;
+        }
+        .recurring-actions {
+            width: 100%;
+            justify-content: flex-end;
+        }
+    }
+
+    .admin-options {
+        background: #f0f4ff;
+        border: 1px solid #d0d9f0;
+        border-radius: 8px;
+        padding: 1rem;
+        margin-top: 0.5rem;
+    }
+
+    .admin-options-title {
+        font-size: 0.85rem;
+        color: #4a5568;
+        margin: 0 0 0.5rem 0;
+        font-weight: 600;
+    }
+
+    .checkbox-option {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-size: 0.9rem;
+        color: #333;
+        cursor: pointer;
+        padding: 0.25rem 0;
+    }
+
+    .checkbox-option input[type="checkbox"] {
+        width: 16px;
+        height: 16px;
+        accent-color: #4a90d9;
     }
 
 </style>

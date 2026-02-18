@@ -6,19 +6,17 @@ startAutoCloseScheduler();
 
 /** @type {import('@sveltejs/kit').Handle} */
 export async function handle({ event, resolve }) {
-    // 1. Global User Auth (Attendee) - Run for ALL routes
+    // 1+2. 인증 쿼리 순차 실행 (커넥션 1개씩만 사용)
     const userSessionToken = event.cookies.get('user_session');
     if (userSessionToken) {
         const user = await verifyAttendeeSession(userSessionToken);
-        if (user) {
-            event.locals.user = user;
-        }
+        if (user) event.locals.user = user;
     }
 
-    // 2. Global Admin Auth - Run for ALL routes (결과를 locals에 캐시)
     const adminSessionToken = event.cookies.get('admin_session');
     if (adminSessionToken) {
-        event.locals.isAdmin = await verifyAdminSession(adminSessionToken);
+        const isAdmin = await verifyAdminSession(adminSessionToken);
+        if (isAdmin) event.locals.isAdmin = isAdmin;
     }
 
     // 로그인 필요 경로 체크 (미니게임 라운지 + 개별 게임)
