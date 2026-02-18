@@ -289,6 +289,24 @@ export const actions: Actions = {
                     await tx.execute(sql`UPDATE game_sessions SET recurring_schedule_id = ${recurId} WHERE id = ${newSessionId}`);
                 }
             });
+
+            // 고정팟이 아니고 오늘 날짜면 참여자들을 갈 예정에 자동 등록
+            if (!partyId && scheduledAt) {
+                const isToday = new Date(scheduledAt).toDateString() === new Date().toDateString();
+                if (isToday) {
+                    const allPlayerIds = creatorId ? [creatorId.toString(), ...playerIds] : [...playerIds];
+                    const uniqueIds = [...new Set(allPlayerIds)].filter(Boolean);
+                    for (const pid of uniqueIds) {
+                        await db.execute(sql`
+                            INSERT INTO daily_visit_plans (attendee_id, plan_date)
+                            VALUES (${parseInt(pid)}, CURRENT_DATE)
+                            ON CONFLICT DO NOTHING
+                        `);
+                    }
+                    if (uniqueIds.length > 0) emitLiveEvent('visitors');
+                }
+            }
+
             emitLiveEvent('games');
             return { success: true };
         } catch (e) {
@@ -483,6 +501,20 @@ export const actions: Actions = {
 
         const { promoteWaitlist } = await import('$lib/server/reservations');
         await promoteWaitlist(Number(sessionId));
+
+        // 다른 오늘 시작예정 게임에 참여 중이 아니면 갈 예정에서 제거
+        const otherScheduled = await db.execute(sql`
+            SELECT 1 FROM session_participants sp
+            JOIN game_sessions gs ON sp.session_id = gs.id
+            WHERE sp.attendee_id = ${user.id}
+            AND gs.status = 'scheduled'
+            AND gs.scheduled_at::date = CURRENT_DATE
+            AND gs.party_id IS NULL
+        `);
+        if (otherScheduled.length === 0) {
+            await db.execute(sql`DELETE FROM daily_visit_plans WHERE attendee_id = ${user.id} AND plan_date = CURRENT_DATE`);
+            emitLiveEvent('visitors');
+        }
 
         emitLiveEvent('games');
         return { success: true };
