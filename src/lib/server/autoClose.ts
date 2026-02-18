@@ -1,6 +1,5 @@
 import { db } from '$lib/server/db/index';
 import { sql } from 'drizzle-orm';
-import { applyPenalty, promoteWaitlist } from './reservations';
 import { updateSettingsCache, markAllLeft } from './ble';
 import { emitLiveEvent } from './liveEvents';
 
@@ -98,58 +97,7 @@ async function performCloseDay(businessDate: string) {
 }
 
 async function checkReservations() {
-    try {
-        const settingsResult = await db.execute(sql`SELECT key, value FROM system_settings`);
-        const settings = (settingsResult as any[]).reduce((acc: any, row: any) => {
-            acc[row.key] = row.value;
-            return acc;
-        }, {
-            no_show_limit_minutes: '10'
-        });
-
-        const noShowLimit = parseInt(settings.no_show_limit_minutes);
-
-        const noShows = await db.execute(sql`
-            SELECT r.id, r.attendee_id, r.session_id
-            FROM reservations r
-            JOIN game_sessions gs ON r.session_id = gs.id
-            WHERE gs.status = 'scheduled'
-              AND gs.scheduled_at < NOW() - (${noShowLimit} || ' minutes')::interval
-              AND r.status IN ('pending', 'confirmed')
-        `);
-
-        for (const row of noShows) {
-            const r = row as any;
-            await db.execute(sql`UPDATE reservations SET status = 'cancelled' WHERE id = ${r.id}`);
-            await applyPenalty(r.attendee_id);
-            await promoteWaitlist(r.session_id);
-            console.log(`Auto-cancelled reservation ${r.id} for attendee ${r.attendee_id} (No-show)`);
-        }
-
-        const readyToStart = await db.execute(sql`
-            SELECT gs.id, gs.game_id, gs.game_name,
-                   COALESCE(g.playtime_min, 60) as playtime_min,
-                   COUNT(sp.id) as current_players
-            FROM game_sessions gs
-            LEFT JOIN session_participants sp ON gs.id = sp.session_id
-            LEFT JOIN games g ON gs.game_id = g.id
-            WHERE gs.status = 'scheduled'
-              AND gs.scheduled_at <= NOW()
-            GROUP BY gs.id, gs.game_id, gs.game_name, g.playtime_min
-        `);
-
-        for (const row of readyToStart) {
-            const r = row as any;
-            const duration = r.playtime_min || 60;
-            await db.execute(sql`UPDATE game_sessions SET status = 'playing', start_time = NOW(), end_time = NOW() + (${duration} || ' minutes')::interval WHERE id = ${r.id}`);
-            await db.execute(sql`UPDATE reservations SET status = 'confirmed' WHERE session_id = ${r.id} AND status = 'pending'`);
-            emitLiveEvent('games');
-            console.log(`Auto-started session ${r.id} (${r.game_name}, ${duration}min, ${r.current_players} players)`);
-        }
-
-    } catch (error) {
-        console.error('Failed to check reservations:', error);
-    }
+    // 노쇼 처리 및 자동 시작 제거됨 — 예약 게임은 수동으로 관리
 }
 
 async function checkRecurringGames() {

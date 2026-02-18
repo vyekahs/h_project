@@ -723,7 +723,7 @@
                     </div>
                 {/each}
                 {#if (data.dailyVisitPlans || []).length === 0}
-                    <p class="empty-state">아직 아무도 올 예정이 없어요.</p>
+                    <p class="empty-state">아직 오늘의 첫 번째 방문자가 없어요. 내가 먼저 등록해볼까요?</p>
                 {/if}
             </div>
         </section>
