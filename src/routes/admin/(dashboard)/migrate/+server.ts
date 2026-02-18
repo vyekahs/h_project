@@ -27,7 +27,7 @@ export async function POST() {
                     }
 
                     await tx.execute(
-                        sql`INSERT INTO visits (attendee_id, arrival_time, departure_time) VALUES (${masterId}, ${record.arrival_time}, ${departureTime})`
+                        sql`INSERT INTO visits (attendee_id, arrival_time, departure_time) VALUES (${masterId}, ${record.arrival_time instanceof Date ? record.arrival_time.toISOString() : record.arrival_time}, ${departureTime instanceof Date ? departureTime.toISOString() : departureTime})`
                     );
                 }
 
@@ -49,7 +49,7 @@ export async function POST() {
                 // Ensure Master status reflects the LATEST record's status
                 const latestRecord = records[records.length - 1];
                 await tx.execute(
-                    sql`UPDATE attendees SET status = ${latestRecord.status}, updated_at = ${latestRecord.updated_at} WHERE id = ${masterId}`
+                    sql`UPDATE attendees SET status = ${latestRecord.status}, updated_at = ${latestRecord.updated_at instanceof Date ? latestRecord.updated_at.toISOString() : latestRecord.updated_at} WHERE id = ${masterId}`
                 );
             }
         });
