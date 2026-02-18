@@ -13,7 +13,7 @@ export const load: PageServerLoad = async () => {
     const expiresAt = new Date(Date.now() + 100 * 365 * 24 * 60 * 60 * 1000);
 
     // 3. Save to DB
-    await db.execute(sql`INSERT INTO qr_tokens (token, expires_at) VALUES (${token}, ${expiresAt})`);
+    await db.execute(sql`INSERT INTO qr_tokens (token, expires_at) VALUES (${token}, ${expiresAt.toISOString()})`);
 
     // 4. Generate QR Code URL
     // Use ORIGIN from env, fallback to localhost for dev
