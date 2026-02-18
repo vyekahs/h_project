@@ -16,7 +16,7 @@ export class DeviceRegistrationService {
 
         const res = await db.execute(sql`
             INSERT INTO device_registrations (device_id, pin, target_attendee_id, step, device_name, expires_at)
-            VALUES (${deviceId}, ${pin}, ${attendeeId}, 'pending', ${deviceName}, ${expiresAt})
+            VALUES (${deviceId}, ${pin}, ${attendeeId}, 'pending', ${deviceName}, ${expiresAt.toISOString()})
             RETURNING id
         `);
 

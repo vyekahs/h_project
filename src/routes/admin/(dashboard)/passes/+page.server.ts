@@ -47,7 +47,7 @@ export const actions: Actions = {
             if (dow === 1) endDate.setDate(endDate.getDate() + 2);
             else if (dow === 2) endDate.setDate(endDate.getDate() + 1);
 
-            await db.execute(sql`UPDATE attendees SET season_pass_expires_at = ${endDate} WHERE id = ${attendeeId}`);
+            await db.execute(sql`UPDATE attendees SET season_pass_expires_at = ${endDate.toISOString()} WHERE id = ${attendeeId}`);
             return { success: true };
         } catch (err) {
             console.error(err);
