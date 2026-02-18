@@ -8,6 +8,7 @@ export const PartyService = {
             const result = await db.execute(sql`
                 SELECT gp.id, gp.name, gp.game_id, gp.game_name, gp.duration, gp.guest_count,
                     g.image_url, g.name as resolved_game_name,
+                    (gp.owner_id = ${userId}) as is_owner,
                     COALESCE(json_agg(json_build_object(
                         'id', a.id, 'name', a.name
                     ) ORDER BY a.name) FILTER (WHERE a.id IS NOT NULL), '[]') as members
@@ -16,6 +17,7 @@ export const PartyService = {
                 LEFT JOIN attendees a ON gpm.attendee_id = a.id
                 LEFT JOIN games g ON gp.game_id = g.id
                 WHERE gp.owner_id = ${userId}
+                   OR gp.id IN (SELECT party_id FROM game_party_members WHERE attendee_id = ${userId})
                 GROUP BY gp.id, gp.name, gp.game_id, gp.game_name, gp.duration, gp.guest_count, g.image_url, g.name
                 ORDER BY gp.updated_at DESC
             `);

@@ -535,22 +535,24 @@
                                             {/each}
                                         </div>
                                     </div>
-                                    <div class="party-actions-row">
-                                        <button class="btn-edit-party" on:click={() => openEditPartyModal(party)}>수정</button>
-                                        <form method="POST" action="?/deleteParty" use:enhance={() => {
-                                            return async ({ result, update }) => {
-                                                if (result.type === 'success') await update();
-                                            };
-                                        }}>
-                                            <input type="hidden" name="partyId" value={party.id} />
-                                            <button type="submit" class="btn-delete-party" on:click|preventDefault={(e) => {
-                                                if (confirm(`'${party.name}' 고정팟을 삭제하시겠습니까?`)) {
-                                                    const form = (e.currentTarget as HTMLElement).closest('form');
-                                                    if (form) form.requestSubmit();
-                                                }
-                                            }}>삭제</button>
-                                        </form>
-                                    </div>
+                                    {#if party.is_owner}
+                                        <div class="party-actions-row">
+                                            <button class="btn-edit-party" on:click={() => openEditPartyModal(party)}>수정</button>
+                                            <form method="POST" action="?/deleteParty" use:enhance={() => {
+                                                return async ({ result, update }) => {
+                                                    if (result.type === 'success') await update();
+                                                };
+                                            }}>
+                                                <input type="hidden" name="partyId" value={party.id} />
+                                                <button type="submit" class="btn-delete-party" on:click|preventDefault={(e) => {
+                                                    if (confirm(`'${party.name}' 고정팟을 삭제하시겠습니까?`)) {
+                                                        const form = (e.currentTarget as HTMLElement).closest('form');
+                                                        if (form) form.requestSubmit();
+                                                    }
+                                                }}>삭제</button>
+                                            </form>
+                                        </div>
+                                    {/if}
                                 </div>
                             {/each}
                         </div>
