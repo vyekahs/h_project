@@ -174,6 +174,60 @@ async function migrate() {
         await pool.query('ALTER TABLE user_devices ADD COLUMN IF NOT EXISTS wifi_mac VARCHAR(17);');
         await pool.query('CREATE INDEX IF NOT EXISTS idx_user_devices_wifi_mac ON user_devices(wifi_mac) WHERE wifi_mac IS NOT NULL;');
 
+        // 18. Daily Visit Plans (오늘 갈예정)
+        console.log('[18] Checking daily_visit_plans table...');
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS daily_visit_plans (
+                id SERIAL PRIMARY KEY,
+                attendee_id INTEGER REFERENCES attendees(id) ON DELETE CASCADE,
+                plan_date DATE NOT NULL DEFAULT CURRENT_DATE,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(attendee_id, plan_date)
+            );
+        `);
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_daily_visit_plans_date ON daily_visit_plans(plan_date);');
+
+        // 19. Recurring Game Schedules (반복 게임 스케줄)
+        console.log('[19] Checking recurring_game_schedules table...');
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS recurring_game_schedules (
+                id SERIAL PRIMARY KEY,
+                game_name VARCHAR(100) NOT NULL,
+                game_id INTEGER REFERENCES games(id) ON DELETE SET NULL,
+                day_of_week INTEGER NOT NULL CHECK (day_of_week >= 0 AND day_of_week <= 6),
+                scheduled_time TIME NOT NULL,
+                min_players INTEGER DEFAULT 2,
+                max_players INTEGER DEFAULT 4,
+                party_id INTEGER,
+                created_by INTEGER,
+                show_on_main BOOLEAN DEFAULT false,
+                is_active BOOLEAN DEFAULT true,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            );
+        `);
+
+        // 20. Recurring Game Skips (이번주 빼기)
+        console.log('[20] Checking recurring_game_skips table...');
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS recurring_game_skips (
+                id SERIAL PRIMARY KEY,
+                recurring_schedule_id INTEGER REFERENCES recurring_game_schedules(id) ON DELETE CASCADE,
+                skip_date DATE NOT NULL,
+                UNIQUE(recurring_schedule_id, skip_date)
+            );
+        `);
+
+        // 21. Show on main + recurring schedule link for game_sessions
+        console.log('[21] Adding show_on_main and recurring_schedule_id to game_sessions...');
+        await pool.query('ALTER TABLE game_sessions ADD COLUMN IF NOT EXISTS show_on_main BOOLEAN DEFAULT false;');
+        await pool.query('ALTER TABLE game_sessions ADD COLUMN IF NOT EXISTS recurring_schedule_id INTEGER;');
+
+        // 22. Add 'pending_approval' to reservations status check constraint
+        console.log('[22] Updating reservations status check constraint...');
+        await pool.query('ALTER TABLE reservations DROP CONSTRAINT IF EXISTS reservations_status_check;');
+        await pool.query(`ALTER TABLE reservations ADD CONSTRAINT reservations_status_check
+            CHECK (status IN ('pending', 'waitlisted', 'confirmed', 'cancelled', 'pending_approval'));`);
+
     } catch (err) {
         console.error('Migration failed:', err);
         process.exit(1);

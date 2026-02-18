@@ -95,7 +95,7 @@ CREATE TABLE IF NOT EXISTS reservations (
     game_id INTEGER REFERENCES games(id) ON DELETE CASCADE,
     table_id INTEGER REFERENCES tables(id) ON DELETE CASCADE,
     attendee_id INTEGER REFERENCES attendees(id) ON DELETE CASCADE,
-    status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'waitlisted', 'confirmed', 'cancelled')),
+    status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'waitlisted', 'confirmed', 'cancelled', 'pending_approval')),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
