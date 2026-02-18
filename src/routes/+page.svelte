@@ -699,15 +699,18 @@
             <div class="section-header">
                 <h2>오늘 갈예정 ({(data.dailyVisitPlans || []).length})</h2>
                 {#if data.user && !(data.attendees || []).some((a: any) => a.id === data.user!.id)}
-                    <form method="POST" action="?/toggleVisitPlan" use:enhance={() => {
-                        return async ({ result, update }) => {
-                            await update();
-                        };
-                    }}>
-                        <button type="submit" class="btn-visit-plan" class:active={data.userHasVisitPlan}>
-                            {data.userHasVisitPlan ? '취소하기' : '나도 갈예정!'}
-                        </button>
-                    </form>
+                    {@const hasScheduledGame = (data.userScheduledGames || []).some((g: any) => !g.party_id)}
+                    {#if !(data.userHasVisitPlan && hasScheduledGame)}
+                        <form method="POST" action="?/toggleVisitPlan" use:enhance={() => {
+                            return async ({ result, update }) => {
+                                await update();
+                            };
+                        }}>
+                            <button type="submit" class="btn-visit-plan" class:active={data.userHasVisitPlan}>
+                                {data.userHasVisitPlan ? '취소하기' : '나도 갈예정!'}
+                            </button>
+                        </form>
+                    {/if}
                 {/if}
             </div>
             <div class="visit-plan-grid">
