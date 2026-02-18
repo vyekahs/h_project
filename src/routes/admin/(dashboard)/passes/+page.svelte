@@ -78,14 +78,14 @@
                                 <input type="hidden" name="days" value="1" />
                                 <button type="submit" class="btn-sm btn-plus">+1</button>
                             </form>
-                            <form method="POST" action="?/grantPass" use:enhance={() => {
+                            <form method="POST" action="?/adjustPass" use:enhance={() => {
                                 return async ({ result, update }) => {
                                     if (result.type === 'failure') showAlert((result.data as any)?.error || '오류');
                                     await update();
                                 };
                             }}>
                                 <input type="hidden" name="attendeeId" value={holder.id} />
-                                <input type="hidden" name="startDate" value={new Date().toISOString().split('T')[0]} />
+                                <input type="hidden" name="days" value="30" />
                                 <button type="submit" class="btn-sm btn-extend">+30일</button>
                             </form>
                             <form method="POST" action="?/cancelPass" use:enhance={() => {
