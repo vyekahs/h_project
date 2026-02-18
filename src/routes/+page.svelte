@@ -600,7 +600,7 @@
         <section class="visit-plan-section">
             <div class="section-header">
                 <h2>오늘 갈예정 ({(data.dailyVisitPlans || []).length})</h2>
-                {#if data.user}
+                {#if data.user && !(data.attendees || []).some((a: any) => a.id === data.user!.id)}
                     <form method="POST" action="?/toggleVisitPlan" use:enhance={() => {
                         return async ({ result, update }) => {
                             await update();

@@ -488,13 +488,16 @@
                                 if (result.type === 'failure') {
                                     showAlert((result as any).data?.error || '오류가 발생했습니다.');
                                 } else {
-                                    showAlert('이번주 스킵 처리되었습니다.');
+                                    const msg = (result as any).data?.message || (schedule.is_skipped_this_week ? '스킵 해제됨' : '스킵 처리됨');
+                                    showAlert(msg);
                                 }
                                 await update();
                             };
                         }} style="display:inline;">
                             <input type="hidden" name="scheduleId" value={schedule.id} />
-                            <button type="submit" class="btn-skip">이번주 빼기</button>
+                            <button type="submit" class="btn-skip" class:skipped={schedule.is_skipped_this_week}>
+                                {schedule.is_skipped_this_week ? '이번주 스킵됨' : '이번주 빼기'}
+                            </button>
                         </form>
                         <form method="POST" action="?/toggleRecurringActive" use:enhance style="display:inline;">
                             <input type="hidden" name="scheduleId" value={schedule.id} />
@@ -1805,6 +1808,10 @@
         border-radius: 4px;
         cursor: pointer;
         font-size: 0.8rem;
+    }
+    .btn-skip.skipped {
+        background: #ef4444;
+        opacity: 0.9;
     }
     .btn-toggle-active {
         background: #607d8b;

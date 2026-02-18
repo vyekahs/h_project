@@ -91,11 +91,18 @@ export const load: PageServerLoad = async () => {
             ORDER BY game_name, start_time DESC
         `),
         db.execute(sql`SELECT content FROM notices WHERE is_active = true ORDER BY created_at DESC LIMIT 1`),
-        db.execute(sql`SELECT id, name, playtime_min FROM games WHERE is_active = true ORDER BY name ASC`),
+        db.execute(sql`SELECT id, name, playtime_min, min_players, max_players, image_url FROM games WHERE is_active = true ORDER BY name ASC`),
         db.execute(sql`SELECT key, value FROM system_settings`),
         db.execute(sql`
             SELECT rs.*,
-                (SELECT COUNT(*) FROM recurring_game_skips rsk WHERE rsk.recurring_schedule_id = rs.id) as skip_count
+                (SELECT COUNT(*) FROM recurring_game_skips rsk WHERE rsk.recurring_schedule_id = rs.id) as skip_count,
+                EXISTS(
+                    SELECT 1 FROM recurring_game_skips rsk
+                    WHERE rsk.recurring_schedule_id = rs.id
+                      AND rsk.skip_date = (
+                          CURRENT_DATE + ((rs.day_of_week - EXTRACT(DOW FROM CURRENT_DATE)::int + 7) % 7) * INTERVAL '1 day'
+                      )::date
+                ) as is_skipped_this_week
             FROM recurring_game_schedules rs
             ORDER BY rs.is_active DESC, rs.day_of_week ASC, rs.scheduled_time ASC
         `),
@@ -621,16 +628,31 @@ export const actions: Actions = {
             skipDate.setUTCDate(skipDate.getUTCDate() + diff);
             const skipDateStr = skipDate.toISOString().split('T')[0];
 
-            await db.transaction(async (tx) => {
-                await tx.execute(sql`
-                    INSERT INTO recurring_game_skips (recurring_schedule_id, skip_date) VALUES (${scheduleId}, ${skipDateStr}) ON CONFLICT DO NOTHING
+            // 이미 스킵되어 있으면 해제, 아니면 스킵 추가 (토글)
+            const existing = await db.execute(sql`
+                SELECT id FROM recurring_game_skips WHERE recurring_schedule_id = ${scheduleId} AND skip_date = ${skipDateStr}::date
+            `);
+
+            if (existing.length > 0) {
+                // 스킵 해제
+                await db.execute(sql`
+                    DELETE FROM recurring_game_skips WHERE recurring_schedule_id = ${scheduleId} AND skip_date = ${skipDateStr}::date
                 `);
-                await tx.execute(sql`
-                    DELETE FROM game_sessions WHERE recurring_schedule_id = ${scheduleId} AND status = 'scheduled' AND scheduled_at::date = ${skipDateStr}::date
-                `);
-            });
-            emitLiveEvent('games');
-            return { success: true };
+                emitLiveEvent('games');
+                return { success: true, message: '이번주 스킵이 해제되었습니다.' };
+            } else {
+                // 스킵 추가
+                await db.transaction(async (tx) => {
+                    await tx.execute(sql`
+                        INSERT INTO recurring_game_skips (recurring_schedule_id, skip_date) VALUES (${scheduleId}, ${skipDateStr}) ON CONFLICT DO NOTHING
+                    `);
+                    await tx.execute(sql`
+                        DELETE FROM game_sessions WHERE recurring_schedule_id = ${scheduleId} AND status = 'scheduled' AND scheduled_at::date = ${skipDateStr}::date
+                    `);
+                });
+                emitLiveEvent('games');
+                return { success: true, message: '이번주 스킵 처리되었습니다.' };
+            }
         } catch (e) {
             return fail(500, { error: '처리 중 오류가 발생했습니다.' });
         }
