@@ -86,11 +86,11 @@ export function applyWildVariance(weights: PersonalityWeights): PersonalityWeigh
 
 /** 프리셋별 캐릭터 이름 */
 const STRATEGY_NAMES: Record<AiStrategy, string> = {
-	aggressive: '아랭',
-	balanced: '모피',
-	defensive: '이리',
-	tricky: '메모',
-	wild: 'Q'
+	aggressive: 'AI 아랭',
+	balanced: 'AI 모피',
+	defensive: 'AI 이리',
+	tricky: 'AI 메모',
+	wild: 'AI Q'
 };
 
 /** Get character name for a strategy preset */
@@ -103,35 +103,35 @@ export const STRATEGY_PRESETS: StrategyPresetInfo[] = [
 	{
 		id: 'tricky',
 		name: '전략적',
-		characterName: '메모',
+		characterName: 'AI 메모',
 		description: '점수를 계산하며 효율적으로 플레이합니다',
 		icon: '🎯'
 	},
 	{
 		id: 'balanced',
 		name: '밸런스',
-		characterName: '모피',
+		characterName: 'AI 모피',
 		description: '상황에 따라 균형 잡힌 플레이를 합니다',
 		icon: '⚖️'
 	},
 	{
 		id: 'aggressive',
 		name: '공격적',
-		characterName: '아랭',
+		characterName: 'AI 아랭',
 		description: '티츄를 적극 선언하고 빠르게 나갑니다',
 		icon: '⚔️'
 	},
 	{
 		id: 'defensive',
 		name: '수비적',
-		characterName: '이리',
+		characterName: 'AI 이리',
 		description: '파트너를 서포트하며 안전하게 플레이합니다',
 		icon: '🛡️'
 	},
 	{
 		id: 'wild',
 		name: '변칙적',
-		characterName: 'Q',
+		characterName: 'AI Q',
 		description: '자기 위주로 플레이하며 파트너를 무시합니다',
 		icon: '🎲'
 	}

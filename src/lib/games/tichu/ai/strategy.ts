@@ -584,14 +584,19 @@ function pickBestFollow(
 	const playedCounts = countPlayedCards(context);
 	const plan = analyzeHand(hand);
 	const scored = sorted.map(play => {
+		// 봉황 싱글은 rank=0이지만 실제로는 A급(14.5) → 프리셋 훅에도 보정된 rank 전달
+		const effectiveRank = getScoringRank(play);
+		const playForScoring = effectiveRank !== play.rank
+			? { ...play, rank: effectiveRank }
+			: play;
+
 		// Behavior hook: 프리셋별 팔로우 스코어링 오버라이드
-		const behaviorScore = behavior.scoreFollowCandidate?.(play, hand, context, trickPoints, opponentWinning);
+		const behaviorScore = behavior.scoreFollowCandidate?.(playForScoring, hand, context, trickPoints, opponentWinning);
 		if (behaviorScore !== null && behaviorScore !== undefined) {
 			return { play, score: behaviorScore };
 		}
 
 		let score = 0;
-		const effectiveRank = getScoringRank(play);
 
 		// Base: prefer weaker plays (save strong cards)
 		score -= effectiveRank * 1.5;

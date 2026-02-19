@@ -1,4 +1,4 @@
-import { type PresetBehavior, isTichuCaliberHand } from './types';
+import type { PresetBehavior } from './types';
 import type { Card, NormalCard, Combination, SeatIndex } from '../../types';
 import type { AiDecisionContext } from '../types';
 import { findAllPlayableCombinations } from '../handEvaluator';
@@ -21,19 +21,9 @@ import { canBeat, isBomb } from '../../combinations';
  */
 export const aggressiveBehavior: PresetBehavior = {
 	selectPartnerExchangeCard(hand, singletons, rankGroups, protectedIds) {
-		// 티츄급 패면 싱글톤만 줌 (좋은 카드 보존)
-		if (isTichuCaliberHand(hand)) {
-			const highSingletons = singletons
-				.filter(c => !protectedIds.has(c.id) && c.rank >= 13)
-				.sort((a, b) => b.rank - a.rank);
-			return highSingletons.length > 0 ? highSingletons[0] : null;
-		}
-
-		// 티츄급 아니면 파트너에게 가장 높은 카드를 줌
+		// 항상 파트너에게 가장 높은 카드를 줌
 		const normalCards = hand.filter(c => c.type === 'normal') as NormalCard[];
-		const highCards = normalCards
-			.filter(c => !protectedIds.has(c.id))
-			.sort((a, b) => b.rank - a.rank);
+		const highCards = normalCards.sort((a, b) => b.rank - a.rank);
 
 		return highCards.length > 0 ? highCards[0] : null;
 	},
@@ -44,9 +34,6 @@ export const aggressiveBehavior: PresetBehavior = {
 
 		// 멀티카드 콤보: 크기에 큰 보너스
 		score += combo.cards.length * 8;
-
-		// 랭크가 높아도 괜찮음 (공격적이니까)
-		score += combo.rank * 0.5;
 
 		// 폭탄은 보존 (공격적이어도 폭탄은 아껴둠)
 		if (isBomb(combo)) {
@@ -62,7 +49,11 @@ export const aggressiveBehavior: PresetBehavior = {
 				score -= 10; // 드래곤은 나중에
 			} else {
 				score -= 5; // 일반 싱글은 후순위
+				score -= combo.rank; // 낮은 싱글부터 (A는 나중에)
 			}
+		} else {
+			// 멀티카드 콤보는 랭크 높아도 OK (빨리 처리)
+			score += combo.rank * 0.5;
 		}
 
 		// 스트레이트/계단: 많은 카드를 한 번에 내므로 보너스
