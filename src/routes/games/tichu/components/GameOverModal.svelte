@@ -1,37 +1,9 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
-
 	let { game } = $props<{ game: any }>();
 
 	const data = $derived(game.gameEndData);
 	const myTeam = $derived(game.myTeam);
 	const isWinner = $derived(data?.winner === myTeam);
-
-	let saved = $state(false);
-
-	onMount(() => {
-		saveResult();
-	});
-
-	async function saveResult() {
-		if (saved || !data) return;
-		try {
-			await fetch('/api/tichu/result', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({
-					winner: data.winner,
-					scoreA: data.scoreA,
-					scoreB: data.scoreB,
-					isAiGame: true,
-					playerData: [{ id: -1, team: 'A' }]
-				})
-			});
-			saved = true;
-		} catch {
-			// silently fail — result saving is best-effort
-		}
-	}
 
 	function newGame() {
 		game.showGameOverModal = false;

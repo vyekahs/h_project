@@ -559,7 +559,7 @@ export class LocalGameEngine {
 		const activePlayers = this.state.players.filter(p => p.finishOrder === null).length;
 		const passesNeeded = activePlayers - 1;
 
-		if (round.trick.passCount >= passesNeeded || round.trick.passCount >= 3) {
+		if (round.trick.passCount >= passesNeeded) {
 			this.resolveTrick();
 			return { success: true };
 		}
@@ -823,6 +823,8 @@ export class LocalGameEngine {
 				// Phase might have changed (wish_declare, dragon_gift, round_end, game_end)
 				if (this.state.phase !== 'playing') break;
 			}
+		} catch (e) {
+			console.error('[Engine] AI turn processing error:', e);
 		} finally {
 			this.processingAi = false;
 			// If another call was queued while we were processing, restart
@@ -834,73 +836,81 @@ export class LocalGameEngine {
 	}
 
 	private async processAiWish(seat: SeatIndex): Promise<void> {
-		const ai = this.aiPlayers.get(seat);
-		if (!ai) return;
+		try {
+			const ai = this.aiPlayers.get(seat);
+			if (!ai) return;
 
-		await this.delay();
-		if (this.destroyed) return;
+			await this.delay();
+			if (this.destroyed) return;
 
-		const context = this.createAiContext(seat);
-		const wishRank = ai.makeWishDecision(this.state.players[seat].hand, context);
+			const context = this.createAiContext(seat);
+			const wishRank = ai.makeWishDecision(this.state.players[seat].hand, context);
 
-		const round = this.state.round;
-		if (!round) return;
+			const round = this.state.round;
+			if (!round) return;
 
-		if (wishRank !== null && isValidWishRank(wishRank)) {
-			round.wish = { active: true, requestedRank: wishRank, requestedBy: seat };
-		}
+			if (wishRank !== null && isValidWishRank(wishRank)) {
+				round.wish = { active: true, requestedRank: wishRank, requestedBy: seat };
+			}
 
-		const player = this.state.players[seat];
-		if (player.hand.length === 0) {
-			this.playerFinished(seat);
-		}
+			const player = this.state.players[seat];
+			if (player.hand.length === 0) {
+				this.playerFinished(seat);
+			}
 
-		if (this.checkRoundEnd()) return;
+			if (this.checkRoundEnd()) return;
 
-		this.setPhase('playing');
-		this.advanceTurn();
-		this.notifyStateChange();
+			this.setPhase('playing');
+			this.advanceTurn();
+			this.notifyStateChange();
 
-		if (round.currentSeat !== HUMAN_SEAT) {
-			this.processAiTurns();
+			if (round.currentSeat !== HUMAN_SEAT) {
+				this.processAiTurns();
+			}
+		} catch (e) {
+			console.error('[Engine] AI wish processing error:', e);
 		}
 	}
 
 	private async processAiDragonGift(seat: SeatIndex): Promise<void> {
-		const ai = this.aiPlayers.get(seat);
-		if (!ai) return;
+		try {
+			const ai = this.aiPlayers.get(seat);
+			if (!ai) return;
 
-		await this.delay();
-		if (this.destroyed) return;
+			await this.delay();
+			if (this.destroyed) return;
 
-		const round = this.state.round;
-		if (!round) return;
+			const round = this.state.round;
+			if (!round) return;
 
-		const context = this.createAiContext(seat);
-		const targetSeat = ai.makeDragonGiftDecision(context);
+			const context = this.createAiContext(seat);
+			const targetSeat = ai.makeDragonGiftDecision(context);
 
-		if (round.trick) {
-			const allCards = round.trick.plays.flatMap(p => p.combination.cards);
-			this.state.players[targetSeat].wonCards.push(...allCards);
-		}
+			if (round.trick) {
+				const allCards = round.trick.plays.flatMap(p => p.combination.cards);
+				this.state.players[targetSeat].wonCards.push(...allCards);
+			}
 
-		round.trick = null;
-		round.dragonGiftPending = false;
-		round.dragonGiftSeat = null;
+			round.trick = null;
+			round.dragonGiftPending = false;
+			round.dragonGiftSeat = null;
 
-		if (this.checkRoundEnd()) return;
+			if (this.checkRoundEnd()) return;
 
-		this.setPhase('playing');
-		const player = this.state.players[seat];
-		if (player.finishOrder !== null) {
-			round.currentSeat = this.nextActiveSeat(seat);
-		} else {
-			round.currentSeat = seat;
-		}
-		this.notifyStateChange();
+			this.setPhase('playing');
+			const player = this.state.players[seat];
+			if (player.finishOrder !== null) {
+				round.currentSeat = this.nextActiveSeat(seat);
+			} else {
+				round.currentSeat = seat;
+			}
+			this.notifyStateChange();
 
-		if (round.currentSeat !== HUMAN_SEAT) {
-			this.processAiTurns();
+			if (round.currentSeat !== HUMAN_SEAT) {
+				this.processAiTurns();
+			}
+		} catch (e) {
+			console.error('[Engine] AI dragon gift processing error:', e);
 		}
 	}
 

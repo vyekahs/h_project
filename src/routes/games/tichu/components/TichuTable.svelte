@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import type { SeatIndex } from '$lib/games/tichu/types';
 	import type { GameEvent } from '$lib/games/tichu/ai/localGameEngine';
 	import OpponentArea from './OpponentArea.svelte';
@@ -55,11 +56,13 @@
 	$effect(() => {
 		const evt = lastEvent;
 		if (!evt) return;
-		if (evt.type === 'pass') {
-			passedSeats = new Set(passedSeats).add(evt.seat);
-		} else if (evt.type === 'play' || evt.type === 'bomb' || evt.type === 'trick_won') {
-			if (passedSeats.size > 0) passedSeats = new Set();
-		}
+		untrack(() => {
+			if (evt.type === 'pass') {
+				passedSeats = new Set(passedSeats).add(evt.seat);
+			} else if (evt.type === 'play' || evt.type === 'bomb' || evt.type === 'trick_won') {
+				if (passedSeats.size > 0) passedSeats = new Set();
+			}
+		});
 	});
 
 	function seatPosition(seat: SeatIndex): 'left' | 'top' | 'right' | 'bottom' {

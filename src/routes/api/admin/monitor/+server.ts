@@ -71,9 +71,6 @@ export async function GET({ cookies }: { cookies: any }) {
 	const totalMem = os.totalmem();
 	const freeMem = os.freemem();
 
-	const io = (globalThis as any).__socketIO;
-	const socketCount = io ? io.sockets.sockets.size : 0;
-
 	const data = {
 		cpu: {
 			usage: updateCpuUsage(),
@@ -94,7 +91,6 @@ export async function GET({ cookies }: { cookies: any }) {
 			latencyMs: dbLatency
 		},
 		connections: {
-			socketIO: socketCount,
 			sse: getSSEConnectionCount()
 		},
 		uptime: Math.floor(process.uptime()),

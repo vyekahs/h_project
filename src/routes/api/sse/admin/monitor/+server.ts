@@ -78,8 +78,6 @@ async function collectMetrics() {
 	const totalMem = os.totalmem();
 	const freeMem = os.freemem();
 
-	const io = (globalThis as any).__socketIO;
-	const socketCount = io ? io.sockets.sockets.size : 0;
 	const cpuUsage = updateCpuUsage();
 	const sseCount = getSSEConnectionCount();
 	const memPercent = Math.round(((totalMem - freeMem) / totalMem) * 100);
@@ -108,7 +106,6 @@ async function collectMetrics() {
 			latencyMs: dbLatency
 		},
 		connections: {
-			socketIO: socketCount,
 			sse: sseCount
 		},
 		uptime: Math.floor(process.uptime()),

@@ -1,6 +1,7 @@
 import { json } from '@sveltejs/kit';
 import { db } from '$lib/server/db/index';
 import { sql } from 'drizzle-orm';
+import { verifyAttendeeSession } from '$lib/server/auth';
 
 export async function POST({ request, cookies }: { request: Request; cookies: any }) {
     const sessionToken = cookies.get('user_session');
@@ -43,7 +44,5 @@ export async function POST({ request, cookies }: { request: Request; cookies: an
     } catch (e: any) {
         console.error('[Tichu Result Error]', e);
         return json({ error: '게임 결과 저장에 실패했습니다' }, { status: 500 });
-    } finally {
-        client.release();
     }
 }

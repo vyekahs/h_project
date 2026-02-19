@@ -111,13 +111,15 @@ export function createTichuGameState() {
 		exchangePartner !== null && exchangeLeft !== null && exchangeRight !== null
 	);
 
-	// Track phase changes for UI reactions
-	let lastPhase = $state<GamePhase | null>(null);
+	// Track phase changes for UI reactions (plain var — not reactive, only used in effect)
+	let lastPhase: GamePhase | null = null;
 
 	$effect(() => {
 		const s = getState();
 		const currentPhase = s?.phase ?? null;
 		if (currentPhase && currentPhase !== lastPhase) {
+			lastPhase = currentPhase;
+
 			// Reset selection on phase change
 			selectedCards = new Set();
 
@@ -151,8 +153,6 @@ export function createTichuGameState() {
 				};
 				showGameOverModal = true;
 			}
-
-			lastPhase = currentPhase;
 		}
 	});
 
