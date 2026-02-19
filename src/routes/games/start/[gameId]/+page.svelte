@@ -247,7 +247,11 @@
 
                         {#if rankingTab === 'halloffame'}
                             <div class="hall-of-fame-limit">
-                                <p class="score-desc">점수 = 기본점수 + (제한시간 - 클리어시간) x 난이도 배율</p>
+                                {#if gameConfig.id === 'unblock-me'}
+                                    <p class="score-desc">점수 = 기본점수 + (제한시간 - 클리어시간) x 배율 - 초과이동 x 감점</p>
+                                {:else}
+                                    <p class="score-desc">점수 = 기본점수 + 시간보너스 - 실수페널티(15%/회)</p>
+                                {/if}
                                 <div class="hall-of-fame">
                                     {#if hallOfFameLoading}
                                         <div class="hof-loading">불러오는 중...</div>

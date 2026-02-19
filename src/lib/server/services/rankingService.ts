@@ -25,12 +25,14 @@ export const RankingService = {
                                     difficulty === 'expert' ? 4 : 5;
 
              const bonus = Math.max(0, (timeLimit - clearTime) * timeMultiplier);
-             calculatedScore = baseScore + bonus;
+             const rawScore = baseScore + bonus;
+             const mistakePenalty = Math.round(rawScore * 0.15 * mistakes);
+             calculatedScore = Math.max(baseScore, rawScore - mistakePenalty);
         } else if (gameId === 'unblock-me') {
-             const timeLimit = difficulty === 'easy' ? 30 :
-                              difficulty === 'medium' ? 60 :
-                              difficulty === 'hard' ? 120 :
-                              difficulty === 'expert' ? 240 : 360;
+             const timeLimit = difficulty === 'easy' ? 10 :
+                              difficulty === 'medium' ? 20 :
+                              difficulty === 'hard' ? 45 :
+                              difficulty === 'expert' ? 90 : 120;
 
              const baseScore = difficulty === 'easy' ? 10 :
                                difficulty === 'medium' ? 50 :

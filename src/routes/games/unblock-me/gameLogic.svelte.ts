@@ -12,7 +12,7 @@ export const difficultyLabels: Record<string, string> = {
 };
 
 const TIME_LIMITS: Record<string, number> = {
-    easy: 30, medium: 60, hard: 120, expert: 240, master: 360
+    easy: 10, medium: 20, hard: 45, expert: 90, master: 120
 };
 
 export { formatTime };
