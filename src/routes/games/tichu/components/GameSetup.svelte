@@ -17,6 +17,8 @@
 	];
 
 	const scoreOptions = [500, 1000, 1500, 2000];
+
+	let showSetup = $state(!game.savedGameAvailable);
 </script>
 
 <div class="setup-container">
@@ -26,66 +28,69 @@
 			<p class="subtitle">AI와 함께하는 카드 게임</p>
 		</div>
 
-		<!-- Partner Strategy -->
-		<section class="section">
-			<h2 class="section-title">파트너 AI 전략</h2>
-			<p class="section-desc">같은 팀 AI의 플레이 스타일을 선택하세요</p>
-			<div class="strategy-grid">
-				{#each STRATEGY_PRESETS as preset}
-					<button
-						class="strategy-card"
-						class:selected={game.partnerStrategy === preset.id}
-						onclick={() => { game.partnerStrategy = preset.id; }}
-					>
-						<span class="strategy-icon">{preset.icon}</span>
-						<span class="strategy-name">{preset.name}</span>
-						<span class="strategy-desc">{preset.description}</span>
-					</button>
-				{/each}
-			</div>
-		</section>
+		{#if showSetup}
+			<!-- Partner Strategy -->
+			<section class="section">
+				<h2 class="section-title">파트너 AI 전략</h2>
+				<p class="section-desc">같은 팀 AI의 플레이 스타일을 선택하세요</p>
+				<div class="strategy-grid">
+					{#each STRATEGY_PRESETS as preset}
+						<button
+							class="strategy-card"
+							class:selected={game.partnerStrategy === preset.id}
+							onclick={() => { game.partnerStrategy = preset.id; }}
+						>
+							<span class="strategy-icon">{preset.icon}</span>
+							<span class="strategy-name">{preset.name}</span>
+							<span class="strategy-desc">{preset.description}</span>
+						</button>
+					{/each}
+				</div>
+			</section>
 
-		<!-- AI Speed -->
-		<section class="section">
-			<h2 class="section-title">AI 속도</h2>
-			<div class="speed-row">
-				{#each speedOptions as opt}
-					<button
-						class="speed-btn"
-						class:selected={game.aiSpeed === opt.id}
-						onclick={() => { game.aiSpeed = opt.id; }}
-					>
-						{opt.label}
-					</button>
-				{/each}
-			</div>
-		</section>
+			<!-- AI Speed -->
+			<section class="section">
+				<h2 class="section-title">AI 속도</h2>
+				<div class="speed-row">
+					{#each speedOptions as opt}
+						<button
+							class="speed-btn"
+							class:selected={game.aiSpeed === opt.id}
+							onclick={() => { game.aiSpeed = opt.id; }}
+						>
+							{opt.label}
+						</button>
+					{/each}
+				</div>
+			</section>
 
-		<!-- Target Score -->
-		<section class="section">
-			<h2 class="section-title">목표 점수</h2>
-			<div class="score-row">
-				{#each scoreOptions as score}
-					<button
-						class="score-btn"
-						class:selected={game.targetScore === score}
-						onclick={() => { game.targetScore = score; }}
-					>
-						{score}
-					</button>
-				{/each}
-			</div>
-		</section>
+			<!-- Target Score -->
+			<section class="section">
+				<h2 class="section-title">목표 점수</h2>
+				<div class="score-row">
+					{#each scoreOptions as score}
+						<button
+							class="score-btn"
+							class:selected={game.targetScore === score}
+							onclick={() => { game.targetScore = score; }}
+						>
+							{score}
+						</button>
+					{/each}
+				</div>
+			</section>
 
-		<!-- Start / Resume Buttons -->
-		{#if game.savedGameAvailable}
+			<button class="start-btn" onclick={() => game.startGame()}>
+				게임 시작
+			</button>
+		{:else}
 			<button class="resume-btn" onclick={() => game.resumeGame()}>
 				이어하기
 			</button>
+			<button class="new-game-btn" onclick={() => { showSetup = true; }}>
+				새 게임
+			</button>
 		{/if}
-		<button class="start-btn" onclick={() => game.startGame()}>
-			{game.savedGameAvailable ? '새 게임' : '게임 시작'}
-		</button>
 	</div>
 </div>
 
@@ -250,12 +255,12 @@
 	/* Resume Button */
 	.resume-btn {
 		width: 100%;
-		padding: 16px;
+		padding: 20px;
 		background: #22c55e;
 		color: #fff;
 		border: none;
 		border-radius: 12px;
-		font-size: 1.1rem;
+		font-size: 1.2rem;
 		font-weight: 700;
 		cursor: pointer;
 		transition: background 0.15s;
@@ -265,6 +270,24 @@
 	}
 	.resume-btn:active {
 		background: #15803d;
+	}
+
+	/* New Game Button (resume screen) */
+	.new-game-btn {
+		width: 100%;
+		padding: 14px;
+		background: transparent;
+		color: rgba(255, 255, 255, 0.6);
+		border: 1px solid rgba(255, 255, 255, 0.2);
+		border-radius: 12px;
+		font-size: 0.95rem;
+		font-weight: 500;
+		cursor: pointer;
+		transition: background 0.15s, color 0.15s;
+	}
+	.new-game-btn:hover {
+		background: rgba(255, 255, 255, 0.1);
+		color: white;
 	}
 
 	/* Start Button */
