@@ -1,4 +1,4 @@
-import type { PresetBehavior } from './types';
+import { type PresetBehavior, isTichuCaliberHand } from './types';
 import type { Card, NormalCard, Combination, SeatIndex } from '../../types';
 import type { AiDecisionContext } from '../types';
 import { getTeam, getPartnerSeat, getLeftSeat, getRightSeat } from '../../constants';
@@ -20,21 +20,21 @@ import { isBomb } from '../../combinations';
  */
 export const defensiveBehavior: PresetBehavior = {
 	selectPartnerExchangeCard(hand, singletons, rankGroups, protectedIds) {
-		// 파트너에게 좋은 카드: A/K 싱글 우선
-		const highSingletons = singletons
-			.filter(c => !protectedIds.has(c.id) && c.rank >= 13)
-			.sort((a, b) => b.rank - a.rank);
-
-		if (highSingletons.length > 0) {
-			return highSingletons[0];
+		// 수비적은 티츄를 거의 안 부르므로 항상 파트너에게 가장 높은 카드를 줌
+		// 단, 티츄급 패면 A/K 싱글톤만
+		if (isTichuCaliberHand(hand)) {
+			const highSingletons = singletons
+				.filter(c => !protectedIds.has(c.id) && c.rank >= 13)
+				.sort((a, b) => b.rank - a.rank);
+			return highSingletons.length > 0 ? highSingletons[0] : null;
 		}
 
-		// A/K 싱글이 없으면 가장 높은 일반 싱글
-		const anyHigh = singletons
-			.filter(c => !protectedIds.has(c.id) && c.rank >= 11)
+		const normalCards = hand.filter(c => c.type === 'normal') as NormalCard[];
+		const highCards = normalCards
+			.filter(c => !protectedIds.has(c.id))
 			.sort((a, b) => b.rank - a.rank);
 
-		return anyHigh.length > 0 ? anyHigh[0] : null;
+		return highCards.length > 0 ? highCards[0] : null;
 	},
 
 	onPartnerWinning() {

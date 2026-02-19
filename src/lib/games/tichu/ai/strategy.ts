@@ -495,7 +495,28 @@ export function decidePlay(
 		return bombPlays.sort((a, b) => a.rank - b.rank)[0].cards.map(c => c.id);
 	}
 
-	if (nonBombPlays.length === 0) {
+	// === 봉황 싱글 팔로우 제한 ===
+	// 봉황 싱글은 "무조건 선을 먹을 수 있는 상황"에서만 허용:
+	// 1) 내가 마지막 기회(다음이 트릭 주인)이고 상대가 이기고 있을 때
+	// 2) 봉황이 마지막 카드일 때 (hand.length === 1)
+	const isPhoenixSingle = (c: Combination) =>
+		c.type === 'single' && c.cards[0].type === 'special' && c.cards[0].special === 'phoenix';
+	const amLastBeforeTrickWinner = getNextActiveSeat(currentSeat, players) === lastPlay.seat;
+	const opponentWinning = trickLeaderTeam !== myTeam;
+
+	let playsForFollow = nonBombPlays;
+	if (nonBombPlays.some(isPhoenixSingle)) {
+		const phoenixAllowed =
+			(amLastBeforeTrickWinner && opponentWinning) || // 선 먹기 보장
+			hand.length === 1; // 마지막 카드
+		if (!phoenixAllowed) {
+			const filtered = nonBombPlays.filter(c => !isPhoenixSingle(c));
+			playsForFollow = filtered;
+			// filtered가 비면 봉황 싱글밖에 없으므로 패스 (아래 length===0 처리)
+		}
+	}
+
+	if (playsForFollow.length === 0) {
 		// Only bombs available
 		if (bombPlays.length > 0) {
 			if (weights.bombHolding > 0.7 && !opponentAboutToFinish && trickPoints < 15) {
@@ -507,7 +528,7 @@ export function decidePlay(
 	}
 
 	// === Pick which non-bomb play to make ===
-	return pickBestFollow(nonBombPlays, hand, weights, context, iAmCloseToFinishing, partnerAboutToFinish, partnerFinished, trickPoints, behavior);
+	return pickBestFollow(playsForFollow, hand, weights, context, iAmCloseToFinishing, partnerAboutToFinish, partnerFinished, trickPoints, behavior);
 }
 
 /**
@@ -599,24 +620,6 @@ function pickBestFollow(
 			// Extra motivation if opponent is close to finishing
 			const lastPlayerCards = context.players[lastPlay.seat].hand.length;
 			if (lastPlayerCards <= 3) score += 15;
-		}
-
-		// 봉황 싱글 팔로우 제한: 무조건 선을 먹을 수 있는 상황에서만 사용
-		// 봉황 싱글은 A보다 높으므로 드래곤/폭탄 외에는 이길 수 없음
-		// → 내 다음이 트릭 주인(amLastBeforeTrickWinner)이면 선 먹기 보장
-		if (play.type === 'single' &&
-			play.cards[0].type === 'special' &&
-			play.cards[0].special === 'phoenix') {
-			if (amLastBeforeTrickWinner && opponentWinning) {
-				// 내가 마지막 기회이고 상대가 이기고 있음 → 선 먹기 보장
-				score += 15;
-			} else if (iAmClose && hand.length === 1) {
-				// 봉황이 마지막 카드 → 무조건 냄
-				score += 50;
-			} else {
-				// 그 외: 봉황 싱글 사용 금지 (엄청난 페널티)
-				score -= 200;
-			}
 		}
 
 		// Avoid wasting dragon as follow (it gives points to opponents)

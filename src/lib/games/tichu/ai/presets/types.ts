@@ -2,6 +2,23 @@ import type { Card, Combination, SeatIndex, NormalCard, TichuPlayer } from '../.
 import type { AiDecisionContext } from '../types';
 
 /**
+ * 티츄급 패인지 판별 (드래곤+봉황+A 2장 이상 → 보존 우선)
+ * 교환 시 파트너에게 좋은 카드를 줄지 결정하는 데 사용
+ */
+export function isTichuCaliberHand(hand: Card[]): boolean {
+	const hasDragon = hand.some(c => c.type === 'special' && c.special === 'dragon');
+	const hasPhoenix = hand.some(c => c.type === 'special' && c.special === 'phoenix');
+	const aceCount = hand.filter(c => c.type === 'normal' && c.rank === 14).length;
+
+	// 드래곤 + 봉황 + A 1장 이상이면 티츄급
+	if (hasDragon && hasPhoenix && aceCount >= 1) return true;
+	// 드래곤 + A 2장 이상이면 티츄급
+	if (hasDragon && aceCount >= 2) return true;
+
+	return false;
+}
+
+/**
  * 프리셋별 고유 행동을 정의하는 인터페이스.
  * 각 훅은 null을 반환하면 기본 로직으로 폴백.
  */
