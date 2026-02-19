@@ -9,7 +9,7 @@ import { canFulfillWish, mustPlayWishedRank, playFulfillsWish, canPlayWishedComb
 import { getTeam, getPartnerSeat, getLeftSeat, getRightSeat, DEFAULT_TARGET_SCORE } from '../constants';
 import type { AiStrategy, AiSpeed, AiDecisionContext, PersonalityWeights } from './types';
 import { AI_SPEED_DELAYS } from './types';
-import { getRandomStrategy } from './presets';
+import { getRandomStrategy, getNameForStrategy } from './presets';
 import { AiPlayer } from './aiPlayer';
 
 const HUMAN_SEAT = 0 as SeatIndex;
@@ -45,6 +45,7 @@ export interface TichuSaveData {
 	aiPartnerFlags: Record<number, boolean>;
 	grandTichuDecisions: (boolean | null)[];
 	exchangeSubmissions: (ExchangeCards | null)[];
+	remainingCards?: Card[];
 	config: {
 		partnerStrategy: AiStrategy;
 		targetScore: number;
@@ -102,9 +103,11 @@ export class LocalGameEngine {
 		// Seat 1: AI opponent (Team B) - random strategy
 		// Seat 2: AI partner (Team A) - user-chosen strategy
 		// Seat 3: AI opponent (Team B) - random strategy
-		this.aiPlayers.set(1 as SeatIndex, new AiPlayer(1 as SeatIndex, getRandomStrategy(), false));
+		const strat1 = getRandomStrategy([config.partnerStrategy]);
+		const strat3 = getRandomStrategy([config.partnerStrategy, strat1]);
+		this.aiPlayers.set(1 as SeatIndex, new AiPlayer(1 as SeatIndex, strat1, false));
 		this.aiPlayers.set(2 as SeatIndex, new AiPlayer(2 as SeatIndex, config.partnerStrategy, true));
-		this.aiPlayers.set(3 as SeatIndex, new AiPlayer(3 as SeatIndex, getRandomStrategy(), false));
+		this.aiPlayers.set(3 as SeatIndex, new AiPlayer(3 as SeatIndex, strat3, false));
 
 		this.state = {
 			roomId: 'local',
@@ -112,9 +115,9 @@ export class LocalGameEngine {
 			config: { targetScore: config.targetScore },
 			players: [
 				this.createPlayer(0 as SeatIndex, config.playerName),
-				this.createPlayer(1 as SeatIndex, '수호'),
-				this.createPlayer(2 as SeatIndex, '하나'),
-				this.createPlayer(3 as SeatIndex, '민준')
+				this.createPlayer(1 as SeatIndex, getNameForStrategy(strat1)),
+				this.createPlayer(2 as SeatIndex, getNameForStrategy(config.partnerStrategy)),
+				this.createPlayer(3 as SeatIndex, getNameForStrategy(strat3))
 			],
 			readyStatus: [true, true, true, true],
 			round: null,
@@ -165,6 +168,7 @@ export class LocalGameEngine {
 			),
 			grandTichuDecisions: [...this.grandTichuDecisions],
 			exchangeSubmissions: structuredClone(this.exchangeSubmissions),
+			remainingCards: structuredClone(this.remainingCards),
 			config: {
 				partnerStrategy: 'balanced',
 				targetScore: this.state.config.targetScore,
@@ -192,7 +196,7 @@ export class LocalGameEngine {
 		engine.grandTichuDecisions = save.grandTichuDecisions;
 		engine.exchangeSubmissions = save.exchangeSubmissions;
 		engine.deck = [];
-		engine.remainingCards = [];
+		engine.remainingCards = save.remainingCards ?? [];
 
 		engine.aiPlayers = new Map();
 		for (const [seatStr, weights] of Object.entries(save.aiWeights)) {
@@ -424,6 +428,21 @@ export class LocalGameEngine {
 				if (pSeat === HUMAN_SEAT) humanReceived.push({ fromSeat: seatIdx, fromName: name, card: partnerCard });
 				if (lSeat === HUMAN_SEAT) humanReceived.push({ fromSeat: seatIdx, fromName: name, card: leftCard });
 				if (rSeat === HUMAN_SEAT) humanReceived.push({ fromSeat: seatIdx, fromName: name, card: rightCard });
+			}
+
+			// Track cards given to opponents (for AI wish decisions)
+			const ai = this.aiPlayers.get(seat as SeatIndex);
+			if (ai) {
+				const opponentRanks: number[] = [];
+				// left와 right는 상대팀일 수 있음
+				const myTeam = getTeam(seat);
+				if (getTeam(lSeat) !== myTeam && leftCard.type === 'normal') {
+					opponentRanks.push(leftCard.rank);
+				}
+				if (getTeam(rSeat) !== myTeam && rightCard.type === 'normal') {
+					opponentRanks.push(rightCard.rank);
+				}
+				ai.givenToOpponents = opponentRanks;
 			}
 		}
 

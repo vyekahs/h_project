@@ -3,7 +3,7 @@ import type { Card, Combination, SeatIndex, TichuPlayer, TichuRoundResult, WishS
 // ===== AI Strategy Presets =====
 
 /** Strategy presets the user can assign to their partner AI */
-export type AiStrategy = 'aggressive' | 'balanced' | 'defensive' | 'tricky' | 'cautious' | 'wild';
+export type AiStrategy = 'aggressive' | 'balanced' | 'defensive' | 'tricky' | 'wild';
 
 /** AI turn processing speed */
 export type AiSpeed = 'instant' | 'fast' | 'normal' | 'slow';

@@ -126,18 +126,25 @@
 	}
 
 	.declaration {
-		font-size: 0.6rem;
+		font-size: 0.65rem;
 		font-weight: 700;
-		padding: 1px 6px;
-		border-radius: 3px;
+		padding: 2px 8px;
+		border-radius: 4px;
+		animation: declPulse 2s infinite;
 	}
 	.declaration.grand {
-		background: rgba(239,68,68,0.4);
-		color: #fca5a5;
+		background: rgba(239,68,68,0.5);
+		border: 1px solid rgba(239,68,68,0.7);
+		color: #fecaca;
 	}
 	.declaration.small-tichu {
-		background: rgba(59,130,246,0.4);
-		color: #93c5fd;
+		background: rgba(59,130,246,0.5);
+		border: 1px solid rgba(59,130,246,0.7);
+		color: #bfdbfe;
+	}
+	@keyframes declPulse {
+		0%, 100% { opacity: 1; }
+		50% { opacity: 0.7; }
 	}
 
 	.card-backs {

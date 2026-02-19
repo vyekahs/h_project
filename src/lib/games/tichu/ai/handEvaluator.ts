@@ -20,7 +20,7 @@ function isDog(card: Card): boolean {
 }
 
 function getNormalCards(hand: Card[]): NormalCard[] {
-	return hand.filter(c => c.type === 'normal') as NormalCard[];
+	return hand.filter(c => c && c.type === 'normal') as NormalCard[];
 }
 
 function groupByRank(cards: NormalCard[]): Map<number, NormalCard[]> {
@@ -41,21 +41,26 @@ function groupByRank(cards: NormalCard[]): Map<number, NormalCard[]> {
  * Works with both 8-card (grand tichu) and 14-card (small tichu) hands.
  */
 export function evaluateHandStrength(hand: Card[]): number {
+	if (!hand || hand.length === 0) return 0;
+	// Guard against undefined entries (can happen during HMR/state restore)
+	const safeHand = hand.filter(c => c != null);
+	if (safeHand.length === 0) return 0;
+
 	let score = 0;
-	const normalCards = getNormalCards(hand);
+	const normalCards = getNormalCards(safeHand);
 	const rankGroups = groupByRank(normalCards);
 
 	// Special cards bonus
-	if (hand.some(isDragon)) score += 15;
-	if (hand.some(isPhoenix)) score += 10;
-	if (hand.some(isMahjong)) score += 5; // lead advantage
+	if (safeHand.some(isDragon)) score += 15;
+	if (safeHand.some(isPhoenix)) score += 10;
+	if (safeHand.some(isMahjong)) score += 5; // lead advantage
 
 	// Bombs are extremely valuable — count each distinct bomb once
-	const fourBombs = findFourBombs(hand);
+	const fourBombs = findFourBombs(safeHand);
 	score += fourBombs.length * 20;
 
 	// SF bombs: only count the longest per suit to avoid overcounting subsets
-	const sfBombs = findStraightFlushBombs(hand);
+	const sfBombs = findStraightFlushBombs(safeHand);
 	const sfBySuit = new Map<string, number>();
 	for (const bomb of sfBombs) {
 		const suit = (bomb.cards[0] as NormalCard).suit;
@@ -92,11 +97,11 @@ export function evaluateHandStrength(hand: Card[]): number {
 	}
 
 	// Dog penalty (can't play it in combos, only as lead)
-	if (hand.some(isDog)) score -= 2;
+	if (safeHand.some(isDog)) score -= 2;
 
 	// Normalize: scale by hand size (8 vs 14 cards)
 	// For 8-card evaluation, the max possible is lower, so scale up
-	if (hand.length <= 8) {
+	if (safeHand.length <= 8) {
 		score = Math.min(100, score * 1.3);
 	}
 
@@ -111,6 +116,7 @@ export function evaluateHandStrength(hand: Card[]): number {
 export function findAllSingles(hand: Card[]): Combination[] {
 	const results: Combination[] = [];
 	for (const card of hand) {
+		if (!card) continue;
 		const combo = detectCombination([card]);
 		if (combo) results.push(combo);
 	}
@@ -420,16 +426,18 @@ export function findAllStairs(hand: Card[]): Combination[] {
  * This is the master function that enumerates every valid play.
  */
 export function findAllPlayableCombinations(hand: Card[]): Combination[] {
+	const safeHand = hand.filter(c => c != null);
+	if (safeHand.length === 0) return [];
 	const results: Combination[] = [];
 
-	results.push(...findAllSingles(hand));
-	results.push(...findAllPairs(hand));
-	results.push(...findAllTriples(hand));
-	results.push(...findAllFullHouses(hand));
-	results.push(...findAllStraights(hand));
-	results.push(...findAllStairs(hand));
-	results.push(...findFourBombs(hand));
-	results.push(...findStraightFlushBombs(hand));
+	results.push(...findAllSingles(safeHand));
+	results.push(...findAllPairs(safeHand));
+	results.push(...findAllTriples(safeHand));
+	results.push(...findAllFullHouses(safeHand));
+	results.push(...findAllStraights(safeHand));
+	results.push(...findAllStairs(safeHand));
+	results.push(...findFourBombs(safeHand));
+	results.push(...findStraightFlushBombs(safeHand));
 
 	return results;
 }
@@ -438,7 +446,9 @@ export function findAllPlayableCombinations(hand: Card[]): Combination[] {
  * Find all combinations from hand that can beat the current trick.
  */
 export function findBeatablePlays(hand: Card[], currentCombo: Combination): Combination[] {
-	const allCombos = findAllPlayableCombinations(hand);
+	const safeHand = hand.filter(c => c != null);
+	if (safeHand.length === 0) return [];
+	const allCombos = findAllPlayableCombinations(safeHand);
 	return allCombos.filter(combo => canBeat(currentCombo, combo));
 }
 
@@ -454,7 +464,9 @@ export function findLeadPlays(hand: Card[]): Combination[] {
  * Find all bombs in a hand (four-bombs and straight flush bombs).
  */
 export function findBombs(hand: Card[]): Combination[] {
-	return [...findFourBombs(hand), ...findStraightFlushBombs(hand)];
+	const safeHand = hand.filter(c => c != null);
+	if (safeHand.length === 0) return [];
+	return [...findFourBombs(safeHand), ...findStraightFlushBombs(safeHand)];
 }
 
 /**

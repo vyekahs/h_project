@@ -116,6 +116,18 @@
 		2: '2', 3: '3', 4: '4', 5: '5', 6: '6', 7: '7', 8: '8',
 		9: '9', 10: '10', 11: 'J', 12: 'Q', 13: 'K', 14: 'A'
 	};
+
+	// Tichu declarations for all players (for display)
+	const tichuDeclarations = $derived.by(() => {
+		const s = gs();
+		if (!s) return [];
+		const decls: { seat: SeatIndex; name: string; type: 'grand' | 'small' }[] = [];
+		for (const p of s.players) {
+			if (p.grandTichu === true) decls.push({ seat: p.seat, name: p.name, type: 'grand' });
+			else if (p.smallTichu) decls.push({ seat: p.seat, name: p.name, type: 'small' });
+		}
+		return decls;
+	});
 </script>
 
 <div class="game-table">
@@ -138,6 +150,17 @@
 	<!-- Phase indicator -->
 	{#if phaseLabel}
 		<div class="phase-indicator">{phaseLabel}</div>
+	{/if}
+
+	<!-- Tichu declarations banner -->
+	{#if tichuDeclarations.length > 0}
+		<div class="tichu-declarations">
+			{#each tichuDeclarations as decl (decl.seat)}
+				<div class="tichu-badge" class:grand={decl.type === 'grand'} class:small={decl.type === 'small'} class:is-me={decl.seat === mySeat}>
+					{decl.name}: {decl.type === 'grand' ? '그랜드 티츄' : '스몰 티츄'}
+				</div>
+			{/each}
+		</div>
 	{/if}
 
 	<!-- Small Tichu button -->
@@ -296,6 +319,48 @@
 		font-weight: 600;
 		z-index: 50;
 		white-space: nowrap;
+	}
+
+	/* Tichu declarations */
+	.tichu-declarations {
+		display: flex;
+		justify-content: center;
+		gap: 8px;
+		padding: 4px 12px;
+		flex-wrap: wrap;
+	}
+	.tichu-badge {
+		padding: 3px 12px;
+		border-radius: 10px;
+		font-size: 0.75rem;
+		font-weight: 700;
+		animation: tichuPop 0.4s ease-out;
+	}
+	.tichu-badge.grand {
+		background: rgba(239,68,68,0.3);
+		border: 1px solid rgba(239,68,68,0.6);
+		color: #fca5a5;
+	}
+	.tichu-badge.small {
+		background: rgba(59,130,246,0.3);
+		border: 1px solid rgba(59,130,246,0.6);
+		color: #93c5fd;
+	}
+	.tichu-badge.is-me {
+		border-width: 2px;
+	}
+	.tichu-badge.is-me.grand {
+		background: rgba(239,68,68,0.4);
+		color: #fecaca;
+	}
+	.tichu-badge.is-me.small {
+		background: rgba(59,130,246,0.4);
+		color: #bfdbfe;
+	}
+	@keyframes tichuPop {
+		0% { opacity: 0; transform: scale(0.7); }
+		60% { transform: scale(1.1); }
+		100% { opacity: 1; transform: scale(1); }
 	}
 
 	.wish-indicator {

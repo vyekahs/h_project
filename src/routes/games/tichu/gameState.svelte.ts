@@ -95,21 +95,32 @@ export function createTichuGameState() {
 			s.players[0]?.grandTichu !== true;
 	});
 
-	const myHand = $derived.by(() => getState()?.players[0]?.hand ?? []);
+	const myHand = $derived.by(() => (getState()?.players[0]?.hand ?? []).filter(c => c != null));
 
 	const sortedHand = $derived.by(() => {
-		const hand = getState()?.players[0]?.hand ?? [];
+		const hand = (getState()?.players[0]?.hand ?? []).filter(c => c != null);
 		if (!hand.length) return [];
-		return [...hand].sort((a, b) => {
-			const specialOrder: Record<string, number> = { mahjong: 0, dog: 1, phoenix: 2, dragon: 3 };
-			if (a.type === 'special' && b.type === 'special') {
-				return specialOrder[a.special] - specialOrder[b.special];
+		// Sort rank: mahjong=1, dog=0, phoenix=14.5, dragon=15
+		// dog and mahjong go left, normal cards in the middle, phoenix and dragon go right
+		const getSortValue = (c: Card): number => {
+			if (c.type === 'normal') return c.rank;
+			switch (c.special) {
+				case 'dog': return 0;
+				case 'mahjong': return 1;
+				case 'phoenix': return 14.5;
+				case 'dragon': return 15;
+				default: return 0;
 			}
-			if (a.type === 'special') return -1;
-			if (b.type === 'special') return 1;
-			if (a.rank !== b.rank) return a.rank - b.rank;
-			const suitOrder: Record<string, number> = { jade: 0, pagoda: 1, star: 2, sword: 3 };
-			return suitOrder[a.suit] - suitOrder[b.suit];
+		};
+		return [...hand].sort((a, b) => {
+			const av = getSortValue(a);
+			const bv = getSortValue(b);
+			if (av !== bv) return av - bv;
+			if (a.type === 'normal' && b.type === 'normal') {
+				const suitOrder: Record<string, number> = { jade: 0, pagoda: 1, star: 2, sword: 3 };
+				return suitOrder[a.suit] - suitOrder[b.suit];
+			}
+			return 0;
 		});
 	});
 
@@ -239,7 +250,11 @@ export function createTichuGameState() {
 
 		if (engine) engine.destroy();
 
-		partnerStrategy = save.config.partnerStrategy;
+		// cautious는 제거됨 — 이전 세이브 호환을 위해 balanced로 폴백
+		const validStrategies = ['aggressive', 'balanced', 'defensive', 'tricky', 'wild'];
+		partnerStrategy = validStrategies.includes(save.config.partnerStrategy)
+			? save.config.partnerStrategy
+			: 'balanced';
 		aiSpeed = save.config.aiSpeed;
 		targetScore = save.config.targetScore;
 
