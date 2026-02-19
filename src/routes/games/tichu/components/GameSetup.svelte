@@ -77,9 +77,14 @@
 			</div>
 		</section>
 
-		<!-- Start Button -->
+		<!-- Start / Resume Buttons -->
+		{#if game.savedGameAvailable}
+			<button class="resume-btn" onclick={() => game.resumeGame()}>
+				이어하기
+			</button>
+		{/if}
 		<button class="start-btn" onclick={() => game.startGame()}>
-			게임 시작
+			{game.savedGameAvailable ? '새 게임' : '게임 시작'}
 		</button>
 	</div>
 </div>
@@ -240,6 +245,26 @@
 	.score-btn.selected {
 		border-color: #f59e0b;
 		background: rgba(245, 158, 11, 0.15);
+	}
+
+	/* Resume Button */
+	.resume-btn {
+		width: 100%;
+		padding: 16px;
+		background: #22c55e;
+		color: #fff;
+		border: none;
+		border-radius: 12px;
+		font-size: 1.1rem;
+		font-weight: 700;
+		cursor: pointer;
+		transition: background 0.15s;
+	}
+	.resume-btn:hover {
+		background: #16a34a;
+	}
+	.resume-btn:active {
+		background: #15803d;
 	}
 
 	/* Start Button */

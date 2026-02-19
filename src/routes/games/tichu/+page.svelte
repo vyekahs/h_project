@@ -15,6 +15,8 @@
 	});
 </script>
 
+<svelte:window onbeforeunload={() => game.flushSave()} />
+
 <svelte:head>
 	<title>티츄</title>
 </svelte:head>

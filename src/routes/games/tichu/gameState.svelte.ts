@@ -2,7 +2,7 @@ import type {
 	Card, SeatIndex, TeamId, TichuRoundResult, ExchangeCards, GamePhase
 } from '$lib/games/tichu/types';
 import type { AiStrategy, AiSpeed } from '$lib/games/tichu/ai/types';
-import { LocalGameEngine, type LocalGameConfig, type GameEvent, type ExchangeResultEntry } from '$lib/games/tichu/ai/localGameEngine';
+import { LocalGameEngine, type LocalGameConfig, type GameEvent, type ExchangeResultEntry, saveTichuGame, loadTichuGame, clearTichuSave, hasTichuSave } from '$lib/games/tichu/ai/localGameEngine';
 
 export type GameView = 'setup' | 'game';
 export type ToastType = 'info' | 'success' | 'error' | 'warning';
@@ -49,6 +49,9 @@ export function createTichuGameState() {
 	// Toast notifications
 	let toasts = $state<Toast[]>([]);
 	let toastIdCounter = 0;
+
+	// Save/restore
+	let savedGameAvailable = $state(hasTichuSave());
 
 	// Last game action (for visual feedback: pass, trick won, etc.)
 	let lastEvent = $state<GameEvent | null>(null);
@@ -161,6 +164,8 @@ export function createTichuGameState() {
 					scoreB: s.cumulativeScoreB
 				};
 				showGameOverModal = true;
+				clearTichuSave();
+				savedGameAvailable = false;
 			}
 		}
 	});
@@ -177,6 +182,32 @@ export function createTichuGameState() {
 		}, 3000);
 	}
 
+	// ===== Save Helpers =====
+
+	function saveNow() {
+		if (engine) {
+			const snapshot = engine.getSaveSnapshot();
+			if (snapshot) {
+				snapshot.config.partnerStrategy = partnerStrategy;
+				saveTichuGame(snapshot);
+				savedGameAvailable = true;
+			}
+		}
+	}
+
+	function handleStateChange() {
+		stateVersion++;
+	}
+
+	function handleEvent(event: GameEvent) {
+		const priorityTypes = ['trick_won', 'dog', 'dragon_gift'];
+		if (lastEvent && priorityTypes.includes(lastEvent.type) && !priorityTypes.includes(event.type)) return;
+		lastEvent = event;
+		if (lastEventTimer) clearTimeout(lastEventTimer);
+		const duration = priorityTypes.includes(event.type) ? 1200 : 800;
+		lastEventTimer = setTimeout(() => { lastEvent = null; }, duration);
+	}
+
 	// ===== Game Lifecycle =====
 
 	function startGame() {
@@ -184,23 +215,16 @@ export function createTichuGameState() {
 			engine.destroy();
 		}
 
+		clearTichuSave();
+		savedGameAvailable = false;
+
 		engine = new LocalGameEngine({
 			partnerStrategy,
 			targetScore,
 			aiSpeed,
 			playerName: '나',
-			onStateChange: () => {
-				stateVersion++;
-			},
-			onEvent: (event: GameEvent) => {
-				// Don't overwrite priority events (trick_won, dog, dragon_gift) with play/pass
-				const priorityTypes = ['trick_won', 'dog', 'dragon_gift'];
-				if (lastEvent && priorityTypes.includes(lastEvent.type) && !priorityTypes.includes(event.type)) return;
-				lastEvent = event;
-				if (lastEventTimer) clearTimeout(lastEventTimer);
-				const duration = priorityTypes.includes(event.type) ? 1200 : 800;
-				lastEventTimer = setTimeout(() => { lastEvent = null; }, duration);
-			}
+			onStateChange: handleStateChange,
+			onEvent: handleEvent
 		});
 
 		lastPhase = null;
@@ -209,13 +233,34 @@ export function createTichuGameState() {
 		engine.startGame();
 	}
 
+	function resumeGame() {
+		const save = loadTichuGame();
+		if (!save) return;
+
+		if (engine) engine.destroy();
+
+		partnerStrategy = save.config.partnerStrategy;
+		aiSpeed = save.config.aiSpeed;
+		targetScore = save.config.targetScore;
+
+		engine = LocalGameEngine.restore(save, handleStateChange, handleEvent);
+
+		lastPhase = save.state.phase;
+		lastEvent = null;
+		view = 'game';
+		engine.resumeAfterRestore();
+	}
+
 	function startNextRound() {
 		showRoundEndModal = false;
 		roundResult = null;
 		engine?.startNextRound();
+		saveNow();
 	}
 
 	function backToSetup() {
+		clearTichuSave();
+		savedGameAvailable = false;
 		if (engine) {
 			engine.destroy();
 			engine = null;
@@ -229,8 +274,13 @@ export function createTichuGameState() {
 		stateVersion = 0;
 	}
 
+	function flushSave() {
+		saveNow();
+	}
+
 	function cleanup() {
 		if (lastEventTimer) clearTimeout(lastEventTimer);
+		saveNow();
 		if (engine) {
 			engine.destroy();
 			engine = null;
@@ -274,6 +324,7 @@ export function createTichuGameState() {
 			toRight: exchangeRight
 		});
 		if (result) {
+			saveNow();
 			addToast('카드를 교환했습니다', 'info');
 		}
 	}
@@ -288,6 +339,7 @@ export function createTichuGameState() {
 			const result = await engine.humanPlayCards(cardIds);
 			if (result.success) {
 				selectedCards = new Set();
+				saveNow();
 			} else {
 				addToast(result.error || '카드를 낼 수 없습니다', 'error');
 			}
@@ -299,7 +351,9 @@ export function createTichuGameState() {
 	function pass() {
 		if (!engine || actionInProgress) return;
 		const result = engine.humanPass();
-		if (!result.success) {
+		if (result.success) {
+			saveNow();
+		} else {
 			addToast(result.error || '패스할 수 없습니다', 'error');
 		}
 	}
@@ -307,16 +361,20 @@ export function createTichuGameState() {
 	function declareGrandTichu() {
 		const result = engine?.humanDeclareGrandTichu();
 		if (result) {
+			saveNow();
 			addToast('그랜드 티츄를 선언했습니다!', 'success');
 		}
 	}
 
 	function passGrandTichu() {
-		engine?.humanPassGrandTichu();
+		if (engine?.humanPassGrandTichu()) {
+			saveNow();
+		}
 	}
 
 	function declareSmallTichu() {
 		if (engine?.humanDeclareSmallTichu()) {
+			saveNow();
 			addToast('스몰 티츄를 선언했습니다!', 'success');
 		}
 	}
@@ -324,11 +382,13 @@ export function createTichuGameState() {
 	function setWish(rank: number | null) {
 		showWishModal = false;
 		engine?.humanSetWish(rank);
+		saveNow();
 	}
 
 	function giftDragon(seat: SeatIndex) {
 		showDragonGiftModal = false;
 		engine?.humanGiftDragon(seat);
+		saveNow();
 	}
 
 	async function playBomb(cardIds: string[]) {
@@ -338,6 +398,7 @@ export function createTichuGameState() {
 			const result = await engine.humanPlayBomb(cardIds);
 			if (result.success) {
 				selectedCards = new Set();
+				saveNow();
 				addToast('💣 폭탄!', 'warning');
 			} else {
 				addToast(result.error || '폭탄을 사용할 수 없습니다', 'error');
@@ -392,6 +453,11 @@ export function createTichuGameState() {
 		get canDeclareSmallTichu() { return canDeclareSmallTichu; },
 		get sortedHand() { return sortedHand; },
 		get myHand() { return myHand; },
+
+		// Save/restore
+		get savedGameAvailable() { return savedGameAvailable; },
+		resumeGame,
+		flushSave,
 
 		// Actions
 		startGame,

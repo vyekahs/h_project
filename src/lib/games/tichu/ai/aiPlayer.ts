@@ -16,6 +16,14 @@ export class AiPlayer {
 	readonly weights: PersonalityWeights;
 	readonly isPartner: boolean;
 
+	static fromWeights(seat: SeatIndex, weights: PersonalityWeights, isPartner: boolean): AiPlayer {
+		const player = Object.create(AiPlayer.prototype) as AiPlayer;
+		(player as any).seat = seat;
+		(player as any).weights = weights;
+		(player as any).isPartner = isPartner;
+		return player;
+	}
+
 	constructor(seat: SeatIndex, strategy: AiStrategy, isPartner: boolean) {
 		this.seat = seat;
 		this.isPartner = isPartner;

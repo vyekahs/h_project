@@ -7,7 +7,7 @@ import { detectCombination, canBeat, isBomb, resolvePhoenixSingleRank } from '..
 import { calculateRoundResult, checkGameOver } from '../scoring';
 import { canFulfillWish, mustPlayWishedRank, playFulfillsWish, canPlayWishedCombo, createWishState, isValidWishRank } from '../wish';
 import { getTeam, getPartnerSeat, getLeftSeat, getRightSeat, DEFAULT_TARGET_SCORE } from '../constants';
-import type { AiStrategy, AiSpeed, AiDecisionContext } from './types';
+import type { AiStrategy, AiSpeed, AiDecisionContext, PersonalityWeights } from './types';
 import { AI_SPEED_DELAYS } from './types';
 import { getRandomStrategy } from './presets';
 import { AiPlayer } from './aiPlayer';
@@ -35,6 +35,46 @@ export interface ExchangeResultEntry {
 	fromSeat: SeatIndex;
 	fromName: string;
 	card: Card;
+}
+
+export interface TichuSaveData {
+	version: number;
+	savedAt: number;
+	state: TichuRoomState;
+	aiWeights: Record<number, PersonalityWeights>;
+	aiPartnerFlags: Record<number, boolean>;
+	grandTichuDecisions: (boolean | null)[];
+	exchangeSubmissions: (ExchangeCards | null)[];
+	config: {
+		partnerStrategy: AiStrategy;
+		targetScore: number;
+		aiSpeed: AiSpeed;
+		playerName: string;
+	};
+}
+
+const SAVE_KEY = 'tichu_save';
+
+export function saveTichuGame(data: TichuSaveData): void {
+	try { localStorage.setItem(SAVE_KEY, JSON.stringify(data)); } catch { /* ignore */ }
+}
+
+export function loadTichuGame(): TichuSaveData | null {
+	try {
+		const raw = localStorage.getItem(SAVE_KEY);
+		if (!raw) return null;
+		const data = JSON.parse(raw) as TichuSaveData;
+		if (data.version !== 1) return null;
+		return data;
+	} catch { return null; }
+}
+
+export function clearTichuSave(): void {
+	try { localStorage.removeItem(SAVE_KEY); } catch { /* ignore */ }
+}
+
+export function hasTichuSave(): boolean {
+	try { return localStorage.getItem(SAVE_KEY) !== null; } catch { return false; }
 }
 
 export class LocalGameEngine {
@@ -104,6 +144,68 @@ export class LocalGameEngine {
 
 	destroy(): void {
 		this.destroyed = true;
+	}
+
+	// ===== Save / Restore =====
+
+	getSaveSnapshot(): TichuSaveData | null {
+		const savablePhases: GamePhase[] = ['grand_tichu_window', 'exchange', 'playing', 'wish_declare', 'dragon_gift'];
+		if (!savablePhases.includes(this.state.phase)) return null;
+		if (this.state.phase === 'playing' && this.state.round?.currentSeat !== HUMAN_SEAT) return null;
+
+		return {
+			version: 1,
+			savedAt: Date.now(),
+			state: structuredClone(this.state),
+			aiWeights: Object.fromEntries(
+				[...this.aiPlayers.entries()].map(([seat, ai]) => [seat, ai.weights])
+			),
+			aiPartnerFlags: Object.fromEntries(
+				[...this.aiPlayers.entries()].map(([seat, ai]) => [seat, ai.isPartner])
+			),
+			grandTichuDecisions: [...this.grandTichuDecisions],
+			exchangeSubmissions: structuredClone(this.exchangeSubmissions),
+			config: {
+				partnerStrategy: 'balanced',
+				targetScore: this.state.config.targetScore,
+				aiSpeed: this.aiSpeed,
+				playerName: this.state.players[0].name
+			}
+		};
+	}
+
+	static restore(
+		save: TichuSaveData,
+		onStateChange: () => void,
+		onEvent?: (event: GameEvent) => void
+	): LocalGameEngine {
+		const engine = Object.create(LocalGameEngine.prototype) as LocalGameEngine;
+		engine.state = save.state;
+		engine.aiSpeed = save.config.aiSpeed;
+		engine.onStateChange = onStateChange;
+		engine.onEvent = onEvent ?? (() => {});
+		engine.destroyed = false;
+		engine.processingAi = false;
+		engine.humanActionInProgress = false;
+		engine.aiTurnQueued = false;
+		engine.exchangeResult = null;
+		engine.grandTichuDecisions = save.grandTichuDecisions;
+		engine.exchangeSubmissions = save.exchangeSubmissions;
+		engine.deck = [];
+		engine.remainingCards = [];
+
+		engine.aiPlayers = new Map();
+		for (const [seatStr, weights] of Object.entries(save.aiWeights)) {
+			const seat = Number(seatStr) as SeatIndex;
+			const isPartner = save.aiPartnerFlags[seat] ?? (seat === 2);
+			engine.aiPlayers.set(seat, AiPlayer.fromWeights(seat, weights, isPartner));
+		}
+
+		return engine;
+	}
+
+	resumeAfterRestore(): void {
+		this.notifyStateChange();
 	}
 
 	// ===== Game Lifecycle =====
