@@ -1,11 +1,11 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { actions } from './+page.server';
-import { query } from '$lib/server/db';
+import { db } from '$lib/server/db/index';
 
 // Mock DB
-vi.mock('$lib/server/db', () => ({
-    query: vi.fn()
+vi.mock('$lib/server/db/index', () => ({
+    db: { execute: vi.fn(), transaction: vi.fn() }
 }));
 
 describe('Game Management', () => {
@@ -40,9 +40,9 @@ describe('Game Management', () => {
                 })
             };
 
-            (query as any).mockResolvedValueOnce({ rows: [] }); // BEGIN
-            (query as any).mockResolvedValueOnce({ rows: [{ name: 'Player 1' }] }); // playingCheck
-            (query as any).mockResolvedValueOnce({ rows: [] }); // ROLLBACK
+            (db.execute as any).mockResolvedValueOnce({ rows: [] }); // BEGIN
+            (db.execute as any).mockResolvedValueOnce({ rows: [{ name: 'Player 1' }] }); // playingCheck
+            (db.execute as any).mockResolvedValueOnce({ rows: [] }); // ROLLBACK
 
             const result = await actions.createGame({ request } as any);
             expect(result).toEqual({ status: 400, data: { error: '다음 인원은 이미 게임 중입니다: Player 1' } });
@@ -63,17 +63,17 @@ describe('Game Management', () => {
                 })
             };
 
-            (query as any).mockResolvedValueOnce({ rows: [] }); // BEGIN
-            (query as any).mockResolvedValueOnce({ rows: [] }); // playingCheck
-            (query as any).mockResolvedValueOnce({ rows: [{ id: 100 }] }); // INSERT game_sessions
-            (query as any).mockResolvedValueOnce({ rows: [] }); // INSERT session_participants 1
-            (query as any).mockResolvedValueOnce({ rows: [] }); // INSERT session_participants 2
-            (query as any).mockResolvedValueOnce({ rows: [] }); // COMMIT
+            (db.execute as any).mockResolvedValueOnce({ rows: [] }); // BEGIN
+            (db.execute as any).mockResolvedValueOnce({ rows: [] }); // playingCheck
+            (db.execute as any).mockResolvedValueOnce({ rows: [{ id: 100 }] }); // INSERT game_sessions
+            (db.execute as any).mockResolvedValueOnce({ rows: [] }); // INSERT session_participants 1
+            (db.execute as any).mockResolvedValueOnce({ rows: [] }); // INSERT session_participants 2
+            (db.execute as any).mockResolvedValueOnce({ rows: [] }); // COMMIT
 
             const result = await actions.createGame({ request } as any);
             expect(result).toBeUndefined();
             
-            expect(query).toHaveBeenCalledTimes(6);
+            expect(db.execute).toHaveBeenCalledTimes(6);
 
         });
     });
@@ -113,12 +113,12 @@ describe('Game Management', () => {
                 })
             };
 
-            (query as any).mockResolvedValueOnce({ rows: [] }); // BEGIN
-            (query as any).mockResolvedValueOnce({ rows: [] }); // UPDATE game_sessions
-            (query as any).mockResolvedValueOnce({ rows: [] }); // UPDATE session_participants (winners)
-            (query as any).mockResolvedValueOnce({ rows: [] }); // UPDATE session_participants (score 1)
-            (query as any).mockResolvedValueOnce({ rows: [] }); // UPDATE session_participants (score 2)
-            (query as any).mockResolvedValueOnce({ rows: [] }); // COMMIT
+            (db.execute as any).mockResolvedValueOnce({ rows: [] }); // BEGIN
+            (db.execute as any).mockResolvedValueOnce({ rows: [] }); // UPDATE game_sessions
+            (db.execute as any).mockResolvedValueOnce({ rows: [] }); // UPDATE session_participants (winners)
+            (db.execute as any).mockResolvedValueOnce({ rows: [] }); // UPDATE session_participants (score 1)
+            (db.execute as any).mockResolvedValueOnce({ rows: [] }); // UPDATE session_participants (score 2)
+            (db.execute as any).mockResolvedValueOnce({ rows: [] }); // COMMIT
 
             const result = await actions.endGame({ request } as any);
             expect(result).toBeUndefined();
@@ -130,7 +130,7 @@ describe('Game Management', () => {
             // 4. UPDATE session_participants (score 1)
             // 5. UPDATE session_participants (score 2)
             // 6. COMMIT
-            expect(query).toHaveBeenCalledTimes(6);
+            expect(db.execute).toHaveBeenCalledTimes(6);
         });
     });
 });

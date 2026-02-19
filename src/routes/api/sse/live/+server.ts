@@ -1,27 +1,29 @@
-import { query } from '$lib/server/db';
+import { db } from '$lib/server/db/index';
+import { sql } from 'drizzle-orm';
 import { getLiveEmitter, incrementSSECount, decrementSSECount } from '$lib/server/liveEvents';
 
-async function getVisitorData() {
-	const result = await query(`
-		SELECT a.id, a.name,
-		       EXISTS(SELECT 1 FROM session_participants sp JOIN game_sessions gs ON sp.session_id = gs.id WHERE sp.attendee_id = a.id AND gs.status = 'playing') as is_playing
-		FROM visits v
-		JOIN attendees a ON v.attendee_id = a.id
-		WHERE v.departure_time IS NULL
-		ORDER BY v.arrival_time DESC
-	`);
-	return { count: result.rows.length, list: result.rows };
-}
-
-async function getGameData() {
-	const result = await query(`
-		SELECT gs.id, gs.game_name, gs.end_time, gs.party_id,
-		       (SELECT COUNT(*) FROM session_participants sp WHERE sp.session_id = gs.id) as player_count
-		FROM game_sessions gs
-		WHERE gs.status = 'playing'
-		ORDER BY gs.end_time ASC
-	`);
-	return { count: result.rows.length, list: result.rows };
+async function fetchSSEData() {
+	const [visitors, games] = await Promise.all([
+		db.execute(sql`
+			SELECT a.id, a.name,
+			       EXISTS(SELECT 1 FROM session_participants sp JOIN game_sessions gs ON sp.session_id = gs.id WHERE sp.attendee_id = a.id AND gs.status = 'playing') as is_playing
+			FROM visits v
+			JOIN attendees a ON v.attendee_id = a.id
+			WHERE v.departure_time IS NULL
+			ORDER BY v.arrival_time DESC
+		`),
+		db.execute(sql`
+			SELECT gs.id, gs.game_name, gs.end_time, gs.party_id,
+			       (SELECT COUNT(*) FROM session_participants sp WHERE sp.session_id = gs.id) as player_count
+			FROM game_sessions gs
+			WHERE gs.status = 'playing'
+			ORDER BY gs.end_time ASC
+		`)
+	]);
+	return {
+		visitors: { count: visitors.length, list: visitors },
+		games: { count: games.length, list: games }
+	};
 }
 
 export function GET({ request }: { request: Request }) {
@@ -48,9 +50,9 @@ export function GET({ request }: { request: Request }) {
 			async function sendAll() {
 				if (closed) return;
 				try {
-					const [visitors, games] = await Promise.all([getVisitorData(), getGameData()]);
-					send('visitors', visitors);
-					send('games', games);
+					const data = await fetchSSEData();
+					send('visitors', data.visitors);
+					send('games', data.games);
 				} catch (e) {
 					console.error('[SSE] Failed to fetch data:', e);
 				}
@@ -62,10 +64,11 @@ export function GET({ request }: { request: Request }) {
 				debounceTimer = setTimeout(async () => {
 					if (closed) return;
 					try {
+						const data = await fetchSSEData();
 						if (type === 'visitors') {
-							send('visitors', await getVisitorData());
+							send('visitors', data.visitors);
 						} else if (type === 'games') {
-							send('games', await getGameData());
+							send('games', data.games);
 						}
 					} catch (e) {
 						console.error('[SSE] Failed to fetch data on change:', e);
@@ -73,16 +76,17 @@ export function GET({ request }: { request: Request }) {
 				}, 500);
 			}
 
-			// Send initial data immediately
 			sendAll();
 
-			// Listen for changes
 			emitter.on('change', onChange);
 
-			// Heartbeat every 30 seconds (also refreshes data as fallback)
 			heartbeatTimer = setInterval(() => {
 				if (closed) return;
-				sendAll();
+				try {
+					controller.enqueue(encoder.encode(`: ping\n\n`));
+				} catch {
+					cleanup();
+				}
 			}, 30000);
 
 			function cleanup() {
@@ -95,7 +99,6 @@ export function GET({ request }: { request: Request }) {
 				try { controller.close(); } catch {}
 			}
 
-			// Client disconnect detection
 			request.signal.addEventListener('abort', cleanup);
 		}
 	});

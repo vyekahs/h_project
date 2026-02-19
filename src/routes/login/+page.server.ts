@@ -1,12 +1,13 @@
 import { fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
-import { query } from '$lib/server/db';
+import { db } from '$lib/server/db/index';
+import { sql } from 'drizzle-orm';
 import bcrypt from 'bcryptjs';
 import { createAttendeeSession, verifyAttendeeSession } from '$lib/server/auth';
 
 export const load: PageServerLoad = async ({ cookies }) => {
     const sessionToken = cookies.get('user_session');
-    
+
     // If already logged in as user, redirect to home
     if (sessionToken && await verifyAttendeeSession(sessionToken)) {
         throw redirect(303, '/');
@@ -24,13 +25,13 @@ export const actions: Actions = {
         }
 
         try {
-            const result = await query('SELECT id, name, password, can_manage_games FROM attendees WHERE name = $1', [name]);
-            
-            if (result.rows.length === 0) {
+            const result = await db.execute(sql`SELECT id, name, password, can_manage_games FROM attendees WHERE name = ${name}`);
+
+            if (result.length === 0) {
                 return fail(400, { error: '존재하지 않는 사용자입니다.' });
             }
 
-            const user = result.rows[0];
+            const user = result[0] as any;
 
             if (!user.password) {
                 return fail(400, { error: '비밀번호가 설정되지 않은 계정입니다. 관리자에게 문의하세요.' });
@@ -43,7 +44,7 @@ export const actions: Actions = {
 
             // Set user session cookie logic
             const token = await createAttendeeSession(user.id);
-            
+
             cookies.set('user_session', token, {
                 path: '/',
                 httpOnly: true,
@@ -51,7 +52,7 @@ export const actions: Actions = {
                 secure: false, // Set to true in prod with HTTPS
                 maxAge: 60 * 60 * 24 * 365 // 1 year
             });
-            
+
             // Clean up old insecure cookie
             cookies.delete('user_auth', { path: '/' });
 

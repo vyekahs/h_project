@@ -22,7 +22,7 @@ export const load: PageServerLoad = async ({ locals }) => {
     });
 
     return {
-        activityFeed,
+        activityFeed: activityFeed as any[],
         userRanks
     };
 };

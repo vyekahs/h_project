@@ -3,14 +3,17 @@
 #include <WiFiClientSecure.h>
 #include <ArduinoJson.h>
 #include <vector>
+#include <set>
 #include <NimBLEDevice.h>
 #include <NimBLEHIDDevice.h>
 #include <esp_bt.h>
 #include <esp_task_wdt.h>
+#include "esp_wifi.h"
 #include <nvs_flash.h>
 #include <lwip/etharp.h>
 #include <lwip/ip4_addr.h>
 #include <lwip/netif.h>
+#include <lwip/tcpip.h>
 // ESP-IDF NimBLE C API headers for direct access to security store
 #include "host/ble_hs.h"
 #include "host/ble_store.h"
@@ -22,17 +25,57 @@
 const char* SERVER_URL = "https://damonpyo.mooo.com";
 const char* WIFI_SSID = "KT_GiGA_3F81";
 const char* WIFI_PASS = "a4ke01fh66";
+
+// Server Config
 const char* SCANNER_API_KEY = "hproject_scanner_secret_2026";
 
-// WiFi ARP Scan Config
-const unsigned long WIFI_SCAN_INTERVAL = 60000;  // 60초마다 ARP 스캔
+
+// WiFi Promiscuous Scan Config
+const unsigned long WIFI_SCAN_INTERVAL = 300000;  // 5분마다 스캔
 unsigned long lastWifiScanTime = 0;
 
-// Static IP Config
-IPAddress staticIP(192, 168, 0, 200);
-IPAddress gateway(192, 168, 0, 1);
+// WiFi Promiscuous Mode - MAC 수집
+std::set<String> promiscCollectedMacs;
+String ownMacUpper = "";      // ESP32 자신의 MAC (필터용)
+String gatewayMacUpper = "";  // 공유기 MAC (필터용)
+
+// Promiscuous 콜백 — WiFi 태스크에서 실행되므로 최대한 가볍게
+void IRAM_ATTR wifiPromiscuousCallback(void* buf, wifi_promiscuous_pkt_type_t type) {
+    // 관리 프레임과 데이터 프레임만 처리 (컨트롤 프레임은 MAC 정보 없음)
+    if (type != WIFI_PKT_MGMT && type != WIFI_PKT_DATA) return;
+
+    const wifi_promiscuous_pkt_t* pkt = (wifi_promiscuous_pkt_t*)buf;
+    const uint8_t* frame = pkt->payload;
+
+    // 최소 802.11 헤더 크기 확인
+    if (pkt->rx_ctrl.sig_len < 24) return;
+
+    // addr2 (송신자 MAC) = 802.11 헤더 오프셋 10
+    const uint8_t* addr2 = frame + 10;
+
+    // 브로드캐스트 필터
+    if (addr2[0] == 0xFF && addr2[1] == 0xFF && addr2[2] == 0xFF &&
+        addr2[3] == 0xFF && addr2[4] == 0xFF && addr2[5] == 0xFF) return;
+
+    // 멀티캐스트 필터 (첫 바이트 비트 0 = 멀티캐스트/브로드캐스트)
+    if (addr2[0] & 0x01) return;
+
+    char macStr[18];
+    snprintf(macStr, sizeof(macStr), "%02X:%02X:%02X:%02X:%02X:%02X",
+             addr2[0], addr2[1], addr2[2], addr2[3], addr2[4], addr2[5]);
+    String mac(macStr);
+
+    // 자기 자신과 공유기 필터
+    if (mac == ownMacUpper || mac == gatewayMacUpper) return;
+
+    promiscCollectedMacs.insert(mac);
+}
+
+// Static IP Config (네트워크 대역: 172.30.1.x)
+IPAddress staticIP(172, 30, 1, 200);
+IPAddress gateway(172, 30, 1, 254);
 IPAddress subnet(255, 255, 255, 0);
-IPAddress dns(8, 8, 8, 8);
+IPAddress dns(168, 126, 63, 1);
 
 // Local HTTP Server (WiFi MAC 등록 페이지 제공)
 WebServer localServer(80);
@@ -48,8 +91,7 @@ uint16_t currentConnId = 0xFFFF;
 
 // Polling Globals
 unsigned long lastPollTime = 0;
-const unsigned long POLL_INTERVAL_IDLE = 5000;   // idle 상태: 5초마다 폴링 (메모리 절약)
-const unsigned long POLL_INTERVAL_ACTIVE = 500;   // 등록 대기 중: 0.5초마다 폴링
+const unsigned long POLL_INTERVAL_IDLE = 5000;   // idle 상태: 5초마다 폴링
 bool isRegistering = false;
 String myMacAddress = "";
 
@@ -70,8 +112,9 @@ String pendingIrk = "";
 bool pendingDisconnect = false;
 unsigned long disconnectTargetTime = 0;
 unsigned long authStartTime = 0;
-bool securityStarted = false;
 unsigned long connectTime = 0;
+unsigned long registerStartTime = 0;
+const unsigned long REGISTER_TIMEOUT = 120000;  // 120초 (서버 PIN TTL과 동일)
 uint32_t currentPasskey = 0; // 서버에서 받은 PIN
 
 // IRK variable
@@ -83,6 +126,23 @@ bool isWebBtFlow = false;
 unsigned long webBtAuthTime = 0;
 unsigned long webBtFlowStartTime = 0;  // Web BT 플로우 시작 시간 (자동 리셋용)
 const unsigned long WEB_BT_TIMEOUT = 60000;  // 60초 후 자동 리셋
+
+// HTTP/HTTPS 자동 판별 헬퍼
+bool isHttps() {
+    return String(SERVER_URL).startsWith("https");
+}
+
+// 전역 HTTP 클라이언트 (매번 new/delete 대신 재사용 → lwIP 크래시 방지)
+WiFiClient plainClient;
+WiFiClientSecure secureClient;
+
+WiFiClient& getHttpClient() {
+    if (isHttps()) {
+        secureClient.setInsecure();
+        return secureClient;
+    }
+    return plainClient;
+}
 
 // Deferred actions (콜백 내에서 BLE 스택 재진입 방지)
 bool pendingSecurityInit = false;
@@ -103,10 +163,11 @@ int customStoreWriteCb(int obj_type, const union ble_store_value *val) {
             Serial.print("IRK intercepted from bond store write: ");
             Serial.println(capturedIrk);
 
-            // IRK를 GATT 캐릭터리스틱에 즉시 세팅
+            // IRK를 GATT 캐릭터리스틱에 즉시 세팅 + 알림
             if (pIrkCharacteristic != NULL) {
                 pIrkCharacteristic->setValue((uint8_t*)buf, 32);
-                Serial.println("IRK written to GATT characteristic (from store callback)");
+                pIrkCharacteristic->notify();
+                Serial.println("IRK written + notified via GATT characteristic (from store callback)");
             }
         }
     }
@@ -145,10 +206,11 @@ bool tryCaptureIrkFromBondStore() {
             Serial.println(capturedIrk);
             irkCaptured = true;
 
-            // IRK를 GATT 캐릭터리스틱에도 세팅 (Web Bluetooth용)
+            // IRK를 GATT 캐릭터리스틱에도 세팅 + 알림 (Web Bluetooth용)
             if (pIrkCharacteristic != NULL) {
                 pIrkCharacteristic->setValue((uint8_t*)buf, 32);
-                Serial.println("IRK written to GATT characteristic");
+                pIrkCharacteristic->notify();
+                Serial.println("IRK written + notified via GATT characteristic");
             }
 
             return true;
@@ -169,17 +231,17 @@ class MyServerCallbacks: public NimBLEServerCallbacks {
     void onConnect(NimBLEServer* pServer, NimBLEConnInfo& connInfo) override {
         currentConnId = connInfo.getConnHandle();
         connectTime = millis();
-        securityStarted = false;
         Serial.println("Device connected. ConnID: " + String(currentConnId));
 
         // Web Bluetooth 플로우
         if (!isRegistering) {
             if (isWebBtFlow && irkCaptured) {
-                // 재연결: IRK 이미 캡처됨 → 캐릭터리스틱에 IRK 세팅 유지
+                // 재연결: IRK 이미 캡처됨 → 캐릭터리스틱에 IRK 세팅 + 알림
                 Serial.println("Web BT reconnect - IRK already captured, ready to read");
                 if (pIrkCharacteristic != NULL && capturedIrk.length() == 32) {
                     pIrkCharacteristic->setValue((uint8_t*)capturedIrk.c_str(), 32);
-                    Serial.println("IRK re-set in characteristic for reconnect read");
+                    pIrkCharacteristic->notify();
+                    Serial.println("IRK re-set + notified in characteristic for reconnect");
                 }
             } else {
                 // 첫 연결: JustWorks 페어링 설정
@@ -201,18 +263,26 @@ class MyServerCallbacks: public NimBLEServerCallbacks {
             ble_hs_cfg.sm_io_cap = BLE_HS_IO_NO_INPUT_OUTPUT;
             ble_hs_cfg.sm_mitm = 0;
         } else {
-            // iOS 플로우: 매 연결마다 초기화
+            // iOS 플로우: 이전 Web BT 상태 클리어 + 초기화
+            isWebBtFlow = false;
+            webBtFlowStartTime = 0;
+            webBtAuthTime = 0;
             if (pIrkCharacteristic != NULL) {
                 const char* empty = "00000000000000000000000000000000";
                 pIrkCharacteristic->setValue((uint8_t*)empty, 32);
             }
+            // IO_CAP 재확인 (Web BT에서 변경됐을 수 있음)
+            ble_hs_cfg.sm_io_cap = BLE_HS_IO_DISPLAY_ONLY;
+            ble_hs_cfg.sm_mitm = 1;
+            // 딜레이 후 페어링 강제 시작 (iOS 캐시된 본드로 PIN 없이 연결되는 것 방지)
+            pendingSecurityInit = true;
+            pendingSecurityConnId = connInfo.getConnHandle();
         }
     }
 
     void onDisconnect(NimBLEServer* pServer, NimBLEConnInfo& connInfo, int reason) override {
         currentConnId = 0xFFFF;
         connectTime = 0;
-        securityStarted = false;
         Serial.println("Device disconnected, reason: " + String(reason));
 
         // Web BT 플로우에서 IRK 캡처 완료 전이면 모드 유지 (재연결 대비)
@@ -230,8 +300,14 @@ class MyServerCallbacks: public NimBLEServerCallbacks {
             webBtAuthTime = 0;
             ble_hs_cfg.sm_io_cap = BLE_HS_IO_DISPLAY_ONLY;
             ble_hs_cfg.sm_mitm = 1;
-        } else if (!isWebBtFlow) {
-            // iOS 플로우를 위해 원래 보안 설정 복원
+        } else {
+            // IRK 캡처 실패 또는 iOS 플로우 → 원래 보안 설정 복원
+            if (isWebBtFlow) {
+                Serial.println("Web BT: IRK not captured, resetting to iOS mode");
+                isWebBtFlow = false;
+                webBtFlowStartTime = 0;
+                webBtAuthTime = 0;
+            }
             ble_hs_cfg.sm_io_cap = BLE_HS_IO_DISPLAY_ONLY;
             ble_hs_cfg.sm_mitm = 1;
         }
@@ -279,6 +355,44 @@ class MyServerCallbacks: public NimBLEServerCallbacks {
     }
 };
 
+// 서버에 자신의 IP 등록 (최대 3회 재시도)
+void registerIp() {
+    if (WiFi.status() != WL_CONNECTED) return;
+
+    Serial.printf("[IP] Registering IP: %s\n", WiFi.localIP().toString().c_str());
+
+    for (int attempt = 1; attempt <= 3; attempt++) {
+        HTTPClient http;
+        String url = String(SERVER_URL) + "/api/esp32/register-ip";
+        http.begin(getHttpClient(), url);
+        http.setTimeout(10000);
+        http.addHeader("Content-Type", "application/json");
+        http.addHeader("x-api-key", SCANNER_API_KEY);
+
+        DynamicJsonDocument doc(256);
+        doc["scanner_id"] = "esp32_s3_registration";
+        doc["ip"] = WiFi.localIP().toString();
+
+        String json;
+        serializeJson(doc, json);
+
+        int code = http.POST(json);
+        Serial.printf("[IP] Attempt %d/3: HTTP %d\n", attempt, code);
+        http.end();
+
+        if (code == 200) {
+            Serial.println("[IP] Registered successfully");
+            return;
+        }
+
+        if (attempt < 3) {
+            Serial.println("[IP] Retrying in 2s...");
+            delay(2000);
+        }
+    }
+    Serial.println("[IP] Registration failed after 3 attempts");
+}
+
 // WiFi 재연결 (C3의 ensureWiFi와 동일)
 void ensureWiFi() {
     if (WiFi.status() == WL_CONNECTED) return;
@@ -294,6 +408,7 @@ void ensureWiFi() {
     }
     if (WiFi.status() == WL_CONNECTED) {
         Serial.println(" Reconnected!");
+        registerIp();  // 재연결 시 IP 재등록
     } else {
         Serial.println(" Failed!");
     }
@@ -312,21 +427,26 @@ String getMacFromArp(IPAddress clientIP) {
     // ARP 테이블 조회를 위해 먼저 etharp_request로 갱신 시도
     struct netif *netif = netif_list;
     if (netif) {
+        LOCK_TCPIP_CORE();
         etharp_request(netif, &ipAddr);
+        UNLOCK_TCPIP_CORE();
     }
 
     // 약간의 대기 후 ARP 캐시 조회
     delay(50);
 
+    LOCK_TCPIP_CORE();
     int8_t idx = etharp_find_addr(netif, &ipAddr, &eth_ret, &ip_ret);
+    String result = "";
     if (idx >= 0 && eth_ret != NULL) {
         char macStr[18];
         sprintf(macStr, "%02X:%02X:%02X:%02X:%02X:%02X",
                 eth_ret->addr[0], eth_ret->addr[1], eth_ret->addr[2],
                 eth_ret->addr[3], eth_ret->addr[4], eth_ret->addr[5]);
-        return String(macStr);
+        result = String(macStr);
     }
-    return "";
+    UNLOCK_TCPIP_CORE();
+    return result;
 }
 
 // GET /mac - 요청자의 WiFi MAC 주소 반환 (JSON)
@@ -350,10 +470,36 @@ void handleGetMac() {
     }
 }
 
+// 입력값 sanitize (XSS 방지 - 허용 문자만 통과)
+String sanitizeAlphaNum(const String& input, int maxLen = 64) {
+    String result = "";
+    int len = min((int)input.length(), maxLen);
+    for (int i = 0; i < len; i++) {
+        char c = input.charAt(i);
+        if (isalnum(c) || c == '-' || c == '_') {
+            result += c;
+        }
+    }
+    return result;
+}
+
+String sanitizeUrl(const String& input, int maxLen = 128) {
+    String result = "";
+    int len = min((int)input.length(), maxLen);
+    for (int i = 0; i < len; i++) {
+        char c = input.charAt(i);
+        // URL에 허용되는 문자만 통과 (스크립트 삽입 차단)
+        if (isalnum(c) || c == ':' || c == '/' || c == '.' || c == '-' || c == '_') {
+            result += c;
+        }
+    }
+    return result;
+}
+
 // GET /register - WiFi MAC 등록 페이지 (ESP32가 직접 HTML 제공)
 void handleRegisterPage() {
-    String code = localServer.arg("code");
-    String callbackUrl = localServer.arg("callback");
+    String code = sanitizeAlphaNum(localServer.arg("code"), 32);
+    String callbackUrl = sanitizeUrl(localServer.arg("callback"), 128);
     if (callbackUrl.length() == 0) callbackUrl = String(SERVER_URL);
 
     String html = R"rawliteral(
@@ -438,89 +584,71 @@ void handleRegisterPage() {
     Serial.printf("[WiFi] Register page served (code=%s)\n", code.c_str());
 }
 
-// ARP 스캔: 서브넷 전체에 ping → ARP 캐시에서 MAC 수집 → 서버 전송
+// WiFi Promiscuous 스캔: 802.11 프레임 캡처로 주변 기기 MAC 수집 → 서버 전송
+// AP isolation과 무관하게 동작 (패킷을 엿듣는 방식)
 void scanLocalDevices() {
     if (isRegistering) return;
 
     ensureWiFi();
     if (WiFi.status() != WL_CONNECTED) return;
 
-    Serial.println("[WiFi] ARP scan starting...");
+    Serial.println("[WiFi] Promiscuous scan starting...");
     Serial.printf("[WiFi] Free heap before scan: %d\n", ESP.getFreeHeap());
 
-    IPAddress localIP = WiFi.localIP();
-    IPAddress subnet = WiFi.subnetMask();
-    // 서브넷 기반 베이스 IP 계산 (예: 192.168.0.0)
-    uint32_t base = (uint32_t)localIP & (uint32_t)subnet;
-    uint32_t myIP = (uint32_t)localIP;
+    // Phase 1: Promiscuous mode로 15초간 MAC 수집
+    promiscCollectedMacs.clear();
 
-    // Phase 1: 서브넷 전체에 ARP request (ARP 캐시 채우기)
-    // /24 서브넷 기준 1~254
-    struct netif *netif = netif_list;
-    uint8_t* baseBytes = (uint8_t*)&base;
-    int pingCount = 0;
-    for (int i = 1; i <= 254; i++) {
-        IPAddress target(baseBytes[0], baseBytes[1], baseBytes[2], i);
+    // BLE 광고 일시 중단 (Promiscuous 모드와 BLE 동시 사용 시 간섭)
+    NimBLEDevice::stopAdvertising();
+    Serial.println("[WiFi] BLE advertising paused for scan");
 
-        if ((uint32_t)target == myIP) continue;  // 자기 자신 스킵
+    esp_wifi_set_promiscuous_rx_cb(wifiPromiscuousCallback);
+    esp_wifi_set_promiscuous(true);
 
-        // ARP request 전송 (실제 ping보다 가볍고 빠름)
-        ip4_addr_t addr;
-        addr.addr = (uint32_t)target;
-        if (netif) {
-            etharp_request(netif, &addr);
-        }
-        pingCount++;
-
-        // 10개마다 약간 대기 (네트워크 부하 분산)
-        if (pingCount % 10 == 0) {
-            delay(5);
-            esp_task_wdt_reset();  // Watchdog 리셋 (스캔이 오래 걸릴 수 있음)
+    Serial.println("[WiFi] Promiscuous mode ON, scanning for 15 seconds...");
+    bool scanAborted = false;
+    unsigned long scanStart = millis();
+    while (millis() - scanStart < 15000) {
+        delay(100);  // 100ms 간격으로 체크 (BLE 연결 빠르게 감지)
+        esp_task_wdt_reset();
+        localServer.handleClient();  // WiFi 등록 요청 처리 유지
+        // BLE 연결 감지 시 스캔 즉시 중단
+        if (currentConnId != 0xFFFF || isRegistering) {
+            Serial.println("[WiFi] BLE connection detected, stopping scan early");
+            scanAborted = true;
+            break;
         }
     }
 
-    Serial.printf("[WiFi] Sent %d ARP requests, waiting for responses...\n", pingCount);
-    delay(500);  // ARP 응답 대기
-    esp_task_wdt_reset();
+    esp_wifi_set_promiscuous(false);
+    Serial.printf("[WiFi] Promiscuous mode OFF, captured %d unique MACs\n", promiscCollectedMacs.size());
 
-    // Phase 2: ARP 캐시에서 MAC 수집
-    std::vector<String> macs;
-    for (int i = 1; i <= 254; i++) {
-        IPAddress target(baseBytes[0], baseBytes[1], baseBytes[2], i);
-        if ((uint32_t)target == myIP) continue;
-
-        ip4_addr_t addr;
-        addr.addr = (uint32_t)target;
-
-        struct eth_addr *eth_ret = NULL;
-        const ip4_addr_t *ip_ret = NULL;
-
-        int8_t idx = etharp_find_addr(netif, &addr, &eth_ret, &ip_ret);
-        if (idx >= 0 && eth_ret != NULL) {
-            char macStr[18];
-            sprintf(macStr, "%02X:%02X:%02X:%02X:%02X:%02X",
-                    eth_ret->addr[0], eth_ret->addr[1], eth_ret->addr[2],
-                    eth_ret->addr[3], eth_ret->addr[4], eth_ret->addr[5]);
-            macs.push_back(String(macStr));
-        }
+    // BLE 광고 재시작 (BLE 연결 중이 아닐 때만)
+    if (currentConnId == 0xFFFF && !isRegistering) {
+        NimBLEDevice::startAdvertising();
+        Serial.println("[WiFi] BLE advertising resumed");
     }
 
-    Serial.printf("[WiFi] Found %d devices via ARP scan\n", macs.size());
+    // BLE 연결로 스캔이 중단된 경우 불완전한 데이터 전송 스킵
+    if (scanAborted) {
+        promiscCollectedMacs.clear();
+        return;
+    }
+
+    // Phase 2: set → vector 변환
+    std::vector<String> macs(promiscCollectedMacs.begin(), promiscCollectedMacs.end());
+    promiscCollectedMacs.clear();  // 메모리 해제
 
     if (macs.size() == 0) return;
 
     // Phase 3: 서버에 전송
-    WiFiClientSecure *client = new WiFiClientSecure;
-    if (!client) return;
-    client->setInsecure();
-
     HTTPClient https;
-    https.begin(*client, String(SERVER_URL) + "/api/wifi/report");
+    https.begin(getHttpClient(), String(SERVER_URL) + "/api/wifi/report");
     https.setTimeout(15000);
     https.addHeader("Content-Type", "application/json");
     https.addHeader("x-api-key", SCANNER_API_KEY);
 
-    DynamicJsonDocument doc(macs.size() * 30 + 256);
+    DynamicJsonDocument doc(macs.size() * 50 + 512);
     doc["scanner_id"] = "esp32_s3_wifi";
     doc["timestamp"] = millis();
 
@@ -538,7 +666,6 @@ void scanLocalDevices() {
     Serial.printf("[WiFi] Report sent: %d (%d devices)\n", responseCode, macs.size());
 
     https.end();
-    delete client;
 
     Serial.printf("[WiFi] Free heap after scan: %d\n", ESP.getFreeHeap());
 }
@@ -548,17 +675,9 @@ void uploadIrk(String irk) {
 
     ensureWiFi();
     if(WiFi.status() == WL_CONNECTED) {
-        WiFiClientSecure *client = new WiFiClientSecure;
-        if (!client) {
-            Serial.println("Error: client alloc failed");
-            currentRequest->status = "failed";
-            return;
-        }
-        client->setInsecure();
-
         HTTPClient http;
         String url = String(SERVER_URL) + "/api/devices/register/complete";
-        http.begin(*client, url);
+        http.begin(getHttpClient(), url);
         http.setTimeout(10000);
         http.addHeader("Content-Type", "application/json");
 
@@ -582,8 +701,63 @@ void uploadIrk(String irk) {
             currentRequest->status = "failed";
         }
         http.end();
-        delete client;
     }
+}
+
+void pollServer() {
+    ensureWiFi();
+    if (WiFi.status() != WL_CONNECTED) return;
+
+    HTTPClient http;
+    String shortId = myMacAddress.substring(myMacAddress.length() - 4);
+    String baseUrl = String(SERVER_URL);
+    String url = baseUrl + "/api/devices/poll?deviceId=" + shortId;
+    http.begin(getHttpClient(), url);
+    http.setTimeout(10000);
+    int code = http.GET();
+
+    Serial.printf("[Poll] code=%d\n", code);
+
+    if (code == 200) {
+        String payload = http.getString();
+        DynamicJsonDocument doc(512);
+        deserializeJson(doc, payload);
+
+        if (doc["found"]) {
+            int regId = doc["regId"];
+            const char* pin = doc["pin"];
+
+            Serial.println("Registration detected! regId: " + String(regId));
+            Serial.println("Server PIN: " + String(pin));
+
+            // 서버 PIN을 BLE passkey로 설정 (iOS에서 이 번호 입력)
+            currentPasskey = atoi(pin);
+            NimBLEDevice::setSecurityPasskey(currentPasskey);
+            Serial.printf("BLE Passkey set to: %d\n", currentPasskey);
+
+            // Start Registration Session
+            isRegistering = true;
+            registerStartTime = millis();
+
+            if (currentRequest != nullptr) delete currentRequest;
+            currentRequest = new RegistrationRequest();
+            currentRequest->regId = regId;
+            currentRequest->status = "waiting";
+
+            // Reset State
+            uploadNeeded = false;
+            pendingDisconnect = false;
+            irkCaptured = false;
+            capturedIrk = "";
+            authStartTime = 0;
+
+            // Clear Bonds
+            if (NimBLEDevice::getNumBonds() > 0) {
+                clearAllBonds();
+            }
+        }
+    }
+    http.end();
 }
 
 void setup() {
@@ -608,23 +782,40 @@ void setup() {
       Serial.println("NVS bond store cleared");
   }
 
-  // WiFi Setup (고정 IP)
+  // WiFi Setup (Static IP)
   Serial.println("Connecting to WiFi: " + String(WIFI_SSID));
   WiFi.mode(WIFI_STA);
   WiFi.config(staticIP, gateway, subnet, dns);
   WiFi.begin(WIFI_SSID, WIFI_PASS);
 
-  while (WiFi.status() != WL_CONNECTED) {
+  int wifiAttempts = 0;
+  while (WiFi.status() != WL_CONNECTED && wifiAttempts < 30) {
     delay(500);
     Serial.print(".");
+    wifiAttempts++;
+  }
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("\nWiFi connection failed! Restarting...");
+    delay(1000);
+    ESP.restart();
   }
   Serial.println("\nWiFi Connected!");
-  Serial.printf("IP: %s (static)\n", WiFi.localIP().toString().c_str());
+  Serial.printf("IP: %s\n", WiFi.localIP().toString().c_str());
+
+  // 서버에 IP 등록
+  registerIp();
 
   // Get MAC
   myMacAddress = WiFi.macAddress();
   myMacAddress.replace(":", "");
   Serial.println("MAC: " + myMacAddress);
+
+  // Promiscuous 필터용 MAC 캡처
+  ownMacUpper = WiFi.macAddress();  // "XX:XX:XX:XX:XX:XX" 형태
+  delay(500);
+  gatewayMacUpper = getMacFromArp(gateway);  // 게이트웨이 MAC (ARP 1회)
+  Serial.println("[WiFi] Own MAC: " + ownMacUpper);
+  Serial.println("[WiFi] Gateway MAC: " + gatewayMacUpper);
 
     // BLE Init (NimBLE)
     NimBLEDevice::init("HN_SETUP");
@@ -665,15 +856,13 @@ void setup() {
   hid->setPnp(0x02, 0xe502, 0xa111, 0x0210);
   hid->setHidInfo(0x00, 0x01);
 
-    NimBLECharacteristic* input = hid->getInputReport(1);
-
   hid->startServices();
 
     // Custom IRK Service (Web Bluetooth에서 접근 가능)
     NimBLEService* pIrkService = pServer->createService(IRK_SERVICE_UUID);
     pIrkCharacteristic = pIrkService->createCharacteristic(
         IRK_CHAR_UUID,
-        NIMBLE_PROPERTY::READ
+        NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY  // 읽기 + 알림 (Web Bluetooth 호환)
     );
     const char* emptyIrk = "00000000000000000000000000000000";
     pIrkCharacteristic->setValue((uint8_t*)emptyIrk, 32);
@@ -700,7 +889,14 @@ void setup() {
   Serial.printf("Register page: http://%s/register\n", WiFi.localIP().toString().c_str());
 
   // Watchdog Timer (30초 타임아웃 - loop가 30초 이상 멈추면 자동 재시작)
-  esp_task_wdt_init(30, true);
+  // ESP-IDF가 이미 TWDT를 초기화했으므로, 기존 것을 삭제 후 재설정
+  esp_task_wdt_deinit();
+  esp_task_wdt_config_t wdt_config = {
+    .timeout_ms = 30000,
+    .idle_core_mask = 0,
+    .trigger_panic = true,
+  };
+  esp_task_wdt_init(&wdt_config);
   esp_task_wdt_add(NULL);
 
   Serial.printf("Setup Complete. Free heap: %d bytes\n", ESP.getFreeHeap());
@@ -715,6 +911,10 @@ void loop() {
       irkCaptured = false;
       capturedIrk = "";
       webBtFlowStartTime = 0;
+      if (pIrkCharacteristic != NULL) {
+          const char* empty = "00000000000000000000000000000000";
+          pIrkCharacteristic->setValue((uint8_t*)empty, 32);
+      }
       ble_hs_cfg.sm_io_cap = BLE_HS_IO_DISPLAY_ONLY;
       ble_hs_cfg.sm_mitm = 1;
   }
@@ -737,6 +937,13 @@ void loop() {
   // Local HTTP Server 처리 (비블로킹)
   localServer.handleClient();
 
+  // 등록 세션 타임아웃 (120초 - 서버 PIN TTL과 동일)
+  if (isRegistering && (millis() - registerStartTime) > REGISTER_TIMEOUT) {
+      Serial.println("Registration timeout! No BLE connection received. Rebooting...");
+      delay(500);
+      ESP.restart();
+  }
+
   // WiFi ARP 스캔 (idle 상태에서만, 60초마다)
   if (!isRegistering && millis() - lastWifiScanTime > WIFI_SCAN_INTERVAL) {
       lastWifiScanTime = millis();
@@ -758,70 +965,10 @@ void loop() {
       }
   }
 
-  // 1. Poll Server
-  unsigned long pollInterval = isRegistering ? POLL_INTERVAL_ACTIVE : POLL_INTERVAL_IDLE;
-  if (!isRegistering && millis() - lastPollTime > pollInterval) {
+  // 1. Poll Server (idle 상태에서만 폴링)
+  if (!isRegistering && millis() - lastPollTime > POLL_INTERVAL_IDLE) {
       lastPollTime = millis();
-
-      ensureWiFi();
-      if (WiFi.status() != WL_CONNECTED) goto poll_end;
-
-      {
-          WiFiClientSecure *client = new WiFiClientSecure;
-          if (!client) {
-              Serial.println("Error: poll client alloc failed");
-              goto poll_end;
-          }
-          client->setInsecure();
-
-          HTTPClient http;
-          String shortId = myMacAddress.substring(myMacAddress.length() - 4);
-          http.begin(*client, String(SERVER_URL) + "/api/devices/poll?deviceId=" + shortId);
-          http.setTimeout(10000);
-          int code = http.GET();
-
-          if(code == 200) {
-              String payload = http.getString();
-              DynamicJsonDocument doc(512);
-              deserializeJson(doc, payload);
-
-              if(doc["found"]) {
-                  int regId = doc["regId"];
-                  const char* pin = doc["pin"];
-
-                  Serial.println("Registration detected! regId: " + String(regId));
-                  Serial.println("Server PIN: " + String(pin));
-
-                  // 서버 PIN을 BLE passkey로 설정 (iOS에서 이 번호 입력)
-                  currentPasskey = atoi(pin);
-                  NimBLEDevice::setSecurityPasskey(currentPasskey);
-                  Serial.printf("BLE Passkey set to: %d\n", currentPasskey);
-
-                  // Start Registration Session
-                  isRegistering = true;
-
-                  if(currentRequest != nullptr) delete currentRequest;
-                  currentRequest = new RegistrationRequest();
-                  currentRequest->regId = regId;
-                  currentRequest->status = "waiting";
-
-                  // Reset State
-                  uploadNeeded = false;
-                  pendingDisconnect = false;
-                  irkCaptured = false;
-                  capturedIrk = "";
-                  authStartTime = 0;
-
-                  // Clear Bonds
-                  if (NimBLEDevice::getNumBonds() > 0) {
-                    clearAllBonds();
-                  }
-              }
-          }
-          http.end();
-          delete client;
-      }
-      poll_end:;
+      pollServer();
   }
 
   // 2. Handle IRK Upload (iOS 플로우 - ESP32가 서버에 직접 업로드)
@@ -836,14 +983,15 @@ void loop() {
       }
   }
 
-  // 2.5. Web Bluetooth IRK Retry
+  // 2.5. Web Bluetooth IRK Retry (1초 간격)
   if (isWebBtFlow && webBtAuthTime > 0 && !irkCaptured) {
-      if (millis() - webBtAuthTime > 500) {
+      unsigned long elapsed = millis() - webBtAuthTime;
+      if (elapsed > 500 && elapsed % 1000 < 50) {
           Serial.println("Web BT: Retrying IRK capture...");
           if (tryCaptureIrkFromBondStore()) {
               Serial.println("Web BT: IRK captured and written to characteristic!");
               webBtAuthTime = 0;
-          } else if (millis() - webBtAuthTime > 10000) {
+          } else if (elapsed > 10000) {
               Serial.println("Web BT: IRK capture timeout");
               webBtAuthTime = 0;
           }
@@ -879,7 +1027,7 @@ void loop() {
   }
 
   // 5. Cleanup - 등록 완료 후 ESP32 재시작으로 완전 초기화
-  if (pendingDisconnect && millis() > disconnectTargetTime) {
+  if (pendingDisconnect && (millis() - disconnectTargetTime) < 0x80000000UL) {
       pendingDisconnect = false;
       Serial.println("Session Complete. Rebooting...");
 

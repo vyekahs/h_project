@@ -1,7 +1,8 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import { processWifiReport } from '$lib/server/ble';
-import { query } from '$lib/server/db';
+import { db } from '$lib/server/db/index';
+import { sql } from 'drizzle-orm';
 
 const SCANNER_API_KEY = process.env.SCANNER_API_KEY || 'hproject_scanner_secret_2026';
 
@@ -25,12 +26,12 @@ export const POST: RequestHandler = async ({ request }) => {
 
         // Scanner heartbeat
         try {
-            await query(`
+            await db.execute(sql`
                 INSERT INTO scanners (id, last_seen_at, status)
-                VALUES ($1, NOW(), 'active')
+                VALUES (${actualScannerId}, NOW(), 'active')
                 ON CONFLICT (id) DO UPDATE
                 SET last_seen_at = NOW(), status = 'active'
-            `, [actualScannerId]);
+            `);
         } catch (e) {
             console.error('Failed to update scanner heartbeat', e);
         }

@@ -1,5 +1,6 @@
 import { json } from '@sveltejs/kit';
-import { query } from '$lib/server/db';
+import { db } from '$lib/server/db/index';
+import { sql } from 'drizzle-orm';
 import bcrypt from 'bcryptjs';
 
 // POST /api/user/verify
@@ -16,12 +17,12 @@ export async function POST({ request }) {
             return json({ error: '비밀번호는 72자를 초과할 수 없습니다.' }, { status: 400 });
         }
 
-        const userRes = await query('SELECT id, password FROM attendees WHERE name = $1', [username]);
+        const userRes = await db.execute(sql`SELECT id, password FROM attendees WHERE name = ${username}`);
 
         // Logic split by Mode
         if (mode === 'signup') {
             // Signup Mode: Username MUST NOT exist
-            if (userRes.rows.length > 0) {
+            if (userRes.length > 0) {
                 return json({ error: '이미 존재하는 이름입니다.' }, { status: 409 });
             }
             if (password !== confirmPassword) {
@@ -32,11 +33,11 @@ export async function POST({ request }) {
 
         } else {
             // Login Mode: Username MUST exist & Password MUST match
-            if (userRes.rows.length === 0) {
+            if (userRes.length === 0) {
                 return json({ error: '존재하지 않는 사용자입니다.' }, { status: 404 });
             }
 
-            const user = userRes.rows[0];
+            const user = userRes[0] as any;
             if (!user.password) {
                 return json({ error: '비밀번호가 설정되지 않은 계정입니다.' }, { status: 401 });
             }
@@ -45,7 +46,7 @@ export async function POST({ request }) {
             if (!match) {
                 return json({ error: '비밀번호가 틀렸습니다.' }, { status: 401 });
             }
-            
+
             // OK to proceed
             return json({ success: true });
         }

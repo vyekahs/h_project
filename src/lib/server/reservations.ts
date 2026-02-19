@@ -1,65 +1,55 @@
-import { query } from './db';
+import { db } from '$lib/server/db/index';
+import { sql, eq } from 'drizzle-orm';
+import { attendees } from '$lib/server/db/schema/core';
 
-/**
- * Promotes the next person in the waitlist for a given session.
- */
 export async function promoteWaitlist(sessionId: number) {
-    await query('BEGIN');
     try {
-        // 1. Get session info and current participant count
-        const sessionInfo = await query(`
-            SELECT gs.id, gs.status, gs.max_players, COUNT(sp.id) as current_players
-            FROM game_sessions gs
-            LEFT JOIN session_participants sp ON gs.id = sp.session_id
-            WHERE gs.id = $1
-            GROUP BY gs.id, gs.status, gs.max_players
-        `, [sessionId]);
+        await db.transaction(async (tx) => {
+            const sessionInfo = await tx.execute(sql`
+                SELECT gs.id, gs.status, gs.max_players, COUNT(sp.id) as current_players
+                FROM game_sessions gs
+                LEFT JOIN session_participants sp ON gs.id = sp.session_id
+                WHERE gs.id = ${sessionId}
+                GROUP BY gs.id, gs.status, gs.max_players
+            `);
 
-        if (sessionInfo.rows.length === 0) {
-            await query('ROLLBACK');
-            return;
-        }
+            if (sessionInfo.length === 0) {
+                return;
+            }
 
-        const { status, max_players, current_players } = sessionInfo.rows[0];
+            const { status, max_players, current_players } = sessionInfo[0] as any;
 
-        // 2. If there's room, find the next waitlisted person
-        if (current_players < max_players) {
-            const nextInLine = await query(`
-                SELECT id, attendee_id FROM reservations
-                WHERE session_id = $1 AND status = 'waitlisted'
-                ORDER BY created_at ASC
-                LIMIT 1
-            `, [sessionId]);
+            if (current_players < max_players) {
+                const nextInLine = await tx.execute(sql`
+                    SELECT id, attendee_id FROM reservations
+                    WHERE session_id = ${sessionId} AND status = 'waitlisted'
+                    ORDER BY created_at ASC
+                    LIMIT 1
+                `);
 
-            if (nextInLine.rows.length > 0) {
-                const { id: reservationId, attendee_id: attendeeId } = nextInLine.rows[0];
+                if (nextInLine.length > 0) {
+                    const { id: reservationId, attendee_id: attendeeId } = nextInLine[0] as any;
 
-                if (status === 'scheduled') {
-                    // For scheduled games, add them as participants directly
-                    await query('INSERT INTO session_participants (session_id, attendee_id) VALUES ($1, $2)', [sessionId, attendeeId]);
-                    await query('DELETE FROM reservations WHERE id = $1', [reservationId]);
-                } else if (status === 'playing') {
-                    // For playing games, confirm their reservation for the next round
-                    await query("UPDATE reservations SET status = 'confirmed' WHERE id = $1", [reservationId]);
+                    if (status === 'scheduled') {
+                        await tx.execute(sql`INSERT INTO session_participants (session_id, attendee_id) VALUES (${sessionId}, ${attendeeId})`);
+                        await tx.execute(sql`DELETE FROM reservations WHERE id = ${reservationId}`);
+                    } else if (status === 'playing') {
+                        await tx.execute(sql`UPDATE reservations SET status = 'confirmed' WHERE id = ${reservationId}`);
+                    }
                 }
             }
-        }
-        await query('COMMIT');
+        });
     } catch (e) {
-        await query('ROLLBACK');
         console.error('Failed to promote waitlist:', e);
     }
 }
 
-/**
- * Applies a penalty to an attendee.
- */
 export async function applyPenalty(attendeeId: number, points: number = 1) {
-    await query(`
-        UPDATE attendees 
-        SET penalty_points = penalty_points + $1, 
+    await db.execute(sql`
+        UPDATE attendees
+        SET penalty_points = penalty_points + ${points},
             last_penalty_at = NOW(),
             updated_at = NOW()
-        WHERE id = $2
-    `, [points, attendeeId]);
+        WHERE id = ${attendeeId}
+    `);
 }

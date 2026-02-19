@@ -1,11 +1,14 @@
-import { query } from '$lib/server/db';
+import { db } from '$lib/server/db/index';
+import { sql, eq, and } from 'drizzle-orm';
+import { gameParties, gamePartyMembers } from '$lib/server/db/schema/parties';
 
 export const PartyService = {
     async getUserParties(userId: number) {
         try {
-            const result = await query(`
+            const result = await db.execute(sql`
                 SELECT gp.id, gp.name, gp.game_id, gp.game_name, gp.duration, gp.guest_count,
                     g.image_url, g.name as resolved_game_name,
+                    (gp.owner_id = ${userId}) as is_owner,
                     COALESCE(json_agg(json_build_object(
                         'id', a.id, 'name', a.name
                     ) ORDER BY a.name) FILTER (WHERE a.id IS NOT NULL), '[]') as members
@@ -13,13 +16,14 @@ export const PartyService = {
                 LEFT JOIN game_party_members gpm ON gp.id = gpm.party_id
                 LEFT JOIN attendees a ON gpm.attendee_id = a.id
                 LEFT JOIN games g ON gp.game_id = g.id
-                WHERE gp.owner_id = $1
+                WHERE gp.owner_id = ${userId}
+                   OR gp.id IN (SELECT party_id FROM game_party_members WHERE attendee_id = ${userId})
                 GROUP BY gp.id, gp.name, gp.game_id, gp.game_name, gp.duration, gp.guest_count, g.image_url, g.name
                 ORDER BY gp.updated_at DESC
-            `, [userId]);
-            return result.rows;
+            `);
+            return result;
         } catch (e: any) {
-            if (e.code === '42P01') return []; // table does not exist
+            if (e.code === '42P01') return [];
             throw e;
         }
     },
@@ -32,27 +36,26 @@ export const PartyService = {
         guestCount: number;
         memberIds: number[];
     }) {
-        await query('BEGIN');
-        try {
-            const result = await query(
-                'INSERT INTO game_parties (name, owner_id, game_id, game_name, duration, guest_count) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id',
-                [data.name, userId, data.gameId, data.gameName, data.duration, data.guestCount]
-            );
-            const partyId = result.rows[0].id;
+        return await db.transaction(async (tx) => {
+            const result = await tx.insert(gameParties)
+                .values({
+                    name: data.name,
+                    ownerId: userId,
+                    gameId: data.gameId,
+                    gameName: data.gameName,
+                    duration: data.duration,
+                    guestCount: data.guestCount,
+                })
+                .returning({ id: gameParties.id });
+            const partyId = result[0].id;
 
             const allMemberIds = [...new Set([userId, ...data.memberIds])];
             for (const memberId of allMemberIds) {
-                await query(
-                    'INSERT INTO game_party_members (party_id, attendee_id) VALUES ($1, $2)',
-                    [partyId, memberId]
-                );
+                await tx.insert(gamePartyMembers)
+                    .values({ partyId, attendeeId: memberId });
             }
-            await query('COMMIT');
             return partyId;
-        } catch (e) {
-            await query('ROLLBACK');
-            throw e;
-        }
+        });
     },
 
     async updateParty(userId: number, partyId: number, data: {
@@ -63,41 +66,50 @@ export const PartyService = {
         guestCount: number;
         memberIds: number[];
     }) {
-        const check = await query('SELECT 1 FROM game_parties WHERE id = $1 AND owner_id = $2', [partyId, userId]);
-        if (check.rows.length === 0) throw new Error('Not authorized');
+        const check = await db
+            .select()
+            .from(gameParties)
+            .where(and(eq(gameParties.id, partyId), eq(gameParties.ownerId, userId)));
+        if (check.length === 0) throw new Error('Not authorized');
 
-        await query('BEGIN');
-        try {
-            await query(
-                'UPDATE game_parties SET name = $1, game_id = $2, game_name = $3, duration = $4, guest_count = $5, updated_at = NOW() WHERE id = $6',
-                [data.name, data.gameId, data.gameName, data.duration, data.guestCount, partyId]
-            );
-            await query('DELETE FROM game_party_members WHERE party_id = $1', [partyId]);
+        await db.transaction(async (tx) => {
+            await tx.update(gameParties)
+                .set({
+                    name: data.name,
+                    gameId: data.gameId,
+                    gameName: data.gameName,
+                    duration: data.duration,
+                    guestCount: data.guestCount,
+                    updatedAt: sql`NOW()`,
+                })
+                .where(eq(gameParties.id, partyId));
+
+            await tx.delete(gamePartyMembers)
+                .where(eq(gamePartyMembers.partyId, partyId));
 
             const allMemberIds = [...new Set([userId, ...data.memberIds])];
             for (const memberId of allMemberIds) {
-                await query(
-                    'INSERT INTO game_party_members (party_id, attendee_id) VALUES ($1, $2)',
-                    [partyId, memberId]
-                );
+                await tx.insert(gamePartyMembers)
+                    .values({ partyId, attendeeId: memberId });
             }
-            await query('COMMIT');
-        } catch (e) {
-            await query('ROLLBACK');
-            throw e;
-        }
+        });
     },
 
     async deleteParty(userId: number, partyId: number) {
-        const result = await query('DELETE FROM game_parties WHERE id = $1 AND owner_id = $2', [partyId, userId]);
-        return (result.rowCount ?? 0) > 0;
+        const result = await db.delete(gameParties)
+            .where(and(eq(gameParties.id, partyId), eq(gameParties.ownerId, userId)))
+            .returning();
+        return result.length > 0;
     },
 
     async isPartyMember(partyId: number, attendeeId: number): Promise<boolean> {
-        const result = await query(
-            'SELECT 1 FROM game_party_members WHERE party_id = $1 AND attendee_id = $2',
-            [partyId, attendeeId]
-        );
-        return result.rows.length > 0;
+        const result = await db
+            .select()
+            .from(gamePartyMembers)
+            .where(and(
+                eq(gamePartyMembers.partyId, partyId),
+                eq(gamePartyMembers.attendeeId, attendeeId)
+            ));
+        return result.length > 0;
     }
 };

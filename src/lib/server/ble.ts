@@ -1,5 +1,6 @@
 
-import { query } from '$lib/server/db';
+import { db } from '$lib/server/db/index';
+import { sql } from 'drizzle-orm';
 import crypto from 'crypto';
 import { emitLiveEvent } from '$lib/server/liveEvents';
 
@@ -38,14 +39,41 @@ interface AttendeeInfo {
 const attendeeCache = new Map<number, AttendeeInfo>();
 let attendeeCacheLoaded = false;
 
-// Last Seen Map for Auto-Checkout (AttendeeID -> timestamp ms)
-const lastSeenMap = new Map<number, number>();
+// Last Seen Maps for Auto-Checkout (AttendeeID -> timestamp ms)
+// BLE/WiFi 분리: 둘 중 하나라도 최근 감지되면 체크아웃 방지 (OR 조건)
+const lastSeenBleMap = new Map<number, number>();
+const lastSeenWifiMap = new Map<number, number>();
 
 // System Settings Cache (영구 캐시, 변경 시 updateSettingsCache 호출)
 let settingsCache: { isOpen: boolean; openingTime: string } | null = null;
 
 // Constants
-const CHECKOUT_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes (RPA 변경으로 간헐적 매칭 실패 대비)
+const CHECKOUT_TIMEOUT_MS = 20 * 60 * 1000; // 20 minutes
+
+/** 한국 시간 타임스탬프 (HH:mm:ss) */
+function kstTime(): string {
+    return new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(11, 19);
+}
+
+// Auto check-in/checkout log ring buffer (최근 100건)
+interface AutoLog {
+    time: string;
+    type: 'checkin' | 'checkout' | 'auto-open';
+    source: 'BLE' | 'WiFi';
+    userName: string;
+    attendeeId: number;
+}
+const autoLogs: AutoLog[] = [];
+const MAX_AUTO_LOGS = 100;
+
+function pushAutoLog(type: AutoLog['type'], source: AutoLog['source'], userName: string, attendeeId: number) {
+    autoLogs.unshift({ time: kstTime(), type, source, userName, attendeeId });
+    if (autoLogs.length > MAX_AUTO_LOGS) autoLogs.length = MAX_AUTO_LOGS;
+}
+
+export function getAutoCheckinLogs(): AutoLog[] {
+    return autoLogs;
+}
 
 /** 설정 캐시 업데이트 (외부에서 is_open 변경 시 호출) */
 export function updateSettingsCache(isOpen: boolean, openingTime?: string) {
@@ -64,6 +92,8 @@ export function markAllLeft() {
             attendee.status = 'left';
         }
     }
+    lastSeenBleMap.clear();
+    lastSeenWifiMap.clear();
 }
 
 /** 기기 등록 시 IRK 캐시에 즉시 추가 (중복 IRK는 업데이트) */
@@ -83,9 +113,9 @@ export async function addToIrkCache(attendeeId: number, irk: string, name: strin
     // attendeeCache에도 추가 (없으면 DB에서 조회)
     if (attendeeCacheLoaded && !attendeeCache.has(attendeeId)) {
         try {
-            const res = await query('SELECT id, name, status, is_admin FROM attendees WHERE id = $1', [attendeeId]);
-            if (res.rows.length > 0) {
-                const row = res.rows[0];
+            const res = await db.execute(sql`SELECT id, name, status, is_admin FROM attendees WHERE id = ${attendeeId}`);
+            if (res.length > 0) {
+                const row = res[0] as any;
                 attendeeCache.set(attendeeId, { id: row.id, name: row.name, status: row.status, isAdmin: row.is_admin });
             }
         } catch (e) {
@@ -126,13 +156,7 @@ export async function addWifiMacToCache(attendeeId: number, wifiMac: string) {
 
 /**
  * Resolve RPA using IRK
- * RPA (Random Private Address) format:
- *   [24-bit hash] [24-bit prand]
- *   hash = AES-128(IRK, prand) truncated to 24 bits
- * 
- * Note: Input MAC is usually "AA:BB:CC:DD:EE:FF"
  */
-// Comprehensive RPA Resolution (Supports iPhone, Android, and Variants)
 export const resolveRPA = (mac: string, irkHex: string): boolean => {
     try {
         const macClean = mac.replace(/:/g, '');
@@ -141,28 +165,18 @@ export const resolveRPA = (mac: string, irkHex: string): boolean => {
 
         if (macBytes.length !== 6) return false;
 
-        // Candidate Partitioning (Prand vs Hash)
         const candidates = [
-            { prand: macBytes.subarray(0, 3), hash: macBytes.subarray(3, 6) }, // Case 1: [P][H] (iPhone Verified)
-            { prand: macBytes.subarray(3, 6), hash: macBytes.subarray(0, 3) }  // Case 2: [H][P] (Standard?)
+            { prand: macBytes.subarray(0, 3), hash: macBytes.subarray(3, 6) },
+            { prand: macBytes.subarray(3, 6), hash: macBytes.subarray(0, 3) }
         ];
 
-        // Keys
         const keyRev = Buffer.from(irk).reverse();
         const keyStd = irk;
 
         for (const { prand, hash } of candidates) {
-            // Strategies to try
-            // 1. iPhone Verified: KeyRev, Tail Padding, Normal Order
             if (verifyMetric(hash, prand, keyRev, 'Tail', 'Normal')) return true;
-
-            // 2. User/Standard: KeyRev, LittleEndian(Head?, RevOrder?) -> User code used Head
             if (verifyMetric(hash, prand, keyRev, 'Head', 'Reverse')) return true;
-
-            // 3. User/Standard: KeyStd, BigEndian(Tail), RevOrder
             if (verifyMetric(hash, prand, keyStd, 'Tail', 'Reverse')) return true;
-
-            // 4. Android Attempt: KeyStd, Tail Padding, Normal Order
             if (verifyMetric(hash, prand, keyStd, 'Tail', 'Normal')) return true;
         }
 
@@ -174,7 +188,7 @@ export const resolveRPA = (mac: string, irkHex: string): boolean => {
 
 function verifyMetric(hash: Buffer, prand: Buffer, key: Buffer, padding: 'Head'|'Tail', order: 'Normal'|'Reverse'): boolean {
     const plaintext = Buffer.alloc(16);
-    
+
     let p0, p1, p2;
     if (order === 'Normal') {
         p0 = prand[0]; p1 = prand[1]; p2 = prand[2];
@@ -190,38 +204,19 @@ function verifyMetric(hash: Buffer, prand: Buffer, key: Buffer, padding: 'Head'|
 
     const cipher = crypto.createCipheriv('aes-128-ecb', key, null);
     cipher.setAutoPadding(false);
-    const encrypted = cipher.update(plaintext); // ECB update is usually sufficient for single block
+    const encrypted = cipher.update(plaintext);
 
-    // Compare
-    // If Padding check was Head, check Head? If Tail, check Tail?
-    // User's code compared Head for Reverse(HeadPad) and Tail for Std(TailPad).
-    // Let's assume Hash match location aligns with Padding location for now?
-    // iPhone Verified: Pad Tail, Compare Tail.
-    
     if (padding === 'Tail') {
-        // Compare Tail (13, 14, 15)
-        // User's Reverse Order Logic expects Hash to be Normal Order?
-        // User code: encrypted[13] == hash[0].
-        // If 'Reverse' order meant swapping inputs, usually hash check matches that swap?
-        // Let's stick to: Hash is always [0, 1, 2] of the Hash Part.
         if (order === 'Normal') {
              return encrypted[13] === hash[0] && encrypted[14] === hash[1] && encrypted[15] === hash[2];
         } else {
-             // User's BigEndian verify checked: enc[15]==h[2] (which is same index-wise if h is [0,1,2])
-             // verify(..., false): enc[13]==h[0]. 
              return encrypted[13] === hash[0] && encrypted[14] === hash[1] && encrypted[15] === hash[2];
         }
     } else {
-        // Head
         if (order === 'Normal') {
             return encrypted[0] === hash[0] && encrypted[1] === hash[1] && encrypted[2] === hash[2];
         } else {
-            // User's Reverse(Little) verify: enc[0]==h[2]? 
-            // return encrypted[0] === hash[2] && encrypted[1] === hash[1] && encrypted[2] === hash[0];
-            // My "Verified" iPhone code used Normal comparison.
-            // Let's try Standard Normal comparison first.
             if (encrypted[0] === hash[0] && encrypted[1] === hash[1] && encrypted[2] === hash[2]) return true;
-            // Also try Reverse compare just in case
             if (encrypted[0] === hash[2] && encrypted[1] === hash[1] && encrypted[2] === hash[0]) return true;
         }
     }
@@ -233,23 +228,24 @@ function verifyMetric(hash: Buffer, prand: Buffer, key: Buffer, padding: 'Head'|
 async function ensureCachesLoaded(source: string = 'BLE') {
     if (!settingsCache) {
         try {
-            const settingsRes = await query("SELECT key, value FROM system_settings WHERE key IN ('is_open', 'opening_time')");
+            const settingsRes = await db.execute(sql`SELECT key, value FROM system_settings WHERE key IN ('is_open', 'opening_time')`);
             let isOpen = false;
             let openingTime = '09:00';
-            for (const row of settingsRes.rows) {
-                if (row.key === 'is_open') isOpen = row.value === 'true';
-                if (row.key === 'opening_time') openingTime = row.value;
+            for (const row of settingsRes) {
+                const r = row as any;
+                if (r.key === 'is_open') isOpen = r.value === 'true';
+                if (r.key === 'opening_time') openingTime = r.value;
             }
             settingsCache = { isOpen, openingTime };
-            console.log(`[${source}] Settings cache loaded: isOpen=${isOpen}, openingTime=${openingTime}`);
+            console.log(`[${kstTime()}][${source}] Settings cache loaded: isOpen=${isOpen}, openingTime=${openingTime}`);
         } catch (e) {
             console.error('Failed to fetch settings', e);
             settingsCache = { isOpen: false, openingTime: '09:00' };
         }
     }
     if (!irkCache) {
-        const res = await query('SELECT irk, attendee_id, name, wifi_mac FROM user_devices');
-        irkCache = res.rows.map((row: any) => ({
+        const res = await db.execute(sql`SELECT irk, attendee_id, name, wifi_mac FROM user_devices`);
+        irkCache = res.map((row: any) => ({
             irk: row.irk,
             attendeeId: row.attendee_id,
             name: row.name,
@@ -260,24 +256,25 @@ async function ensureCachesLoaded(source: string = 'BLE') {
                 wifiMacCache.set(dev.wifiMac.toUpperCase(), dev.attendeeId);
             }
         }
-        console.log(`[${source}] IRK cache loaded: ${irkCache.length} devices (${wifiMacCache.size} with WiFi MAC)`);
+        console.log(`[${kstTime()}][${source}] IRK cache loaded: ${irkCache.length} devices (${wifiMacCache.size} with WiFi MAC)`);
     }
     if (!attendeeCacheLoaded) {
-        const res = await query(`
+        const res = await db.execute(sql`
             SELECT a.id, a.name, a.status, a.is_admin
             FROM attendees a
             JOIN user_devices ud ON a.id = ud.attendee_id
         `);
-        for (const row of res.rows) {
-            attendeeCache.set(row.id, {
-                id: row.id,
-                name: row.name,
-                status: row.status,
-                isAdmin: row.is_admin
+        for (const row of res) {
+            const r = row as any;
+            attendeeCache.set(r.id, {
+                id: r.id,
+                name: r.name,
+                status: r.status,
+                isAdmin: r.is_admin
             });
         }
         attendeeCacheLoaded = true;
-        console.log(`[${source}] Attendee cache loaded: ${attendeeCache.size} users`);
+        console.log(`[${kstTime()}][${source}] Attendee cache loaded: ${attendeeCache.size} users`);
     }
 }
 
@@ -298,16 +295,15 @@ export async function processScanResults(scannerId: string, timestamp: number, s
     const beforeOpeningWindow = currentMinutesTotal < (openMinutesTotal - 30);
 
     if (!settingsCache!.isOpen && beforeOpeningWindow) {
-        console.log(`[BLE] Gym closed & before opening window, skipping (${scans.length} devices)`);
+        console.log(`[${kstTime()}][BLE] Gym closed & before opening window, skipping (${scans.length} devices)`);
         return;
     }
     const allDevices = irkCache!;
 
-    console.log(`[BLE] Processing ${scans.length} MACs against ${allDevices.length} registered devices`);
-    // Log names if present
+    console.log(`[${kstTime()}][BLE] Processing ${scans.length} MACs against ${allDevices.length} registered devices`);
     const namedDevices = scans.filter(s => s.name && s.name.length > 0);
     if (namedDevices.length > 0) {
-        console.log(`[BLE] Named Devices: ${namedDevices.map(d => `${d.name} (${d.mac})`).join(', ')}`);
+        console.log(`[${kstTime()}][BLE] Named Devices: ${namedDevices.map(d => `${d.name} (${d.mac})`).join(', ')}`);
     }
 
     const detectedAttendeeIds = new Set<number>();
@@ -316,7 +312,6 @@ export async function processScanResults(scannerId: string, timestamp: number, s
     for (const scan of scans) {
         let attendeeId: number | undefined;
 
-        // Check Cache
         if (rpaCache.has(scan.mac)) {
             const cached = rpaCache.get(scan.mac)!;
             if (Date.now() < cached.expiresAt) {
@@ -326,17 +321,15 @@ export async function processScanResults(scannerId: string, timestamp: number, s
             }
         }
 
-        // If not in cache, try to resolve
         if (!attendeeId) {
             for (const device of allDevices) {
                 if (resolveRPA(scan.mac, device.irk)) {
                     attendeeId = device.attendeeId;
-                    // Cache it
                     rpaCache.set(scan.mac, {
                         attendeeId,
                         expiresAt: Date.now() + CACHE_TTL_MS
                     });
-                    break; // Matched
+                    break;
                 }
             }
         }
@@ -344,37 +337,41 @@ export async function processScanResults(scannerId: string, timestamp: number, s
         if (attendeeId) {
             const isFirst = !detectedAttendeeIds.has(attendeeId);
             detectedAttendeeIds.add(attendeeId);
-            // Update last seen (메모리만, DB 불필요)
-            lastSeenMap.set(attendeeId, Date.now());
+            lastSeenBleMap.set(attendeeId, Date.now());
             if (isFirst) {
-                console.log(`[BLE] ✅ Matched: ${scan.mac} (${scan.rssi}dBm) → User ${attendeeId}`);
+                console.log(`[${kstTime()}][BLE] ✅ Matched: ${scan.mac} (${scan.rssi}dBm) → User ${attendeeId}`);
             }
         }
     }
 
-    // Diagnostic: Log match summary
-    console.log(`[BLE] Match Summary: ${detectedAttendeeIds.size} users matched out of ${scans.length} scanned devices`);
+    console.log(`[${kstTime()}][BLE] Match Summary: ${detectedAttendeeIds.size} users matched out of ${scans.length} scanned devices`);
     if (detectedAttendeeIds.size > 0) {
-        console.log(`[BLE] Matched Users: ${[...detectedAttendeeIds].join(', ')}`);
+        console.log(`[${kstTime()}][BLE] Matched Users: ${[...detectedAttendeeIds].join(', ')}`);
     }
 
-    // Diagnostic: Check missing users only on last batch (전체 사이클 기준으로 판단)
     if (isLastBatch) {
-        const recentThreshold = Date.now() - 2 * 60 * 1000; // 2분 이내
+        const recentThreshold = Date.now() - 2 * 60 * 1000;
         const missingUsers = [...attendeeCache.values()].filter(a => {
             if (a.status !== 'present') return false;
-            const lastSeen = lastSeenMap.get(a.id);
-            return !lastSeen || lastSeen < recentThreshold;
+            const bleSeen = lastSeenBleMap.get(a.id) ?? 0;
+            const wifiSeen = lastSeenWifiMap.get(a.id) ?? 0;
+            const lastSeen = Math.max(bleSeen, wifiSeen);
+            return lastSeen === 0 || lastSeen < recentThreshold;
         });
         if (missingUsers.length > 0) {
-            console.log(`[BLE] ⚠️ Present users NOT detected recently: ${missingUsers.map(u => `${u.name}(${u.id})`).join(', ')}`);
+            const details = missingUsers.map(u => {
+                const ble = lastSeenBleMap.get(u.id);
+                const wifi = lastSeenWifiMap.get(u.id);
+                const bleAgo = ble ? `${Math.round((Date.now() - ble) / 60000)}m` : '-';
+                const wifiAgo = wifi ? `${Math.round((Date.now() - wifi) / 60000)}m` : '-';
+                return `${u.name}(${u.id}, BLE:${bleAgo}, WiFi:${wifiAgo})`;
+            }).join(', ');
+            console.log(`[${kstTime()}][BLE] ⚠️ Present users NOT detected recently: ${details}`);
         }
     }
 
     // 3. Auto Check-in Logic & Auto-Open Logic
-
-    // Check time
-    const now = new Date(); // UTC
+    const now = new Date();
     const kstNow = new Date(now.getTime() + 9 * 60 * 60 * 1000);
     const currentHour = kstNow.getUTCHours();
     const currentMinute = kstNow.getUTCMinutes();
@@ -388,23 +385,35 @@ export async function processScanResults(scannerId: string, timestamp: number, s
 
         // Auto-Open Logic
         if (!settingsCache!.isOpen && attendee.isAdmin && isPastOpeningTime) {
-            console.log(`[BLE] 🚨 Admin ${attendeeId} (${attendee.name}) detected! Auto-Opening Gym...`);
-            await query("INSERT INTO system_settings (key, value) VALUES ('is_open', 'true') ON CONFLICT (key) DO UPDATE SET value = 'true'");
+            console.log(`[${kstTime()}][BLE] 🚨 Admin ${attendeeId} (${attendee.name}) detected! Auto-Opening Gym...`);
+            await db.execute(sql`INSERT INTO system_settings (key, value) VALUES ('is_open', 'true') ON CONFLICT (key) DO UPDATE SET value = 'true'`);
             settingsCache!.isOpen = true;
+            pushAutoLog('auto-open', 'BLE', attendee.name, attendeeId);
         }
 
         if (settingsCache!.isOpen && attendee.status !== 'present') {
-            console.log(`[BLE] Auto Checking-in User ${attendeeId}`);
-            await query('BEGIN');
-            try {
-                await query('UPDATE attendees SET status = $1, arrival_time = NOW(), updated_at = NOW() WHERE id = $2', ['present', attendeeId]);
-                await query('INSERT INTO visits (attendee_id, arrival_time) VALUES ($1, NOW())', [attendeeId]);
-                await query('COMMIT');
-                // 캐시 업데이트
+            const existing = await db.execute(sql`
+                SELECT id FROM visits WHERE attendee_id = ${attendeeId} AND departure_time IS NULL AND arrival_time::date = (NOW() AT TIME ZONE 'Asia/Seoul')::date
+            `);
+            if (existing.length > 0) {
+                console.log(`[${kstTime()}][BLE] User ${attendeeId} already has open visit today, updating status only`);
+                await db.execute(sql`UPDATE attendees SET status = 'present', updated_at = NOW() WHERE id = ${attendeeId}`);
                 attendee.status = 'present';
                 emitLiveEvent('visitors');
+                continue;
+            }
+
+            console.log(`[${kstTime()}][BLE] Auto Checking-in User ${attendeeId}`);
+            try {
+                await db.transaction(async (tx) => {
+                    await tx.execute(sql`UPDATE attendees SET status = 'present', arrival_time = NOW(), updated_at = NOW() WHERE id = ${attendeeId}`);
+                    await tx.execute(sql`INSERT INTO visits (attendee_id, arrival_time) VALUES (${attendeeId}, NOW())`);
+                    await tx.execute(sql`DELETE FROM daily_visit_plans WHERE attendee_id = ${attendeeId} AND plan_date = CURRENT_DATE`);
+                });
+                attendee.status = 'present';
+                pushAutoLog('checkin', 'BLE', attendee.name, attendeeId);
+                emitLiveEvent('visitors');
             } catch (e) {
-                await query('ROLLBACK');
                 console.error(`[BLE] Failed to check-in ${attendeeId}`, e);
             }
         }
@@ -423,30 +432,33 @@ async function checkAutoCheckout() {
     const now = Date.now();
     const timeoutThreshold = now - CHECKOUT_TIMEOUT_MS;
 
-    // 캐시에서 present 유저 중 lastSeenMap 기준으로 타임아웃 체크
     const presentUsers = [...attendeeCache.values()].filter(a => a.status === 'present');
 
     for (const attendee of presentUsers) {
-        const lastSeen = lastSeenMap.get(attendee.id);
-        // lastSeen이 없으면 아직 스캐너가 감지 못한 상태 → 체크아웃하지 않음
-        if (!lastSeen) continue;
+        const bleSeen = lastSeenBleMap.get(attendee.id) ?? 0;
+        const wifiSeen = lastSeenWifiMap.get(attendee.id) ?? 0;
+        const lastSeen = Math.max(bleSeen, wifiSeen);
 
-        const minutesSinceLastSeen = Math.round((now - lastSeen) / 60000);
+        if (lastSeen === 0) continue;
 
         if (lastSeen < timeoutThreshold) {
-            console.log(`[BLE] Auto Checking-out User ${attendee.id} (${attendee.name}). Last seen: ${minutesSinceLastSeen}분 전`);
+            const bleAgo = bleSeen ? `${Math.round((now - bleSeen) / 60000)}분 전` : 'never';
+            const wifiAgo = wifiSeen ? `${Math.round((now - wifiSeen) / 60000)}분 전` : 'never';
+            const lastSource = bleSeen >= wifiSeen ? 'BLE' : 'WiFi';
+            console.log(`[${kstTime()}][AUTO] Checking-out User ${attendee.id} (${attendee.name}). BLE: ${bleAgo}, WiFi: ${wifiAgo}`);
 
-            await query('BEGIN');
             try {
-                await query('UPDATE attendees SET status = $1, updated_at = NOW() WHERE id = $2', ['left', attendee.id]);
-                await query('UPDATE visits SET departure_time = NOW() WHERE attendee_id = $1 AND departure_time IS NULL', [attendee.id]);
-                await query('COMMIT');
-                // 캐시 업데이트
+                await db.transaction(async (tx) => {
+                    await tx.execute(sql`UPDATE attendees SET status = 'left', updated_at = NOW() WHERE id = ${attendee.id}`);
+                    await tx.execute(sql`UPDATE visits SET departure_time = NOW() WHERE attendee_id = ${attendee.id} AND departure_time IS NULL`);
+                });
                 attendee.status = 'left';
+                lastSeenBleMap.delete(attendee.id);
+                lastSeenWifiMap.delete(attendee.id);
+                pushAutoLog('checkout', lastSource, attendee.name, attendee.id);
                 emitLiveEvent('visitors');
             } catch (e) {
-                await query('ROLLBACK');
-                console.error(`[BLE] Failed to check-out ${attendee.id}`, e);
+                console.error(`[AUTO] Failed to check-out ${attendee.id}`, e);
             }
         }
     }
@@ -454,12 +466,10 @@ async function checkAutoCheckout() {
 
 /**
  * Process WiFi Report (공유기에 연결된 기기 MAC 목록)
- * BLE와 동일하게 lastSeenMap 업데이트 → 체크인/체크아웃은 동일한 로직 사용
  */
 export async function processWifiReport(_scannerId: string, devices: { mac: string }[]) {
     await ensureCachesLoaded('WiFi');
 
-    // 오픈 시간 전이면 WiFi 처리도 스킵 (BLE와 동일)
     const nowCheck = new Date();
     const kstCheck = new Date(nowCheck.getTime() + 9 * 60 * 60 * 1000);
     const checkHour = kstCheck.getUTCHours();
@@ -470,31 +480,39 @@ export async function processWifiReport(_scannerId: string, devices: { mac: stri
     const beforeOpeningWindow = currentMinutesTotal < (openMinutesTotal - 30);
 
     if (!settingsCache!.isOpen && beforeOpeningWindow) {
-        console.log(`[WiFi] Gym closed & before opening window, skipping (${devices.length} devices)`);
+        console.log(`[${kstTime()}][WiFi] Gym closed & before opening window, skipping (${devices.length} devices)`);
         return;
     }
 
     if (wifiMacCache.size === 0) {
-        console.log(`[WiFi] No WiFi MACs registered, skipping`);
+        console.log(`[${kstTime()}][WiFi] No WiFi MACs registered, skipping`);
         return;
     }
 
     const detectedAttendeeIds = new Set<number>();
+    const reportedMacs = devices.map(d => d.mac.toUpperCase());
+    const registeredMacs = [...wifiMacCache.keys()];
 
+    const matchedMacs: string[] = [];
     for (const device of devices) {
         const mac = device.mac.toUpperCase();
         const attendeeId = wifiMacCache.get(mac);
         if (attendeeId) {
             detectedAttendeeIds.add(attendeeId);
-            lastSeenMap.set(attendeeId, Date.now());
+            lastSeenWifiMap.set(attendeeId, Date.now());
+            matchedMacs.push(mac);
         }
     }
 
-    console.log(`[WiFi] ${devices.length} router devices → ${detectedAttendeeIds.size} users matched (${wifiMacCache.size} registered)`);
+    console.log(`[${kstTime()}][WiFi] ${devices.length} scanned → ${detectedAttendeeIds.size} matched (${wifiMacCache.size} registered)`);
+    if (detectedAttendeeIds.size > 0) {
+        console.log(`[${kstTime()}][WiFi] Matched MACs: ${matchedMacs.join(', ')}`);
+    }
+    console.log(`[${kstTime()}][WiFi] Registered: ${registeredMacs.join(', ')}`);
+    console.log(`[${kstTime()}][WiFi] Scanned: ${reportedMacs.join(', ')}`);
 
     if (detectedAttendeeIds.size === 0) return;
 
-    // 체크인 로직 (BLE와 동일)
     const now = new Date();
     const kstNow = new Date(now.getTime() + 9 * 60 * 60 * 1000);
     const currentHour = kstNow.getUTCHours();
@@ -506,29 +524,40 @@ export async function processWifiReport(_scannerId: string, devices: { mac: stri
         const attendee = attendeeCache.get(attendeeId);
         if (!attendee) continue;
 
-        // Auto-Open (관리자 감지)
         if (!settingsCache!.isOpen && attendee.isAdmin && isPastOpeningTime) {
-            console.log(`[WiFi] Admin ${attendeeId} (${attendee.name}) detected via WiFi! Auto-Opening...`);
-            await query("INSERT INTO system_settings (key, value) VALUES ('is_open', 'true') ON CONFLICT (key) DO UPDATE SET value = 'true'");
+            console.log(`[${kstTime()}][WiFi] Admin ${attendeeId} (${attendee.name}) detected via WiFi! Auto-Opening...`);
+            await db.execute(sql`INSERT INTO system_settings (key, value) VALUES ('is_open', 'true') ON CONFLICT (key) DO UPDATE SET value = 'true'`);
             settingsCache!.isOpen = true;
+            pushAutoLog('auto-open', 'WiFi', attendee.name, attendeeId);
         }
 
         if (settingsCache!.isOpen && attendee.status !== 'present') {
-            console.log(`[WiFi] Auto Checking-in User ${attendeeId} (${attendee.name}) via WiFi`);
-            await query('BEGIN');
-            try {
-                await query('UPDATE attendees SET status = $1, arrival_time = NOW(), updated_at = NOW() WHERE id = $2', ['present', attendeeId]);
-                await query('INSERT INTO visits (attendee_id, arrival_time) VALUES ($1, NOW())', [attendeeId]);
-                await query('COMMIT');
+            const existing = await db.execute(sql`
+                SELECT id FROM visits WHERE attendee_id = ${attendeeId} AND departure_time IS NULL AND arrival_time::date = (NOW() AT TIME ZONE 'Asia/Seoul')::date
+            `);
+            if (existing.length > 0) {
+                console.log(`[${kstTime()}][WiFi] User ${attendeeId} (${attendee.name}) already has open visit today, updating status only`);
+                await db.execute(sql`UPDATE attendees SET status = 'present', updated_at = NOW() WHERE id = ${attendeeId}`);
                 attendee.status = 'present';
                 emitLiveEvent('visitors');
+                continue;
+            }
+
+            console.log(`[${kstTime()}][WiFi] Auto Checking-in User ${attendeeId} (${attendee.name}) via WiFi`);
+            try {
+                await db.transaction(async (tx) => {
+                    await tx.execute(sql`UPDATE attendees SET status = 'present', arrival_time = NOW(), updated_at = NOW() WHERE id = ${attendeeId}`);
+                    await tx.execute(sql`INSERT INTO visits (attendee_id, arrival_time) VALUES (${attendeeId}, NOW())`);
+                    await tx.execute(sql`DELETE FROM daily_visit_plans WHERE attendee_id = ${attendeeId} AND plan_date = CURRENT_DATE`);
+                });
+                attendee.status = 'present';
+                pushAutoLog('checkin', 'WiFi', attendee.name, attendeeId);
+                emitLiveEvent('visitors');
             } catch (e) {
-                await query('ROLLBACK');
                 console.error(`[WiFi] Failed to check-in ${attendeeId}`, e);
             }
         }
     }
 
-    // WiFi report 후에도 체크아웃 검사 실행
     await checkAutoCheckout();
 }

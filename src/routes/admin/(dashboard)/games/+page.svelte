@@ -169,7 +169,11 @@
                     <div class="actions">
                         {#if game.is_active}
                             <button class="btn-edit" on:click|stopPropagation={() => openEditModal(game)}>수정</button>
-                            <form method="POST" action="?/delete" use:enhance on:submit|preventDefault={(e) => confirm('정말 삭제하시겠습니까? (기록이 있는 경우 비활성화됩니다)') && (e.target as HTMLFormElement).submit()} on:click|stopPropagation>
+                            <form method="POST" action="?/delete"
+                                use:enhance={({ cancel }) => {
+                                    if (!confirm('정말 삭제하시겠습니까? (기록이 있는 경우 비활성화됩니다)')) { cancel(); return; }
+                                }}
+                                on:click|stopPropagation>
                                 <input type="hidden" name="id" value={game.id} />
                                 <button type="submit" class="btn-delete">삭제</button>
                             </form>

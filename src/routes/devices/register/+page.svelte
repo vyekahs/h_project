@@ -1,6 +1,7 @@
 
 <script lang="ts">
     import { onDestroy, onMount } from 'svelte';
+    import { browser } from '$app/environment';
 
     export let data: any;
 
@@ -14,8 +15,6 @@
 
     // --- WiFi 등록 ---
     let wifiError = '';
-    // ESP32-S3 로컬 HTTP 서버 주소 (같은 WiFi, 고정 IP)
-    const ESP32_LOCAL_URL = 'http://192.168.0.200';
 
     function getDeviceName(): string {
         const ua = navigator.userAgent;
@@ -77,6 +76,8 @@
             sessionStorage.removeItem('reg_pin');
             sessionStorage.removeItem('reg_expiresAt');
         }
+
+        document.addEventListener('visibilitychange', handleVisibilityChange);
     });
 
     // ============================================
@@ -89,6 +90,8 @@
         webBtStatus = '블루투스 기기를 검색합니다...';
         step = 'web_bt_connecting';
 
+        let device: any = null;
+
         try {
             if (!(navigator as any).bluetooth) {
                 error = 'HTTPS 환경에서만 블루투스를 사용할 수 있습니다. (https:// 주소로 접속해주세요)';
@@ -97,7 +100,7 @@
             }
 
             // 1. Web Bluetooth로 ESP32 선택 (사용자가 직접 선택 = 본인 확인)
-            const device = await (navigator as any).bluetooth.requestDevice({
+            device = await (navigator as any).bluetooth.requestDevice({
                 filters: [
                     { services: ['12345678-1234-5678-1234-56789abcdef0'] },
                     { name: 'HN_SETUP' }
@@ -105,41 +108,112 @@
                 optionalServices: ['12345678-1234-5678-1234-56789abcdef0']
             });
 
+            // GATT 연결 (ESP32 WiFi 스캔 중이면 실패할 수 있으므로 재시도)
             webBtStatus = '기기에 연결 중...';
-            const server = await device.gatt!.connect();
+            let server: any = null;
+            for (let attempt = 1; attempt <= 3; attempt++) {
+                try {
+                    server = await device.gatt!.connect();
+                    break;
+                } catch (connErr: any) {
+                    console.warn(`GATT connect attempt ${attempt}/3 failed:`, connErr.message);
+                    if (attempt === 3) throw connErr;
+                    webBtStatus = `연결 재시도 중... (${attempt}/3)`;
+                    await new Promise(r => setTimeout(r, 2000));
+                }
+            }
 
             webBtStatus = '기기등록 중...';
             const service = await server.getPrimaryService('12345678-1234-5678-1234-56789abcdef0');
             const characteristic = await service.getCharacteristic('12345678-1234-5678-1234-56789abcdef1');
 
-            // 2. 페어링 완료 대기 후 IRK 폴링
+            // 2. IRK 수신 (notification + polling 병행)
             let irk = '';
-            const maxRetries = 30; // 최대 30초
 
-            // 페어링이 완료될 때까지 잠시 대기
-            await new Promise(r => setTimeout(r, 3000));
+            // IRK를 notification + polling 병행으로 수신
+            async function waitForIrk(char: any, timeoutMs: number): Promise<string> {
+                return new Promise<string>((resolve) => {
+                    let resolved = false;
+                    let pollInterval: ReturnType<typeof setInterval>;
 
-            for (let i = 0; i < maxRetries; i++) {
-                webBtStatus = `기기등록 중... (${i + 1}/${maxRetries})`;
-                try {
-                    const value = await characteristic.readValue();
-                    const decoder = new TextDecoder();
-                    irk = decoder.decode(value);
+                    const cleanup = () => {
+                        clearInterval(pollInterval);
+                        try { char.removeEventListener('characteristicvaluechanged', onNotify); } catch {}
+                        try { char.stopNotifications(); } catch {}
+                    };
 
-                    // 빈 IRK(00000...)가 아닌 실제 값이 세팅되었는지 확인
-                    if (irk && irk.length === 32 && irk !== '00000000000000000000000000000000') {
-                        break;
-                    }
-                    irk = '';
-                } catch (readErr: any) {
-                    console.warn('IRK read retry:', readErr.message);
-                    irk = '';
+                    const done = (val: string) => {
+                        if (resolved) return;
+                        resolved = true;
+                        clearTimeout(timer);
+                        cleanup();
+                        resolve(val);
+                    };
+
+                    // 타임아웃
+                    const timer = setTimeout(() => done(''), timeoutMs);
+
+                    // Notification 리스너
+                    const onNotify = (event: any) => {
+                        const decoder = new TextDecoder();
+                        const val = decoder.decode(event.target.value);
+                        console.log('IRK notification:', val);
+                        if (val && val.length === 32 && val !== '00000000000000000000000000000000') {
+                            done(val);
+                        }
+                    };
+
+                    // Notification 구독 (비동기이지만 Promise 체인 불필요)
+                    (async () => {
+                        try {
+                            char.addEventListener('characteristicvaluechanged', onNotify);
+                            await char.startNotifications();
+                            console.log('Notifications started');
+                        } catch (e: any) {
+                            console.warn('Notification setup failed, polling only:', e.message);
+                        }
+                    })();
+
+                    // Polling 병행 (1.5초 간격, notification 실패 대비)
+                    pollInterval = setInterval(async () => {
+                        if (resolved) return;
+                        try {
+                            const value = await char.readValue();
+                            const decoder = new TextDecoder();
+                            const val = decoder.decode(value);
+                            if (val && val.length === 32 && val !== '00000000000000000000000000000000') {
+                                done(val);
+                            }
+                        } catch {}
+                    }, 1500);
+                });
+            }
+
+            webBtStatus = '기기등록 중... (IRK 대기)';
+            irk = await waitForIrk(characteristic, 15000);
+
+            // 첫 연결에서 못 받았으면 재연결 시도
+            if (!irk) {
+                webBtStatus = '재연결 중...';
+                if (device.gatt?.connected) {
+                    device.gatt.disconnect();
                 }
-                await new Promise(r => setTimeout(r, 1000));
+                await new Promise(r => setTimeout(r, 2000));
+
+                try {
+                    const server2 = await device.gatt!.connect();
+                    const service2 = await server2.getPrimaryService('12345678-1234-5678-1234-56789abcdef0');
+                    const char2 = await service2.getCharacteristic('12345678-1234-5678-1234-56789abcdef1');
+
+                    webBtStatus = '기기등록 중... (재연결 IRK 대기)';
+                    irk = await waitForIrk(char2, 15000);
+                } catch (reconErr: any) {
+                    console.warn('Reconnect failed:', reconErr.message);
+                }
             }
 
             // 연결 해제
-            if (device.gatt?.connected) {
+            if (device?.gatt?.connected) {
                 device.gatt.disconnect();
             }
 
@@ -178,6 +252,13 @@
                 error = '블루투스 연결 실패: ' + (e.message || '알 수 없는 오류');
             }
             step = 'input';
+        } finally {
+            // 성공/실패 무관하게 BLE 연결 확실히 해제
+            try {
+                if (device?.gatt?.connected) {
+                    device.gatt.disconnect();
+                }
+            } catch {}
         }
     }
 
@@ -294,6 +375,25 @@
         if (statusInterval) clearInterval(statusInterval);
     }
 
+    // iOS Safari: 블루투스 설정에서 돌아올 때 즉시 상태 확인
+    // (백그라운드에서 setInterval이 일시정지되므로 visibilitychange로 보완)
+    function handleVisibilityChange() {
+        if (document.visibilityState === 'visible' && regId && step === 'pairing') {
+            fetch(`/api/devices/register/status?regId=${regId}`)
+                .then(res => res.json())
+                .then(json => {
+                    if (json.step === 'completed') {
+                        stopIntervals();
+                        sessionStorage.removeItem('reg_regId');
+                        sessionStorage.removeItem('reg_pin');
+                        sessionStorage.removeItem('reg_expiresAt');
+                        step = 'success';
+                    }
+                })
+                .catch(() => {});
+        }
+    }
+
     // ============================================
     // WiFi MAC 등록 플로우
     // ============================================
@@ -301,7 +401,16 @@
         wifiError = '';
 
         try {
-            // 1. 서버에서 일회용 코드 발급
+            // 1. 서버에서 ESP32 IP 조회
+            const ipRes = await fetch('/api/esp32/ip?scanner_id=esp32_s3_registration');
+            const ipData = await ipRes.json();
+            if (!ipRes.ok || !ipData.ip) {
+                wifiError = 'ESP32 기기를 찾을 수 없습니다. 기기가 켜져 있는지 확인해주세요.';
+                return;
+            }
+            const esp32Url = `http://${ipData.ip}`;
+
+            // 2. 서버에서 일회용 코드 발급
             const attendeeId = data.user?.id || 1;
             const codeRes = await fetch('/api/wifi/code', {
                 method: 'POST',
@@ -315,9 +424,9 @@
                 return;
             }
 
-            // 2. ESP32 로컬 HTTP 서버의 등록 페이지로 이동
+            // 3. ESP32 로컬 HTTP 서버의 등록 페이지로 이동
             const callbackUrl = encodeURIComponent(window.location.origin);
-            window.location.href = `${ESP32_LOCAL_URL}/register?code=${codeData.code}&callback=${callbackUrl}`;
+            window.location.href = `${esp32Url}/register?code=${codeData.code}&callback=${callbackUrl}`;
 
         } catch (e: any) {
             wifiError = 'WiFi 등록 실패: ' + (e.message || '네트워크 오류');
@@ -326,6 +435,9 @@
 
     onDestroy(() => {
         stopIntervals();
+        if (browser) {
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+        }
     });
 </script>
 
@@ -333,34 +445,44 @@
     <h1>기기 등록</h1>
 
     {#if step === 'input'}
-        <div class="card">
+        <!-- 블루투스 등록 (권장) -->
+        <div class="card recommended">
+            <div class="badge">권장</div>
             {#if isAndroid && hasWebBluetooth}
-                <!-- Android: Web Bluetooth 플로우 -->
-                <p><strong>블루투스 자동 등록</strong></p>
-                <p class="desc">버튼을 누르면 블루투스 기기를 선택하고 자동으로 등록됩니다.</p>
+                <p><strong>블루투스 등록</strong></p>
+                <p class="desc">가장 정확한 출석 체크 방식입니다. 자동으로 기기를 인식합니다.</p>
                 <div class="instructions">
-                    <p>1. 아래 <strong>등록 시작</strong> 버튼을 누르세요</p>
+                    <p>1. 아래 <strong>블루투스 등록</strong> 버튼을 누르세요</p>
                     <p>2. 팝업에서 <strong>"HN_SETUP"</strong>을 선택하세요</p>
                     <p>3. 페어링 요청을 수락하면 자동 등록됩니다</p>
                 </div>
                 {#if error}
                     <p class="error">{error}</p>
                 {/if}
-                <button on:click={startWebBluetoothFlow}>등록 시작</button>
+                <button on:click={startWebBluetoothFlow}>블루투스 등록</button>
             {:else}
-                <!-- iOS / Web Bluetooth 미지원: 기존 플로우 -->
-                <p><strong>블루투스 페어링</strong></p>
-                <p class="desc">버튼을 누른 후 블루투스 설정에서 기기를 연결하세요.</p>
+                <p><strong>블루투스 등록</strong></p>
+                <p class="desc">가장 정확한 출석 체크 방식입니다. 자동으로 기기를 인식합니다.</p>
                 <div class="instructions">
-                    <p>1. 아래 <strong>등록 시작</strong> 버튼을 누르세요</p>
+                    <p>1. 아래 <strong>블루투스 등록</strong> 버튼을 누르세요</p>
                     <p>2. 블루투스 설정에서 <strong>"HN_SETUP"</strong>을 연결하세요</p>
-                    <p>3. 연결되면 화면에 표시된 PIN을 입력하세요</p>
+                    <p>3. 화면에 표시된 PIN을 입력하면 등록 완료!</p>
                 </div>
                 {#if error}
                     <p class="error">{error}</p>
                 {/if}
-                <button on:click={startRegistration}>등록 시작</button>
+                <button on:click={startRegistration}>블루투스 등록</button>
             {/if}
+        </div>
+
+        <!-- WiFi 등록 (보조) -->
+        <div class="card alt">
+            <p><strong>WiFi 등록</strong></p>
+            <p class="desc">블루투스가 안 될 경우 WiFi로도 등록할 수 있습니다.</p>
+            {#if wifiError}
+                <p class="error">{wifiError}</p>
+            {/if}
+            <button class="btn-alt" on:click={startWifiRegistration}>WiFi로 등록</button>
         </div>
 
     {:else if step === 'web_bt_connecting'}
@@ -411,38 +533,19 @@
             <button on:click={verifyPin}>확인</button>
         </div>
 
-    {:else if step === 'success'}
+    {:else if step === 'wifi_success'}
+        <div class="card success">
+            <div class="success-icon">✅</div>
+            <h2>WiFi 등록 완료!</h2>
+            <p>WiFi 기기가 성공적으로 등록되었습니다.</p>
+            <button class="btn-primary" on:click={() => window.location.href = '/'}>홈으로 가기</button>
+        </div>
+
+    {:else }
         <div class="card success">
             <div class="success-icon">✅</div>
             <h2>블루투스 등록 성공!</h2>
             <p>기기가 성공적으로 등록되었습니다.</p>
-            <p class="desc">WiFi도 등록하면 체크인 정확도가 높아집니다.</p>
-            <button on:click={() => { step = 'wifi_register'; }}>WiFi도 등록하기</button>
-            <button class="btn-secondary" on:click={() => window.location.href = '/'}>건너뛰기</button>
-        </div>
-
-    {:else if step === 'wifi_register'}
-        <div class="card active">
-            <h2>WiFi 등록</h2>
-            <p class="desc">헬스장 WiFi에 연결된 상태에서 아래 버튼을 눌러주세요.</p>
-            <div class="instructions">
-                <p>1. 헬스장 WiFi (<strong>KT_GiGA_3F81</strong>)에 연결하세요</p>
-                <p>2. 아래 <strong>WiFi 등록</strong> 버튼을 누르세요</p>
-                <p>3. 이동한 페이지에서 자동으로 등록됩니다</p>
-            </div>
-            {#if wifiError}
-                <p class="error">{wifiError}</p>
-            {/if}
-            <button on:click={startWifiRegistration}>WiFi 등록</button>
-            <button class="btn-secondary" on:click={() => window.location.href = '/'}>건너뛰기</button>
-        </div>
-
-    {:else if step === 'wifi_success'}
-        <div class="card success">
-            <div class="success-icon">✅</div>
-            <h2>등록 완료!</h2>
-            <p>블루투스 + WiFi 모두 등록되었습니다.</p>
-            <p class="desc">이제 서비스를 이용하실 수 있습니다.</p>
             <button class="btn-primary" on:click={() => window.location.href = '/'}>홈으로 가기</button>
         </div>
     {/if}
@@ -450,10 +553,13 @@
 
 <style>
     .container { max-width: 400px; margin: 0 auto; padding: 20px; text-align: center; }
-    .card { background: #fff; padding: 30px; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); }
+    .card { background: #fff; padding: 30px; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); margin-bottom: 16px; }
+    .card.recommended { border: 2px solid #007bff; position: relative; }
+    .card.alt { border: 1px solid #e0e0e0; padding: 20px; }
     .card.active { border: 2px solid #007bff; background: #f0f7ff; }
     .card.success { border: 2px solid #28a745; background: #f8fff9; }
     .card.verify { border: 2px solid #007bff; background: #f0f7ff; }
+    .badge { position: absolute; top: -12px; left: 50%; transform: translateX(-50%); background: #007bff; color: white; padding: 4px 16px; border-radius: 20px; font-size: 0.8em; font-weight: bold; }
     .success-icon { font-size: 4em; margin-bottom: 20px; }
     input { width: 80%; padding: 14px; font-size: 2em; text-align: center; margin: 15px auto; border: 2px solid #007bff; border-radius: 12px; letter-spacing: 8px; font-family: monospace; }
     button { width: 100%; padding: 12px; background: #007bff; color: white; border: none; border-radius: 8px; font-size: 1.1em; font-weight: bold; cursor: pointer; transition: background 0.2s; }
@@ -462,6 +568,8 @@
     .btn-primary:hover { background: #218838; }
     .btn-secondary { background: #6c757d; margin-top: 10px; }
     .btn-secondary:hover { background: #545b62; }
+    .btn-alt { background: #6c757d; }
+    .btn-alt:hover { background: #545b62; }
     .error { color: #dc3545; margin: 10px 0; font-weight: bold; }
     .desc { color: #666; margin-bottom: 20px; font-size: 0.9em; }
     .timer { font-size: 1.2em; color: #ff4d4f; font-weight: bold; margin-bottom: 20px; }

@@ -1,13 +1,13 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { actions } from './+page.server';
-import { query } from '$lib/server/db';
+import { db } from '$lib/server/db/index';
 import bcrypt from 'bcryptjs';
 import { fail, redirect } from '@sveltejs/kit';
 
 // Mock DB and bcrypt
-vi.mock('$lib/server/db', () => ({
-    query: vi.fn()
+vi.mock('$lib/server/db/index', () => ({
+    db: { execute: vi.fn(), transaction: vi.fn() }
 }));
 
 vi.mock('bcryptjs', () => ({
@@ -43,7 +43,7 @@ describe('Authentication', () => {
                 body: new URLSearchParams({ name: 'unknown', password: 'password' })
             });
             
-            (query as any).mockResolvedValueOnce({ rows: [] });
+            (db.execute as any).mockResolvedValueOnce({ rows: [] });
 
             const result = await actions.default({ request, cookies: { set: vi.fn() }, url: new URL('http://localhost') } as any);
             expect(result).toEqual({ status: 400, data: { error: '존재하지 않는 사용자입니다.' } });
@@ -55,7 +55,7 @@ describe('Authentication', () => {
                 body: new URLSearchParams({ name: 'user', password: 'wrong' })
             });
             
-            (query as any).mockResolvedValueOnce({ rows: [{ id: 1, name: 'user', password: 'hashed' }] });
+            (db.execute as any).mockResolvedValueOnce({ rows: [{ id: 1, name: 'user', password: 'hashed' }] });
             (bcrypt.compare as any).mockResolvedValueOnce(false);
 
             const result = await actions.default({ request, cookies: { set: vi.fn() }, url: new URL('http://localhost') } as any);
@@ -69,7 +69,7 @@ describe('Authentication', () => {
             });
             
             const mockUser = { id: 1, name: 'user', password: 'hashed' };
-            (query as any).mockResolvedValueOnce({ rows: [mockUser] });
+            (db.execute as any).mockResolvedValueOnce({ rows: [mockUser] });
             (bcrypt.compare as any).mockResolvedValueOnce(true);
             
             const cookies = { set: vi.fn() };

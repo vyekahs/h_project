@@ -1,11 +1,11 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { load } from './+page.server';
-import { query } from '$lib/server/db';
+import { db } from '$lib/server/db/index';
 
 // Mock DB
-vi.mock('$lib/server/db', () => ({
-    query: vi.fn()
+vi.mock('$lib/server/db/index', () => ({
+    db: { execute: vi.fn() }
 }));
 
 describe('Admin Stats', () => {
@@ -15,13 +15,13 @@ describe('Admin Stats', () => {
 
     it('should load all stats correctly', async () => {
         // Mock responses for all queries
-        (query as any).mockResolvedValueOnce({ rows: [{ count: 100 }] }); // totalVisits
-        (query as any).mockResolvedValueOnce({ rows: [{ count: 50 }] }); // totalMembers
-        (query as any).mockResolvedValueOnce({ rows: [{ avg_minutes: 120 }] }); // avgDuration
-        (query as any).mockResolvedValueOnce({ rows: [] }); // dailyTrend
-        (query as any).mockResolvedValueOnce({ rows: [] }); // monthlyTrend
-        (query as any).mockResolvedValueOnce({ rows: [{ hour: 14, count: 5 }] }); // peakHours
-        (query as any).mockResolvedValueOnce({ rows: [] }); // popularGames
+        (db.execute as any).mockResolvedValueOnce({ rows: [{ count: 100 }] }); // totalVisits
+        (db.execute as any).mockResolvedValueOnce({ rows: [{ count: 50 }] }); // totalMembers
+        (db.execute as any).mockResolvedValueOnce({ rows: [{ avg_minutes: 120 }] }); // avgDuration
+        (db.execute as any).mockResolvedValueOnce({ rows: [] }); // dailyTrend
+        (db.execute as any).mockResolvedValueOnce({ rows: [] }); // monthlyTrend
+        (db.execute as any).mockResolvedValueOnce({ rows: [{ hour: 14, count: 5 }] }); // peakHours
+        (db.execute as any).mockResolvedValueOnce({ rows: [] }); // popularGames
 
         const result = await load({} as any) as any;
 
@@ -36,6 +36,6 @@ describe('Admin Stats', () => {
         expect(result.peakHours[14]).toEqual({ hour: 14, count: 5 });
         expect(result.peakHours[0]).toEqual({ hour: 0, count: 0 });
 
-        expect(query).toHaveBeenCalledTimes(7);
+        expect(db.execute).toHaveBeenCalledTimes(7);
     });
 });

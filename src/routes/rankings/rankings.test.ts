@@ -1,11 +1,11 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { load } from './+page.server';
-import { query } from '$lib/server/db';
+import { db } from '$lib/server/db/index';
 
 // Mock DB
-vi.mock('$lib/server/db', () => ({
-    query: vi.fn()
+vi.mock('$lib/server/db/index', () => ({
+    db: { execute: vi.fn() }
 }));
 
 describe('Rankings', () => {
@@ -15,9 +15,9 @@ describe('Rankings', () => {
 
     it('should load rankings with correct queries', async () => {
         // Mock DB responses
-        (query as any).mockResolvedValueOnce({ rows: [] }); // overallRankings
-        (query as any).mockResolvedValueOnce({ rows: [] }); // winRateRankings
-        (query as any).mockResolvedValueOnce({ rows: [] }); // gameTitles
+        (db.execute as any).mockResolvedValueOnce({ rows: [] }); // overallRankings
+        (db.execute as any).mockResolvedValueOnce({ rows: [] }); // winRateRankings
+        (db.execute as any).mockResolvedValueOnce({ rows: [] }); // gameTitles
 
         const result = await load({} as any);
 
@@ -28,9 +28,9 @@ describe('Rankings', () => {
         });
 
         // Verify SQL queries contain the exclusion logic (playtime_min > 0)
-        expect(query).toHaveBeenCalledTimes(3);
+        expect(db.execute).toHaveBeenCalledTimes(3);
         
-        const calls = (query as any).mock.calls;
+        const calls = (db.execute as any).mock.calls;
         
         // Check Overall Rankings query
         expect(calls[0][0]).toContain('g.playtime_min > 0');

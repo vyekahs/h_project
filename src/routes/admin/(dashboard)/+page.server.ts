@@ -1,6 +1,6 @@
-import { query } from '$lib/server/db';
-import { fail, redirect } from '@sveltejs/kit';
-import QRCode from 'qrcode';
+import { db } from '$lib/server/db/index';
+import { sql } from 'drizzle-orm';
+import { fail } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { verifyAdminSession, verifyAttendeeSession } from '$lib/server/auth';
 import { updateSettingsCache, markAllLeft } from '$lib/server/ble';
@@ -17,96 +17,103 @@ async function canModifyGame(request: Request, gameId: string | number): Promise
         const user = await verifyAttendeeSession(userSessionToken);
         if (!user || !user.can_manage_games) return false;
 
-        const res = await query('SELECT created_by FROM game_sessions WHERE id = $1', [gameId]);
-        if (res.rows.length === 0) return false;
-        
-        return res.rows[0].created_by === user.id;
+        const res = await db.execute(sql`SELECT created_by FROM game_sessions WHERE id = ${gameId}`);
+        if (res.length === 0) return false;
+
+        return (res[0] as any).created_by === user.id;
     } catch (e) {
         return false;
     }
 }
 
 export const load: PageServerLoad = async () => {
-    // Auto-finish expired games
-    await query("UPDATE game_sessions SET status = 'finished' WHERE status = 'playing' AND end_time < NOW()");
+    const [attendeesResult, historyResult, gamesResult, scheduledGamesResult, reservationsResult, gameNamesResult, noticeResult, allGamesResult, settingsResult, recurringSchedulesResult] = await Promise.all([
+        db.execute(sql`
+            SELECT a.id, a.name, a.arrival_time, a.status, a.penalty_points, a.is_blacklisted, a.can_manage_games,
+                   MAX(g.id) as game_id,
+                   MAX(g.game_name) as game_name,
+                   BOOL_OR(g.id IS NOT NULL) as is_playing
+            FROM attendees a
+            LEFT JOIN session_participants sp ON a.id = sp.attendee_id
+            LEFT JOIN game_sessions g ON sp.session_id = g.id AND g.status = 'playing'
+            WHERE a.status = 'present'
+            GROUP BY a.id, a.name, a.arrival_time, a.status, a.penalty_points, a.is_blacklisted, a.can_manage_games
+            ORDER BY is_playing, a.arrival_time DESC
+        `),
+        db.execute(sql`
+            SELECT id, name, penalty_points, is_blacklisted
+            FROM attendees
+            ORDER BY name ASC
+        `),
+        db.execute(sql`
+            SELECT gs.*, g.image_url,
+                COALESCE(json_agg(json_build_object(
+                    'id', COALESCE(a.id, -sp.id),
+                    'name', COALESCE(a.name, sp.guest_name),
+                    'is_guest', (sp.attendee_id IS NULL)
+                )) FILTER (WHERE sp.id IS NOT NULL), '[]') as players
+            FROM game_sessions gs
+            LEFT JOIN session_participants sp ON gs.id = sp.session_id
+            LEFT JOIN attendees a ON sp.attendee_id = a.id
+            LEFT JOIN games g ON gs.game_id = g.id
+            WHERE gs.status = 'playing'
+            GROUP BY gs.id, g.image_url
+            ORDER BY gs.start_time DESC
+        `),
+        db.execute(sql`
+            SELECT gs.id, gs.game_name, gs.game_id, gs.min_players, gs.max_players, gs.scheduled_at, g.image_url,
+                   COALESCE(json_agg(json_build_object(
+                       'id', COALESCE(a.id, -sp.id),
+                       'name', COALESCE(a.name, sp.guest_name),
+                       'is_guest', (sp.attendee_id IS NULL)
+                   )) FILTER (WHERE sp.id IS NOT NULL), '[]') as participants
+            FROM game_sessions gs
+            LEFT JOIN session_participants sp ON gs.id = sp.session_id
+            LEFT JOIN attendees a ON sp.attendee_id = a.id
+            LEFT JOIN games g ON gs.game_id = g.id
+            WHERE gs.status = 'scheduled'
+            GROUP BY gs.id, gs.game_name, gs.game_id, gs.min_players, gs.max_players, gs.scheduled_at, g.image_url
+            ORDER BY gs.scheduled_at ASC
+        `),
+        db.execute(sql`
+            SELECT r.*, a.name as attendee_name, gs.game_name
+            FROM reservations r
+            JOIN attendees a ON r.attendee_id = a.id
+            JOIN game_sessions gs ON r.session_id = gs.id
+            WHERE r.status IN ('pending', 'waitlisted', 'confirmed')
+            ORDER BY r.created_at ASC
+        `),
+        db.execute(sql`
+            SELECT DISTINCT ON (game_name)
+                game_name,
+                ROUND(EXTRACT(EPOCH FROM (end_time - start_time))/60) as duration
+            FROM game_sessions
+            ORDER BY game_name, start_time DESC
+        `),
+        db.execute(sql`SELECT content FROM notices WHERE is_active = true ORDER BY created_at DESC LIMIT 1`),
+        db.execute(sql`SELECT id, name, playtime_min, min_players, max_players, image_url FROM games WHERE is_active = true ORDER BY name ASC`),
+        db.execute(sql`SELECT key, value FROM system_settings`),
+        db.execute(sql`
+            SELECT rs.*,
+                (SELECT COUNT(*) FROM recurring_game_skips rsk WHERE rsk.recurring_schedule_id = rs.id) as skip_count,
+                EXISTS(
+                    SELECT 1 FROM recurring_game_skips rsk
+                    WHERE rsk.recurring_schedule_id = rs.id
+                      AND rsk.skip_date = (
+                          CURRENT_DATE + ((rs.day_of_week - EXTRACT(DOW FROM CURRENT_DATE)::int + 7) % 7) * INTERVAL '1 day'
+                      )::date
+                ) as is_skipped_this_week
+            FROM recurring_game_schedules rs
+            ORDER BY rs.is_active DESC, rs.day_of_week ASC, rs.scheduled_time ASC
+        `),
+    ]);
 
-    const attendeesResult = await query(`
-        SELECT a.id, a.name, a.arrival_time, a.status, a.penalty_points, a.is_blacklisted, a.can_manage_games,
-               MAX(g.id) as game_id,
-               MAX(g.game_name) as game_name,
-               BOOL_OR(g.id IS NOT NULL) as is_playing
-        FROM attendees a
-        LEFT JOIN session_participants sp ON a.id = sp.attendee_id
-        LEFT JOIN game_sessions g ON sp.session_id = g.id AND g.status = 'playing'
-        WHERE a.status = 'present'
-        GROUP BY a.id, a.name, a.arrival_time, a.status, a.penalty_points, a.is_blacklisted, a.can_manage_games
-        ORDER BY is_playing, a.arrival_time DESC
-    `);
-    const historyResult = await query(`
-        SELECT id, name, penalty_points, is_blacklisted
-        FROM attendees
-        ORDER BY name ASC
-    `);
-
-    const gamesResult = await query(`
-        SELECT gs.*, g.image_url,
-            COALESCE(json_agg(json_build_object(
-                'id', COALESCE(a.id, -sp.id),
-                'name', COALESCE(a.name, sp.guest_name),
-                'is_guest', (sp.attendee_id IS NULL)
-            )) FILTER (WHERE sp.id IS NOT NULL), '[]') as players
-        FROM game_sessions gs
-        LEFT JOIN session_participants sp ON gs.id = sp.session_id
-        LEFT JOIN attendees a ON sp.attendee_id = a.id
-        LEFT JOIN games g ON gs.game_id = g.id
-        WHERE gs.status = 'playing'
-        GROUP BY gs.id, g.image_url
-        ORDER BY gs.start_time DESC
-    `);
-
-    const scheduledGamesResult = await query(`
-        SELECT gs.id, gs.game_name, gs.game_id, gs.min_players, gs.max_players, gs.scheduled_at, g.image_url,
-               COALESCE(json_agg(json_build_object(
-                   'id', COALESCE(a.id, -sp.id),
-                   'name', COALESCE(a.name, sp.guest_name),
-                   'is_guest', (sp.attendee_id IS NULL)
-               )) FILTER (WHERE sp.id IS NOT NULL), '[]') as participants
-        FROM game_sessions gs
-        LEFT JOIN session_participants sp ON gs.id = sp.session_id
-        LEFT JOIN attendees a ON sp.attendee_id = a.id
-        LEFT JOIN games g ON gs.game_id = g.id
-        WHERE gs.status = 'scheduled'
-        GROUP BY gs.id, gs.game_name, gs.game_id, gs.min_players, gs.max_players, gs.scheduled_at, g.image_url
-        ORDER BY gs.scheduled_at ASC
-    `);
-
-    const reservationsResult = await query(`
-        SELECT r.*, a.name as attendee_name, gs.game_name
-        FROM reservations r
-        JOIN attendees a ON r.attendee_id = a.id
-        JOIN game_sessions gs ON r.session_id = gs.id
-        WHERE r.status IN ('pending', 'waitlisted', 'confirmed')
-        ORDER BY r.created_at ASC
-    `);
-
-    const gameNamesResult = await query(`
-        SELECT DISTINCT ON (game_name) 
-            game_name, 
-            ROUND(EXTRACT(EPOCH FROM (end_time - start_time))/60) as duration 
-        FROM game_sessions 
-        ORDER BY game_name, start_time DESC
-    `);
-
-    const noticeResult = await query('SELECT content FROM notices WHERE is_active = true ORDER BY created_at DESC LIMIT 1');
-    const presentNames = new Set(attendeesResult.rows.map((a: any) => a.name));
-    const savedMembers = historyResult.rows
+    const presentNames = new Set((attendeesResult as any[]).map((a: any) => a.name));
+    const savedMembers = (historyResult as any[])
         .filter((r: any) => !presentNames.has(r.name))
         .map((r: any) => ({ id: r.id, name: r.name, penalty_points: r.penalty_points, is_blacklisted: r.is_blacklisted }));
-    
-    const allGamesResult = await query('SELECT id, name, playtime_min FROM games WHERE is_active = true ORDER BY name ASC');
 
-    const settingsResult = await query('SELECT key, value FROM system_settings');
-    const settings = settingsResult.rows.reduce((acc: any, row: any) => {
+    const settings = (settingsResult as any[]).reduce((acc: any, row: any) => {
         acc[row.key] = row.value;
         return acc;
     }, {
@@ -120,21 +127,21 @@ export const load: PageServerLoad = async () => {
     });
 
     return {
-        attendees: attendeesResult.rows,
-        allUsers: historyResult.rows,
+        attendees: attendeesResult as any[],
+        allUsers: historyResult as any[],
         savedMembers,
-        games: gamesResult.rows,
-        scheduledGames: scheduledGamesResult.rows,
-        reservations: reservationsResult.rows,
-        savedGameNames: gameNamesResult.rows,
-        allGames: allGamesResult.rows,
-        notice: noticeResult.rows[0]?.content || null,
-        settings
+        games: gamesResult as any[],
+        scheduledGames: scheduledGamesResult as any[],
+        reservations: reservationsResult as any[],
+        savedGameNames: gameNamesResult as any[],
+        allGames: allGamesResult as any[],
+        notice: (noticeResult[0] as any)?.content || null,
+        settings,
+        recurringSchedules: recurringSchedulesResult as any[]
     };
 };
 
 export const actions: Actions = {
-    // ... (addAttendee, removeAttendee omitted for brevity, they are unchanged)
     addAttendee: async ({ request }) => {
         const data = await request.formData();
         const name = data.get('name')?.toString().trim();
@@ -144,45 +151,34 @@ export const actions: Actions = {
         }
 
         // Ensure is_open is true
-        await query("INSERT INTO system_settings (key, value) VALUES ('is_open', 'true') ON CONFLICT (key) DO UPDATE SET value = 'true'");
+        await db.execute(sql`INSERT INTO system_settings (key, value) VALUES ('is_open', 'true') ON CONFLICT (key) DO UPDATE SET value = 'true'`);
         updateSettingsCache(true);
 
         // 1. Check if ANY attendee with this name exists
-        const existingResult = await query('SELECT * FROM attendees WHERE name = $1 ORDER BY id DESC', [name]);
-        const existingRecords = existingResult.rows;
+        const existingResult = await db.execute(sql`SELECT * FROM attendees WHERE name = ${name} ORDER BY id DESC`);
 
         // Check if ANY of them are currently present
-        const alreadyPresent = existingRecords.find((a: any) => a.status === 'present');
+        const alreadyPresent = (existingResult as any[]).find((a: any) => a.status === 'present');
         if (alreadyPresent) {
             return fail(400, { error: '이미 참여 중인 인원입니다.' });
         }
 
-        if (existingRecords.length > 0) {
-            // User exists but is not present. Reuse the most recent record (first in list due to DESC sort)
-            const attendeeToReactivate = existingRecords[0];
+        if (existingResult.length > 0) {
+            // User exists but is not present. Reuse the most recent record
+            const attendeeToReactivate = existingResult[0] as any;
 
-             // Re-entry: Update status and Add new visit
-            await query('BEGIN');
-            try {
-                await query('UPDATE attendees SET status = $1, arrival_time = NOW(), updated_at = NOW() WHERE id = $2', ['present', attendeeToReactivate.id]);
-                await query('INSERT INTO visits (attendee_id, arrival_time) VALUES ($1, NOW())', [attendeeToReactivate.id]);
-                await query('COMMIT');
-            } catch (e) {
-                await query('ROLLBACK');
-                throw e;
-            }
+            await db.transaction(async (tx) => {
+                await tx.execute(sql`UPDATE attendees SET status = 'present', arrival_time = NOW(), updated_at = NOW() WHERE id = ${attendeeToReactivate.id}`);
+                await tx.execute(sql`INSERT INTO visits (attendee_id, arrival_time) VALUES (${attendeeToReactivate.id}, NOW())`);
+                await tx.execute(sql`DELETE FROM daily_visit_plans WHERE attendee_id = ${attendeeToReactivate.id} AND plan_date = CURRENT_DATE`);
+            });
         } else {
             // New Entry: Create attendee and Add visit
-            await query('BEGIN');
-            try {
-                const result = await query('INSERT INTO attendees (name, status, arrival_time) VALUES ($1, $2, NOW()) RETURNING id', [name, 'present']);
-                const newId = result.rows[0].id;
-                await query('INSERT INTO visits (attendee_id, arrival_time) VALUES ($1, NOW())', [newId]);
-                await query('COMMIT');
-            } catch (e) {
-                await query('ROLLBACK');
-                throw e;
-            }
+            await db.transaction(async (tx) => {
+                const result = await tx.execute(sql`INSERT INTO attendees (name, status, arrival_time) VALUES (${name}, 'present', NOW()) RETURNING id`);
+                const newId = (result[0] as any).id;
+                await tx.execute(sql`INSERT INTO visits (attendee_id, arrival_time) VALUES (${newId}, NOW())`);
+            });
         }
         emitLiveEvent('visitors');
     },
@@ -195,24 +191,22 @@ export const actions: Actions = {
 
         if (!id) return fail(400, { error: 'Invalid ID' });
 
-        await query('BEGIN');
         try {
-            // 1. Update Attendee Status
-            await query('UPDATE attendees SET status = $1, updated_at = NOW() WHERE id = $2', ['left', id]);
+            await db.transaction(async (tx) => {
+                // 1. Update Attendee Status
+                await tx.execute(sql`UPDATE attendees SET status = 'left', updated_at = NOW() WHERE id = ${id}`);
 
-            // 2. Close current visit
-            await query('UPDATE visits SET departure_time = NOW() WHERE attendee_id = $1 AND departure_time IS NULL', [id]);
+                // 2. Close current visit
+                await tx.execute(sql`UPDATE visits SET departure_time = NOW() WHERE attendee_id = ${id} AND departure_time IS NULL`);
 
-            // 3. End Game if requested
-            if (endGame && gameId) {
-                await query('UPDATE game_sessions SET status = $1, end_time = NOW() WHERE id = $2', ['finished', gameId]);
-            }
-
-            await query('COMMIT');
+                // 3. End Game if requested
+                if (endGame && gameId) {
+                    await tx.execute(sql`UPDATE game_sessions SET status = 'finished', end_time = NOW() WHERE id = ${gameId}`);
+                }
+            });
             emitLiveEvent('visitors');
             if (endGame && gameId) emitLiveEvent('games');
         } catch (e) {
-            await query('ROLLBACK');
             return fail(500, { error: 'Failed to remove attendee' });
         }
     },
@@ -230,66 +224,65 @@ export const actions: Actions = {
         }
 
         try {
-            await query('BEGIN');
-            
-            // Check if any player is already playing
-            const playingCheck = await query(`
-                SELECT a.name 
-                FROM session_participants sp
-                JOIN game_sessions gs ON sp.session_id = gs.id
-                JOIN attendees a ON sp.attendee_id = a.id
-                WHERE gs.status = 'playing' AND sp.attendee_id = ANY($1)
-            `, [playerIds]);
+            const result = await db.transaction(async (tx) => {
+                // Check if any player is already playing
+                const playingCheck = await tx.execute(sql`
+                    SELECT a.name
+                    FROM session_participants sp
+                    JOIN game_sessions gs ON sp.session_id = gs.id
+                    JOIN attendees a ON sp.attendee_id = a.id
+                    WHERE gs.status = 'playing' AND sp.attendee_id = ANY(${'{' + playerIds.join(',') + '}'}::int[])
+                `);
 
-            if (playingCheck.rows.length > 0) {
-                await query('ROLLBACK');
-                const busyPlayers = playingCheck.rows.map((r: any) => r.name).join(', ');
-                return fail(400, { error: `다음 인원은 이미 게임 중입니다: ${busyPlayers}` });
-            }
-            // 0. Get Creator ID (if Manager)
-            const userAuth = request.headers.get('cookie')?.match(/user_auth=([^;]+)/)?.[1];
-            let createdBy = null;
-            if (userAuth) {
-                try {
-                    const user = JSON.parse(decodeURIComponent(userAuth));
-                    createdBy = user.id;
-                } catch (e) {
-                    // ignore
+                if (playingCheck.length > 0) {
+                    const busyPlayers = (playingCheck as any[]).map((r: any) => r.name).join(', ');
+                    return { error: `다음 인원은 이미 게임 중입니다: ${busyPlayers}` };
                 }
-            }
+                // 0. Get Creator ID (if Manager)
+                const userAuth = request.headers.get('cookie')?.match(/user_auth=([^;]+)/)?.[1];
+                let createdBy = null;
+                if (userAuth) {
+                    try {
+                        const user = JSON.parse(decodeURIComponent(userAuth));
+                        createdBy = user.id;
+                    } catch (e) {
+                        // ignore
+                    }
+                }
 
-            // 1. Create Game Session
-            const sessionResult = await query(
-                `INSERT INTO game_sessions (game_name, game_id, status, start_time, end_time, created_by) 
-                 VALUES ($1, $2, 'playing', NOW(), NOW() + ($3 || ' minutes')::INTERVAL, $4) 
-                 RETURNING id`,
-                [gameName, gameId, duration, createdBy]
-            );
-            const newGameId = sessionResult.rows[0].id;
+                // 1. Create Game Session
+                const sessionResult = await tx.execute(sql`
+                    INSERT INTO game_sessions (game_name, game_id, status, start_time, end_time, created_by)
+                    VALUES (${gameName}, ${gameId}, 'playing', NOW(), NOW() + (${duration} || ' minutes')::INTERVAL, ${createdBy})
+                    RETURNING id
+                `);
+                const newGameId = (sessionResult[0] as any).id;
 
-            for (const playerId of playerIds) {
-                await query('INSERT INTO session_participants (session_id, attendee_id) VALUES ($1, $2)', [newGameId, playerId]);
-            }
-            for (let i = 1; i <= guestCount; i++) {
-                await query('INSERT INTO session_participants (session_id, attendee_id, guest_name) VALUES ($1, NULL, $2)', [newGameId, `게스트${i}`]);
-            }
-            await query('COMMIT');
+                for (const playerId of playerIds) {
+                    await tx.execute(sql`INSERT INTO session_participants (session_id, attendee_id) VALUES (${newGameId}, ${playerId})`);
+                }
+                for (let i = 1; i <= guestCount; i++) {
+                    await tx.execute(sql`INSERT INTO session_participants (session_id, attendee_id, guest_name) VALUES (${newGameId}, NULL, ${`게스트${i}`})`);
+                }
+                return { success: true };
+            });
+            if ('error' in result) return fail(400, result);
             emitLiveEvent('games');
         } catch (error) {
-            await query('ROLLBACK');
+            console.error('Failed to create game:', error);
             return fail(500, { error: 'Failed to create game' });
         }
     },
     endGame: async ({ request }) => {
         const data = await request.formData();
         const id = data.get('id')?.toString();
-        
+
         if (!id) return fail(400, { missing: true });
         if (!(await canModifyGame(request, id))) return fail(403, { error: 'Unauthorized' });
 
         const winnerIds = data.getAll('winnerIds').map(id => id.toString());
-        
-        // Process scores: scores are sent as "score_{attendeeId}"
+
+        // Process scores
         const scores: Record<string, number> = {};
         for (const [key, value] of data.entries()) {
             if (key.startsWith('score_')) {
@@ -305,35 +298,32 @@ export const actions: Actions = {
         }
 
         try {
-            await query('BEGIN');
-            await query('UPDATE game_sessions SET status = $1, end_time = NOW() WHERE id = $2', ['finished', id]);
+            await db.transaction(async (tx) => {
+                await tx.execute(sql`UPDATE game_sessions SET status = 'finished', end_time = NOW() WHERE id = ${id}`);
 
-            // Separate regular winners (positive IDs) from guest winners (negative IDs)
-            const regularWinnerIds = winnerIds.filter(wid => parseInt(wid) > 0);
-            const guestWinnerSpIds = winnerIds.filter(wid => parseInt(wid) < 0).map(wid => Math.abs(parseInt(wid)));
+                // Separate regular winners (positive IDs) from guest winners (negative IDs)
+                const regularWinnerIds = winnerIds.filter(wid => parseInt(wid) > 0);
+                const guestWinnerSpIds = winnerIds.filter(wid => parseInt(wid) < 0).map(wid => Math.abs(parseInt(wid)));
 
-            if (regularWinnerIds.length > 0) {
-                await query('UPDATE session_participants SET is_winner = true WHERE session_id = $1 AND attendee_id = ANY($2)', [id, regularWinnerIds]);
-            }
-            if (guestWinnerSpIds.length > 0) {
-                await query('UPDATE session_participants SET is_winner = true WHERE session_id = $1 AND id = ANY($2)', [id, guestWinnerSpIds]);
-            }
-
-            // Update scores
-            for (const [participantId, score] of Object.entries(scores)) {
-                const numId = parseInt(participantId);
-                if (numId > 0) {
-                    await query('UPDATE session_participants SET score = $1 WHERE session_id = $2 AND attendee_id = $3', [score, id, participantId]);
-                } else {
-                    // Guest: negative ID represents session_participants.id
-                    await query('UPDATE session_participants SET score = $1 WHERE session_id = $2 AND id = $3', [score, id, Math.abs(numId)]);
+                if (regularWinnerIds.length > 0) {
+                    await tx.execute(sql`UPDATE session_participants SET is_winner = true WHERE session_id = ${id} AND attendee_id = ANY(${'{' + regularWinnerIds.join(',') + '}'}::int[])`);
                 }
-            }
+                if (guestWinnerSpIds.length > 0) {
+                    await tx.execute(sql`UPDATE session_participants SET is_winner = true WHERE session_id = ${id} AND id = ANY(${'{' + guestWinnerSpIds.join(',') + '}'}::int[])`);
+                }
 
-            await query('COMMIT');
+                // Update scores
+                for (const [participantId, score] of Object.entries(scores)) {
+                    const numId = parseInt(participantId);
+                    if (numId > 0) {
+                        await tx.execute(sql`UPDATE session_participants SET score = ${score} WHERE session_id = ${id} AND attendee_id = ${participantId}`);
+                    } else {
+                        await tx.execute(sql`UPDATE session_participants SET score = ${score} WHERE session_id = ${id} AND id = ${Math.abs(numId)}`);
+                    }
+                }
+            });
             emitLiveEvent('games');
         } catch (error) {
-            await query('ROLLBACK');
             return fail(500, { error: 'Failed to end game' });
         }
     },
@@ -346,18 +336,17 @@ export const actions: Actions = {
         }
 
         try {
-            await query('BEGIN');
-            await query('UPDATE notices SET is_active = false');
-            await query('INSERT INTO notices (content) VALUES ($1)', [content]);
-            await query('COMMIT');
+            await db.transaction(async (tx) => {
+                await tx.execute(sql`UPDATE notices SET is_active = false`);
+                await tx.execute(sql`INSERT INTO notices (content) VALUES (${content})`);
+            });
         } catch (error) {
-            await query('ROLLBACK');
             return fail(500, { error: 'Failed to update notice' });
         }
     },
     clearNotice: async () => {
         try {
-            await query('UPDATE notices SET is_active = false');
+            await db.execute(sql`UPDATE notices SET is_active = false`);
         } catch (error) {
             return fail(500, { error: 'Failed to clear notice' });
         }
@@ -373,10 +362,9 @@ export const actions: Actions = {
         if (!(await canModifyGame(request, id))) return fail(403, { error: 'Unauthorized' });
 
         try {
-            await query(
-                'UPDATE game_sessions SET end_time = end_time + interval \'' + minutes + ' minutes\' WHERE id = $1',
-                [id]
-            );
+            await db.execute(sql`
+                UPDATE game_sessions SET end_time = end_time + ${minutes + ' minutes'}::INTERVAL WHERE id = ${id}
+            `);
             emitLiveEvent('games');
         } catch (error) {
             return fail(500, { error: 'Failed to extend game' });
@@ -392,55 +380,52 @@ export const actions: Actions = {
         const penaltyThreshold = data.get('penalty_threshold')?.toString();
 
         try {
-            await query('BEGIN');
-            if (weekday) await query('INSERT INTO system_settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = $2', ['closing_time_weekday', weekday]);
-            if (weekend) await query('INSERT INTO system_settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = $2', ['closing_time_weekend', weekend]);
-            if (weekendDays !== undefined) await query('INSERT INTO system_settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = $2', ['weekend_days', weekendDays]);
-            if (noShowLimit) await query('INSERT INTO system_settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = $2', ['no_show_limit_minutes', noShowLimit]);
-            if (autoDissolveLimit) await query('INSERT INTO system_settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = $2', ['auto_dissolve_limit_minutes', autoDissolveLimit]);
-            if (penaltyThreshold) await query('INSERT INTO system_settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = $2', ['penalty_threshold', penaltyThreshold]);
-            await query('COMMIT');
+            await db.transaction(async (tx) => {
+                if (weekday) await tx.execute(sql`INSERT INTO system_settings (key, value) VALUES ('closing_time_weekday', ${weekday}) ON CONFLICT (key) DO UPDATE SET value = ${weekday}`);
+                if (weekend) await tx.execute(sql`INSERT INTO system_settings (key, value) VALUES ('closing_time_weekend', ${weekend}) ON CONFLICT (key) DO UPDATE SET value = ${weekend}`);
+                if (weekendDays !== undefined) await tx.execute(sql`INSERT INTO system_settings (key, value) VALUES ('weekend_days', ${weekendDays}) ON CONFLICT (key) DO UPDATE SET value = ${weekendDays}`);
+                if (noShowLimit) await tx.execute(sql`INSERT INTO system_settings (key, value) VALUES ('no_show_limit_minutes', ${noShowLimit}) ON CONFLICT (key) DO UPDATE SET value = ${noShowLimit}`);
+                if (autoDissolveLimit) await tx.execute(sql`INSERT INTO system_settings (key, value) VALUES ('auto_dissolve_limit_minutes', ${autoDissolveLimit}) ON CONFLICT (key) DO UPDATE SET value = ${autoDissolveLimit}`);
+                if (penaltyThreshold) await tx.execute(sql`INSERT INTO system_settings (key, value) VALUES ('penalty_threshold', ${penaltyThreshold}) ON CONFLICT (key) DO UPDATE SET value = ${penaltyThreshold}`);
+            });
         } catch (error) {
-            await query('ROLLBACK');
             return fail(500, { error: 'Failed to update settings' });
         }
     },
     closeDay: async () => {
         try {
-            await query('BEGIN');
-            // Checkout all active visits
-            await query('UPDATE visits SET departure_time = NOW() WHERE departure_time IS NULL');
-            // Set all attendees to 'left'
-            await query("UPDATE attendees SET status = 'left' WHERE status = 'present'");
-            // End all active games
-            await query("UPDATE game_sessions SET status = 'finished', end_time = NOW() WHERE status = 'playing'");
-            // Set is_open to false
-            await query("INSERT INTO system_settings (key, value) VALUES ('is_open', 'false') ON CONFLICT (key) DO UPDATE SET value = 'false'");
-            updateSettingsCache(false);
-            markAllLeft();
+            await db.transaction(async (tx) => {
+                // Checkout all active visits
+                await tx.execute(sql`UPDATE visits SET departure_time = NOW() WHERE departure_time IS NULL`);
+                // Set all attendees to 'left'
+                await tx.execute(sql`UPDATE attendees SET status = 'left' WHERE status = 'present'`);
+                // End all active games
+                await tx.execute(sql`UPDATE game_sessions SET status = 'finished', end_time = NOW() WHERE status = 'playing'`);
+                // Set is_open to false
+                await tx.execute(sql`INSERT INTO system_settings (key, value) VALUES ('is_open', 'false') ON CONFLICT (key) DO UPDATE SET value = 'false'`);
+                updateSettingsCache(false);
+                markAllLeft();
 
-            // Record business date to prevent auto-close from re-triggering if reopened
-            const now = new Date();
-            const kstNow = new Date(now.getTime() + 9 * 60 * 60 * 1000);
-            const currentHour = kstNow.getUTCHours();
-            let businessDateObj = new Date(kstNow);
-            if (currentHour < 9) {
-                businessDateObj.setUTCDate(businessDateObj.getUTCDate() - 1);
-            }
-            const businessDate = businessDateObj.toISOString().split('T')[0];
-            await query("INSERT INTO system_settings (key, value) VALUES ('last_auto_close_date', $1) ON CONFLICT (key) DO UPDATE SET value = $1", [businessDate]);
-
-            await query('COMMIT');
+                // Record business date to prevent auto-close from re-triggering if reopened
+                const now = new Date();
+                const kstNow = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+                const currentHour = kstNow.getUTCHours();
+                let businessDateObj = new Date(kstNow);
+                if (currentHour < 9) {
+                    businessDateObj.setUTCDate(businessDateObj.getUTCDate() - 1);
+                }
+                const businessDate = businessDateObj.toISOString().split('T')[0];
+                await tx.execute(sql`INSERT INTO system_settings (key, value) VALUES ('last_auto_close_date', ${businessDate}) ON CONFLICT (key) DO UPDATE SET value = ${businessDate}`);
+            });
             emitLiveEvent('visitors');
             emitLiveEvent('games');
         } catch (error) {
-            await query('ROLLBACK');
             return fail(500, { error: 'Failed to close day' });
         }
     },
     openDay: async () => {
         try {
-            await query("INSERT INTO system_settings (key, value) VALUES ('is_open', 'true') ON CONFLICT (key) DO UPDATE SET value = 'true'");
+            await db.execute(sql`INSERT INTO system_settings (key, value) VALUES ('is_open', 'true') ON CONFLICT (key) DO UPDATE SET value = 'true'`);
             updateSettingsCache(true);
             emitLiveEvent('visitors');
         } catch (error) {
@@ -453,7 +438,7 @@ export const actions: Actions = {
         const reservationId = data.get('reservationId');
         if (!reservationId) return fail(400, { error: 'Invalid ID' });
 
-        await query("UPDATE reservations SET status = 'confirmed' WHERE id = $1", [reservationId]);
+        await db.execute(sql`UPDATE reservations SET status = 'confirmed' WHERE id = ${reservationId}`);
         return { success: true };
     },
 
@@ -462,10 +447,10 @@ export const actions: Actions = {
         const reservationId = data.get('reservationId');
         if (!reservationId) return fail(400, { error: 'Invalid ID' });
 
-        const res = await query('SELECT session_id FROM reservations WHERE id = $1', [reservationId]);
-        const sessionId = res.rows[0]?.session_id;
+        const res = await db.execute(sql`SELECT session_id FROM reservations WHERE id = ${reservationId}`);
+        const sessionId = (res[0] as any)?.session_id;
 
-        await query('DELETE FROM reservations WHERE id = $1', [reservationId]);
+        await db.execute(sql`DELETE FROM reservations WHERE id = ${reservationId}`);
         if (sessionId) {
             const { promoteWaitlist } = await import('$lib/server/reservations');
             await promoteWaitlist(sessionId);
@@ -479,16 +464,15 @@ export const actions: Actions = {
         if (!sessionId) return fail(400, { error: 'Invalid ID' });
         if (!(await canModifyGame(request, sessionId.toString()))) return fail(403, { error: 'Unauthorized' });
 
-        await query('BEGIN');
         try {
-            await query('DELETE FROM session_participants WHERE session_id = $1', [sessionId]);
-            await query('DELETE FROM reservations WHERE session_id = $1', [sessionId]);
-            await query('DELETE FROM game_sessions WHERE id = $1', [sessionId]);
-            await query('COMMIT');
+            await db.transaction(async (tx) => {
+                await tx.execute(sql`DELETE FROM session_participants WHERE session_id = ${sessionId}`);
+                await tx.execute(sql`DELETE FROM reservations WHERE session_id = ${sessionId}`);
+                await tx.execute(sql`DELETE FROM game_sessions WHERE id = ${sessionId}`);
+            });
             emitLiveEvent('games');
             return { success: true };
         } catch (e) {
-            await query('ROLLBACK');
             return fail(500, { error: 'Failed to dissolve game' });
         }
     },
@@ -501,19 +485,17 @@ export const actions: Actions = {
         if (!sessionId) return fail(400, { error: 'Invalid ID' });
         if (!(await canModifyGame(request, sessionId.toString()))) return fail(403, { error: 'Unauthorized' });
 
-        await query('BEGIN');
         try {
-            await query(
-                "UPDATE game_sessions SET status = 'playing', start_time = NOW(), end_time = NOW() + interval '" + duration + " minutes' WHERE id = $1",
-                [sessionId]
-            );
-            // Confirm all pending reservations for this session (if any)
-            await query("UPDATE reservations SET status = 'confirmed' WHERE session_id = $1 AND status = 'pending'", [sessionId]);
-            await query('COMMIT');
+            await db.transaction(async (tx) => {
+                await tx.execute(sql`
+                    UPDATE game_sessions SET status = 'playing', start_time = NOW(), end_time = NOW() + ${duration + ' minutes'}::INTERVAL WHERE id = ${sessionId}
+                `);
+                // Confirm all pending reservations for this session (if any)
+                await tx.execute(sql`UPDATE reservations SET status = 'confirmed' WHERE session_id = ${sessionId} AND status = 'pending'`);
+            });
             emitLiveEvent('games');
             return { success: true };
         } catch (e) {
-            await query('ROLLBACK');
             return fail(500, { error: 'Failed to start game' });
         }
     },
@@ -538,7 +520,7 @@ export const actions: Actions = {
         const attendeeId = data.get('attendeeId');
         if (!attendeeId) return fail(400, { error: 'Invalid ID' });
 
-        await query('UPDATE attendees SET is_blacklisted = NOT is_blacklisted WHERE id = $1', [attendeeId]);
+        await db.execute(sql`UPDATE attendees SET is_blacklisted = NOT is_blacklisted WHERE id = ${attendeeId}`);
         return { success: true };
     },
 
@@ -550,7 +532,7 @@ export const actions: Actions = {
         const attendeeId = data.get('attendeeId');
         if (!attendeeId) return fail(400, { error: 'Invalid ID' });
 
-        await query('UPDATE attendees SET can_manage_games = NOT can_manage_games WHERE id = $1', [attendeeId]);
+        await db.execute(sql`UPDATE attendees SET can_manage_games = NOT can_manage_games WHERE id = ${attendeeId}`);
         return { success: true };
     },
 
@@ -567,46 +549,45 @@ export const actions: Actions = {
         const finalAttendeeId = parseInt(attendeeId.toString());
 
         // 0. Check if blacklisted or has too many penalties
-        const attendeeInfo = await query('SELECT is_blacklisted, penalty_points FROM attendees WHERE id = $1', [finalAttendeeId]);
-        if (attendeeInfo.rows.length > 0) {
-            const { is_blacklisted, penalty_points } = attendeeInfo.rows[0];
+        const attendeeInfo = await db.execute(sql`SELECT is_blacklisted, penalty_points FROM attendees WHERE id = ${finalAttendeeId}`);
+        if (attendeeInfo.length > 0) {
+            const { is_blacklisted, penalty_points } = attendeeInfo[0] as any;
             if (is_blacklisted) return fail(403, { error: '블랙리스트에 등록되어 예약이 불가능합니다.' });
             if (penalty_points >= 3) return fail(403, { error: '페널티 누적으로 인해 예약이 불가능합니다.' });
         }
 
         // 1. Check if already joined THIS session
-        const existingParticipant = await query('SELECT 1 FROM session_participants WHERE session_id = $1 AND attendee_id = $2', [sessionId, finalAttendeeId]);
-        if (existingParticipant.rows.length > 0) {
+        const existingParticipant = await db.execute(sql`SELECT 1 FROM session_participants WHERE session_id = ${sessionId} AND attendee_id = ${finalAttendeeId}`);
+        if (existingParticipant.length > 0) {
             return fail(400, { error: '이미 참여 중인 게임입니다.' });
         }
 
         // 1.5 Get Target Session Date
-        const targetSessionResult = await query('SELECT COALESCE(scheduled_at, start_time, NOW()) as session_date FROM game_sessions WHERE id = $1', [sessionId]);
-        if (targetSessionResult.rows.length === 0) return fail(404, { error: '세션을 찾을 수 없습니다.' });
-        const targetDate = targetSessionResult.rows[0].session_date;
+        const targetSessionResult = await db.execute(sql`SELECT COALESCE(scheduled_at, start_time, NOW()) as session_date FROM game_sessions WHERE id = ${sessionId}`);
+        if (targetSessionResult.length === 0) return fail(404, { error: '세션을 찾을 수 없습니다.' });
+        const targetDate = (targetSessionResult[0] as any).session_date;
 
         // 2. Check if busy with OTHER games or reservations ON THE SAME DAY
-        const busyCheck = await query(`
+        const busyCheck = await db.execute(sql`
             SELECT 1 FROM session_participants sp
             JOIN game_sessions gs ON sp.session_id = gs.id
-            WHERE sp.attendee_id = $1 
-            AND (gs.status = 'playing' OR gs.status = 'scheduled') 
-            AND gs.id != $2
-            AND DATE(COALESCE(gs.scheduled_at, gs.start_time, NOW())) = DATE($3)
-        `, [finalAttendeeId, sessionId, targetDate]);
+            WHERE sp.attendee_id = ${finalAttendeeId}
+            AND (gs.status = 'playing' OR gs.status = 'scheduled')
+            AND gs.id != ${sessionId}
+            AND DATE(COALESCE(gs.scheduled_at, gs.start_time, NOW())) = DATE(${targetDate})
+        `);
 
-        if (busyCheck.rows.length > 0) {
+        if (busyCheck.length > 0) {
             return fail(400, { error: '해당 날짜에 이미 다른 게임에 참여 중이거나 예약된 내역이 있습니다.' });
         }
 
         // 3. Join session
-        await query('BEGIN');
         try {
-            await query('INSERT INTO session_participants (session_id, attendee_id) VALUES ($1, $2)', [sessionId, finalAttendeeId]);
-            await query("UPDATE reservations SET status = 'confirmed' WHERE session_id = $1 AND attendee_id = $2 AND status != 'cancelled'", [sessionId, finalAttendeeId]);
-            await query('COMMIT');
+            await db.transaction(async (tx) => {
+                await tx.execute(sql`INSERT INTO session_participants (session_id, attendee_id) VALUES (${sessionId}, ${finalAttendeeId})`);
+                await tx.execute(sql`UPDATE reservations SET status = 'confirmed' WHERE session_id = ${sessionId} AND attendee_id = ${finalAttendeeId} AND status != 'cancelled'`);
+            });
         } catch (e) {
-            await query('ROLLBACK');
             return fail(500, { error: 'Failed to join game' });
         }
         return { success: true };
@@ -616,7 +597,7 @@ export const actions: Actions = {
         const name = data.get('name')?.toString().trim();
         if (!name) return fail(400, { error: '테이블 이름을 입력해주세요.' });
 
-        await query('INSERT INTO tables (name) VALUES ($1)', [name]);
+        await db.execute(sql`INSERT INTO tables (name) VALUES (${name})`);
         return { success: true };
     },
 
@@ -625,7 +606,137 @@ export const actions: Actions = {
         const id = data.get('id');
         if (!id) return fail(400, { error: 'Invalid ID' });
 
-        await query('UPDATE tables SET is_active = false WHERE id = $1', [id]);
+        await db.execute(sql`UPDATE tables SET is_active = false WHERE id = ${id}`);
         return { success: true };
+    },
+
+    skipRecurringWeek: async ({ request }) => {
+        const data = await request.formData();
+        const scheduleId = data.get('scheduleId');
+        if (!scheduleId) return fail(400, { error: 'Invalid ID' });
+
+        try {
+            const schedule = await db.execute(sql`SELECT day_of_week FROM recurring_game_schedules WHERE id = ${scheduleId}`);
+            if (schedule.length === 0) return fail(404, { error: '스케줄을 찾을 수 없습니다.' });
+
+            const now = new Date();
+            const kstNow = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+            const today = kstNow.getUTCDay();
+            const targetDay = (schedule[0] as any).day_of_week;
+            let diff = targetDay - today;
+            if (diff < 0) diff += 7;
+            const skipDate = new Date(kstNow);
+            skipDate.setUTCDate(skipDate.getUTCDate() + diff);
+            const skipDateStr = skipDate.toISOString().split('T')[0];
+
+            // 이미 스킵되어 있으면 해제, 아니면 스킵 추가 (토글)
+            const existing = await db.execute(sql`
+                SELECT id FROM recurring_game_skips WHERE recurring_schedule_id = ${scheduleId} AND skip_date = ${skipDateStr}::date
+            `);
+
+            if (existing.length > 0) {
+                // 스킵 해제
+                await db.execute(sql`
+                    DELETE FROM recurring_game_skips WHERE recurring_schedule_id = ${scheduleId} AND skip_date = ${skipDateStr}::date
+                `);
+                emitLiveEvent('games');
+                return { success: true, message: '이번주 스킵이 해제되었습니다.' };
+            } else {
+                // 스킵 추가
+                await db.transaction(async (tx) => {
+                    await tx.execute(sql`
+                        INSERT INTO recurring_game_skips (recurring_schedule_id, skip_date) VALUES (${scheduleId}, ${skipDateStr}) ON CONFLICT DO NOTHING
+                    `);
+                    await tx.execute(sql`
+                        DELETE FROM game_sessions WHERE recurring_schedule_id = ${scheduleId} AND status = 'scheduled' AND scheduled_at::date = ${skipDateStr}::date
+                    `);
+                });
+                emitLiveEvent('games');
+                return { success: true, message: '이번주 스킵 처리되었습니다.' };
+            }
+        } catch (e) {
+            return fail(500, { error: '처리 중 오류가 발생했습니다.' });
+        }
+    },
+
+    toggleRecurringActive: async ({ request }) => {
+        const data = await request.formData();
+        const scheduleId = data.get('scheduleId');
+        if (!scheduleId) return fail(400, { error: 'Invalid ID' });
+
+        try {
+            await db.execute(sql`UPDATE recurring_game_schedules SET is_active = NOT is_active WHERE id = ${scheduleId}`);
+            return { success: true };
+        } catch (e) {
+            return fail(500, { error: '처리 중 오류가 발생했습니다.' });
+        }
+    },
+
+    createScheduledGame: async ({ request }) => {
+        const data = await request.formData();
+        const gameName = data.get('gameName')?.toString();
+        const scheduledAt = data.get('scheduledAt')?.toString();
+        const minPlayers = parseInt(data.get('minPlayers')?.toString() || '2');
+        const maxPlayers = parseInt(data.get('maxPlayers')?.toString() || '4');
+        const guestCount = parseInt(data.get('guestCount')?.toString() || '0');
+        const showOnMain = data.get('showOnMain') === 'true';
+        const isRecurring = data.get('isRecurring') === 'true';
+
+        if (!gameName) return fail(400, { error: '게임 이름을 입력해주세요.' });
+        if (!scheduledAt) return fail(400, { error: '시작 예정 시간을 입력해주세요.' });
+        if (guestCount > maxPlayers) return fail(400, { error: `게스트 수가 최대 인원(${maxPlayers}명)을 초과할 수 없습니다.` });
+
+        try {
+            await db.transaction(async (tx) => {
+                const sessionResult = await tx.execute(sql`
+                    INSERT INTO game_sessions (game_name, status, scheduled_at, min_players, max_players, show_on_main)
+                    VALUES (${gameName}, 'scheduled', ${scheduledAt}, ${minPlayers}, ${maxPlayers}, ${showOnMain})
+                    RETURNING id
+                `);
+                const newSessionId = (sessionResult[0] as any).id;
+
+                for (let i = 1; i <= guestCount; i++) {
+                    await tx.execute(sql`INSERT INTO session_participants (session_id, attendee_id, guest_name) VALUES (${newSessionId}, NULL, ${`게스트${i}`})`);
+                }
+
+                if (isRecurring) {
+                    const scheduledDate = new Date(scheduledAt);
+                    const dayOfWeek = scheduledDate.getDay();
+                    const timeStr = scheduledDate.toTimeString().slice(0, 8);
+
+                    const gameIdResult = await tx.execute(sql`SELECT id FROM games WHERE name = ${gameName} LIMIT 1`);
+                    const gameIdVal = (gameIdResult[0] as any)?.id ?? null;
+
+                    const recurResult = await tx.execute(sql`
+                        INSERT INTO recurring_game_schedules (game_name, game_id, day_of_week, scheduled_time, min_players, max_players, show_on_main)
+                        VALUES (${gameName}, ${gameIdVal}, ${dayOfWeek}, ${timeStr}, ${minPlayers}, ${maxPlayers}, ${showOnMain})
+                        RETURNING id
+                    `);
+                    await tx.execute(sql`UPDATE game_sessions SET recurring_schedule_id = ${(recurResult[0] as any).id} WHERE id = ${newSessionId}`);
+                }
+            });
+            emitLiveEvent('games');
+            return { success: true };
+        } catch (e) {
+            console.error('Failed to create scheduled game:', e);
+            return fail(500, { error: '게임 생성에 실패했습니다.' });
+        }
+    },
+
+    deleteRecurringSchedule: async ({ request }) => {
+        const data = await request.formData();
+        const scheduleId = data.get('scheduleId');
+        if (!scheduleId) return fail(400, { error: 'Invalid ID' });
+
+        try {
+            await db.transaction(async (tx) => {
+                await tx.execute(sql`UPDATE game_sessions SET recurring_schedule_id = NULL WHERE recurring_schedule_id = ${scheduleId}`);
+                await tx.execute(sql`DELETE FROM recurring_game_skips WHERE recurring_schedule_id = ${scheduleId}`);
+                await tx.execute(sql`DELETE FROM recurring_game_schedules WHERE id = ${scheduleId}`);
+            });
+            return { success: true };
+        } catch (e) {
+            return fail(500, { error: '처리 중 오류가 발생했습니다.' });
+        }
     }
 };

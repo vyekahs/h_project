@@ -1,5 +1,6 @@
 import { json } from '@sveltejs/kit';
-import { query } from '$lib/server/db';
+import { db } from '$lib/server/db/index';
+import { sql } from 'drizzle-orm';
 
 export async function GET({ url }) {
     const regId = url.searchParams.get('regId');
@@ -9,16 +10,15 @@ export async function GET({ url }) {
     }
 
     try {
-        const res = await query(
-            'SELECT step FROM device_registrations WHERE id = $1',
-            [regId]
+        const res = await db.execute(
+            sql`SELECT step FROM device_registrations WHERE id = ${regId}`
         );
 
-        if (res.rows.length === 0) {
+        if (res.length === 0) {
             return json({ error: 'Registration not found' }, { status: 404 });
         }
 
-        return json({ step: res.rows[0].step });
+        return json({ step: (res[0] as any).step });
 
     } catch (e: any) {
         console.error('Registration Status Error:', e);

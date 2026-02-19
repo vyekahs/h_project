@@ -1,24 +1,25 @@
-import { query } from '$lib/server/db';
+import { db } from '$lib/server/db/index';
+import { sql } from 'drizzle-orm';
 import { fail } from '@sveltejs/kit';
 import type { PageServerLoad, Actions } from './$types';
 
 export const load: PageServerLoad = async () => {
-    const result = await query(`
+    const result = await db.execute(sql`
         SELECT id, name, season_pass_expires_at
         FROM attendees
         WHERE season_pass_expires_at IS NOT NULL
         ORDER BY season_pass_expires_at ASC
     `);
 
-    const allUsersResult = await query(`
+    const allUsersResult = await db.execute(sql`
         SELECT id, name
         FROM attendees
         ORDER BY name ASC
     `);
 
     return {
-        passHolders: result.rows,
-        allUsers: allUsersResult.rows
+        passHolders: result,
+        allUsers: allUsersResult
     };
 };
 
@@ -46,7 +47,7 @@ export const actions: Actions = {
             if (dow === 1) endDate.setDate(endDate.getDate() + 2);
             else if (dow === 2) endDate.setDate(endDate.getDate() + 1);
 
-            await query('UPDATE attendees SET season_pass_expires_at = $1 WHERE id = $2', [endDate, attendeeId]);
+            await db.execute(sql`UPDATE attendees SET season_pass_expires_at = ${endDate.toISOString()} WHERE id = ${attendeeId}`);
             return { success: true };
         } catch (err) {
             console.error(err);
@@ -64,15 +65,14 @@ export const actions: Actions = {
         }
 
         try {
-            const result = await query('SELECT season_pass_expires_at FROM attendees WHERE id = $1', [attendeeId]);
-            if (!result.rows[0]?.season_pass_expires_at) {
+            const result = await db.execute(sql`SELECT season_pass_expires_at FROM attendees WHERE id = ${attendeeId}`);
+            if (!(result[0] as any)?.season_pass_expires_at) {
                 return fail(400, { error: '유효한 정기권이 없습니다.' });
             }
 
-            await query(
-                `UPDATE attendees SET season_pass_expires_at = season_pass_expires_at + interval '1 day' * $1 WHERE id = $2`,
-                [days, attendeeId]
-            );
+            await db.execute(sql`
+                UPDATE attendees SET season_pass_expires_at = season_pass_expires_at + interval '1 day' * ${days} WHERE id = ${attendeeId}
+            `);
             return { success: true };
         } catch (err) {
             console.error(err);
@@ -89,7 +89,7 @@ export const actions: Actions = {
         }
 
         try {
-            await query('UPDATE attendees SET season_pass_expires_at = NULL WHERE id = $1', [attendeeId]);
+            await db.execute(sql`UPDATE attendees SET season_pass_expires_at = NULL WHERE id = ${attendeeId}`);
             return { success: true };
         } catch (err) {
             console.error(err);
