@@ -601,6 +601,24 @@ function pickBestFollow(
 			if (lastPlayerCards <= 3) score += 15;
 		}
 
+		// 봉황 싱글 팔로우 제한: 무조건 선을 먹을 수 있는 상황에서만 사용
+		// 봉황 싱글은 A보다 높으므로 드래곤/폭탄 외에는 이길 수 없음
+		// → 내 다음이 트릭 주인(amLastBeforeTrickWinner)이면 선 먹기 보장
+		if (play.type === 'single' &&
+			play.cards[0].type === 'special' &&
+			play.cards[0].special === 'phoenix') {
+			if (amLastBeforeTrickWinner && opponentWinning) {
+				// 내가 마지막 기회이고 상대가 이기고 있음 → 선 먹기 보장
+				score += 15;
+			} else if (iAmClose && hand.length === 1) {
+				// 봉황이 마지막 카드 → 무조건 냄
+				score += 50;
+			} else {
+				// 그 외: 봉황 싱글 사용 금지 (엄청난 페널티)
+				score -= 200;
+			}
+		}
+
 		// Avoid wasting dragon as follow (it gives points to opponents)
 		if (play.cards.some(c => c.type === 'special' && c.special === 'dragon')) {
 			score -= 10;
@@ -787,6 +805,10 @@ function decideLead(
 			c.type === 'single' &&
 			c.cards[0].type === 'special' &&
 			c.cards[0].special === 'dragon') return false;
+		// 봉황 싱글 리드 금지: 봉황은 팔로우에서 선 먹기용으로만 사용
+		if (c.type === 'single' &&
+			c.cards[0].type === 'special' &&
+			c.cards[0].special === 'phoenix') return false;
 		return true;
 	});
 

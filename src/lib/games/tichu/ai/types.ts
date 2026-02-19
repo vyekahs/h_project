@@ -6,14 +6,15 @@ import type { Card, Combination, SeatIndex, TichuPlayer, TichuRoundResult, WishS
 export type AiStrategy = 'aggressive' | 'balanced' | 'defensive' | 'tricky' | 'wild';
 
 /** AI turn processing speed */
-export type AiSpeed = 'instant' | 'fast' | 'normal' | 'slow';
+export type AiSpeed = 'instant' | 'fast' | 'normal' | 'slow' | 'very_slow';
 
 /** Delay in ms for each AI speed setting */
 export const AI_SPEED_DELAYS: Record<AiSpeed, number> = {
 	instant: 0,
-	fast: 300,
-	normal: 800,
-	slow: 1500
+	fast: 800,
+	normal: 1500,
+	slow: 2500,
+	very_slow: 4000
 };
 
 // ===== Personality Weights =====
@@ -49,6 +50,7 @@ export interface AiDecisionContext {
 export interface StrategyPresetInfo {
 	id: AiStrategy;
 	name: string;
+	characterName: string;
 	description: string;
 	icon: string;
 }

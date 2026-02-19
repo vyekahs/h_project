@@ -22,7 +22,7 @@ export function createTichuGameState() {
 	let stateVersion = $state(0); // incremented on every engine state change to trigger reactivity
 
 	// Setup state
-	let partnerStrategy = $state<AiStrategy>('balanced');
+	let partnerStrategy = $state<AiStrategy>('aggressive');
 	let aiSpeed = $state<AiSpeed>('normal');
 	let targetScore = $state(1000);
 

@@ -13,10 +13,11 @@
 		{ id: 'instant', label: '즉시' },
 		{ id: 'fast', label: '빠름' },
 		{ id: 'normal', label: '보통' },
-		{ id: 'slow', label: '느림' }
+		{ id: 'slow', label: '느림' },
+		{ id: 'very_slow', label: '매우 느림' }
 	];
 
-	const scoreOptions = [500, 1000, 1500, 2000];
+	const scoreOptions = [300, 500, 700, 1000];
 
 	let showSetup = $state(!game.savedGameAvailable);
 </script>
@@ -25,14 +26,13 @@
 	<div class="setup-content">
 		<div class="header">
 			<h1>티츄</h1>
-			<p class="subtitle">AI와 함께하는 카드 게임</p>
+			<p class="subtitle">카드 게임</p>
 		</div>
 
 		{#if showSetup}
 			<!-- Partner Strategy -->
 			<section class="section">
-				<h2 class="section-title">파트너 AI 전략</h2>
-				<p class="section-desc">같은 팀 AI의 플레이 스타일을 선택하세요</p>
+				<h2 class="section-title">파트너 선택하기</h2>
 				<div class="strategy-grid">
 					{#each STRATEGY_PRESETS as preset}
 						<button
@@ -40,9 +40,7 @@
 							class:selected={game.partnerStrategy === preset.id}
 							onclick={() => { game.partnerStrategy = preset.id; }}
 						>
-							<span class="strategy-icon">{preset.icon}</span>
-							<span class="strategy-name">{preset.name}</span>
-							<span class="strategy-desc">{preset.description}</span>
+							<span class="strategy-character">{preset.characterName}</span>
 						</button>
 					{/each}
 				</div>
@@ -50,7 +48,7 @@
 
 			<!-- AI Speed -->
 			<section class="section">
-				<h2 class="section-title">AI 속도</h2>
+				<h2 class="section-title">속도</h2>
 				<div class="speed-row">
 					{#each speedOptions as opt}
 						<button
@@ -143,12 +141,6 @@
 		margin: 0 0 4px;
 	}
 
-	.section-desc {
-		font-size: 0.75rem;
-		opacity: 0.55;
-		margin: 0 0 12px;
-	}
-
 	/* Strategy Grid */
 	.strategy-grid {
 		display: grid;
@@ -180,20 +172,9 @@
 		background: rgba(245, 158, 11, 0.15);
 	}
 
-	.strategy-icon {
-		font-size: 1.5rem;
-		line-height: 1;
-	}
-
-	.strategy-name {
-		font-size: 0.85rem;
-		font-weight: 600;
-	}
-
-	.strategy-desc {
-		font-size: 0.65rem;
-		opacity: 0.6;
-		line-height: 1.3;
+	.strategy-character {
+		font-size: 1rem;
+		font-weight: 700;
 	}
 
 	/* Speed Row */
