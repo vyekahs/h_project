@@ -83,46 +83,65 @@
 		if (!selectedIsBomb) return;
 		game.playBomb(Array.from(game.selectedCards));
 	}
+
+	// Find card object by ID for exchange preview
+	function findCard(cardId: string | null): Card | null {
+		if (!cardId) return null;
+		return hand.find((c: Card) => c.id === cardId) ?? null;
+	}
+
+	type ExchangeTarget = 'left' | 'partner' | 'right';
+	// Screen: left=seat3, top=seat2(partner), right=seat1
+	// Game logic: 'left'→seat1(screen right), 'right'→seat3(screen left)
+	// Slot order matches screen positions: seat3(left) → seat2(top) → seat1(right)
+	const exchangeSlots = $derived.by(() => {
+		void game.stateVersion;
+		const players = game.gameState?.players;
+		return [
+			{ key: 'right' as ExchangeTarget, label: players?.[3]?.name ?? '왼쪽' },
+			{ key: 'partner' as ExchangeTarget, label: players?.[2]?.name ?? '파트너' },
+			{ key: 'left' as ExchangeTarget, label: players?.[1]?.name ?? '오른쪽' }
+		];
+	});
+	function getExchangeCardId(key: ExchangeTarget): string | null {
+		if (key === 'left') return game.exchangeLeft;
+		if (key === 'partner') return game.exchangePartner;
+		return game.exchangeRight;
+	}
 </script>
 
 <div class="hand-area">
 	{#if isExchangePhase}
 		<div class="exchange-controls">
-			{#if exchangePendingCard}
-				<span class="exchange-hint">누구에게?</span>
-				<div class="exchange-targets">
+			<div class="exchange-slots">
+				{#each exchangeSlots as slot (slot.key)}
+					{@const cardId = getExchangeCardId(slot.key)}
+					{@const card = findCard(cardId)}
 					<button
-						class="exchange-btn"
-						class:assigned={game.exchangePartner !== null}
-						disabled={game.exchangePartner !== null}
-						onclick={() => assignExchangeTarget('partner')}
+						class="exchange-slot"
+						class:assigned={card !== null}
+						class:target={exchangePendingCard !== null && card === null}
+						onclick={() => {
+							if (card) {
+								game.setExchangeCard(slot.key, null);
+							} else if (exchangePendingCard) {
+								assignExchangeTarget(slot.key);
+							}
+						}}
 					>
-						파트너
+						<span class="slot-label">{slot.label}</span>
+						{#if card}
+							<CardComponent {card} small />
+						{:else}
+							<div class="slot-empty">?</div>
+						{/if}
 					</button>
-					<button
-						class="exchange-btn"
-						class:assigned={game.exchangeLeft !== null}
-						disabled={game.exchangeLeft !== null}
-						onclick={() => assignExchangeTarget('left')}
-					>
-						왼쪽
-					</button>
-					<button
-						class="exchange-btn"
-						class:assigned={game.exchangeRight !== null}
-						disabled={game.exchangeRight !== null}
-						onclick={() => assignExchangeTarget('right')}
-					>
-						오른쪽
-					</button>
-				</div>
-			{:else}
-				<span class="exchange-hint">교환할 카드를 선택하세요</span>
-				<div class="exchange-status">
-					<span class:done={game.exchangePartner !== null}>파트너{game.exchangePartner ? ' ✓' : ''}</span>
-					<span class:done={game.exchangeLeft !== null}>왼쪽{game.exchangeLeft ? ' ✓' : ''}</span>
-					<span class:done={game.exchangeRight !== null}>오른쪽{game.exchangeRight ? ' ✓' : ''}</span>
-				</div>
+				{/each}
+			</div>
+			{#if !exchangePendingCard && !game.exchangeReady}
+				<span class="exchange-hint">카드를 선택하세요</span>
+			{:else if exchangePendingCard}
+				<span class="exchange-hint">대상을 선택하세요</span>
 			{/if}
 			{#if game.exchangeReady}
 				<button
@@ -263,53 +282,65 @@
 	/* Exchange */
 	.exchange-controls {
 		display: flex;
+		flex-direction: column;
 		align-items: center;
-		gap: 8px;
-		margin-bottom: 6px;
+		gap: 6px;
+		margin-bottom: 4px;
+	}
+	.exchange-slots {
+		display: flex;
+		gap: 12px;
 		justify-content: center;
-		flex-wrap: wrap;
+	}
+	.exchange-slot {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 4px;
+		padding: 6px 10px;
+		border-radius: 8px;
+		border: 1px solid rgba(255,255,255,0.15);
+		background: rgba(255,255,255,0.03);
+		color: white;
+		cursor: pointer;
+		min-width: 54px;
+	}
+	.exchange-slot.target {
+		border-color: #f59e0b;
+		background: rgba(245,158,11,0.1);
+		animation: slotPulse 1.2s infinite;
+	}
+	.exchange-slot.assigned {
+		border-color: rgba(34,197,94,0.5);
+		background: rgba(34,197,94,0.1);
+	}
+	@keyframes slotPulse {
+		0%, 100% { box-shadow: 0 0 0 rgba(245,158,11,0); }
+		50% { box-shadow: 0 0 8px rgba(245,158,11,0.3); }
+	}
+	.slot-label {
+		font-size: 0.65rem;
+		opacity: 0.6;
+		font-weight: 500;
+	}
+	.slot-empty {
+		width: 32px;
+		height: 44px;
+		border-radius: 4px;
+		border: 1px dashed rgba(255,255,255,0.2);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		font-size: 0.8rem;
+		opacity: 0.3;
 	}
 	.exchange-hint {
-		font-size: 0.75rem;
-		opacity: 0.7;
-	}
-	.exchange-targets {
-		display: flex;
-		gap: 4px;
-	}
-	.exchange-btn {
-		padding: 6px 14px;
-		border-radius: 6px;
-		border: 1px solid #f59e0b;
-		background: rgba(245,158,11,0.15);
-		color: white;
-		font-size: 0.8rem;
-		font-weight: 500;
-		cursor: pointer;
-	}
-	.exchange-btn:disabled {
-		opacity: 0.35;
-		cursor: not-allowed;
-		border-color: rgba(255,255,255,0.2);
-		background: rgba(255,255,255,0.05);
-	}
-	.exchange-btn.assigned {
-		background: rgba(34,197,94,0.2);
-		border-color: rgba(34,197,94,0.4);
-	}
-	.exchange-status {
-		display: flex;
-		gap: 8px;
 		font-size: 0.7rem;
 		opacity: 0.5;
 	}
-	.exchange-status .done {
-		opacity: 1;
-		color: #4ade80;
-	}
 	.btn-exchange-submit {
-		padding: 6px 16px;
-		border-radius: 6px;
+		padding: 8px 24px;
+		border-radius: 8px;
 		border: none;
 		background: #22c55e;
 		color: white;

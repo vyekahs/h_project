@@ -6,6 +6,7 @@
 	import TrickArea from './TrickArea.svelte';
 	import PlayerHand from './PlayerHand.svelte';
 	import TichuDeclareModal from './TichuDeclareModal.svelte';
+	import CardComponent from './CardComponent.svelte';
 
 	let { game } = $props<{ game: any }>();
 
@@ -59,7 +60,7 @@
 		untrack(() => {
 			if (evt.type === 'pass') {
 				passedSeats = new Set(passedSeats).add(evt.seat);
-			} else if (evt.type === 'play' || evt.type === 'bomb' || evt.type === 'trick_won') {
+			} else if (evt.type === 'play' || evt.type === 'bomb' || evt.type === 'trick_won' || evt.type === 'dog' || evt.type === 'dragon_gift') {
 				if (passedSeats.size > 0) passedSeats = new Set();
 			}
 		});
@@ -81,6 +82,18 @@
 	const trickWonName = $derived.by(() => {
 		if (trickWonSeat === null) return '';
 		return gs()?.players[trickWonSeat]?.name ?? '';
+	});
+
+	// Dog card event
+	const dogEvent = $derived.by(() => {
+		if (!lastEvent || lastEvent.type !== 'dog') return null;
+		return lastEvent as { type: 'dog'; seat: SeatIndex; targetSeat: SeatIndex };
+	});
+
+	// Dragon gift event
+	const dragonGiftEvent = $derived.by(() => {
+		if (!lastEvent || lastEvent.type !== 'dragon_gift') return null;
+		return lastEvent as { type: 'dragon_gift'; seat: SeatIndex; targetSeat: SeatIndex };
 	});
 
 	// Phase display
@@ -125,13 +138,6 @@
 	<!-- Phase indicator -->
 	{#if phaseLabel}
 		<div class="phase-indicator">{phaseLabel}</div>
-	{/if}
-
-	<!-- Wish indicator -->
-	{#if wishActive && wishRank}
-		<div class="wish-indicator">
-			소원: {rankNames[wishRank] ?? wishRank}
-		</div>
 	{/if}
 
 	<!-- Small Tichu button -->
@@ -180,8 +186,23 @@
 
 		<!-- Center Trick (only show during play phases) -->
 		<div class="center-area">
+			{#if wishActive && wishRank}
+				<div class="wish-indicator">
+					소원: {rankNames[wishRank] ?? wishRank}
+				</div>
+			{/if}
 			{#if game.phase === 'playing' || game.phase === 'wish_declare' || game.phase === 'dragon_gift'}
-				{#if trickWonSeat !== null}
+				{#if dogEvent}
+					<div class="special-event-notice dog-notice">
+						<span class="event-icon">🐕</span>
+						<span>{playerNames[dogEvent.seat]} → {playerNames[dogEvent.targetSeat]}에게 선 양도</span>
+					</div>
+				{:else if dragonGiftEvent}
+					<div class="special-event-notice dragon-notice">
+						<span class="event-icon">🐉</span>
+						<span>{playerNames[dragonGiftEvent.seat]} → {playerNames[dragonGiftEvent.targetSeat]}에게 용 양도</span>
+					</div>
+				{:else if trickWonSeat !== null}
 					<div class="trick-won-notice">
 						{trickWonSeat === mySeat ? '트릭 승리!' : `${trickWonName} 승리`}
 					</div>
@@ -192,7 +213,7 @@
 		</div>
 
 		<!-- My turn indicator -->
-		{#if game.isMyTurn && trickWonSeat === null}
+		{#if game.isMyTurn && trickWonSeat === null && !dogEvent && !dragonGiftEvent}
 			<div class="my-turn-indicator">내 차례!</div>
 		{/if}
 	</div>
@@ -200,6 +221,26 @@
 	<!-- Grand Tichu Phase -->
 	{#if isGrandTichuPhase}
 		<TichuDeclareModal {game} />
+	{/if}
+
+	<!-- Exchange Result Overlay -->
+	{#if game.exchangeResultData}
+		<div class="exchange-result-overlay">
+			<div class="exchange-result-content">
+				<div class="exchange-result-title">받은 카드</div>
+				<div class="exchange-result-cards">
+					{#each game.exchangeResultData as entry}
+						<div class="exchange-result-item">
+							<span class="exchange-from">{entry.fromName}</span>
+							<CardComponent card={entry.card} small />
+						</div>
+					{/each}
+				</div>
+				<button class="exchange-result-dismiss" onclick={() => game.dismissExchangeResult()}>
+					확인
+				</button>
+			</div>
+		</div>
 	{/if}
 
 	<!-- My Hand (bottom) -->
@@ -258,17 +299,12 @@
 	}
 
 	.wish-indicator {
-		position: absolute;
-		top: 48px;
-		left: 50%;
-		transform: translateX(-50%);
 		background: rgba(245,158,11,0.9);
 		color: #000;
-		padding: 4px 12px;
+		padding: 3px 12px;
 		border-radius: 12px;
-		font-size: 0.8rem;
+		font-size: 0.75rem;
 		font-weight: 600;
-		z-index: 50;
 	}
 
 	.btn-small-tichu {
@@ -300,8 +336,10 @@
 
 	.center-area {
 		display: flex;
+		flex-direction: column;
 		align-items: center;
 		justify-content: center;
+		gap: 6px;
 	}
 
 	.my-turn-indicator {
@@ -365,5 +403,82 @@
 		0% { opacity: 0; transform: scale(0.7); }
 		60% { transform: scale(1.1); }
 		100% { opacity: 1; transform: scale(1); }
+	}
+
+	/* Special event notices (dog, dragon gift) */
+	.special-event-notice {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 8px 20px;
+		border-radius: 12px;
+		font-size: 0.85rem;
+		font-weight: 600;
+		animation: trickWonPop 0.4s ease-out;
+	}
+	.event-icon {
+		font-size: 1.2rem;
+	}
+	.dog-notice {
+		background: rgba(139,92,246,0.2);
+		border: 1px solid rgba(139,92,246,0.4);
+		color: #c4b5fd;
+	}
+	.dragon-notice {
+		background: rgba(239,68,68,0.2);
+		border: 1px solid rgba(239,68,68,0.4);
+		color: #fca5a5;
+	}
+
+	/* Exchange result overlay */
+	.exchange-result-overlay {
+		position: fixed;
+		inset: 0;
+		background: rgba(0,0,0,0.6);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		z-index: 1000;
+	}
+	.exchange-result-content {
+		background: #1e293b;
+		border-radius: 14px;
+		padding: 20px 24px;
+		text-align: center;
+		color: white;
+		min-width: 200px;
+	}
+	.exchange-result-title {
+		font-size: 0.9rem;
+		font-weight: 600;
+		margin-bottom: 14px;
+		opacity: 0.8;
+	}
+	.exchange-result-cards {
+		display: flex;
+		justify-content: center;
+		gap: 16px;
+		margin-bottom: 16px;
+	}
+	.exchange-result-item {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 6px;
+	}
+	.exchange-from {
+		font-size: 0.7rem;
+		opacity: 0.6;
+		font-weight: 500;
+	}
+	.exchange-result-dismiss {
+		padding: 8px 28px;
+		border-radius: 8px;
+		border: none;
+		background: #f59e0b;
+		color: #000;
+		font-weight: 600;
+		font-size: 0.85rem;
+		cursor: pointer;
 	}
 </style>

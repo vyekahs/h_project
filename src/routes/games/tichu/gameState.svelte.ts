@@ -2,7 +2,7 @@ import type {
 	Card, SeatIndex, TeamId, TichuRoundResult, ExchangeCards, GamePhase
 } from '$lib/games/tichu/types';
 import type { AiStrategy, AiSpeed } from '$lib/games/tichu/ai/types';
-import { LocalGameEngine, type LocalGameConfig, type GameEvent } from '$lib/games/tichu/ai/localGameEngine';
+import { LocalGameEngine, type LocalGameConfig, type GameEvent, type ExchangeResultEntry } from '$lib/games/tichu/ai/localGameEngine';
 
 export type GameView = 'setup' | 'game';
 export type ToastType = 'info' | 'success' | 'error' | 'warning';
@@ -42,6 +42,9 @@ export function createTichuGameState() {
 	let showGameOverModal = $state(false);
 	let roundResult = $state<TichuRoundResult | null>(null);
 	let gameEndData = $state<{ winner: TeamId; scoreA: number; scoreB: number } | null>(null);
+
+	// Exchange result display
+	let exchangeResultData = $state<ExchangeResultEntry[] | null>(null);
 
 	// Toast notifications
 	let toasts = $state<Toast[]>([]);
@@ -118,6 +121,7 @@ export function createTichuGameState() {
 		const s = getState();
 		const currentPhase = s?.phase ?? null;
 		if (currentPhase && currentPhase !== lastPhase) {
+			const prevPhase = lastPhase;
 			lastPhase = currentPhase;
 
 			// Reset selection on phase change
@@ -127,6 +131,11 @@ export function createTichuGameState() {
 				exchangePartner = null;
 				exchangeLeft = null;
 				exchangeRight = null;
+			}
+
+			// Show exchange result when transitioning from exchange to playing
+			if (currentPhase === 'playing' && prevPhase === 'exchange' && engine?.exchangeResult) {
+				exchangeResultData = engine.exchangeResult;
 			}
 
 			if (currentPhase === 'wish_declare' && s?.round?.currentSeat === 0) {
@@ -156,6 +165,10 @@ export function createTichuGameState() {
 		}
 	});
 
+	function dismissExchangeResult() {
+		exchangeResultData = null;
+	}
+
 	function addToast(message: string, type: ToastType = 'info') {
 		const id = ++toastIdCounter;
 		toasts = [...toasts, { id, message, type }];
@@ -180,11 +193,12 @@ export function createTichuGameState() {
 				stateVersion++;
 			},
 			onEvent: (event: GameEvent) => {
-				// Don't overwrite trick_won with subsequent play/pass events
-				if (lastEvent?.type === 'trick_won' && event.type !== 'trick_won') return;
+				// Don't overwrite priority events (trick_won, dog, dragon_gift) with play/pass
+				const priorityTypes = ['trick_won', 'dog', 'dragon_gift'];
+				if (lastEvent && priorityTypes.includes(lastEvent.type) && !priorityTypes.includes(event.type)) return;
 				lastEvent = event;
 				if (lastEventTimer) clearTimeout(lastEventTimer);
-				const duration = event.type === 'trick_won' ? 1200 : 800;
+				const duration = priorityTypes.includes(event.type) ? 1200 : 800;
 				lastEventTimer = setTimeout(() => { lastEvent = null; }, duration);
 			}
 		});
@@ -367,6 +381,7 @@ export function createTichuGameState() {
 		get gameEndData() { return gameEndData; },
 		get toasts() { return toasts; },
 		get lastEvent() { return lastEvent; },
+		get exchangeResultData() { return exchangeResultData; },
 
 		// Derived
 		get isMyTurn() { return isMyTurn; },
@@ -387,6 +402,7 @@ export function createTichuGameState() {
 		clearSelection,
 		setExchangeCard,
 		submitExchange,
+		dismissExchangeResult,
 		playSelectedCards,
 		pass,
 		declareGrandTichu,

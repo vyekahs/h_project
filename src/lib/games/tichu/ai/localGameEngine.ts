@@ -18,7 +18,9 @@ export type GameEvent =
 	| { type: 'pass'; seat: SeatIndex }
 	| { type: 'play'; seat: SeatIndex; combo: Combination }
 	| { type: 'trick_won'; seat: SeatIndex }
-	| { type: 'bomb'; seat: SeatIndex; combo: Combination };
+	| { type: 'bomb'; seat: SeatIndex; combo: Combination }
+	| { type: 'dog'; seat: SeatIndex; targetSeat: SeatIndex }
+	| { type: 'dragon_gift'; seat: SeatIndex; targetSeat: SeatIndex };
 
 export interface LocalGameConfig {
 	partnerStrategy: AiStrategy;
@@ -29,8 +31,15 @@ export interface LocalGameConfig {
 	onEvent?: (event: GameEvent) => void;
 }
 
+export interface ExchangeResultEntry {
+	fromSeat: SeatIndex;
+	fromName: string;
+	card: Card;
+}
+
 export class LocalGameEngine {
 	state: TichuRoomState;
+	exchangeResult: ExchangeResultEntry[] | null = null;
 	private aiPlayers: Map<SeatIndex, AiPlayer> = new Map();
 	private aiSpeed: AiSpeed;
 	private grandTichuDecisions: (boolean | null)[] = [null, null, null, null];
@@ -138,6 +147,7 @@ export class LocalGameEngine {
 
 		this.grandTichuDecisions = [null, null, null, null];
 		this.exchangeSubmissions = [null, null, null, null];
+		this.exchangeResult = null;
 
 		this.setPhase('grand_tichu_window');
 		this.notifyStateChange();
@@ -282,14 +292,16 @@ export class LocalGameEngine {
 
 	private processExchanges(): void {
 		const received: Card[][] = [[], [], [], []];
+		// Track what human receives and from whom
+		const humanReceived: ExchangeResultEntry[] = [];
 
 		for (let seat = 0; seat < 4; seat++) {
 			const exchange = this.exchangeSubmissions[seat]!;
 			const player = this.state.players[seat];
 
-			const partnerSeat = getPartnerSeat(seat);
-			const leftSeat = getLeftSeat(seat);
-			const rightSeat = getRightSeat(seat);
+			const pSeat = getPartnerSeat(seat);
+			const lSeat = getLeftSeat(seat);
+			const rSeat = getRightSeat(seat);
 
 			const partnerCard = findCardById(player.hand, exchange.toPartner)!;
 			const leftCard = findCardById(player.hand, exchange.toLeft)!;
@@ -299,14 +311,26 @@ export class LocalGameEngine {
 			player.hand = removeCardById(player.hand, exchange.toLeft);
 			player.hand = removeCardById(player.hand, exchange.toRight);
 
-			received[partnerSeat].push(partnerCard);
-			received[leftSeat].push(leftCard);
-			received[rightSeat].push(rightCard);
+			received[pSeat].push(partnerCard);
+			received[lSeat].push(leftCard);
+			received[rSeat].push(rightCard);
+
+			// Record cards sent to human (seat 0)
+			if (seat !== HUMAN_SEAT) {
+				const seatIdx = seat as SeatIndex;
+				const name = this.state.players[seatIdx].name;
+				if (pSeat === HUMAN_SEAT) humanReceived.push({ fromSeat: seatIdx, fromName: name, card: partnerCard });
+				if (lSeat === HUMAN_SEAT) humanReceived.push({ fromSeat: seatIdx, fromName: name, card: leftCard });
+				if (rSeat === HUMAN_SEAT) humanReceived.push({ fromSeat: seatIdx, fromName: name, card: rightCard });
+			}
 		}
 
 		for (let i = 0; i < 4; i++) {
 			this.state.players[i].hand.push(...received[i]);
 		}
+
+		// Store exchange result for UI display
+		this.exchangeResult = humanReceived;
 
 		// Find who has mahjong
 		const mahjongIdx = this.state.players.findIndex(p => hasMahjong(p.hand));
@@ -392,6 +416,8 @@ export class LocalGameEngine {
 			const allCards = round.trick.plays.flatMap(p => p.combination.cards);
 			this.state.players[targetSeat].wonCards.push(...allCards);
 		}
+
+		this.emitEvent({ type: 'dragon_gift', seat: HUMAN_SEAT, targetSeat });
 
 		round.trick = null;
 		round.dragonGiftPending = false;
@@ -594,6 +620,8 @@ export class LocalGameEngine {
 		} else {
 			round.currentSeat = partnerSeat;
 		}
+
+		this.emitEvent({ type: 'dog', seat, targetSeat: round.currentSeat });
 
 		if (player.hand.length === 0) {
 			this.playerFinished(seat);
@@ -890,6 +918,8 @@ export class LocalGameEngine {
 				const allCards = round.trick.plays.flatMap(p => p.combination.cards);
 				this.state.players[targetSeat].wonCards.push(...allCards);
 			}
+
+			this.emitEvent({ type: 'dragon_gift', seat, targetSeat });
 
 			round.trick = null;
 			round.dragonGiftPending = false;
