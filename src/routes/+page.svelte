@@ -435,7 +435,7 @@
                 {#if data.user}
                     <div class="user-greeting">
                         {#if data.user.title}
-                            <span class="user-title">[{data.user.title.title_name}]</span>
+                            <span class="user-title">{data.user.title.title_name}</span>
                         {/if}
                         <span class="user-name">{data.user.name}님</span>
                     </div>
@@ -644,7 +644,7 @@
                                                 {@const participant = p as any}
                                                 <span class="p-name" class:guest-name={participant.is_guest}>
                                                     {#if participant.title_name}
-                                                        <span class="p-title">[{participant.title_name}]</span>
+                                                        <span class="p-title">{participant.title_name}</span>
                                                     {/if}
                                                     {participant.name}
                                                     {#if participant.is_guest}
@@ -670,7 +670,7 @@
                     <div class="attendee-card {a.is_playing ? 'playing' : ''}">
                         <div class="attendee-info">
                             {#if a.title_name}
-                                <span class="mini-title">[{a.title_name}]</span>
+                                <span class="mini-title">{a.title_name}</span>
                             {/if}
                             <span class="name">{a.name}</span>
                         </div>
@@ -717,7 +717,7 @@
                 {#each (data.dailyVisitPlans || []) as plan}
                     <div class="visit-plan-card">
                         {#if plan.title_name}
-                            <span class="mini-title">[{plan.title_name}]</span>
+                            <span class="mini-title">{plan.title_name}</span>
                         {/if}
                         <span class="name">{plan.name}</span>
                     </div>
@@ -825,7 +825,7 @@
                                         {@const p = player as any}
                                         <div class="player-tag" class:guest-tag={p.is_guest}>
                                             {#if p.title_name}
-                                                <span class="tag-title">[{p.title_name}]</span>
+                                                <span class="tag-title">{p.title_name}</span>
                                             {/if}
                                             {p.name}
                                             {#if p.is_guest}
@@ -992,7 +992,7 @@
                                             {@const participant = p as any}
                                             <span class="p-name" class:guest-name={participant.is_guest}>
                                                 {#if participant.title_name}
-                                                    <span class="p-title">[{participant.title_name}]</span>
+                                                    <span class="p-title">{participant.title_name}</span>
                                                 {/if}
                                                 {participant.name}
                                                 {#if participant.is_guest}
@@ -2842,9 +2842,12 @@
         gap: 4px;
     }
     .user-greeting .user-title {
-        color: #e67700;
+        font-size: 0.7rem;
         font-weight: 700;
-        font-size: 0.85em;
+        color: #1a1a2e;
+        background: linear-gradient(135deg, #fbbf24, #f59e0b);
+        padding: 2px 7px;
+        border-radius: 8px;
     }
     .user-greeting .user-name {
         font-weight: 600;
@@ -2863,11 +2866,14 @@
     }
     /* Mini Titles */
     .mini-title {
-        font-size: 0.75rem;
-        color: #e67700;
+        font-size: 0.6rem;
         font-weight: 700;
-        margin-right: 2px;
-        display: block; /* Stack on mobile */
+        color: #1a1a2e;
+        background: linear-gradient(135deg, #fbbf24, #f59e0b);
+        padding: 1px 5px;
+        border-radius: 6px;
+        display: block;
+        width: fit-content;
     }
     .attendee-info {
         display: flex;
@@ -2884,9 +2890,12 @@
     }
     
     .tag-title {
-        font-size: 0.7rem;
-        color: #e67700;
+        font-size: 0.6rem;
         font-weight: 700;
+        color: #1a1a2e;
+        background: linear-gradient(135deg, #fbbf24, #f59e0b);
+        padding: 1px 5px;
+        border-radius: 6px;
         display: inline-block;
         margin-right: 2px;
     }
@@ -2908,9 +2917,12 @@
         gap: 2px;
     }
     .p-title {
-        font-size: 0.75rem;
-        color: #e67700;
+        font-size: 0.6rem;
         font-weight: 700;
+        color: #1a1a2e;
+        background: linear-gradient(135deg, #fbbf24, #f59e0b);
+        padding: 1px 5px;
+        border-radius: 6px;
     }
 
     /* Install Guide Button */

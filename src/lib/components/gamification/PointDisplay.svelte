@@ -15,7 +15,7 @@
     <div class="user-status-badges" role="button" tabindex="0" onclick={() => goto('/shop')} onkeydown={(e) => e.key === 'Enter' && goto('/shop')}>
         <div class="profile-badge">
             {#if $user.currentTitle}
-                <span class="title-text">[{$user.currentTitle.title_name}]</span>
+                <span class="title-badge">{$user.currentTitle.title_name}</span>
             {/if}
             <span class="name-text">{$user.name || 'Guest'}</span>
         </div>
@@ -52,19 +52,22 @@
         padding: 4px 10px;
         border-radius: 16px;
         display: flex;
-        gap: 4px;
+        gap: 6px;
         align-items: center;
         backdrop-filter: blur(4px);
         border: 1px solid rgba(255, 255, 255, 0.1);
         white-space: nowrap;
-        max-width: 150px;
         overflow: hidden;
-        text-overflow: ellipsis;
     }
 
-    .title-text {
-        color: #ffd700;
+    .title-badge {
+        font-size: 0.7rem;
         font-weight: 700;
+        color: #1a1a2e;
+        background: linear-gradient(135deg, #fbbf24, #f59e0b);
+        padding: 2px 7px;
+        border-radius: 8px;
+        flex-shrink: 0;
     }
 
     .name-text {

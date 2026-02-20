@@ -286,7 +286,7 @@
             <div class="user-simple">
                 <span class="user-name">
                     {#if data.user.title}
-                        <span class="user-title">[{data.user.title.title_name}]</span>
+                        <span class="user-title">{data.user.title.title_name}</span>
                     {/if}
                     <strong>{data.user.name}</strong> 님
                 </span>
@@ -943,10 +943,13 @@
         color: #555;
     }
     .user-title {
-        color: #e67700;
+        font-size: 0.7rem;
         font-weight: 700;
+        color: #1a1a2e;
+        background: linear-gradient(135deg, #fbbf24, #f59e0b);
+        padding: 2px 7px;
+        border-radius: 8px;
         margin-right: 4px;
-        font-size: 0.9em;
     }
     .btn-logout-text {
         background: none;
