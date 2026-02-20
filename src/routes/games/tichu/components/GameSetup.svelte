@@ -320,7 +320,7 @@
 		align-items: center;
 		justify-content: center;
 		gap: 6px;
-		padding: 20px 16px;
+		padding: 16px 12px;
 		background: rgba(0, 0, 0, 0.2);
 		backdrop-filter: blur(12px);
 		-webkit-backdrop-filter: blur(12px);
@@ -335,10 +335,10 @@
 	}
 
 	.strategy-card:hover {
-		background: rgba(255, 255, 255, 0.1);
-		transform: translateY(-2px);
-		box-shadow: 0 8px 20px rgba(0,0,0,0.3);
-		border-color: rgba(251, 191, 36, 0.3);
+		background: rgba(255, 255, 255, 0.05);
+		transform: translateY(-1px);
+		box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+		border-color: rgba(255, 255, 255, 0.2);
 	}
 
 	.strategy-card.selected {
@@ -354,33 +354,33 @@
 	.strategy-character {
 		display: inline-flex;
 		align-items: center;
-		justify-content: center;
-		width: fit-content;
-		padding: 4px 14px;
-		border-radius: 6px;
+		padding: 0;
+		border-radius: 0;
 		background: transparent;
-		border: 1px solid rgba(251, 191, 36, 0.8);
+		border: none;
+		backdrop-filter: none;
+		-webkit-backdrop-filter: none;
 		color: #fbbf24;
-		font-size: 0.85rem;
+		font-size: 0.9rem;
 		font-weight: 800;
 		letter-spacing: -0.01em;
 		box-shadow: none;
-		text-shadow: none;
+		text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
 		transition: all 0.2s;
 	}
 	.strategy-card:hover .strategy-character {
-		transform: scale(1.05);
-		background: rgba(251, 191, 36, 0.1);
-		border-color: #fbbf24;
-		box-shadow: 0 0 10px rgba(251, 191, 36, 0.2);
+		transform: scale(1.02);
+		background: transparent;
+		border-color: transparent;
+		box-shadow: none;
 	}
-	/* When selected, invert or brighter outline? */
+	
 	.strategy-card.selected .strategy-character {
-		background: rgba(251, 191, 36, 0.2);
-		border-color: #fcd34d;
+		background: transparent;
+		border-color: transparent;
 		color: #fff;
 		text-shadow: 0 0 8px rgba(251, 191, 36, 0.6);
-		box-shadow: 0 0 15px rgba(251, 191, 36, 0.3);
+		box-shadow: none;
 	}
 
 	/* Speed Row */
