@@ -111,12 +111,6 @@ export const RankingService = {
             }
         }
 
-        import('./titleService').then(({ TitleService }) => {
-            TitleService.checkAndAssignTitles(userId).catch(e => {
-                console.error('[RankingService] Title check failed:', e);
-            });
-        });
-
         return {
             earnedPoints: skipReward ? 0 : finalPoints,
             score: calculatedScore

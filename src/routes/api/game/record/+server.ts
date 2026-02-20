@@ -2,13 +2,15 @@ import { json } from '@sveltejs/kit';
 import { RankingService } from '$lib/server/services/rankingService';
 import { TitleService } from '$lib/server/services/titleService';
 import { verifyAttendeeSession } from '$lib/server/auth';
+import { db } from '$lib/server/db/index';
+import { sql } from 'drizzle-orm';
 
 
 export async function POST({ request, locals, cookies }) {
     // Authenticate
     const sessionToken = cookies.get('user_session');
     let userId = 1; // Fallback
-    
+
     if (sessionToken) {
         const user = await verifyAttendeeSession(sessionToken);
         if (user) {
@@ -27,15 +29,23 @@ export async function POST({ request, locals, cookies }) {
 
     try {
         const result = await RankingService.submitScore(userId, gameId, difficulty, clearTime, score, skipReward, mistakes || 0);
-        
-        // Trigger Title Check (Safely)
+
+        // Trigger Title Check and return newly assigned titles
+        let newTitles: string[] = [];
         try {
-            await TitleService.checkAndAssignTitles(userId);
+            const assignedCodes = await TitleService.checkAndAssignTitles(userId);
+            if (assignedCodes.length > 0) {
+                const titleInfoRes = await db.execute(sql`
+                    SELECT title_name FROM minigame_titles
+                    WHERE title_code = ANY(ARRAY[${sql.join(assignedCodes.map(c => sql`${c}`), sql`, `)}])
+                `);
+                newTitles = titleInfoRes.map((r: any) => r.title_name);
+            }
         } catch (e) {
             console.error('[API] Title check failed:', e);
         }
 
-        return json(result);
+        return json({ ...result, newTitles });
     } catch (e: any) {
         console.error(e);
         return json({ error: e.message, stack: e.stack }, { status: 500 });

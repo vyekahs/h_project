@@ -9,5 +9,8 @@ node scripts/migrate_feedback.js
 echo "Running Tichu migrations..."
 node scripts/migrate_tichu.js
 
+echo "Seeding master titles..."
+node scripts/add_master_titles.js
+
 echo "Starting application..."
 node server.js

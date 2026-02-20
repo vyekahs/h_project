@@ -76,12 +76,14 @@ export const TitleService = {
                                 WHERE user_id = ${userId} AND rnk <= ${cond.rank}
                             `);
                         } else {
+                            // 월간 랭킹 기준으로 마스터 칭호 체크
+                            const now = new Date();
+                            const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
                             rankCheckRes = await db.execute(sql`
                                 SELECT 1 FROM (
-                                    SELECT user_id, RANK() OVER (ORDER BY SUM(score) DESC) as rnk
-                                    FROM minigame_rankings
-                                    WHERE game_id = ${cond.gameId}
-                                    GROUP BY user_id
+                                    SELECT user_id, RANK() OVER (ORDER BY total_score DESC) as rnk
+                                    FROM minigame_monthly_rankings
+                                    WHERE game_id = ${cond.gameId} AND month_key = ${monthKey}
                                 ) as ranked
                                 WHERE user_id = ${userId} AND rnk <= ${cond.rank}
                             `);
@@ -128,6 +130,12 @@ export const TitleService = {
             if (qualified) {
                 if (!ownedTitleIds.has(title.id)) {
                     try {
+                        // 마스터 칭호(1명만 보유): 기존 보유자에게서 회수 후 부여
+                        const cond: any = title.conditionValue;
+                        if (cond.gameId && !cond.difficulty && cond.rank === 1) {
+                            await db.delete(minigameUserTitles)
+                                .where(sql`title_id = ${title.id}`);
+                        }
                         await db.insert(minigameUserTitles)
                             .values({ userId, titleId: title.id })
                             .onConflictDoNothing();
