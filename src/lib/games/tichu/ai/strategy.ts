@@ -965,7 +965,12 @@ function decideLead(
 		}
 
 		// === Aggressiveness modifier ===
-		score += combo.rank * weights.aggressiveness * 0.8;
+		// 싱글 리드에서는 랭크 보너스를 억제: 높은 싱글은 팔로우용으로 보존
+		if (combo.type === 'single') {
+			score += combo.rank * weights.aggressiveness * 0.2;
+		} else {
+			score += combo.rank * weights.aggressiveness * 0.8;
+		}
 		score += combo.cards.length * weights.aggressiveness * 1.5;
 
 		return { combo, score };
