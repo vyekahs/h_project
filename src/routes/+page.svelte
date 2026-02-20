@@ -1763,7 +1763,8 @@
         display: flex;
         flex-direction: column;
         align-items: center;
-        overflow: hidden; /* Ensure content stays inside */
+        justify-content: center;
+        overflow: hidden;
     }
     .name {
         font-weight: 600;
@@ -2877,6 +2878,7 @@
         align-items: center;
         justify-content: center;
         width: fit-content;
+        max-width: 100%;
         padding: 2px 8px;
         border: 1px solid #fbbf24;
         border-radius: 6px;
@@ -2885,6 +2887,9 @@
         font-size: 0.75rem;
         font-weight: 700;
         margin-bottom: 2px;
+        word-break: keep-all;
+        text-align: center;
+        line-height: 1.3;
     }
     .attendee-info {
         display: flex;
@@ -2941,7 +2946,8 @@
         justify-content: center;
         width: fit-content;
         padding: 2px 8px;
-        border: 1px solid #fbbf24;
+        border-left: 3px solid #fbbf24;
+        border-right: 3px solid #fbbf24;
         border-radius: 6px;
         background: rgba(255, 255, 255, 0.5);
         color: #d97706;

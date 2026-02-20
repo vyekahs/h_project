@@ -945,10 +945,11 @@
     .user-title {
         font-size: 0.7rem;
         font-weight: 700;
-        color: #1a1a2e;
-        background: linear-gradient(135deg, #fbbf24, #f59e0b);
+        color: #d97706;
+        background: rgba(255, 255, 255, 0.5);
+        border: 1px solid #fbbf24;
         padding: 2px 7px;
-        border-radius: 8px;
+        border-radius: 6px;
         margin-right: 4px;
     }
     .btn-logout-text {
