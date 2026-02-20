@@ -37,12 +37,14 @@ self.addEventListener('fetch', (e) => {
 
 	const url = new URL(event.request.url);
 
-	// Skip: API requests, different origins, data requests, navigation
-	if (url.pathname.startsWith('/api') || url.origin !== self.location.origin) return;
+	// Skip: API requests, different origins, data requests, navigation, SSE
+	if (url.origin !== self.location.origin) return;
+	if (url.pathname.startsWith('/api')) return;
 	if (url.pathname.includes('__data.json')) return;
 	if (event.request.mode === 'navigate') return;
+	if (event.request.headers.get('accept')?.includes('text/event-stream')) return;
 
-	async function respond() {
+	async function respond(): Promise<Response> {
 		const cache = await caches.open(CACHE);
 
 		// Static assets (build/files) → cache first
@@ -54,7 +56,7 @@ self.addEventListener('fetch', (e) => {
 		// 기타 리소스 (이미지, 폰트 등) → network first, 오프라인 시 캐시
 		try {
 			const response = await fetch(event.request);
-			if (response.status === 200) {
+			if (response.status === 200 && response.type === 'basic') {
 				cache.put(event.request, response.clone()).catch(() => {});
 			}
 			return response;
