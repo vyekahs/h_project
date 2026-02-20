@@ -11,6 +11,13 @@ import {
 	findBombs,
 	getCardSortRank
 } from './handEvaluator';
+import {
+	buildCardTracker,
+	rankStrengthInContext,
+	comboLikelyToWin,
+	hasOpponentDeclaredTichu,
+	type CardTracker
+} from './cardTracker';
 
 // ===== Hand Analysis Helpers =====
 
@@ -120,40 +127,6 @@ function getTrickPoints(cards: Card[]): number {
 	return points;
 }
 
-// ===== Card Counting / Awareness =====
-
-/** Count how many cards of each rank have been played in completed tricks */
-function countPlayedCards(context: AiDecisionContext): Map<number, number> {
-	const played = new Map<number, number>();
-	// Cards in won piles
-	for (const player of context.players) {
-		for (const card of player.wonCards) {
-			if (card.type === 'normal') {
-				played.set(card.rank, (played.get(card.rank) || 0) + 1);
-			}
-		}
-	}
-	// Cards in current trick
-	if (context.trick) {
-		for (const play of context.trick.plays) {
-			for (const card of play.combination.cards) {
-				if (card.type === 'normal') {
-					played.set(card.rank, (played.get(card.rank) || 0) + 1);
-				}
-			}
-		}
-	}
-	return played;
-}
-
-/** Estimate how many cards of a given rank are still out (not in my hand, not played) */
-function cardsStillOut(rank: number, myHand: Card[], playedCounts: Map<number, number>): number {
-	const total = 4; // 4 suits per rank
-	const played = playedCounts.get(rank) || 0;
-	const inMyHand = myHand.filter(c => c.type === 'normal' && c.rank === rank).length;
-	return Math.max(0, total - played - inMyHand);
-}
-
 /**
  * 콤보의 스코어링용 실효 랭크.
  * 봉황 싱글은 실제 게임에서 현재 트릭 +0.5로 동작하지만,
@@ -164,29 +137,6 @@ function getScoringRank(combo: Combination): number {
 		return 14.5;
 	}
 	return combo.rank;
-}
-
-/** Check if my single of rank X is likely to win (few or no higher cards still out) */
-function isSingleLikelyToWin(rank: number, myHand: Card[], playedCounts: Map<number, number>): boolean {
-	// Count how many higher-rank singles are still out among opponents
-	let higherCardsOut = 0;
-	for (let r = rank + 1; r <= 14; r++) {
-		higherCardsOut += cardsStillOut(r, myHand, playedCounts);
-	}
-	// Dragon is always out if not in my hand and not played
-	const dragonInHand = myHand.some(c => c.type === 'special' && c.special === 'dragon');
-	const dragonPlayed = [...playedCounts.entries()].length; // rough proxy
-	if (!dragonInHand) higherCardsOut += 1; // dragon beats any single
-
-	return higherCardsOut <= 1;
-}
-
-/** Total remaining cards across all opponents */
-function totalOpponentCards(context: AiDecisionContext): number {
-	const myTeam = getTeam(context.currentSeat);
-	return context.players
-		.filter(p => getTeam(p.seat) !== myTeam && p.finishOrder === null)
-		.reduce((sum, p) => sum + p.hand.length, 0);
 }
 
 // ===== Grand Tichu Decision =====
@@ -344,24 +294,46 @@ export function selectExchangeCards(
 	}
 
 	// === Cards to give to opponents ===
-	// Give weakest cards, preferring low singletons (hardest for US to get rid of)
+	// 전략: 5점 카드(5) 선호, 낮은 싱글톤 → 상대에게 줘서 우리 핸드 정리
 	const remaining = hand.filter(c => c.id !== toPartner!.id);
 	const giveToOpponent: Card[] = [];
 
-	// First priority: low singletons
-	for (const card of lowSingletons) {
-		if (card.id === toPartner!.id) continue;
-		if (protectedIds.has(card.id)) continue;
+	// 5점 카드 싱글톤 우선: 콤보에 속하지 않는 5점 카드만 상대에게 줌
+	const fivePointCards = remaining.filter(
+		c => c.type === 'normal' && c.rank === 5
+			&& !protectedIds.has(c.id)
+			&& singletons.some(s => s.id === c.id)
+	);
+	for (const card of fivePointCards) {
 		if (giveToOpponent.length >= 2) break;
 		giveToOpponent.push(card);
 	}
 
-	// Fill rest with lowest value cards
+	// Low singletons
+	for (const card of lowSingletons) {
+		if (card.id === toPartner!.id) continue;
+		if (protectedIds.has(card.id)) continue;
+		if (giveToOpponent.some(g => g.id === card.id)) continue;
+		if (giveToOpponent.length >= 2) break;
+		giveToOpponent.push(card);
+	}
+
+	// Fill rest with lowest value cards (연속 랭크 피하기: 스트레이트 도움 방지)
 	if (giveToOpponent.length < 2) {
 		const sorted = remaining
 			.filter(c => !giveToOpponent.some(g => g.id === c.id) && !protectedIds.has(c.id))
 			.sort((a, b) => getCardSortRank(a) - getCardSortRank(b));
-		for (const card of sorted) {
+		// 연속 랭크 피하기: 이미 준 카드 랭크와 인접한 랭크 비선호
+		const givenRanks = new Set<number>(giveToOpponent.filter(c => c.type === 'normal').map(c => (c as NormalCard).rank));
+		const nonAdjacentFirst = sorted.sort((a, b) => {
+			const aRank: number = a.type === 'normal' ? a.rank : 0;
+			const bRank: number = b.type === 'normal' ? b.rank : 0;
+			const aAdj = givenRanks.has(aRank - 1) || givenRanks.has(aRank + 1) ? 1 : 0;
+			const bAdj = givenRanks.has(bRank - 1) || givenRanks.has(bRank + 1) ? 1 : 0;
+			if (aAdj !== bAdj) return aAdj - bAdj; // 비인접 우선
+			return getCardSortRank(a) - getCardSortRank(b);
+		});
+		for (const card of nonAdjacentFirst) {
 			if (card.type === 'special' && (card.special === 'dragon' || card.special === 'phoenix' || card.special === 'mahjong')) continue;
 			if (giveToOpponent.length >= 2) break;
 			giveToOpponent.push(card);
@@ -422,6 +394,13 @@ export function decidePlay(
 			}
 		}
 
+		// 파트너 티츄 선언 or 파트너 카드 ≤3장이면 → 나갈 기회도 양보하고 패스
+		const partnerDeclaredTichu = partner.grandTichu === true || partner.smallTichu;
+		if (hand.length > 1 && partner.finishOrder === null &&
+			(partnerDeclaredTichu || partner.hand.length <= 3)) {
+			return 'pass';
+		}
+
 		// If I can finish by playing on partner's trick, do it
 		if (hand.length === 1) {
 			const myCombo = detectCombination([hand[0]]);
@@ -460,15 +439,24 @@ export function decidePlay(
 	}
 
 	// Filter out bombs (handle separately)
-	const nonBombPlays = beatablePlays.filter(c => !isBomb(c));
-	const bombPlays = beatablePlays.filter(c => isBomb(c));
+	const iAmCloseToFinishing = hand.length <= 3;
+	// A 트리플/풀하우스는 나갈 수 있는 상황이 아니면 제외
+	const nonBombPlays = beatablePlays.filter(c => {
+		if (isBomb(c)) return false;
+		if (!iAmCloseToFinishing && c.rank === 14 && (c.type === 'triple' || c.type === 'full_house' || c.type === 'stairs')) return false;
+		return true;
+	});
+	// A 폭탄은 가능하면 사용하지 않음 (A는 싱글 선먹기용으로 보존)
+	const allBombPlays = beatablePlays.filter(c => isBomb(c));
+	const nonAceBombs = allBombPlays.filter(c => c.rank !== 14);
+	const bombPlays = nonAceBombs.length > 0 ? nonAceBombs : allBombPlays;
 
 	// === Situational awareness ===
+	const tracker = buildCardTracker(context);
 	const opponentAboutToFinish = players.some(
 		p => getTeam(p.seat) !== myTeam && p.finishOrder === null && p.hand.length <= 2
 	);
 	const partnerAboutToFinish = partner.finishOrder === null && partner.hand.length <= 2;
-	const iAmCloseToFinishing = hand.length <= 3;
 	const partnerFinished = partner.finishOrder !== null;
 
 	// Calculate trick point value
@@ -571,7 +559,6 @@ function pickBestFollow(
 
 	// Am I the last player before the trick winner gets another chance?
 	// If so, I should try harder to take the trick when opponent is winning
-	const activePlayers = context.players.filter(p => p.finishOrder === null);
 	const nextAfterMe = getNextActiveSeat(context.currentSeat, context.players);
 	const amLastBeforeTrickWinner = nextAfterMe === lastPlay.seat;
 
@@ -581,7 +568,7 @@ function pickBestFollow(
 	}
 
 	// Score each play option
-	const playedCounts = countPlayedCards(context);
+	const tracker = buildCardTracker(context);
 	const plan = analyzeHand(hand);
 	const scored = sorted.map(play => {
 		// 봉황 싱글은 rank=0이지만 실제로는 A급(14.5) → 프리셋 훅에도 보정된 rank 전달
@@ -660,6 +647,20 @@ function pickBestFollow(
 			}
 		}
 
+		// === 엔드게임 체크: 이 트릭 이기면 나갈 수 있나? ===
+		if (hand.length <= 5) {
+			const afterPlay = hand.filter(c => !play.cards.some(pc => pc.id === c.id));
+			if (afterPlay.length > 0) {
+				const afterCombo = detectCombination(afterPlay);
+				if (afterCombo) {
+					// 이 플레이 후 남은 카드가 한 콤보로 나갈 수 있음!
+					score += 25;
+				} else if (afterPlay.length === 1) {
+					score += 20; // 1장만 남음
+				}
+			}
+		}
+
 		return { play, score };
 	});
 
@@ -723,11 +724,10 @@ function decideLead(
 	context: AiDecisionContext,
 	behavior: PresetBehavior = {}
 ): string[] {
-	const myTeam = getTeam(context.currentSeat);
 	const partnerSeat = getPartnerSeat(context.currentSeat);
 	const partner = context.players[partnerSeat];
 	const plan = analyzeHand(hand);
-	const playedCounts = countPlayedCards(context);
+	const tracker = buildCardTracker(context);
 
 	// If wish is active, must lead with wished rank if possible
 	if (wish.active && wish.requestedRank !== null && mustPlayWishedRank(hand, wish)) {
@@ -805,9 +805,12 @@ function decideLead(
 	const dragonLeadAllowed = behavior.shouldLeadDragon?.(hand, context);
 
 	// Get all lead candidates (exclude dog, handled above; exclude bombs unless aggressive)
+	const canFinishSoon = hand.length <= 5;
 	let candidates = plan.allCombos.filter(c => {
 		if (isDogCombo(c)) return false;
 		if (isBomb(c) && weights.bombHolding > 0.3) return false;
+		// A 포함 트리플/풀하우스/연속페어 리드 금지 (나갈 수 있는 상황 제외)
+		if (!canFinishSoon && c.rank === 14 && (c.type === 'triple' || c.type === 'full_house' || c.type === 'stairs')) return false;
 		// 드래곤 리드 금지 시 드래곤 싱글 제외
 		if (dragonLeadAllowed === false &&
 			c.type === 'single' &&
@@ -831,7 +834,8 @@ function decideLead(
 	const partnerDeclaredTichu = partner.grandTichu === true || partner.smallTichu;
 	const iDeclaredTichu = context.players[context.currentSeat].grandTichu === true || context.players[context.currentSeat].smallTichu;
 
-	// === Strategy: score each candidate ===
+	// === Strategy: "나가기 경로" 기반 스코어링 ===
+	// 핵심: 각 리드 후보를 냈을 때 남은 손패의 나가기 효율을 평가
 	const scored = candidates.map(combo => {
 		// Behavior hook: 프리셋별 리드 스코어링 오버라이드
 		const behaviorScore = behavior.scoreLeadCandidate?.(combo, hand, context);
@@ -839,52 +843,39 @@ function decideLead(
 			return { combo, score: behaviorScore };
 		}
 
-		let score = 0;
-		const effectiveRank = getScoringRank(combo);
+		// 이 콤보를 리드했을 때의 나가기 경로 점수
+		const { leadWinProb, exitScore } = scoreLeadWithExitPath(combo, hand, tracker);
+		// exitScore가 핵심: 이 콤보를 낸 후 남은 손패 나가기 효율
+		// leadWinProb가 높은 카드(A, K)는 팔로우에서도 이길 수 있으니 리드에서 소모 불필요
+		// → 이길 확률이 낮은 콤보일수록 리드에서 먼저 처리해야 함
+		let score = exitScore * 3 + (1 - leadWinProb) * 8;
 
-		// === 싱글 우선 리드 전략 ===
-		// 싱글을 먼저 내서 처리하고, 멀티카드 콤보는 나중에 사용
-		if (combo.type === 'single') {
-			score += 20; // 싱글 기본 보너스 — 조합보다 먼저 나감
-			score -= effectiveRank * 1.2;
-		} else {
-			score -= effectiveRank * 2;
-		}
-
-		// === Penalty for wasting dragon as lead ===
-		if (combo.cards.some(c => c.type === 'special' && c.special === 'dragon')) {
-			score -= 15; // Dragon should be used to take tricks, not lead
-			// Exception: if I have very few cards and dragon is my only way to lead strong
-			if (hand.length <= 3) score += 10;
-		}
-
-		// === Bonus for straights and stairs (clear many cards efficiently) ===
-		if (combo.type === 'straight' || combo.type === 'stairs') {
-			score += combo.cards.length * 3;
-			// Extra bonus for low straights/stairs (opponents less likely to beat)
-			if (combo.rank <= 8) score += 4;
-			// 마작이 포함된 스트레이트: 마작 소모 + 여러 장 처리 → 큰 보너스
-			if (combo.cards.some(c => c.type === 'special' && c.special === 'mahjong')) {
-				score += 30;
+		// === 특수 카드 보정 ===
+		if (combo.type === 'single' && combo.cards[0].type === 'special') {
+			const special = combo.cards[0].special;
+			if (special === 'mahjong') {
+				score += 50; // 마작은 최우선 소모
+			} else if (special === 'dragon') {
+				score -= 20; // 드래곤은 팔로우 트릭 탈취용
+				if (hand.length <= 3) score += 10;
+			} else if (special === 'phoenix') {
+				score -= 15; // 봉황도 팔로우용
 			}
 		}
 
-		// === Bonus for low pairs/triples (get rid of weak combos) ===
-		if ((combo.type === 'pair' || combo.type === 'triple') && combo.rank <= 8) {
-			score += 6;
-		}
-		// 중간 랭크 페어/트리플도 약간의 보너스 (너무 아끼면 안 됨)
-		if ((combo.type === 'pair' || combo.type === 'triple') && combo.rank >= 9 && combo.rank <= 11) {
-			score += 2;
+		// === 마작 포함 스트레이트: 마작 소모 + 여러 장 처리 ===
+		if ((combo.type === 'straight' || combo.type === 'stairs') &&
+			combo.cards.some(c => c.type === 'special' && c.special === 'mahjong')) {
+			score += 30;
 		}
 
-		// === Bonus for full house (clears 5 cards) ===
+		// === A 폭탄 리드 페널티 ===
+		if (isBomb(combo) && combo.rank === 14) {
+			score -= 50;
+		}
+
+		// === 풀하우스: 강한 싱글톤을 페어로 낭비하면 감점 ===
 		if (combo.type === 'full_house') {
-			score += 10;
-			if (combo.rank <= 9) score += 3; // low full house even better
-
-			// Penalty: 풀하우스 페어에 강한 싱글톤(A, K 등)이 포함되면 감점
-			// 강한 싱글은 나중에 선먹기용으로 보존해야 함
 			const pairCards = combo.cards.filter(c => {
 				if (c.type !== 'normal') return false;
 				return (c as NormalCard).rank !== combo.rank;
@@ -892,85 +883,40 @@ function decideLead(
 			for (const pc of pairCards) {
 				if (pc.type !== 'normal') continue;
 				const pRank = (pc as NormalCard).rank;
-				// 페어에 사용된 카드가 싱글톤(다른 멀티콤보에 안 쓰이는 카드)이고 높은 랭크면 페널티
 				const isSingleton = plan.singletonCards.some(s => s.id === pc.id);
-				if (isSingleton && pRank >= 13) {
-					score -= 15; // A, K 싱글톤을 페어로 낭비하면 큰 감점
-				} else if (isSingleton && pRank >= 11) {
-					score -= 8; // Q, J 싱글톤도 감점
-				}
+				if (isSingleton && pRank >= 13) score -= 15;
+				else if (isSingleton && pRank >= 11) score -= 8;
 			}
 		}
 
-		// === Singletons: context-aware ===
-		if (combo.type === 'single') {
-			const card = combo.cards[0];
-			if (card.type === 'special' && card.special === 'mahjong') {
-				score += 50; // 마작은 최우선 소모 — 리드 기회에 반드시 먼저 냄
-			} else if (card.type === 'normal') {
-				const isSingleton = plan.singletonCards.some(s => s.id === card.id);
-				const lowSingletonCount = plan.singletonCards.filter(
-					c => c.type === 'normal' && (c as NormalCard).rank <= 8
-				).length;
-
-				// 낮은 싱글 리드: 뺏기기 쉽지만 처리해야 할 패
-				if (isSingleton && card.rank <= 5) {
-					score += 3;
-				} else if (isSingleton && card.rank >= 6 && card.rank <= 8) {
-					score += 4;
-				} else if (isSingleton && card.rank >= 9 && card.rank <= 10) {
-					score += 5;
-				} else if (!isSingleton && card.rank <= 6) {
-					score += 1;
-				}
-
-				// 높은 카드 싱글: "선먹기" 패턴
-				// 높은 카드로 선을 잡은 후 → 다음 리드에서 낮은 싱글톤 처리
-				if (card.rank >= 13) {
-					const likelyWins = isSingleLikelyToWin(card.rank, hand, playedCounts);
-					if (likelyWins && lowSingletonCount >= 3) {
-						score += 12; // 낮은 싱글 3장 이상 → 선먹기 매우 적극적
-					} else if (likelyWins && lowSingletonCount >= 1) {
-						score += 7; // 낮은 싱글 1~2장 → 선먹기 적극적
-					} else if (likelyWins) {
-						score += 3;
-					} else {
-						score -= 5;
-					}
-				} else if (card.rank >= 11) {
-					// Q, J도 선먹기 가능 — 낮은 싱글이 많으면 적극 사용
-					if (lowSingletonCount >= 3 && isSingleton) {
-						const likelyWins = isSingleLikelyToWin(card.rank, hand, playedCounts);
-						if (likelyWins) {
-							score += 5;
-						}
-					} else {
-						score -= 2;
-					}
-				}
+		// === 싱글: 멀티콤보 구성 카드를 싱글로 내면 감점 ===
+		if (combo.type === 'single' && combo.cards[0].type === 'normal') {
+			const card = combo.cards[0] as NormalCard;
+			const isSingleton = plan.singletonCards.some(s => s.id === card.id);
+			if (!isSingleton && card.rank <= 8) {
+				score -= 5; // 멀티콤보에 속한 낮은 카드 보존
 			}
 		}
 
-		// === If I declared tichu, play aggressively to go out ===
+		// === 티츄 보정 ===
 		if (iDeclaredTichu) {
-			score += combo.cards.length * 3; // Favor bigger combos
-			// Don't be too careful about saving cards
+			score += combo.cards.length * 3;
 			if (combo.rank >= 11) score += 2;
 		}
-
-		// === If partner declared tichu, play more conservatively to help partner ===
 		if (partnerDeclaredTichu && !partnerFinished) {
-			// Prefer smaller combos that let partner contribute
-			score -= combo.rank * 0.5;
+			score -= combo.rank * 1.5;
+			if (combo.rank <= 6) score += 8;
+			if (combo.cards.length >= 3) score -= 5;
+		}
+
+		// === 파트너 카드 1~3장 → 낮은 리드로 지원 ===
+		if (!partnerFinished && partner.hand.length <= 3 && partner.hand.length > 0) {
+			if (combo.rank <= 8) score += 6;
 		}
 
 		// === Aggressiveness modifier ===
-		// 싱글 리드에서는 랭크 보너스를 억제: 높은 싱글은 팔로우용으로 보존
-		if (combo.type === 'single') {
-			score += combo.rank * weights.aggressiveness * 0.2;
-		} else {
-			score += combo.rank * weights.aggressiveness * 0.8;
-		}
+		// rank 보너스 제거: comboLikelyToWin이 이미 rank를 반영하고,
+		// rank 보너스는 높은 카드를 먼저 내게 만들어 전략에 역행함
 		score += combo.cards.length * weights.aggressiveness * 1.5;
 
 		return { combo, score };
@@ -982,7 +928,7 @@ function decideLead(
 
 /**
  * Lead decision when close to finishing (5 or fewer cards).
- * Focus on finding a sequence of plays that empties the hand.
+ * Uses CardTracker to evaluate win probability and find optimal play sequences.
  */
 function decideLeadEndgame(
 	hand: Card[],
@@ -990,109 +936,277 @@ function decideLeadEndgame(
 	weights: PersonalityWeights,
 	context: AiDecisionContext
 ): string[] {
+	const tracker = buildCardTracker(context);
+
 	// If we can play all remaining cards in one combo, do it!
 	const allAtOnce = plan.allCombos.find(c => c.cards.length === hand.length && !isDogCombo(c));
 	if (allAtOnce) {
 		return allAtOnce.cards.map(c => c.id);
 	}
 
-	// Try to find a combo that leaves the rest playable in one more turn
-	const bestEndgameLead = findBestEndgameLead(hand, plan);
-	if (bestEndgameLead) {
-		return bestEndgameLead.cards.map(c => c.id);
+	// Find all valid 2-turn finishes and score them by win probability
+	const twoTurnFinishes = findAllTwoTurnFinishes(hand, plan, tracker);
+	if (twoTurnFinishes.length > 0) {
+		// Sort by combined win probability (lead * remainder)
+		twoTurnFinishes.sort((a, b) => b.score - a.score);
+		return twoTurnFinishes[0].lead.cards.map(c => c.id);
 	}
 
-	// Try 2-step finish: play A, leaving B+C as valid combo
-	const twoStepResult = findTwoStepFinish(hand, plan);
+	// Try 3-turn finishes
+	const twoStepResult = findTwoStepFinishScored(hand, plan, tracker);
 	if (twoStepResult) {
 		return twoStepResult.cards.map(c => c.id);
 	}
 
-	// Fallback: play the largest possible combo to reduce hand size
+	// Fallback: 이기기 어려운 콤보부터 처리, 강한 카드는 팔로우용으로 보존
+	// 멀티카드 콤보(페어, 스트레이트 등)는 같은 타입의 더 높은 조합이 필요하므로
+	// 나중에 리드해서 이기기가 싱글보다 훨씬 어려움 → 먼저 처리
 	const nonDog = plan.allCombos.filter(c => !isDogCombo(c) && !isBomb(c));
 	if (nonDog.length > 0) {
-		// Among largest combos, prefer lower rank (more likely to succeed as lead)
-		const maxLen = Math.max(...nonDog.map(c => c.cards.length));
-		const biggest = nonDog.filter(c => c.cards.length === maxLen);
-		biggest.sort((a, b) => a.rank - b.rank);
-		return biggest[0].cards.map(c => c.id);
+		const scored = nonDog.map(c => {
+			let score = 0;
+			const winProb = comboLikelyToWin(c, tracker, hand);
+			// 이길 확률이 낮은 콤보 = 먼저 내야 함 (나중에 이기기 더 어려우니까)
+			score += (1 - winProb) * 10;
+			// 멀티카드 콤보 보너스: 여러 장 한번에 처리
+			score += c.cards.length * 2;
+			// 드래곤/봉황 싱글 리드 강한 페널티 (보존해야 할 강한 카드)
+			if (c.type === 'single' && c.cards[0].type === 'special') {
+				if (c.cards[0].special === 'dragon') score -= 20;
+				if (c.cards[0].special === 'phoenix') score -= 15;
+			}
+			return { combo: c, score };
+		});
+		scored.sort((a, b) => b.score - a.score);
+		return scored[0].combo.cards.map(c => c.id);
 	}
 
 	return [hand[0].id];
 }
 
-/**
- * Find the best lead in endgame that leaves remaining cards as a valid combo.
- * Fixed: always return the combo when remaining forms valid play regardless of rank comparison.
- */
-function findBestEndgameLead(hand: Card[], plan: HandPlan): Combination | null {
-	const validSplits: { lead: Combination; remainderSize: number; leadRank: number }[] = [];
+// ===== Exit Path Planning =====
 
-	for (const combo of plan.allCombos) {
-		if (isDogCombo(combo)) continue;
-		if (isBomb(combo)) continue;
-
-		const remainingCards = hand.filter(c => !combo.cards.some(cc => cc.id === c.id));
-		if (remainingCards.length === 0) {
-			// Plays all cards — this is the best!
-			return combo;
-		}
-
-		if (remainingCards.length === 1) {
-			// Single card remaining: always valid as a follow-up
-			validSplits.push({ lead: combo, remainderSize: 1, leadRank: combo.rank });
-			continue;
-		}
-
-		const remainingCombo = detectCombination(remainingCards);
-		if (remainingCombo) {
-			validSplits.push({ lead: combo, remainderSize: remainingCards.length, leadRank: combo.rank });
-		}
-	}
-
-	if (validSplits.length === 0) return null;
-
-	// Prefer: lead the weaker combo first (save strong for taking trick later)
-	// Then prefer leaving fewer remaining cards (closer to finish)
-	validSplits.sort((a, b) => {
-		// Prefer leading low rank first
-		if (a.leadRank !== b.leadRank) return a.leadRank - b.leadRank;
-		// Then prefer bigger lead (leaves less remaining)
-		return a.remainderSize - b.remainderSize;
-	});
-
-	return validSplits[0].lead;
+interface ExitPath {
+	/** Combos to play in order (multi-card combos first, then singles) */
+	combos: Combination[];
+	/** Remaining singleton cards played as singles */
+	remainingSingles: Card[];
+	/** Total turns needed to empty hand */
+	totalTurns: number;
+	/** Average win probability across all turns */
+	avgWinProb: number;
+	/** Overall exit path score (higher = better) */
+	score: number;
 }
 
 /**
- * Try to find a 2-step finish: play combo A, then remaining can be split into 2 valid combos.
+ * Plan how to empty the hand: partition into combos + singles,
+ * evaluate each turn's win probability, score the plan.
+ *
+ * Generates multiple greedy variants and picks the best.
+ * Used by decideLead to choose the optimal first move.
  */
-function findTwoStepFinish(hand: Card[], plan: HandPlan): Combination | null {
+function planExitPath(hand: Card[], tracker: CardTracker): ExitPath {
+	const allCombos = findAllPlayableCombinations(hand);
+	const multiCombos = allCombos.filter(c => !isBomb(c) && c.type !== 'single' && !isDogCombo(c));
+	const bombs = allCombos.filter(c => isBomb(c));
+
+	// Generate candidate paths by trying different greedy strategies
+	const candidates: ExitPath[] = [];
+
+	// Strategy 1: Largest combos first (maximize cards per turn)
+	candidates.push(buildGreedyPath(hand, multiCombos, bombs, tracker, 'largest'));
+
+	// Strategy 2: Most-cards but skip the largest combo (try alternative partition)
+	if (multiCombos.length > 1) {
+		candidates.push(buildGreedyPath(hand, multiCombos, bombs, tracker, 'skip_largest'));
+	}
+
+	// Strategy 3: Weakest combos first (prioritize hard-to-win combos)
+	candidates.push(buildGreedyPath(hand, multiCombos, bombs, tracker, 'weakest'));
+
+	// Pick best path
+	candidates.sort((a, b) => b.score - a.score);
+	return candidates[0];
+}
+
+function buildGreedyPath(
+	hand: Card[],
+	multiCombos: Combination[],
+	bombs: Combination[],
+	tracker: CardTracker,
+	strategy: 'largest' | 'skip_largest' | 'weakest'
+): ExitPath {
+	let sorted: Combination[];
+
+	if (strategy === 'largest') {
+		sorted = [...multiCombos].sort((a, b) => {
+			if (b.cards.length !== a.cards.length) return b.cards.length - a.cards.length;
+			return a.rank - b.rank;
+		});
+	} else if (strategy === 'skip_largest') {
+		const bySize = [...multiCombos].sort((a, b) => b.cards.length - a.cards.length);
+		// Skip the first (largest), re-sort rest
+		sorted = bySize.slice(1).sort((a, b) => {
+			if (b.cards.length !== a.cards.length) return b.cards.length - a.cards.length;
+			return a.rank - b.rank;
+		});
+	} else {
+		// weakest: low win probability first
+		sorted = [...multiCombos].sort((a, b) => {
+			const aWin = comboLikelyToWin(a, tracker, hand);
+			const bWin = comboLikelyToWin(b, tracker, hand);
+			if (aWin !== bWin) return aWin - bWin; // weakest first
+			if (b.cards.length !== a.cards.length) return b.cards.length - a.cards.length;
+			return a.rank - b.rank;
+		});
+	}
+
+	// Greedily pick non-overlapping combos
+	const usedCards = new Set<string>();
+	const selectedCombos: Combination[] = [];
+
+	for (const combo of sorted) {
+		if (combo.cards.every(c => !usedCards.has(c.id))) {
+			for (const c of combo.cards) usedCards.add(c.id);
+			selectedCombos.push(combo);
+		}
+	}
+
+	// Remaining cards become singles
+	const remainingSingles = hand.filter(c => !usedCards.has(c.id));
+	const totalTurns = selectedCombos.length + remainingSingles.length;
+
+	if (totalTurns === 0) {
+		return { combos: [], remainingSingles: [], totalTurns: 0, avgWinProb: 1, score: 100 };
+	}
+
+	// Calculate win probabilities
+	let totalWinProb = 0;
+	for (const combo of selectedCombos) {
+		totalWinProb += comboLikelyToWin(combo, tracker, hand);
+	}
+	for (const card of remainingSingles) {
+		const rank = card.type === 'normal' ? card.rank
+			: (card.type === 'special' && card.special === 'dragon') ? 15
+			: (card.type === 'special' && card.special === 'phoenix') ? 0
+			: 1;
+		totalWinProb += rankStrengthInContext(rank, tracker);
+	}
+
+	const avgWinProb = totalWinProb / totalTurns;
+
+	// Score: fewer turns + higher win probability = better
+	// Turn efficiency: 14 cards in 3 turns >> 14 cards in 10 turns
+	const turnEfficiency = hand.length / Math.max(1, totalTurns);
+	const score = avgWinProb * 10 + turnEfficiency * 3;
+
+	return {
+		combos: selectedCombos,
+		remainingSingles,
+		totalTurns,
+		avgWinProb,
+		score
+	};
+}
+
+/**
+ * For a given lead candidate, compute the exit path score
+ * assuming we play that combo first, then plan the rest.
+ */
+function scoreLeadWithExitPath(
+	combo: Combination,
+	hand: Card[],
+	tracker: CardTracker
+): { leadWinProb: number; exitScore: number } {
+	const leadWinProb = comboLikelyToWin(combo, tracker, hand);
+	const remainingHand = hand.filter(c => !combo.cards.some(cc => cc.id === c.id));
+
+	if (remainingHand.length === 0) {
+		return { leadWinProb, exitScore: 100 }; // Can finish in one move!
+	}
+
+	const exitPath = planExitPath(remainingHand, tracker);
+	return { leadWinProb, exitScore: exitPath.score };
+}
+
+/**
+ * Find all 2-turn finishes and score them by win probability.
+ * Each result: lead combo → remainder combo, scored by how likely both will win.
+ */
+function findAllTwoTurnFinishes(
+	hand: Card[],
+	plan: HandPlan,
+	tracker: CardTracker
+): { lead: Combination; remainder: Combination; score: number }[] {
+	const results: { lead: Combination; remainder: Combination; score: number }[] = [];
+
 	for (const combo of plan.allCombos) {
 		if (isDogCombo(combo)) continue;
 		if (isBomb(combo)) continue;
 
 		const remainingCards = hand.filter(c => !combo.cards.some(cc => cc.id === c.id));
-		if (remainingCards.length <= 1) continue; // Already handled by findBestEndgameLead
-		if (remainingCards.length > 6) continue; // Too many cards to analyze
+		if (remainingCards.length === 0) continue; // handled before this function
 
-		// Check if remaining can be emptied in 2 turns
+		// Check if remaining forms a single valid combo
+		const remainderCombo = detectCombination(remainingCards);
+		if (!remainderCombo) continue;
+
+		const leadWinProb = comboLikelyToWin(combo, tracker, hand);
+		const remainderWinProb = comboLikelyToWin(remainderCombo, tracker, remainingCards);
+
+		// Strategy: lead with the weaker combo (more likely to get beaten but ok),
+		// save strong combo for second turn when we hopefully have lead.
+		// But actually: lead with the one that WILL win, then play remainder.
+		// Score = leadWinProb * (1 + remainderWinProb)
+		// Leading with high win prob combo first → we get lead → play remainder
+		const score = leadWinProb * (1 + remainderWinProb * 0.8);
+
+		results.push({ lead: combo, remainder: remainderCombo, score });
+	}
+
+	return results;
+}
+
+/**
+ * Try 3-turn finishes with win probability scoring.
+ */
+function findTwoStepFinishScored(hand: Card[], plan: HandPlan, tracker: CardTracker): Combination | null {
+	const candidates: { combo: Combination; score: number }[] = [];
+
+	for (const combo of plan.allCombos) {
+		if (isDogCombo(combo)) continue;
+		if (isBomb(combo)) continue;
+
+		const remainingCards = hand.filter(c => !combo.cards.some(cc => cc.id === c.id));
+		if (remainingCards.length <= 1) continue;
+		if (remainingCards.length > 6) continue;
+
 		const remainingCombos = findAllPlayableCombinations(remainingCards);
+		let bestSubScore = -Infinity;
+
 		for (const rc of remainingCombos) {
 			const afterFirst = remainingCards.filter(c => !rc.cards.some(cc => cc.id === c.id));
-			if (afterFirst.length === 0) continue; // Would need 2 turns total including combo
+			if (afterFirst.length === 0) continue;
 
-			if (afterFirst.length === 1) {
-				// Last card is a valid single: 3 turns total
-				return combo;
-			}
 			const lastCombo = detectCombination(afterFirst);
 			if (lastCombo) {
-				return combo; // 3 turns total: combo + rc + lastCombo
+				const subScore =
+					comboLikelyToWin(rc, tracker, remainingCards) *
+					comboLikelyToWin(lastCombo, tracker, afterFirst);
+				bestSubScore = Math.max(bestSubScore, subScore);
 			}
 		}
+
+		if (bestSubScore > -Infinity) {
+			const leadScore = comboLikelyToWin(combo, tracker, hand);
+			candidates.push({ combo, score: leadScore * (1 + bestSubScore * 0.6) });
+		}
 	}
-	return null;
+
+	if (candidates.length === 0) return null;
+	candidates.sort((a, b) => b.score - a.score);
+	return candidates[0].combo;
 }
 
 function isDogCombo(combo: Combination): boolean {
@@ -1142,6 +1256,8 @@ export function decideWish(
 	// Less aggressive players might skip wish
 	if (Math.random() > weights.aggressiveness + 0.3) return null;
 
+	const tracker = buildCardTracker(context);
+
 	const myRanks = new Set(
 		hand.filter(c => c.type === 'normal').map(c => (c as NormalCard).rank as number)
 	);
@@ -1152,15 +1268,12 @@ export function decideWish(
 		rankCounts.set(c.rank, (rankCounts.get(c.rank) || 0) + 1);
 	}
 
-	const playedCounts = countPlayedCards(context);
-
 	// Strategy 1: Wish for a rank where we have 2+ copies AND opponents likely have some too
 	const goodWishRanks: { rank: number; score: number }[] = [];
 	for (const [rank, count] of rankCounts) {
-		if (rank <= 5) continue; // Low ranks not worth wishing for
-		const stillOut = cardsStillOut(rank, hand, playedCounts);
+		if (rank <= 5) continue;
+		const stillOut = tracker.remainingByRank.get(rank) || 0;
 		if (count >= 2 && stillOut >= 1) {
-			// Having 2+ copies means we benefit; opponents forced to play theirs
 			goodWishRanks.push({ rank, score: rank + count * 5 + stillOut * 3 });
 		}
 	}
@@ -1170,18 +1283,27 @@ export function decideWish(
 		return goodWishRanks[0].rank;
 	}
 
-	// Strategy 2: Wish for a high rank we DON'T have that opponents likely have
+	// Strategy 2: 상대가 플레이한 랭크 추적 → 상대 스트레이트 방해하는 랭크 위시
+	// 상대가 안 플레이한 높은 랭크를 위시하면 강제로 내게 됨
 	const highRanks = [14, 13, 12, 11];
 	for (const rank of highRanks) {
 		if (!myRanks.has(rank)) {
-			const stillOut = cardsStillOut(rank, hand, playedCounts);
+			const stillOut = tracker.remainingByRank.get(rank) || 0;
 			if (stillOut >= 2) {
-				return rank; // Likely opponents have it
+				return rank;
 			}
 		}
 	}
 
-	// Strategy 3: Any high rank we don't have
+	// Strategy 3: 내 팀이 많이 가진 랭크 위시 (정보 우위)
+	for (const [rank, count] of rankCounts) {
+		if (rank >= 8 && count >= 3) {
+			// 3장 가지고 있으면 상대는 1장뿐 → 강제 소모
+			return rank;
+		}
+	}
+
+	// Strategy 4: Any high rank we don't have
 	for (const rank of highRanks) {
 		if (!myRanks.has(rank)) {
 			return rank;
@@ -1218,8 +1340,13 @@ export function decideDragonGift(
 
 	if (opponents.length === 1) return opponents[0].seat;
 
+	// 티츄 선언한 상대에게 주기 (추가 카드가 나가기 방해)
+	const tichuerOpponent = opponents.find(opp => (opp.grandTichu === true || opp.smallTichu) && opp.finishOrder === null);
+	if (tichuerOpponent) {
+		return tichuerOpponent.seat;
+	}
+
 	// Give to opponent with MORE cards (further from finishing)
-	// Secondary: give to one who has already won fewer points
 	const scored = opponents.map(opp => ({
 		seat: opp.seat,
 		cardsLeft: opp.hand.length,
@@ -1234,8 +1361,6 @@ export function decideDragonGift(
 		}, 0)
 	}));
 
-	// Primary: more cards left (further from finishing, will hold dragon points longer)
-	// Secondary: fewer won points (give dragon to the one who hasn't collected much yet — more damage)
 	scored.sort((a, b) => {
 		if (b.cardsLeft !== a.cardsLeft) return b.cardsLeft - a.cardsLeft;
 		return a.wonPoints - b.wonPoints;
@@ -1275,6 +1400,8 @@ export function shouldPlayBomb(
 
 	beatable.sort((a, b) => a.rank - b.rank);
 
+	const tracker = buildCardTracker(context);
+
 	// Counter-bomb scenario
 	if (isBomb(lastPlay.combination)) {
 		const attacker = players[lastPlay.seat];
@@ -1296,23 +1423,52 @@ export function shouldPlayBomb(
 		return beatable[0];
 	}
 
+	// 상대 티츄 선언 + 카드 적으면 → 무조건 폭탄
+	if (hasOpponentDeclaredTichu(tracker)) {
+		const tichuer = tracker.opponents.find(o => o.declaredTichu && !o.finished);
+		if (tichuer && tichuer.cardsRemaining <= 5) {
+			return beatable[0];
+		}
+	}
+
 	// Check if trick has lots of points
 	const trickCards = context.trick?.plays.flatMap(p => p.combination.cards) || [];
 	const trickPoints = getTrickPoints(trickCards);
 
-	if (trickPoints >= 20 && weights.aggressiveness > 0.3) {
+	// 드래곤(25점) 포함 트릭은 적극 폭탄
+	if (lastPlay.combination.type === 'single' &&
+		lastPlay.combination.cards.some(c => c.type === 'special' && c.special === 'dragon')) {
 		return beatable[0];
+	}
+
+	// 포인트 임계값 하향: 15점 이상 + 상대가 이기고 있으면
+	if (trickPoints >= 15 && weights.aggressiveness > 0.2) {
+		return beatable[0];
+	}
+
+	// 나갈 수 있으면 폭탄: 폭탄 후 나머지 카드로 나갈 수 있으면 적극 사용
+	if (hand.length <= 6) {
+		for (const bomb of beatable) {
+			const afterBomb = hand.filter(c => !bomb.cards.some(bc => bc.id === c.id));
+			if (afterBomb.length === 0) return bomb; // 폭탄으로 나감!
+			const afterCombo = detectCombination(afterBomb);
+			if (afterCombo) return bomb; // 폭탄 후 1턴에 나갈 수 있음
+			// 2턴 체크
+			if (afterBomb.length <= 3) {
+				const afterCombos = findAllPlayableCombinations(afterBomb);
+				for (const ac of afterCombos) {
+					const remaining = afterBomb.filter(c => !ac.cards.some(acc => acc.id === c.id));
+					if (remaining.length === 0 || (remaining.length === 1)) return bomb;
+					const lastC = detectCombination(remaining);
+					if (lastC) return bomb;
+				}
+			}
+		}
 	}
 
 	// If I'm close to finishing and bombing would let me lead
 	if (hand.length <= 4 && weights.aggressiveness > 0.3) {
 		return beatable[0];
-	}
-
-	// If opponent played dragon as single and we can bomb it — always do it
-	if (lastPlay.combination.type === 'single' &&
-		lastPlay.combination.cards.some(c => c.type === 'special' && c.special === 'dragon')) {
-		return beatable[0]; // Bomb the dragon to prevent 25-point trick
 	}
 
 	return null;
