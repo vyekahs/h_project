@@ -17,6 +17,18 @@
 
 	const lastPlayName = $derived(lastPlay ? (lastPlay.seat === mySeat ? '나' : (playerNames[lastPlay.seat] ?? '')) : '');
 
+	// Dynamic overlap for trick cards when many are played
+	const trickCardOverlap = $derived.by(() => {
+		if (!lastPlay) return 0;
+		const count = lastPlay.combination.cards.length;
+		if (count <= 3) return 0;
+		// 46px card width, fit within ~220px
+		const maxWidth = 220;
+		const cardW = 46;
+		const needed = cardW - (maxWidth - cardW) / (count - 1);
+		return Math.max(needed, 0);
+	});
+
 	// Position of a seat relative to me (me=bottom, partner=top, etc.)
 	function seatPosition(seat: SeatIndex): string {
 		const rel = ((seat - mySeat + 4) % 4);
@@ -31,13 +43,10 @@
 	{#if trick && lastPlay}
 		<div class="trick-display pos-{seatPosition(lastPlay.seat)}">
 			<div class="trick-player">{lastPlayName}</div>
-			<div class="trick-cards">
+			<div class="trick-cards" style="--trick-overlap: -{trickCardOverlap}px">
 				{#each lastPlay.combination.cards as card (card.id)}
-					<CardComponent {card} small />
+					<CardComponent {card} />
 				{/each}
-			</div>
-			<div class="trick-label">
-				{lastPlay.combination.type === 'four_bomb' || lastPlay.combination.type === 'straight_flush_bomb' ? '💣 폭탄!' : ''}
 			</div>
 		</div>
 	{:else}
@@ -49,48 +58,53 @@
 
 <style>
 	.trick-area {
-		width: clamp(160px, 50vw, 280px);
-		height: clamp(80px, 20vh, 140px);
+		width: clamp(220px, 60vw, 340px);
+		height: clamp(100px, 25vh, 160px);
 		display: flex;
 		align-items: center;
 		justify-content: center;
 		position: relative;
+		pointer-events: none; /* Let clicks pass through if needed */
 	}
 
 	.trick-display {
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-		gap: 4px;
-		animation: cardSlide 0.3s ease-out;
+		gap: 6px;
+		animation: popIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 	}
 
 	.trick-player {
-		font-size: 0.65rem;
-		opacity: 0.7;
-		font-weight: 500;
-		min-height: 14px;
+		font-size: 0.7rem;
+		color: #e5e7eb;
+		font-weight: 600;
+		background: rgba(0, 0, 0, 0.5);
+		padding: 2px 10px;
+		border-radius: 12px;
+		backdrop-filter: blur(4px);
+		-webkit-backdrop-filter: blur(4px);
+		border: 1px solid rgba(255, 255, 255, 0.15);
 	}
 
 	.trick-cards {
 		display: flex;
 		gap: 2px;
+		filter: drop-shadow(0 4px 6px rgba(0,0,0,0.15));
+	}
+	.trick-cards :global(.card:not(:first-child)) {
+		margin-left: var(--trick-overlap, 0px);
 	}
 
-	.trick-label {
-		font-size: 0.75rem;
-		font-weight: 600;
-		color: #fbbf24;
-		min-height: 16px;
-	}
-
-	.trick-empty {
-		color: rgba(255,255,255,0.2);
+.trick-empty {
+		color: rgba(255, 255, 255, 0.3);
 		font-size: 0.85rem;
+		font-weight: 500;
+		font-style: italic;
 	}
 
-	@keyframes cardSlide {
-		from { opacity: 0; transform: scale(0.8); }
-		to { opacity: 1; transform: scale(1); }
+	@keyframes popIn {
+		from { opacity: 0; transform: scale(0.5) translateY(20px); }
+		to { opacity: 1; transform: scale(1) translateY(0); }
 	}
 </style>

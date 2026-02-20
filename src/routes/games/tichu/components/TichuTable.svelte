@@ -66,6 +66,10 @@
 		});
 	});
 
+	const leftPassed = $derived(passedSeats.has(leftSeat));
+	const topPassed = $derived(passedSeats.has(topSeat));
+	const rightPassed = $derived(passedSeats.has(rightSeat));
+
 	function seatPosition(seat: SeatIndex): 'left' | 'top' | 'right' | 'bottom' {
 		const rel = ((seat - mySeat + 4) % 4);
 		if (rel === 0) return 'bottom';
@@ -163,21 +167,21 @@
 		</div>
 	{/if}
 
-	<!-- Small Tichu button -->
-	{#if game.canDeclareSmallTichu}
-		<button class="btn-small-tichu" onclick={() => game.declareSmallTichu()}>
-			스몰 티츄!
-		</button>
-	{/if}
-
 	<!-- Table Area -->
 	<div class="table-field">
+		<!-- Small Tichu button (inside table-field so it stays above hand area) -->
+		{#if game.canDeclareSmallTichu}
+			<button class="btn-small-tichu" onclick={() => game.declareSmallTichu()}>
+				스몰 티츄!
+			</button>
+		{/if}
 		<!-- Opponents -->
 		{#if leftPlayer}
 			<OpponentArea
 				player={leftPlayer}
 				isCurrentTurn={currentSeat === leftSeat}
 				position="left"
+				passed={passedSeats.has(leftSeat)}
 				stateVersion={game.stateVersion}
 			/>
 		{/if}
@@ -187,6 +191,7 @@
 				isCurrentTurn={currentSeat === topSeat}
 				position="top"
 				isPartner
+				passed={passedSeats.has(topSeat)}
 				stateVersion={game.stateVersion}
 			/>
 		{/if}
@@ -195,34 +200,22 @@
 				player={rightPlayer}
 				isCurrentTurn={currentSeat === rightSeat}
 				position="right"
+				passed={passedSeats.has(rightSeat)}
 				stateVersion={game.stateVersion}
 			/>
 		{/if}
 
-		<!-- Persistent pass indicators -->
-		{#each [...passedSeats] as seat (seat)}
-			{@const pos = seatPosition(seat)}
-			{#if pos !== 'bottom'}
-				<div class="pass-bubble pass-{pos}">패스</div>
-			{/if}
-		{/each}
-
 		<!-- Center Trick (only show during play phases) -->
 		<div class="center-area">
-			{#if wishActive && wishRank}
-				<div class="wish-indicator">
-					소원: {rankNames[wishRank] ?? wishRank}
-				</div>
-			{/if}
 			{#if game.phase === 'playing' || game.phase === 'wish_declare' || game.phase === 'dragon_gift'}
 				{#if dogEvent}
 					<div class="special-event-notice dog-notice">
-						<span class="event-icon">🐕</span>
+						<img src="/tichu/dog.svg" alt="Dog" class="event-icon-img" />
 						<span>{playerNames[dogEvent.seat]} → {playerNames[dogEvent.targetSeat]}에게 선 양도</span>
 					</div>
 				{:else if dragonGiftEvent}
 					<div class="special-event-notice dragon-notice">
-						<span class="event-icon">🐉</span>
+						<img src="/tichu/dragon.svg" alt="Dragon" class="event-icon-img" />
 						<span>{playerNames[dragonGiftEvent.seat]} → {playerNames[dragonGiftEvent.targetSeat]}에게 용 양도</span>
 					</div>
 				{:else if trickWonSeat !== null}
@@ -232,6 +225,11 @@
 				{:else}
 					<TrickArea {trick} {lastPlay} {mySeat} {playerNames} isMyTurn={game.isMyTurn} />
 				{/if}
+			{/if}
+			{#if wishActive && wishRank}
+				<div class="wish-indicator">
+					소원: {rankNames[wishRank] ?? wishRank}
+				</div>
 			{/if}
 		</div>
 
@@ -255,7 +253,7 @@
 					{#each game.exchangeResultData as entry}
 						<div class="exchange-result-item">
 							<span class="exchange-from">{entry.fromName}</span>
-							<CardComponent card={entry.card} small />
+							<CardComponent card={entry.card} />
 						</div>
 					{/each}
 				</div>
@@ -271,53 +269,109 @@
 </div>
 
 <style>
+	/* Fonts */
+	@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
 	.game-table {
 		display: flex;
 		flex-direction: column;
 		height: 100vh;
 		height: 100dvh;
 		position: relative;
+		overflow: hidden;
+		font-family: 'Inter', sans-serif;
 	}
 
 	.score-header {
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		gap: 16px;
-		padding: 8px 16px;
-		padding-top: calc(8px + env(safe-area-inset-top));
-		background: rgba(0,0,0,0.3);
-		font-size: 0.85rem;
+		gap: 20px;
+		padding: 12px 20px;
+		padding-top: calc(12px + env(safe-area-inset-top));
+		background: rgba(0, 0, 0, 0.4);
+		backdrop-filter: blur(16px);
+		-webkit-backdrop-filter: blur(16px);
+		border-bottom: 1px solid rgba(251, 191, 36, 0.3);
+		font-size: 0.95rem;
+		font-weight: 700;
+		color: #f3f4f6;
+		box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+	}
+	.team-score {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+	}
+	.team-score.team-a { color: #fca5a5; } /* Light Red for Team A (Us) */
+	.team-score.team-b { color: #93c5fd; } /* Light Blue for Team B (Them) */
+
+	.round-info {
+		color: #d1d5db;
+		font-size: 0.8rem;
+		background: rgba(255,255,255,0.1);
+		padding: 2px 8px;
+		border-radius: 6px;
 		font-weight: 600;
 	}
-	.team-score.team-a { color: #fca5a5; }
-	.team-score.team-b { color: #93c5fd; }
-	.round-info { opacity: 0.5; font-size: 0.75rem; }
 	.btn-back {
 		position: absolute;
-		right: 12px;
-		background: none;
-		border: none;
-		color: rgba(255,255,255,0.5);
-		font-size: 1.1rem;
+		right: 16px;
+		background: rgba(255,255,255,0.1);
+		border: 1px solid rgba(255,255,255,0.2);
+		border-radius: 50%;
+		width: 32px;
+		height: 32px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		color: #e5e7eb;
+		font-size: 1rem;
 		cursor: pointer;
-		padding: 4px 8px;
+		transition: all 0.2s;
 	}
 	.btn-back:hover {
-		color: rgba(255,255,255,0.8);
+		background: rgba(255,255,255,0.2);
+		color: #fff;
+		transform: scale(1.1);
 	}
 
 	.phase-indicator {
 		position: absolute;
-		top: 48px;
-		left: 12px;
-		background: rgba(99,102,241,0.85);
-		color: white;
-		padding: 3px 14px;
-		border-radius: 10px;
-		font-size: 0.75rem;
-		font-weight: 600;
+		top: 60px;
+		left: 16px;
+		background: rgba(0, 0, 0, 0.5);
+		backdrop-filter: blur(12px);
+		-webkit-backdrop-filter: blur(12px);
+		border: 1px solid rgba(251, 191, 36, 0.4);
+		color: #fbbf24;
+		padding: 6px 16px;
+		border-radius: 14px;
+		font-size: 0.8rem;
+		font-weight: 700;
 		z-index: 50;
+		white-space: nowrap;
+		box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+		text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+	}
+
+	.pass-bubble {
+		position: absolute;
+		background: rgba(0, 0, 0, 0.85); /* Much darker background */
+		backdrop-filter: blur(12px);
+		-webkit-backdrop-filter: blur(12px);
+		border: 2px solid rgba(209, 213, 219, 0.4); /* Stronger border */
+		color: #ffffff; /* Pure white text */
+		padding: 8px 20px; /* Larger padding */
+		border-radius: 16px;
+		font-size: 1.1rem; /* Much larger font */
+		font-weight: 800;
+		letter-spacing: 0.05em;
+		z-index: 40;
+		pointer-events: none;
+		box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+		text-shadow: 0 2px 4px rgba(0,0,0,0.8);
 		white-space: nowrap;
 	}
 
@@ -325,69 +379,82 @@
 	.tichu-declarations {
 		display: flex;
 		justify-content: center;
-		gap: 8px;
-		padding: 4px 12px;
+		gap: 10px;
+		padding: 8px 12px;
 		flex-wrap: wrap;
 	}
 	.tichu-badge {
-		padding: 3px 12px;
-		border-radius: 10px;
-		font-size: 0.75rem;
+		padding: 5px 14px;
+		border-radius: 12px;
+		font-size: 0.8rem;
 		font-weight: 700;
-		animation: tichuPop 0.4s ease-out;
+		backdrop-filter: blur(12px);
+		-webkit-backdrop-filter: blur(12px);
+		animation: tichuPop 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+		box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+		text-shadow: 0 1px 1px rgba(0,0,0,0.3);
 	}
+	/* Grand Tichu: Imperial Gold/Red */
 	.tichu-badge.grand {
-		background: rgba(239,68,68,0.3);
-		border: 1px solid rgba(239,68,68,0.6);
-		color: #fca5a5;
+		background: linear-gradient(135deg, rgba(220, 38, 38, 0.8), rgba(153, 27, 27, 0.9));
+		border: 1px solid rgba(252, 165, 165, 0.5);
+		color: #fef2f2;
 	}
+	/* Small Tichu: Jade/Blue */
 	.tichu-badge.small {
-		background: rgba(59,130,246,0.3);
-		border: 1px solid rgba(59,130,246,0.6);
-		color: #93c5fd;
+		background: linear-gradient(135deg, rgba(5, 150, 105, 0.8), rgba(4, 120, 87, 0.9));
+		border: 1px solid rgba(110, 231, 183, 0.5);
+		color: #ecfdf5;
 	}
 	.tichu-badge.is-me {
-		border-width: 2px;
-	}
-	.tichu-badge.is-me.grand {
-		background: rgba(239,68,68,0.4);
-		color: #fecaca;
-	}
-	.tichu-badge.is-me.small {
-		background: rgba(59,130,246,0.4);
-		color: #bfdbfe;
+		border: 2px solid #fbbf24; /* Gold border for me */
+		box-shadow: 0 0 15px rgba(251, 191, 36, 0.4);
 	}
 	@keyframes tichuPop {
-		0% { opacity: 0; transform: scale(0.7); }
-		60% { transform: scale(1.1); }
+		0% { opacity: 0; transform: scale(0.5); }
 		100% { opacity: 1; transform: scale(1); }
 	}
 
 	.wish-indicator {
-		background: rgba(245,158,11,0.9);
-		color: #000;
-		padding: 3px 12px;
-		border-radius: 12px;
-		font-size: 0.75rem;
-		font-weight: 600;
+		background: rgba(0, 0, 0, 0.75);
+		backdrop-filter: blur(12px);
+		-webkit-backdrop-filter: blur(12px);
+		border: 1px solid rgba(251, 191, 36, 0.5);
+		color: #fbbf24;
+		padding: 6px 16px;
+		border-radius: 16px;
+		font-size: 0.85rem;
+		font-weight: 700;
+		box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+		text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+		white-space: nowrap;
 	}
 
 	.btn-small-tichu {
 		position: absolute;
-		bottom: 200px;
-		right: 12px;
+		bottom: 12px;
+		right: 16px;
 		z-index: 50;
-		padding: 8px 16px;
-		border-radius: 8px;
-		border: 2px solid #3b82f6;
-		background: rgba(59,130,246,0.2);
-		color: #93c5fd;
-		font-weight: 600;
-		font-size: 0.85rem;
+		padding: 10px 20px;
+		border-radius: 16px;
+		border: 1px solid rgba(14, 165, 233, 0.4);
+		background: rgba(14, 165, 233, 0.25); /* Semi-transparent blue for glassmorphism */
+		backdrop-filter: blur(12px);
+		-webkit-backdrop-filter: blur(12px);
+		color: #e0f2fe;
+		font-weight: 700;
+		font-size: 0.9rem;
 		cursor: pointer;
+		transition: all 0.2s;
+		box-shadow: 0 4px 15px rgba(14, 165, 233, 0.3);
+		text-shadow: 0 1px 2px rgba(0,0,0,0.5);
 	}
 	.btn-small-tichu:hover {
-		background: rgba(59,130,246,0.3);
+		background: rgba(14, 165, 233, 0.4);
+		transform: translateY(-2px) scale(1.05);
+		box-shadow: 0 8px 20px rgba(14, 165, 233, 0.5);
+		border-color: rgba(14, 165, 233, 0.6);
+		color: #fff;
 	}
 
 	.table-field {
@@ -404,65 +471,47 @@
 		flex-direction: column;
 		align-items: center;
 		justify-content: center;
-		gap: 6px;
+		gap: 4px;
+		z-index: 25;
 	}
 
 	.my-turn-indicator {
 		position: absolute;
-		bottom: 8px;
+		bottom: 12px;
 		left: 50%;
 		transform: translateX(-50%);
-		background: rgba(245,158,11,0.8);
-		color: #000;
-		padding: 4px 16px;
-		border-radius: 12px;
-		font-size: 0.8rem;
-		font-weight: 700;
-		animation: turnPulse 1.5s infinite;
-	}
-	@keyframes turnPulse {
-		0%, 100% { opacity: 1; }
-		50% { opacity: 0.6; }
-	}
-
-	/* Pass bubbles (persistent until next play) */
-	.pass-bubble {
-		position: absolute;
-		background: rgba(100,116,139,0.85);
-		color: #e2e8f0;
-		padding: 3px 10px;
-		border-radius: 8px;
-		font-size: 0.7rem;
-		font-weight: 600;
-		z-index: 40;
+		background: linear-gradient(90deg, transparent, rgba(251, 191, 36, 0.2), transparent);
+		border-top: 1px solid rgba(251, 191, 36, 0.5);
+		border-bottom: 1px solid rgba(251, 191, 36, 0.5);
+		color: #fbbf24;
+		padding: 6px 32px;
+		font-size: 0.9rem;
+		font-weight: 800;
+		letter-spacing: 0.05em;
+		text-transform: uppercase;
+		text-shadow: 0 0 10px rgba(251, 191, 36, 0.6);
+		animation: turnPulse 1.5s ease-in-out infinite;
 		pointer-events: none;
 	}
-	.pass-left {
-		left: 80px;
-		top: 50%;
-		transform: translateY(-50%);
-	}
-	.pass-right {
-		right: 80px;
-		top: 50%;
-		transform: translateY(-50%);
-	}
-	.pass-top {
-		top: 80px;
-		left: 50%;
-		transform: translateX(-50%);
+	@keyframes turnPulse {
+		0%, 100% { opacity: 0.8; transform: translateX(-50%) scale(1); text-shadow: 0 0 10px rgba(251, 191, 36, 0.6); }
+		50% { opacity: 1; transform: translateX(-50%) scale(1.05); text-shadow: 0 0 20px rgba(251, 191, 36, 0.9); }
 	}
 
 	/* Trick won notice */
 	.trick-won-notice {
-		background: rgba(34,197,94,0.2);
-		border: 1px solid rgba(34,197,94,0.4);
-		color: #4ade80;
-		padding: 8px 20px;
-		border-radius: 12px;
-		font-size: 0.9rem;
+		background: rgba(16, 185, 129, 0.2); /* Jade Green Tint */
+		backdrop-filter: blur(12px);
+		-webkit-backdrop-filter: blur(12px);
+		border: 1px solid rgba(52, 211, 153, 0.4);
+		color: #6ee7b7;
+		padding: 10px 24px;
+		border-radius: 16px;
+		font-size: 1rem;
 		font-weight: 700;
 		animation: trickWonPop 0.4s ease-out;
+		box-shadow: 0 4px 15px rgba(16, 185, 129, 0.2);
+		text-shadow: 0 1px 2px rgba(0,0,0,0.5);
 	}
 	@keyframes trickWonPop {
 		0% { opacity: 0; transform: scale(0.7); }
@@ -474,24 +523,31 @@
 	.special-event-notice {
 		display: flex;
 		align-items: center;
-		gap: 8px;
-		padding: 8px 20px;
-		border-radius: 12px;
-		font-size: 0.85rem;
-		font-weight: 600;
+		gap: 10px;
+		padding: 10px 24px;
+		border-radius: 16px;
+		font-size: 0.9rem;
+		font-weight: 700;
+		backdrop-filter: blur(12px);
+		-webkit-backdrop-filter: blur(12px);
 		animation: trickWonPop 0.4s ease-out;
+		box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+		text-shadow: 0 1px 2px rgba(0,0,0,0.5);
 	}
-	.event-icon {
-		font-size: 1.2rem;
+	.event-icon-img {
+		width: 28px;
+		height: 28px;
+		object-fit: contain;
+		filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
 	}
 	.dog-notice {
-		background: rgba(139,92,246,0.2);
-		border: 1px solid rgba(139,92,246,0.4);
-		color: #c4b5fd;
+		background: rgba(124, 58, 237, 0.25);
+		border: 1px solid rgba(167, 139, 250, 0.4);
+		color: #ddd6fe;
 	}
 	.dragon-notice {
-		background: rgba(239,68,68,0.2);
-		border: 1px solid rgba(239,68,68,0.4);
+		background: rgba(220, 38, 38, 0.25);
+		border: 1px solid rgba(252, 165, 165, 0.4);
 		color: #fca5a5;
 	}
 
@@ -500,50 +556,71 @@
 		position: fixed;
 		inset: 0;
 		background: rgba(0,0,0,0.6);
+		backdrop-filter: blur(5px);
 		display: flex;
 		align-items: center;
 		justify-content: center;
 		z-index: 1000;
 	}
 	.exchange-result-content {
-		background: #1e293b;
-		border-radius: 14px;
-		padding: 20px 24px;
+		background: rgba(30, 41, 59, 0.85); /* Dark Slate */
+		backdrop-filter: blur(20px);
+		-webkit-backdrop-filter: blur(20px);
+		border: 1px solid rgba(255,255,255,0.1);
+		border-radius: 24px;
+		padding: 24px 32px;
 		text-align: center;
-		color: white;
-		min-width: 200px;
+		color: #f3f4f6;
+		min-width: 240px;
+		box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+		animation: modalIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 	}
+	@keyframes modalIn {
+		from { opacity: 0; transform: scale(0.95); }
+		to { opacity: 1; transform: scale(1); }
+	}
+
 	.exchange-result-title {
-		font-size: 0.9rem;
-		font-weight: 600;
-		margin-bottom: 14px;
-		opacity: 0.8;
+		font-size: 1rem;
+		font-weight: 700;
+		margin-bottom: 20px;
+		color: #9ca3af;
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
 	}
 	.exchange-result-cards {
 		display: flex;
 		justify-content: center;
-		gap: 16px;
-		margin-bottom: 16px;
+		gap: 20px;
+		margin-bottom: 24px;
 	}
 	.exchange-result-item {
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-		gap: 6px;
+		gap: 8px;
 	}
 	.exchange-from {
-		font-size: 0.7rem;
-		opacity: 0.6;
-		font-weight: 500;
+		font-size: 0.75rem;
+		color: #cbd5e1;
+		font-weight: 600;
 	}
 	.exchange-result-dismiss {
-		padding: 8px 28px;
-		border-radius: 8px;
-		border: none;
-		background: #f59e0b;
-		color: #000;
-		font-weight: 600;
-		font-size: 0.85rem;
+		padding: 10px 32px;
+		border-radius: 14px;
+		border: 1px solid rgba(255,255,255,0.2);
+		background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+		color: #fff;
+		font-weight: 700;
+		font-size: 0.95rem;
 		cursor: pointer;
+		box-shadow: 0 4px 15px rgba(245,158,11,0.3);
+		transition: all 0.2s;
 	}
+	.exchange-result-dismiss:hover {
+		transform: translateY(-2px);
+		box-shadow: 0 8px 20px rgba(245,158,11,0.5);
+	}
+
+
 </style>

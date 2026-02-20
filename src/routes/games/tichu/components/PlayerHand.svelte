@@ -18,16 +18,18 @@
 		return combo !== null && isBomb(combo);
 	});
 
-	// Dynamic card overlap: ensure all cards fit within viewport (~380px usable)
-	// Card width is 44px, we want total width <= ~380px
-	// totalWidth = 44 + (n-1) * (44 - overlap) <= 380
-	// overlap >= 44 - (380 - 44) / (n-1) = 44 - 336/(n-1)
+	// 9장 이상이면 2줄 배치
+	const useDoubleRow = $derived(hand.length > 8);
+	const topRow = $derived(useDoubleRow ? hand.slice(0, Math.ceil(hand.length / 2)) : []);
+	const bottomRow = $derived(useDoubleRow ? hand.slice(Math.ceil(hand.length / 2)) : hand);
+
+	// Dynamic card overlap based on per-row card count
 	const cardOverlap = $derived.by(() => {
-		const n = hand.length;
-		if (n <= 1) return 0;
-		const maxWidth = Math.min(window.innerWidth - 24, 400);
-		const cardW = 44;
-		const needed = cardW - (maxWidth - cardW) / (n - 1);
+		const perRow = useDoubleRow ? Math.ceil(hand.length / 2) : hand.length;
+		if (perRow <= 1) return 0;
+		const maxWidth = Math.min(window.innerWidth - 32, 400);
+		const cardW = 46;
+		const needed = cardW - (maxWidth - cardW) / (perRow - 1);
 		return Math.max(needed, 0);
 	});
 
@@ -154,15 +156,36 @@
 		</div>
 	{/if}
 
-	<div class="hand-cards" style="--card-overlap: -{cardOverlap}px">
-		{#each hand as card (card.id)}
-			<CardComponent
-				{card}
-				selected={game.selectedCards.has(card.id) || isCardUsedInExchange(card.id) || exchangePendingCard === card.id}
-				onclick={() => handleCardClick(card)}
-			/>
-		{/each}
-	</div>
+	{#if useDoubleRow}
+		<div class="hand-cards" style="--card-overlap: -{cardOverlap}px">
+			{#each topRow as card (card.id)}
+				<CardComponent
+					{card}
+					selected={game.selectedCards.has(card.id) || isCardUsedInExchange(card.id) || exchangePendingCard === card.id}
+					onclick={() => handleCardClick(card)}
+				/>
+			{/each}
+		</div>
+		<div class="hand-cards" style="--card-overlap: -{cardOverlap}px">
+			{#each bottomRow as card (card.id)}
+				<CardComponent
+					{card}
+					selected={game.selectedCards.has(card.id) || isCardUsedInExchange(card.id) || exchangePendingCard === card.id}
+					onclick={() => handleCardClick(card)}
+				/>
+			{/each}
+		</div>
+	{:else}
+		<div class="hand-cards" style="--card-overlap: -{cardOverlap}px">
+			{#each hand as card (card.id)}
+				<CardComponent
+					{card}
+					selected={game.selectedCards.has(card.id) || isCardUsedInExchange(card.id) || exchangePendingCard === card.id}
+					onclick={() => handleCardClick(card)}
+				/>
+			{/each}
+		</div>
+	{/if}
 
 	{#if !isExchangePhase && isPlaying}
 		<div class="play-controls">
@@ -195,70 +218,129 @@
 </div>
 
 <style>
+	/* Fonts */
+	@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
 	.hand-area {
-		padding: 8px 12px;
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		padding: 8px 16px;
 		padding-bottom: calc(8px + env(safe-area-inset-bottom));
-		background: rgba(0,0,0,0.3);
-		border-top: 1px solid rgba(255,255,255,0.1);
+		background: rgba(0, 0, 0, 0.45);
+		backdrop-filter: blur(20px);
+		-webkit-backdrop-filter: blur(20px);
+		border-top: 1px solid rgba(251, 191, 36, 0.3);
+		box-shadow: 0 -4px 20px rgba(0,0,0,0.4);
+		font-family: 'Inter', sans-serif;
 	}
 
 	.hand-cards {
 		display: flex;
 		justify-content: center;
 		padding: 4px 0;
+		align-items: flex-end;
 	}
 
 	/* Overlap cards dynamically based on hand size */
 	.hand-cards :global(.card) {
 		margin-left: var(--card-overlap, 0px);
+		transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), margin-left 0.2s;
 	}
 	.hand-cards :global(.card:first-child) {
 		margin-left: 0;
+	}
+	@media (hover: hover) {
+		.hand-cards :global(.card:hover) {
+			transform: translateY(-20px) scale(1.1) rotate(2deg);
+			z-index: 10;
+		}
+		/* Add extra space for the hovered card so neighbors aren't obscured */
+		.hand-cards :global(.card:hover + .card) {
+			margin-left: calc(var(--card-overlap, 0px) + 20px);
+		}
+	}
+	/* Give breathing room after selected cards */
+	.hand-cards :global(.card.selected + .card) {
+		margin-left: calc(var(--card-overlap, 0px) + 6px);
 	}
 
 	.play-controls {
 		display: flex;
 		justify-content: center;
-		gap: 8px;
-		margin-top: 8px;
+		gap: 12px;
+		margin-top: 12px;
 	}
 	.btn-play {
-		padding: 8px 24px;
-		border-radius: 8px;
-		border: none;
-		background: #f59e0b;
-		color: #000;
-		font-weight: 600;
-		font-size: 0.9rem;
+		padding: 10px 32px;
+		border-radius: 14px;
+		border: 1px solid rgba(255,255,255,0.2);
+		background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); /* Imperial Gold */
+		color: #fff;
+		font-weight: 700;
+		font-size: 1rem;
 		cursor: pointer;
+		box-shadow: 0 4px 15px rgba(245,158,11,0.4);
+		transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+		text-shadow: 0 1px 1px rgba(0,0,0,0.2);
+	}
+	.btn-play:hover:not(:disabled) {
+		transform: translateY(-2px) scale(1.02);
+		box-shadow: 0 8px 25px rgba(245,158,11,0.6);
+	}
+	.btn-play:active:not(:disabled) {
+		transform: translateY(1px);
 	}
 	.btn-play:disabled {
-		opacity: 0.4;
+		background: rgba(107, 114, 128, 0.5);
+		box-shadow: none;
+		border-color: transparent;
+		opacity: 0.6;
 		cursor: not-allowed;
+		color: #d1d5db;
 	}
+
 	.btn-pass {
-		padding: 8px 20px;
-		border-radius: 8px;
-		border: 1px solid rgba(255,255,255,0.3);
-		background: rgba(255,255,255,0.1);
-		color: white;
-		font-size: 0.9rem;
+		padding: 10px 24px;
+		border-radius: 14px;
+		border: 1px solid rgba(255,255,255,0.15);
+		background: rgba(255, 255, 255, 0.1);
+		backdrop-filter: blur(12px);
+		-webkit-backdrop-filter: blur(12px);
+		color: #e5e7eb;
+		font-size: 0.95rem;
+		font-weight: 600;
 		cursor: pointer;
+		transition: all 0.2s;
+	}
+	.btn-pass:hover:not(:disabled) {
+		background: rgba(255, 255, 255, 0.2);
+		transform: translateY(-2px);
+		border-color: rgba(255,255,255,0.3);
 	}
 	.btn-pass:disabled {
 		opacity: 0.4;
 		cursor: not-allowed;
 	}
+
 	.btn-bomb {
-		padding: 8px 20px;
-		border-radius: 8px;
-		border: 2px solid #ef4444;
-		background: rgba(239,68,68,0.3);
+		padding: 10px 24px;
+		border-radius: 14px;
+		border: 1px solid rgba(239,68,68,0.5);
+		background: linear-gradient(135deg, rgba(220, 38, 38, 0.2), rgba(185, 28, 28, 0.3));
+		backdrop-filter: blur(12px);
+		-webkit-backdrop-filter: blur(12px);
 		color: #fca5a5;
 		font-weight: 700;
-		font-size: 0.9rem;
+		font-size: 0.95rem;
 		cursor: pointer;
-		animation: bombPulse 1s infinite;
+		animation: bombPulse 1.5s infinite;
+		box-shadow: 0 0 10px rgba(220, 38, 38, 0.2);
+		transition: all 0.2s;
+	}
+	.btn-bomb:hover:not(:disabled) {
+		background: linear-gradient(135deg, rgba(220, 38, 38, 0.4), rgba(185, 28, 28, 0.5));
+		transform: scale(1.05);
 	}
 	.btn-bomb:disabled {
 		opacity: 0.4;
@@ -266,17 +348,26 @@
 		animation: none;
 	}
 	@keyframes bombPulse {
-		0%, 100% { box-shadow: 0 0 4px rgba(239,68,68,0.3); }
-		50% { box-shadow: 0 0 12px rgba(239,68,68,0.6); }
+		0%, 100% { box-shadow: 0 0 5px rgba(239,68,68,0.3); border-color: rgba(239,68,68,0.5); }
+		50% { box-shadow: 0 0 20px rgba(239,68,68,0.6); border-color: rgba(239,68,68,0.8); }
 	}
+
 	.btn-clear {
-		padding: 8px 16px;
-		border-radius: 8px;
-		border: none;
-		background: rgba(239,68,68,0.3);
-		color: white;
+		padding: 10px 20px;
+		border-radius: 14px;
+		border: 1px solid rgba(255,255,255,0.1);
+		background: rgba(0, 0, 0, 0.3);
+		backdrop-filter: blur(12px);
+		-webkit-backdrop-filter: blur(12px);
+		color: #9ca3af;
 		font-size: 0.85rem;
+		font-weight: 600;
 		cursor: pointer;
+		transition: all 0.2s;
+	}
+	.btn-clear:hover {
+		background: rgba(255,255,255,0.1);
+		color: #e5e7eb;
 	}
 
 	/* Exchange */
@@ -284,68 +375,101 @@
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-		gap: 6px;
-		margin-bottom: 4px;
+		gap: 12px;
+		margin-bottom: 12px;
+		width: 100%;
 	}
 	.exchange-slots {
 		display: flex;
-		gap: 12px;
+		gap: 16px;
 		justify-content: center;
+		width: 100%;
+		max-width: 400px;
 	}
 	.exchange-slot {
+		flex: 1;
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-		gap: 4px;
-		padding: 6px 10px;
-		border-radius: 8px;
+		gap: 8px;
+		padding: 10px 8px;
+		border-radius: 16px;
 		border: 1px solid rgba(255,255,255,0.15);
-		background: rgba(255,255,255,0.03);
-		color: white;
+		background: rgba(255, 255, 255, 0.05);
+		backdrop-filter: blur(12px);
+		-webkit-backdrop-filter: blur(12px);
+		color: #e5e7eb;
 		cursor: pointer;
-		min-width: 54px;
+		transition: all 0.2s;
+	}
+	.exchange-slot:hover {
+		background: rgba(255, 255, 255, 0.1);
+		border-color: rgba(255,255,255,0.3);
 	}
 	.exchange-slot.target {
-		border-color: #f59e0b;
-		background: rgba(245,158,11,0.1);
-		animation: slotPulse 1.2s infinite;
+		border-color: #fbbf24;
+		background: rgba(251, 191, 36, 0.15);
+		box-shadow: 0 0 15px rgba(251, 191, 36, 0.2);
+		animation: slotPulse 1.5s infinite;
 	}
 	.exchange-slot.assigned {
-		border-color: rgba(34,197,94,0.5);
-		background: rgba(34,197,94,0.1);
+		border-color: rgba(16, 185, 129, 0.5);
+		background: rgba(16, 185, 129, 0.15);
+		box-shadow: 0 0 10px rgba(16, 185, 129, 0.2);
+	}
+	/* Allow clicks to pass through card preview to the exchange slot button */
+	.exchange-slot :global(.card) {
+		pointer-events: none;
 	}
 	@keyframes slotPulse {
-		0%, 100% { box-shadow: 0 0 0 rgba(245,158,11,0); }
-		50% { box-shadow: 0 0 8px rgba(245,158,11,0.3); }
+		0%, 100% { box-shadow: 0 0 5px rgba(251, 191, 36, 0.2); }
+		50% { box-shadow: 0 0 20px rgba(251, 191, 36, 0.4); transform: scale(1.02); }
 	}
 	.slot-label {
-		font-size: 0.65rem;
-		opacity: 0.6;
-		font-weight: 500;
+		font-size: 0.75rem;
+		color: #d1d5db;
+		font-weight: 600;
+		letter-spacing: 0.05em;
 	}
 	.slot-empty {
-		width: 32px;
-		height: 44px;
-		border-radius: 4px;
-		border: 1px dashed rgba(255,255,255,0.2);
+		width: 36px;
+		height: 48px;
+		border-radius: 6px;
+		border: 2px dashed rgba(255,255,255,0.2);
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		font-size: 0.8rem;
-		opacity: 0.3;
+		font-size: 0.9rem;
+		color: #6b7280;
+		transition: all 0.2s;
+	}
+	.exchange-slot:hover .slot-empty {
+		border-color: rgba(255,255,255,0.4);
+		color: #9ca3af;
 	}
 	.exchange-hint {
-		font-size: 0.7rem;
-		opacity: 0.5;
+		font-size: 0.8rem;
+		color: #fbbf24;
+		font-weight: 600;
+		text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+		background: rgba(0,0,0,0.3);
+		padding: 4px 12px;
+		border-radius: 10px;
 	}
 	.btn-exchange-submit {
-		padding: 8px 24px;
-		border-radius: 8px;
+		padding: 10px 32px;
+		border-radius: 14px;
 		border: none;
-		background: #22c55e;
-		color: white;
-		font-weight: 600;
-		font-size: 0.85rem;
+		background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+		color: #fff;
+		font-weight: 700;
+		font-size: 0.95rem;
 		cursor: pointer;
+		box-shadow: 0 4px 15px rgba(245,158,11,0.3);
+		transition: all 0.2s;
+	}
+	.btn-exchange-submit:hover {
+		transform: translateY(-2px);
+		box-shadow: 0 8px 20px rgba(245,158,11,0.5);
 	}
 </style>
