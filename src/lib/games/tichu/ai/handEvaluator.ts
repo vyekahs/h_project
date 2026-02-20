@@ -470,6 +470,28 @@ export function findBombs(hand: Card[]): Combination[] {
 }
 
 /**
+ * Estimate turns to empty hand (simple greedy: biggest combos first, rest as singles).
+ * Shared utility used by multiple presets.
+ */
+export function estimateSimpleTurns(hand: Card[]): number {
+	if (hand.length === 0) return 0;
+	const combos = findAllPlayableCombinations(hand);
+	const multiCombos = combos.filter(c => c.type !== 'single' && !isBomb(c));
+	const used = new Set<string>();
+	let turns = 0;
+
+	const sorted = [...multiCombos].sort((a, b) => b.cards.length - a.cards.length);
+	for (const combo of sorted) {
+		if (combo.cards.every(c => !used.has(c.id))) {
+			for (const c of combo.cards) used.add(c.id);
+			turns++;
+		}
+	}
+	turns += hand.filter(c => !used.has(c.id)).length;
+	return turns;
+}
+
+/**
  * Get the effective rank of a card for sorting purposes.
  */
 export function getCardSortRank(card: Card): number {

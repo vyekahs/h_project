@@ -1,7 +1,7 @@
 import type { PresetBehavior } from './types';
 import type { Card, NormalCard, Combination, SeatIndex } from '../../types';
 import type { AiDecisionContext } from '../types';
-import { findAllPlayableCombinations } from '../handEvaluator';
+import { findAllPlayableCombinations, estimateSimpleTurns } from '../handEvaluator';
 import { getTeam, getPartnerSeat } from '../../constants';
 import { canBeat, isBomb } from '../../combinations';
 
@@ -261,23 +261,4 @@ function getAdaptiveAggression(context: AiDecisionContext, hand: Card[]): number
 	}
 
 	return Math.max(0, Math.min(1, aggression));
-}
-
-/** 간단한 턴 수 추정 */
-function estimateSimpleTurns(hand: Card[]): number {
-	if (hand.length === 0) return 0;
-	const combos = findAllPlayableCombinations(hand);
-	const multiCombos = combos.filter(c => c.type !== 'single' && !isBomb(c));
-	const used = new Set<string>();
-	let turns = 0;
-
-	const sorted = [...multiCombos].sort((a, b) => b.cards.length - a.cards.length);
-	for (const combo of sorted) {
-		if (combo.cards.every(c => !used.has(c.id))) {
-			for (const c of combo.cards) used.add(c.id);
-			turns++;
-		}
-	}
-	turns += hand.filter(c => !used.has(c.id)).length;
-	return turns;
 }
