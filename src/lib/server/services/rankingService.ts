@@ -87,17 +87,25 @@ export const RankingService = {
 
         if (!skipReward) {
             let basePoints = 10;
-            if (difficulty === 'normal' || difficulty === 'medium') basePoints = 25;
-            if (difficulty === 'hard') basePoints = 50;
-            if (difficulty === 'expert') basePoints = 100;
-            if (difficulty === 'master') basePoints = 150;
+            if (gameId === 'tichu') {
+                // 티츄 포인트 지급 임시 비활성화
+                // basePoints = calculatedScore >= 100 ? 25 : 5;
+                basePoints = 0;
+            } else {
+                if (difficulty === 'normal' || difficulty === 'medium') basePoints = 25;
+                if (difficulty === 'hard') basePoints = 50;
+                if (difficulty === 'expert') basePoints = 100;
+                if (difficulty === 'master') basePoints = 150;
+            }
 
             earnedPoints += basePoints;
 
-            try {
-                finalPoints = await PointService.addPoints(userId, earnedPoints, 'game_clear', `${gameId}:${difficulty}`);
-            } catch (e) {
-                console.error('[RankingService] Points update failed:', e);
+            if (earnedPoints > 0) {
+                try {
+                    finalPoints = await PointService.addPoints(userId, earnedPoints, 'game_clear', `${gameId}:${difficulty}`);
+                } catch (e) {
+                    console.error('[RankingService] Points update failed:', e);
+                }
             }
         }
 

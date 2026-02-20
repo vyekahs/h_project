@@ -43,6 +43,10 @@ export function createTichuGameState() {
 	let roundResult = $state<TichuRoundResult | null>(null);
 	let gameEndData = $state<{ winner: TeamId; scoreA: number; scoreB: number } | null>(null);
 
+	// Ranking
+	let rankingResult = $state<{ score: number; earnedPoints: number } | null>(null);
+	let scoreSubmitting = $state(false);
+
 	// Exchange result display
 	let exchangeResultData = $state<ExchangeResultEntry[] | null>(null);
 
@@ -177,6 +181,10 @@ export function createTichuGameState() {
 				showGameOverModal = true;
 				clearTichuSave();
 				savedGameAvailable = false;
+				// 랭킹 점수 제출
+				const isWin = s.winner === myTeam;
+				const margin = Math.abs(s.cumulativeScoreA - s.cumulativeScoreB);
+				submitTichuScore(isWin, margin);
 			}
 		}
 	});
@@ -273,6 +281,27 @@ export function createTichuGameState() {
 		saveNow();
 	}
 
+	async function submitTichuScore(isWin: boolean, margin: number) {
+		if (scoreSubmitting) return;
+		scoreSubmitting = true;
+		try {
+			const score = isWin ? Math.min(300, 100 + Math.floor(margin / 50) * 10) : 10;
+			const res = await fetch('/api/game/record', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ gameId: 'tichu', difficulty: 'default', clearTime: 0, score })
+			});
+			if (res.ok) {
+				const data = await res.json();
+				rankingResult = { score: data.score, earnedPoints: data.earnedPoints };
+			}
+		} catch (e) {
+			console.error('[Tichu] Score submit failed:', e);
+		} finally {
+			scoreSubmitting = false;
+		}
+	}
+
 	function backToSetup() {
 		clearTichuSave();
 		savedGameAvailable = false;
@@ -285,6 +314,7 @@ export function createTichuGameState() {
 		showGameOverModal = false;
 		roundResult = null;
 		gameEndData = null;
+		rankingResult = null;
 		lastPhase = null;
 		stateVersion = 0;
 	}
@@ -455,6 +485,7 @@ export function createTichuGameState() {
 		set showGameOverModal(v: boolean) { showGameOverModal = v; },
 		get roundResult() { return roundResult; },
 		get gameEndData() { return gameEndData; },
+		get rankingResult() { return rankingResult; },
 		get toasts() { return toasts; },
 		get lastEvent() { return lastEvent; },
 		get exchangeResultData() { return exchangeResultData; },
