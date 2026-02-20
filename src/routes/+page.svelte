@@ -1505,6 +1505,7 @@
         display: flex;
         flex-direction: column;
         align-items: center;
+        justify-content: center;
         overflow: hidden;
     }
     .btn-visit-plan {
@@ -2910,7 +2911,7 @@
         align-items: center;
         justify-content: center;
         width: fit-content;
-        padding: 2px 8px;
+        /* padding: 2px 8px; */
  
         background: rgba(255, 255, 255, 0.5);
         color: #d97706;
@@ -2942,7 +2943,7 @@
         align-items: center;
         justify-content: center;
         width: fit-content;
-        padding: 2px 8px;
+        /* padding: 2px 8px; */
 
         background: rgba(255, 255, 255, 0.5);
         color: #d97706;
