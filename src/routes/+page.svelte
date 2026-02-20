@@ -643,7 +643,7 @@
                                                 {@const participant = p as any}
                                                 <span class="p-name" class:guest-name={participant.is_guest}>
                                                     {#if participant.title_name}
-                                                        <span class="p-title">{participant.title_name}</span>
+                                                        <span class="p-title">[ {participant.title_name} ]</span>
                                                     {/if}
                                                     {participant.name}
                                                     {#if participant.is_guest}
@@ -824,7 +824,7 @@
                                         {@const p = player as any}
                                         <div class="player-tag" class:guest-tag={p.is_guest}>
                                             {#if p.title_name}
-                                                <span class="tag-title">{p.title_name}</span>
+                                                <span class="tag-title">[ {p.title_name} ]</span>
                                             {/if}
                                             {p.name}
                                             {#if p.is_guest}
@@ -991,7 +991,7 @@
                                             {@const participant = p as any}
                                             <span class="p-name" class:guest-name={participant.is_guest}>
                                                 {#if participant.title_name}
-                                                    <span class="p-title">{participant.title_name}</span>
+                                                    <span class="p-title">[ {participant.title_name} ]</span>
                                                 {/if}
                                                 {participant.name}
                                                 {#if participant.is_guest}
@@ -2911,9 +2911,7 @@
         justify-content: center;
         width: fit-content;
         padding: 2px 8px;
-        border-left: 3px solid #fbbf24;
-        border-right: 3px solid #fbbf24;
-        border-radius: 6px;
+ 
         background: rgba(255, 255, 255, 0.5);
         color: #d97706;
         font-size: 0.75rem;
@@ -2945,9 +2943,7 @@
         justify-content: center;
         width: fit-content;
         padding: 2px 8px;
-        border-left: 3px solid #fbbf24;
-        border-right: 3px solid #fbbf24;
-        border-radius: 6px;
+
         background: rgba(255, 255, 255, 0.5);
         color: #d97706;
         font-size: 0.75rem;
