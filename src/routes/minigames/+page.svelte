@@ -28,7 +28,7 @@
         {
             id: 'tichu',
             name: '티츄',
-            tagline: '4인 실시간 카드게임',
+            tagline: '2:2 트릭테이킹 카드게임',
             url: '/games/tichu',
             accentColor: '#22c55e'
         }

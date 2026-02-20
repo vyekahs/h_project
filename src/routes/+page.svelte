@@ -2842,12 +2842,19 @@
         gap: 4px;
     }
     .user-greeting .user-title {
-        font-size: 0.7rem;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: fit-content;
+        padding: 2px 8px;
+        border: 1px solid #fbbf24; /* Amber-400 */
+        border-radius: 6px;
+        background: rgba(255, 255, 255, 0.5);
+        color: #d97706; /* Amber-600 */
+        font-size: 0.75rem;
         font-weight: 700;
-        color: #1a1a2e;
-        background: linear-gradient(135deg, #fbbf24, #f59e0b);
-        padding: 2px 7px;
-        border-radius: 8px;
+        margin-right: 4px;
+        vertical-align: middle;
     }
     .user-greeting .user-name {
         font-weight: 600;
@@ -2866,20 +2873,25 @@
     }
     /* Mini Titles */
     .mini-title {
-        font-size: 0.6rem;
-        font-weight: 700;
-        color: #1a1a2e;
-        background: linear-gradient(135deg, #fbbf24, #f59e0b);
-        padding: 1px 5px;
-        border-radius: 6px;
-        display: block;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
         width: fit-content;
+        padding: 2px 8px;
+        border: 1px solid #fbbf24;
+        border-radius: 6px;
+        background: rgba(255, 255, 255, 0.5);
+        color: #d97706;
+        font-size: 0.75rem;
+        font-weight: 700;
+        margin-bottom: 2px;
     }
     .attendee-info {
         display: flex;
-        flex-direction: column; 
+        flex-direction: column;
+        align-items: center;
         justify-content: center;
-        width: 100%; /* Force full width to trigger truncation */
+        width: 100%;
         min-width: 0;
         flex: 1;
     }
@@ -2890,25 +2902,32 @@
     }
     
     .tag-title {
-        font-size: 0.6rem;
-        font-weight: 700;
-        color: #1a1a2e;
-        background: linear-gradient(135deg, #fbbf24, #f59e0b);
-        padding: 1px 5px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: fit-content;
+        padding: 2px 8px;
+        border-left: 3px solid #fbbf24;
+        border-right: 3px solid #fbbf24;
         border-radius: 6px;
-        display: inline-block;
-        margin-right: 2px;
+        background: rgba(255, 255, 255, 0.5);
+        color: #d97706;
+        font-size: 0.75rem;
+        font-weight: 700;
+        vertical-align: middle;
     }
     .player-tag {
         display: inline-flex;
         align-items: center;
-        gap: 2px;
-        background: #f1f3f5;
-        padding: 2px 6px;
-        border-radius: 4px;
-        font-size: 0.85rem;
-        margin-right: 4px;
-        margin-bottom: 4px;
+        gap: 4px;
+        background: transparent;
+        padding: 0.2rem 0.5rem;
+          border-radius: 6px;
+        font-size: 0.9rem;
+        font-weight: 500;
+        color: #334155;
+        margin-right: 8px;
+        margin-bottom: 6px;
     }
 
     .p-name {
@@ -2917,12 +2936,19 @@
         gap: 2px;
     }
     .p-title {
-        font-size: 0.6rem;
-        font-weight: 700;
-        color: #1a1a2e;
-        background: linear-gradient(135deg, #fbbf24, #f59e0b);
-        padding: 1px 5px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: fit-content;
+        padding: 2px 8px;
+        border: 1px solid #fbbf24;
         border-radius: 6px;
+        background: rgba(255, 255, 255, 0.5);
+        color: #d97706;
+        font-size: 0.75rem;
+        font-weight: 700;
+        margin-right: 4px;
+        vertical-align: middle;
     }
 
     /* Install Guide Button */

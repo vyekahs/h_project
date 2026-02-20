@@ -352,9 +352,35 @@
 	}
 
 	.strategy-character {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		width: fit-content;
+		padding: 4px 14px;
+		border-radius: 6px;
+		background: transparent;
+		border: 1px solid rgba(251, 191, 36, 0.8);
+		color: #fbbf24;
 		font-size: 0.85rem;
-		font-weight: 700;
-		letter-spacing: -0.02em;
+		font-weight: 800;
+		letter-spacing: -0.01em;
+		box-shadow: none;
+		text-shadow: none;
+		transition: all 0.2s;
+	}
+	.strategy-card:hover .strategy-character {
+		transform: scale(1.05);
+		background: rgba(251, 191, 36, 0.1);
+		border-color: #fbbf24;
+		box-shadow: 0 0 10px rgba(251, 191, 36, 0.2);
+	}
+	/* When selected, invert or brighter outline? */
+	.strategy-card.selected .strategy-character {
+		background: rgba(251, 191, 36, 0.2);
+		border-color: #fcd34d;
+		color: #fff;
+		text-shadow: 0 0 8px rgba(251, 191, 36, 0.6);
+		box-shadow: 0 0 15px rgba(251, 191, 36, 0.3);
 	}
 
 	/* Speed Row */
