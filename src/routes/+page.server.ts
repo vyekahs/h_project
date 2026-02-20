@@ -666,6 +666,22 @@ export const actions: Actions = {
 
         try {
             await db.transaction(async (tx) => {
+                // 반복 게임이면 오늘 skip 기록을 추가하여 재생성 방지
+                const session = await tx.execute(sql`
+                    SELECT recurring_schedule_id, scheduled_at FROM game_sessions WHERE id = ${sessionId}
+                `);
+                const sess = (session as any[])[0];
+                if (sess?.recurring_schedule_id) {
+                    const skipDate = sess.scheduled_at
+                        ? new Date(sess.scheduled_at).toISOString().split('T')[0]
+                        : new Date(new Date().getTime() + 9 * 60 * 60 * 1000).toISOString().split('T')[0];
+                    await tx.execute(sql`
+                        INSERT INTO recurring_game_skips (recurring_schedule_id, skip_date)
+                        VALUES (${sess.recurring_schedule_id}, ${skipDate}::date)
+                        ON CONFLICT DO NOTHING
+                    `);
+                }
+
                 await tx.execute(sql`DELETE FROM session_participants WHERE session_id = ${sessionId}`);
                 await tx.execute(sql`DELETE FROM reservations WHERE session_id = ${sessionId}`);
                 await tx.execute(sql`DELETE FROM game_sessions WHERE id = ${sessionId}`);

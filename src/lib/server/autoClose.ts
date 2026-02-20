@@ -85,6 +85,14 @@ async function performCloseDay(businessDate: string) {
             updateSettingsCache(false);
             markAllLeft();
             await tx.execute(sql`DELETE FROM daily_visit_plans WHERE plan_date < CURRENT_DATE`);
+            // 삭제 전에 반복 게임의 skip 기록 추가 (재생성 방지)
+            await tx.execute(sql`
+                INSERT INTO recurring_game_skips (recurring_schedule_id, skip_date)
+                SELECT recurring_schedule_id, ${businessDate}::date
+                FROM game_sessions
+                WHERE status = 'scheduled' AND recurring_schedule_id IS NOT NULL
+                ON CONFLICT DO NOTHING
+            `);
             await tx.execute(sql`DELETE FROM game_sessions WHERE status = 'scheduled'`);
             await tx.execute(sql`INSERT INTO system_settings (key, value) VALUES ('last_auto_close_date', ${businessDate}) ON CONFLICT (key) DO UPDATE SET value = ${businessDate}`);
         });
@@ -113,11 +121,15 @@ async function checkRecurringGames() {
         const businessDate = businessDateObj.toISOString().split('T')[0];
         const dayOfWeek = businessDateObj.getUTCDay();
 
+        // 현재 KST 시간 (HH:MM 형식) - 이미 지난 시간의 일정은 생성하지 않음
+        const currentTime = `${String(currentHour).padStart(2, '0')}:${String(kstNow.getUTCMinutes()).padStart(2, '0')}`;
+
         const schedules = await db.execute(sql`
             SELECT rs.*
             FROM recurring_game_schedules rs
             WHERE rs.is_active = true
               AND rs.day_of_week = ${dayOfWeek}
+              AND rs.scheduled_time > ${currentTime}::time
               AND NOT EXISTS (
                   SELECT 1 FROM recurring_game_skips rsk
                   WHERE rsk.recurring_schedule_id = rs.id
