@@ -237,6 +237,7 @@ export function createTichuGameState() {
 
 		clearTichuSave();
 		savedGameAvailable = false;
+		selectedCards = new Set();
 
 		engine = new LocalGameEngine({
 			partnerStrategy,
@@ -271,6 +272,7 @@ export function createTichuGameState() {
 
 		lastPhase = save.state.phase;
 		lastEvent = null;
+		selectedCards = new Set();
 		view = 'game';
 		engine.resumeAfterRestore();
 	}
@@ -278,6 +280,7 @@ export function createTichuGameState() {
 	function startNextRound() {
 		showRoundEndModal = false;
 		roundResult = null;
+		selectedCards = new Set();
 		engine?.startNextRound();
 		saveNow();
 	}
