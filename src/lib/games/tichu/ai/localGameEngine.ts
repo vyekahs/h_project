@@ -4,6 +4,7 @@ import type {
 } from '../types';
 import { createShuffledDeck, dealFirst8, dealRemaining6, hasMahjong, findCardById, removeCardById } from '../deck';
 import { detectCombination, canBeat, isBomb, resolvePhoenixSingleRank } from '../combinations';
+import { findBombs } from './handEvaluator';
 import { calculateRoundResult, checkGameOver } from '../scoring';
 import { canFulfillWish, mustPlayWishedRank, playFulfillsWish, canPlayWishedCombo, createWishState, isValidWishRank } from '../wish';
 import { getTeam, getPartnerSeat, getLeftSeat, getRightSeat, DEFAULT_TARGET_SCORE } from '../constants';
@@ -92,6 +93,7 @@ export class LocalGameEngine {
 	private destroyed = false;
 	private processingAi = false;
 	private humanActionInProgress = false;
+	private bombWindowResolve: (() => void) | null = null;
 
 	constructor(config: LocalGameConfig) {
 		this.aiSpeed = config.aiSpeed;
@@ -147,6 +149,10 @@ export class LocalGameEngine {
 
 	destroy(): void {
 		this.destroyed = true;
+		if (this.bombWindowResolve) {
+			this.bombWindowResolve();
+			this.bombWindowResolve = null;
+		}
 	}
 
 	// ===== Save / Restore =====
@@ -192,6 +198,7 @@ export class LocalGameEngine {
 		engine.processingAi = false;
 		engine.humanActionInProgress = false;
 		engine.aiTurnQueued = false;
+		engine.bombWindowResolve = null;
 		engine.exchangeResult = null;
 		engine.grandTichuDecisions = save.grandTichuDecisions;
 		engine.exchangeSubmissions = save.exchangeSubmissions;
@@ -490,6 +497,12 @@ export class LocalGameEngine {
 		if (this.humanActionInProgress) return { success: false, error: '처리 중입니다' };
 		this.humanActionInProgress = true;
 		try {
+			// 폭탄 윈도우가 열려있으면 닫기 (AI 처리 재개)
+			if (this.bombWindowResolve) {
+				const resolve = this.bombWindowResolve;
+				this.bombWindowResolve = null;
+				resolve();
+			}
 			return await this.playBombWithInterrupt(HUMAN_SEAT, cardIds, true);
 		} finally {
 			this.humanActionInProgress = false;
@@ -704,7 +717,11 @@ export class LocalGameEngine {
 		this.emitEvent({ type: 'pass', seat });
 
 		const activePlayers = this.state.players.filter(p => p.finishOrder === null).length;
-		const passesNeeded = activePlayers - 1;
+		// 마지막으로 카드를 낸 사람이 finish했으면, 남은 활동 플레이어 전원이 패스해야 함
+		const lastPlaySeat = round.trick.plays[round.trick.plays.length - 1]?.seat;
+		const lastPlayerFinished = lastPlaySeat !== undefined &&
+			this.state.players[lastPlaySeat].finishOrder !== null;
+		const passesNeeded = lastPlayerFinished ? activePlayers : activePlayers - 1;
 
 		if (round.trick.passCount >= passesNeeded) {
 			this.resolveTrick();
@@ -916,6 +933,24 @@ export class LocalGameEngine {
 				await this.delay();
 				if (this.destroyed) break;
 
+				// 폭탄 윈도우: 트릭이 곧 종료될 때 인간 플레이어에게 폭탄 기회 제공
+				if (round.trick && round.trick.plays.length > 0 && this.humanHasBombForCurrentTrick()) {
+					const activePlayers = this.state.players.filter(p => p.finishOrder === null).length;
+					const lpSeat = round.trick.plays[round.trick.plays.length - 1]?.seat;
+					const lpFinished = lpSeat !== undefined &&
+						this.state.players[lpSeat].finishOrder !== null;
+					const passesNeeded = lpFinished ? activePlayers : activePlayers - 1;
+					// 다음 패스로 트릭이 종료되면 폭탄 윈도우 대기
+					if (round.trick.passCount >= passesNeeded - 1) {
+						this.notifyStateChange();
+						await this.waitForBombWindow();
+						if (this.destroyed) break;
+						// 폭탄이 사용됐으면 상태가 바뀌었을 수 있음 → 루프 처음으로
+						if (this.state.phase !== 'playing') break;
+						if (!round.trick || round.currentSeat === HUMAN_SEAT) continue;
+					}
+				}
+
 				// Check for small tichu before first card
 				const player = this.state.players[currentSeat];
 				if (!player.hasPlayedFirstCard && !player.smallTichu && !player.grandTichu) {
@@ -1063,6 +1098,47 @@ export class LocalGameEngine {
 		} catch (e) {
 			console.error('[Engine] AI dragon gift processing error:', e);
 		}
+	}
+
+	/**
+	 * Check if the human player has a bomb that can beat the current trick's last play.
+	 */
+	private humanHasBombForCurrentTrick(): boolean {
+		const round = this.state.round;
+		if (!round?.trick || round.trick.plays.length === 0) return false;
+		const humanPlayer = this.state.players[HUMAN_SEAT];
+		if (humanPlayer.finishOrder !== null) return false;
+		if (humanPlayer.hand.length < 4) return false;
+
+		const lastPlay = round.trick.plays[round.trick.plays.length - 1];
+		// 자기가 낸 트릭이면 폭탄 필요 없음
+		if (lastPlay.seat === HUMAN_SEAT) return false;
+
+		const bombs = findBombs(humanPlayer.hand);
+		if (bombs.length === 0) return false;
+
+		// 마지막 플레이가 폭탄이면 더 강한 폭탄만 가능
+		if (isBomb(lastPlay.combination)) {
+			return bombs.some(b => canBeat(lastPlay.combination, b));
+		}
+		return true;
+	}
+
+	/**
+	 * Give the human player a window to play a bomb before the trick resolves.
+	 * Returns a promise that resolves when the window closes (timeout or bomb played).
+	 */
+	private waitForBombWindow(): Promise<void> {
+		const BOMB_WINDOW_MS = 5000;
+		return new Promise<void>(resolve => {
+			this.bombWindowResolve = resolve;
+			setTimeout(() => {
+				if (this.bombWindowResolve === resolve) {
+					this.bombWindowResolve = null;
+					resolve();
+				}
+			}, BOMB_WINDOW_MS);
+		});
 	}
 
 	/**
@@ -1255,12 +1331,12 @@ export class LocalGameEngine {
 		const round = this.state.round;
 		if (!round) return;
 
-		// Resolve pending trick
+		// Resolve pending trick — 카드는 승자에게 주되 trick은 유지 (마지막 플레이 표시용)
 		if (round.trick && round.trick.plays.length > 0) {
 			const lastPlay = round.trick.plays[round.trick.plays.length - 1];
 			const allCards = round.trick.plays.flatMap(p => p.combination.cards);
 			this.state.players[lastPlay.seat].wonCards.push(...allCards);
-			round.trick = null;
+			// trick을 null로 만들지 않고 유지 → UI에서 마지막 플레이가 보임
 		}
 
 		// Auto-finish remaining
@@ -1272,21 +1348,36 @@ export class LocalGameEngine {
 			}
 		}
 
-		const result = calculateRoundResult(this.state.players, round.finishOrder, round.roundNumber);
-		this.state.completedRounds.push(result);
-		this.state.cumulativeScoreA += result.teamAScore;
-		this.state.cumulativeScoreB += result.teamBScore;
-
-		const winner = checkGameOver(this.state.cumulativeScoreA, this.state.cumulativeScoreB, this.state.config.targetScore);
-
-		if (winner) {
-			this.state.winner = winner;
-			this.setPhase('game_end');
-		} else {
-			this.setPhase('round_end');
-		}
-
+		// 즉시 round_ending phase로 전환 (추가 액션 차단)
+		this.setPhase('round_ending');
 		this.notifyStateChange();
+
+		// 딜레이 후 라운드 결과 처리
+		const ROUND_END_DELAY = 1500;
+		setTimeout(() => {
+			if (this.destroyed) return;
+
+			// trick 정리
+			if (round.trick) {
+				round.trick = null;
+			}
+
+			const result = calculateRoundResult(this.state.players, round.finishOrder, round.roundNumber);
+			this.state.completedRounds.push(result);
+			this.state.cumulativeScoreA += result.teamAScore;
+			this.state.cumulativeScoreB += result.teamBScore;
+
+			const winner = checkGameOver(this.state.cumulativeScoreA, this.state.cumulativeScoreB, this.state.config.targetScore);
+
+			if (winner) {
+				this.state.winner = winner;
+				this.setPhase('game_end');
+			} else {
+				this.setPhase('round_end');
+			}
+
+			this.notifyStateChange();
+		}, ROUND_END_DELAY);
 	}
 
 	private advanceTurn(): void {

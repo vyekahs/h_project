@@ -207,7 +207,7 @@
 
 		<!-- Center Trick (only show during play phases) -->
 		<div class="center-area">
-			{#if game.phase === 'playing' || game.phase === 'wish_declare' || game.phase === 'dragon_gift'}
+			{#if game.phase === 'playing' || game.phase === 'wish_declare' || game.phase === 'dragon_gift' || game.phase === 'round_ending'}
 				{#if dogEvent}
 					<div class="special-event-notice dog-notice">
 						<img src="/tichu/dog.svg" alt="Dog" class="event-icon-img" />

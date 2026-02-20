@@ -51,6 +51,7 @@ export type GamePhase =
 	| 'trick_resolve'
 	| 'wish_declare'
 	| 'dragon_gift'
+	| 'round_ending'
 	| 'round_end'
 	| 'game_end';
 
