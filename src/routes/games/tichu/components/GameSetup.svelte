@@ -334,12 +334,6 @@
 		overflow: hidden;
 	}
 
-	.strategy-card:hover {
-		background: rgba(255, 255, 255, 0.05);
-		transform: translateY(-1px);
-		box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-		border-color: rgba(255, 255, 255, 0.2);
-	}
 
 	.strategy-card.selected {
 		border-color: rgba(251, 191, 36, 0.8);
