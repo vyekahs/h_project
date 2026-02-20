@@ -133,6 +133,11 @@ export const TitleService = {
                         // 마스터 칭호(1명만 보유): 기존 보유자에게서 회수 후 부여
                         const cond: any = title.conditionValue;
                         if (cond.gameId && !cond.difficulty && cond.rank === 1) {
+                            // 장착 중인 유저의 equipped_title_id 초기화
+                            await db.execute(sql`
+                                UPDATE minigame_user_points SET equipped_title_id = NULL
+                                WHERE equipped_title_id = ${title.id}
+                            `);
                             await db.delete(minigameUserTitles)
                                 .where(sql`title_id = ${title.id}`);
                         }
@@ -147,6 +152,11 @@ export const TitleService = {
             } else {
                 if (ownedTitleIds.has(title.id)) {
                     try {
+                        // 장착 중이면 해제
+                        await db.execute(sql`
+                            UPDATE minigame_user_points SET equipped_title_id = NULL
+                            WHERE user_id = ${userId} AND equipped_title_id = ${title.id}
+                        `);
                         await db.delete(minigameUserTitles)
                             .where(sql`user_id = ${userId} AND title_id = ${title.id}`);
                     } catch (e) {

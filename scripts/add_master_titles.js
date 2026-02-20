@@ -70,7 +70,11 @@ async function main() {
 
             console.log(`  ${titleCode}: transferring to user ${userId}`);
 
-            // 기존 보유자에게서 회수 후 현재 1위에게 부여
+            // 기존 보유자의 장착 해제 후 회수
+            await pool.query(
+                'UPDATE minigame_user_points SET equipped_title_id = NULL WHERE equipped_title_id = $1',
+                [titleId]
+            );
             await pool.query(
                 'DELETE FROM minigame_user_titles WHERE title_id = $1',
                 [titleId]
