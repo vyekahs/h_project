@@ -50,27 +50,7 @@ async function main() {
                 LIMIT 1
             `, [gameId, monthKey]);
 
-            if (rankRes.rows.length === 0) {
-                console.log(`  No rankings for ${gameId} this month, skipping.`);
-                continue;
-            }
-
-            const userId = rankRes.rows[0].user_id;
-
-            // 현재 보유자 확인
-            const currentHolder = await pool.query(
-                'SELECT user_id FROM minigame_user_titles WHERE title_id = $1',
-                [titleId]
-            );
-
-            if (currentHolder.rows.length > 0 && currentHolder.rows[0].user_id === userId) {
-                console.log(`  ${titleCode}: user ${userId} already holds it, skipping.`);
-                continue;
-            }
-
-            console.log(`  ${titleCode}: transferring to user ${userId}`);
-
-            // 기존 보유자의 장착 해제 후 회수
+            // 기존 보유자 전원 회수 (중복 보유 정리 포함)
             await pool.query(
                 'UPDATE minigame_user_points SET equipped_title_id = NULL WHERE equipped_title_id = $1',
                 [titleId]
@@ -79,6 +59,15 @@ async function main() {
                 'DELETE FROM minigame_user_titles WHERE title_id = $1',
                 [titleId]
             );
+
+            if (rankRes.rows.length === 0) {
+                console.log(`  ${titleCode}: no rankings this month, revoked from all.`);
+                continue;
+            }
+
+            const userId = rankRes.rows[0].user_id;
+            console.log(`  ${titleCode}: assigning to user ${userId}`);
+
             await pool.query(`
                 INSERT INTO minigame_user_titles (user_id, title_id)
                 VALUES ($1, $2)

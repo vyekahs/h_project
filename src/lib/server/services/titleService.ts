@@ -128,19 +128,31 @@ export const TitleService = {
             }
 
             if (qualified) {
-                if (!ownedTitleIds.has(title.id)) {
+                const cond: any = title.conditionValue;
+                const isMasterTitle = cond.gameId && !cond.difficulty && cond.rank === 1;
+
+                if (isMasterTitle) {
                     try {
-                        // 마스터 칭호(1명만 보유): 기존 보유자에게서 회수 후 부여
-                        const cond: any = title.conditionValue;
-                        if (cond.gameId && !cond.difficulty && cond.rank === 1) {
-                            // 장착 중인 유저의 equipped_title_id 초기화
-                            await db.execute(sql`
-                                UPDATE minigame_user_points SET equipped_title_id = NULL
-                                WHERE equipped_title_id = ${title.id}
-                            `);
-                            await db.delete(minigameUserTitles)
-                                .where(sql`title_id = ${title.id}`);
+                        // 마스터 칭호: 본인 외 다른 보유자 전원 회수
+                        await db.execute(sql`
+                            UPDATE minigame_user_points SET equipped_title_id = NULL
+                            WHERE equipped_title_id = ${title.id} AND user_id != ${userId}
+                        `);
+                        await db.execute(sql`
+                            DELETE FROM minigame_user_titles
+                            WHERE title_id = ${title.id} AND user_id != ${userId}
+                        `);
+                        if (!ownedTitleIds.has(title.id)) {
+                            await db.insert(minigameUserTitles)
+                                .values({ userId, titleId: title.id })
+                                .onConflictDoNothing();
+                            assignedTitles.push(title.titleCode);
                         }
+                    } catch (e) {
+                        console.error(`Failed to assign title ${title.titleCode}`, e);
+                    }
+                } else if (!ownedTitleIds.has(title.id)) {
+                    try {
                         await db.insert(minigameUserTitles)
                             .values({ userId, titleId: title.id })
                             .onConflictDoNothing();
