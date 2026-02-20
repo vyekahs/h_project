@@ -32,7 +32,7 @@
 			waitingCount: number;
 			latencyMs: number;
 		};
-		connections: { socketIO: number; sse: number };
+		connections: { sse: number };
 		uptime: number;
 		timestamp: number;
 		history?: MetricsSnapshot[];

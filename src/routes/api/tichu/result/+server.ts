@@ -1,9 +1,18 @@
 import { json } from '@sveltejs/kit';
 import { db } from '$lib/server/db/index';
 import { sql } from 'drizzle-orm';
+import { verifyAttendeeSession } from '$lib/server/auth';
 
-export async function POST({ request }: { request: Request }) {
-    const { winner, scoreA, scoreB, playerData } = await request.json();
+export async function POST({ request, cookies }: { request: Request; cookies: any }) {
+    const sessionToken = cookies.get('user_session');
+    if (!sessionToken) {
+        return json({ error: '인증이 필요합니다' }, { status: 401 });
+    }
+    const user = await verifyAttendeeSession(sessionToken);
+    if (!user) {
+        return json({ error: '세션이 만료되었습니다' }, { status: 401 });
+    }
+    const { winner, scoreA, scoreB, playerData, isAiGame } = await request.json();
 
     if (!winner || scoreA === undefined || scoreB === undefined || !playerData || playerData.length === 0) {
         return json({ error: 'Missing required fields' }, { status: 400 });
@@ -34,6 +43,6 @@ export async function POST({ request }: { request: Request }) {
         return json({ success: true });
     } catch (e: any) {
         console.error('[Tichu Result Error]', e);
-        return json({ error: e.message }, { status: 500 });
+        return json({ error: '게임 결과 저장에 실패했습니다' }, { status: 500 });
     }
 }
