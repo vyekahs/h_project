@@ -28,7 +28,9 @@ async function main() {
             { titleCode: 'unblock_me_master', gameId: 'unblock-me' },
         ];
 
-        const monthKey = new Date().toISOString().slice(0, 7); // YYYY-MM
+        const now = new Date();
+        const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+        console.log(`  Current time: ${now.toISOString()}, monthKey: ${monthKey}`);
 
         for (const { titleCode, gameId } of masterTitles) {
             // 칭호 ID 조회
@@ -44,35 +46,46 @@ async function main() {
 
             // 현재 월간 1위 조회
             const rankRes = await pool.query(`
-                SELECT user_id FROM minigame_monthly_rankings
+                SELECT user_id, total_score FROM minigame_monthly_rankings
                 WHERE game_id = $1 AND month_key = $2
                 ORDER BY total_score DESC
                 LIMIT 1
             `, [gameId, monthKey]);
 
             // 기존 보유자 전원 회수 (중복 보유 정리 포함)
-            await pool.query(
-                'UPDATE minigame_user_points SET equipped_title_id = NULL WHERE equipped_title_id = $1',
+            const unequipRes = await pool.query(
+                'UPDATE minigame_user_points SET equipped_title_id = NULL WHERE equipped_title_id = $1 RETURNING user_id',
                 [titleId]
             );
-            await pool.query(
-                'DELETE FROM minigame_user_titles WHERE title_id = $1',
+            const deleteRes = await pool.query(
+                'DELETE FROM minigame_user_titles WHERE title_id = $1 RETURNING user_id',
                 [titleId]
             );
+            if (unequipRes.rowCount > 0 || deleteRes.rowCount > 0) {
+                console.log(`  ${titleCode}: revoked from ${deleteRes.rowCount} user(s), unequipped from ${unequipRes.rowCount} user(s)`);
+            }
 
             if (rankRes.rows.length === 0) {
-                console.log(`  ${titleCode}: no rankings this month, revoked from all.`);
+                console.log(`  ${titleCode}: no rankings for game_id=${gameId}, month_key=${monthKey}`);
                 continue;
             }
 
             const userId = rankRes.rows[0].user_id;
-            console.log(`  ${titleCode}: assigning to user ${userId}`);
+            const topScore = rankRes.rows[0].total_score;
+            console.log(`  ${titleCode}: #1 is user ${userId} (score: ${topScore}), assigning title_id=${titleId}`);
 
-            await pool.query(`
+            const insertRes = await pool.query(`
                 INSERT INTO minigame_user_titles (user_id, title_id)
                 VALUES ($1, $2)
                 ON CONFLICT DO NOTHING
+                RETURNING id
             `, [userId, titleId]);
+
+            if (insertRes.rowCount === 0) {
+                console.log(`  ${titleCode}: INSERT conflict — user ${userId} may already have this title`);
+            } else {
+                console.log(`  ${titleCode}: assigned successfully (id=${insertRes.rows[0].id})`);
+            }
         }
 
         await pool.query('COMMIT');
