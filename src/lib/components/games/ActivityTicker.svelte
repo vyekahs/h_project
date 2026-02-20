@@ -31,8 +31,13 @@
         if (activities.length === 0) return null;
         const item = activities[0];
         const gameName = GAME_REGISTRY[item.game_id]?.name || item.game_id;
-        const diffLabel = difficultyLabels[item.difficulty] || item.difficulty;
         const name = item.nickname || '익명';
+
+        if (item.game_id === 'tichu') {
+            return `🔥 ${name}님이 티츄에서 승리!`;
+        }
+
+        const diffLabel = difficultyLabels[item.difficulty] || item.difficulty;
         const time = formatReadableTime(item.clear_time);
         return `🔥 ${name}님이 ${gameName}(${diffLabel})을 ${time}만에 클리어!`;
     });
