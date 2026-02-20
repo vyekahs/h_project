@@ -6,12 +6,6 @@ import { translate } from 'google-translate-api-x';
 import * as cheerio from 'cheerio';
 import { verifyAdminSession, verifyAttendeeSession } from '$lib/server/auth';
 
-const BGG_HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-    'Accept-Language': 'en-US,en;q=0.9'
-};
-
 export const load: PageServerLoad = async ({ cookies, request }) => {
     const result = await db.execute(sql`SELECT * FROM games WHERE is_active = true ORDER BY name ASC`);
 
@@ -60,29 +54,18 @@ export const actions: Actions = {
         }
 
         try {
-            const response = await fetch(`https://boardgamegeek.com/search/boardgame?q=${encodeURIComponent(queryStr)}`, {
-                headers: BGG_HEADERS
-            });
-            const html = await response.text();
-            const $ = cheerio.load(html);
-            const games: any[] = [];
-
-            $('#collectionitems tr').each((i, el) => {
-                if (i === 0) return; // Skip header
-
-                const nameLink = $(el).find('.collection_objectname a');
-                if (nameLink.length === 0) return;
-
-                const href = nameLink.attr('href');
-                const idMatch = href?.match(/\/boardgame\/(\d+)\//);
-                const id = idMatch ? idMatch[1] : null;
-                const name = nameLink.text().trim();
-                const year = $(el).find('.collection_objectname .smallerfont').text().trim().replace(/[()]/g, '');
-
-                if (id && name) {
-                    games.push({ id, name, year });
-                }
-            });
+            const response = await fetch(
+                `https://api.geekdo.com/api/geekitems?nosession=1&objecttype=thing&subtype=boardgame&search=${encodeURIComponent(queryStr)}&pagesize=20`
+            );
+            if (!response.ok) {
+                return fail(500, { error: `BGG API 오류 (${response.status})` });
+            }
+            const json = await response.json();
+            const games = (json.items || []).map((item: any) => ({
+                id: String(item.objectid),
+                name: item.name,
+                year: item.yearpublished || ''
+            }));
 
             return { success: true, bggGames: games };
         } catch (err) {
@@ -112,28 +95,18 @@ export const actions: Actions = {
         }
 
         try {
-            const response = await fetch(`https://boardgamegeek.com/boardgame/${bggId}`, {
-                headers: BGG_HEADERS
-            });
-            const html = await response.text();
-            const $ = cheerio.load(html);
+            const [itemRes, dynamicRes] = await Promise.all([
+                fetch(`https://api.geekdo.com/api/geekitems?nosession=1&objecttype=thing&objectid=${bggId}`),
+                fetch(`https://api.geekdo.com/api/dynamicinfo?nosession=1&objecttype=thing&objectid=${bggId}`)
+            ]);
+            const itemJson = await itemRes.json();
+            const dynamicJson = await dynamicRes.json();
+            const item = itemJson.item;
+            const dynamic = dynamicJson.item;
 
-            // Extract data from GEEK.geekitemPreload
-            const scripts = $('script').map((i, el) => $(el).html()).get();
-            const preloadScript = scripts.find(s => s && s.includes('GEEK.geekitemPreload'));
-
-            if (!preloadScript) {
-                throw new Error('Could not find game data on BGG page');
+            if (!item) {
+                throw new Error('Could not find game data on BGG');
             }
-
-            // Extract JSON object
-            const match = preloadScript.match(/GEEK\.geekitemPreload\s*=\s*({.*?});/s);
-            if (!match) {
-                throw new Error('Could not parse game data');
-            }
-
-            const gameData = JSON.parse(match[1]);
-            const item = gameData.item;
 
             let name = item.name;
             const minPlayers = parseInt(item.minplayers || '0');
@@ -177,16 +150,16 @@ export const actions: Actions = {
                 console.error('[Translation Error]', tErr);
             }
 
-            let imageUrl = $('meta[property="og:image"]').attr('content') || '';
+            const imageUrl = item.imageurl || item.images?.medium || '';
 
             let complexity = 0;
-            if (item.stats && item.stats.avgweight) {
-                complexity = parseFloat(item.stats.avgweight);
+            if (dynamic?.stats?.avgweight) {
+                complexity = parseFloat(dynamic.stats.avgweight);
             }
 
             let bestPlayers = "";
-            if (item.polls && item.polls.userplayers && item.polls.userplayers.best) {
-                const best = item.polls.userplayers.best;
+            if (dynamic?.polls?.userplayers?.best) {
+                const best = dynamic.polls.userplayers.best;
                 bestPlayers = best.map((b: any) => {
                     if (b.min === b.max) return b.min;
                     return `${b.min}-${b.max}`;
