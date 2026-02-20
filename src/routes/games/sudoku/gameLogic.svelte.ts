@@ -44,6 +44,7 @@ export function createSudokuGame() {
 
     let earnedPointsResult = $state(0);
     let calculatedScore = $state(0);
+    let newTitleName = $state<string | null>(null);
     let isTimeFrozen = $state(false);
 
     let hasSavedGame = $state(false);
@@ -521,6 +522,9 @@ export function createSudokuGame() {
             if (res.ok) {
                 earnedPointsResult = data.earnedPoints;
                 calculatedScore = data.score;
+                if (data.newTitles && data.newTitles.length > 0) {
+                    newTitleName = data.newTitles[0];
+                }
             } else {
                 console.error('Score submit failed:', res.status, data);
             }
@@ -572,6 +576,7 @@ export function createSudokuGame() {
         set activeTutorialId(v: string) { activeTutorialId = v; },
         get earnedPointsResult() { return earnedPointsResult; },
         get calculatedScore() { return calculatedScore; },
+        get newTitleName() { return newTitleName; },
         get isTimeFrozen() { return isTimeFrozen; },
         get hasSavedGame() { return hasSavedGame; },
         get hasRestarted() { return hasRestarted; },

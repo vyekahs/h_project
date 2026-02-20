@@ -102,6 +102,7 @@
                     { label: '이동', value: `${game.moveCount}회` },
                     ...(!game.hasRestarted ? [{ label: '점수', value: game.calculatedScore.toLocaleString(), highlight: true }] : [])
                 ]}
+                newTitleName={game.newTitleName}
                 primaryAction={{ label: '다시 도전', onclick: game.startGame }}
                 secondaryAction={{ label: '나가기', onclick: () => goto('/games/start/unblock-me') }}
             />

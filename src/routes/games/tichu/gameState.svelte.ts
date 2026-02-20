@@ -46,6 +46,7 @@ export function createTichuGameState() {
 	// Ranking
 	let rankingResult = $state<{ score: number; earnedPoints: number } | null>(null);
 	let scoreSubmitting = $state(false);
+	let newTitleName = $state<string | null>(null);
 
 	// Exchange result display
 	let exchangeResultData = $state<ExchangeResultEntry[] | null>(null);
@@ -294,6 +295,9 @@ export function createTichuGameState() {
 			if (res.ok) {
 				const data = await res.json();
 				rankingResult = { score: data.score, earnedPoints: data.earnedPoints };
+				if (data.newTitles && data.newTitles.length > 0) {
+					newTitleName = data.newTitles[0];
+				}
 			}
 		} catch (e) {
 			console.error('[Tichu] Score submit failed:', e);
@@ -315,6 +319,7 @@ export function createTichuGameState() {
 		roundResult = null;
 		gameEndData = null;
 		rankingResult = null;
+		newTitleName = null;
 		lastPhase = null;
 		stateVersion = 0;
 	}
@@ -485,7 +490,10 @@ export function createTichuGameState() {
 		set showGameOverModal(v: boolean) { showGameOverModal = v; },
 		get roundResult() { return roundResult; },
 		get gameEndData() { return gameEndData; },
+		set gameEndData(v: { winner: TeamId; scoreA: number; scoreB: number } | null) { gameEndData = v; },
 		get rankingResult() { return rankingResult; },
+		get newTitleName() { return newTitleName; },
+		set newTitleName(v: string | null) { newTitleName = v; },
 		get toasts() { return toasts; },
 		get lastEvent() { return lastEvent; },
 		get exchangeResultData() { return exchangeResultData; },

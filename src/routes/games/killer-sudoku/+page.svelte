@@ -136,6 +136,7 @@
             ]}
             showAd={game.isWon && !game.hasRestarted && GAME_CONFIG.ENABLE_ADS}
             onAdReward={game.handleAdReward}
+            newTitleName={game.newTitleName}
             primaryAction={{ label: '다시 도전하기', onclick: () => goto('/games/start/killer-sudoku') }}
             secondaryAction={{ label: '나가기', onclick: game.quitGame }}
         />

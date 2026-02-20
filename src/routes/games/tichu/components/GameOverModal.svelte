@@ -47,6 +47,18 @@
 			</div>
 		{/if}
 
+		{#if game.newTitleName}
+			<div class="title-acquired">
+				<div class="title-sparkle-row">
+					<span class="sparkle">✦</span>
+					<span class="sparkle">✦</span>
+					<span class="sparkle">✦</span>
+				</div>
+				<div class="title-label">칭호 획득!</div>
+				<div class="title-name">{game.newTitleName}</div>
+			</div>
+		{/if}
+
 		<div class="btn-group">
 			<button class="btn-review" onclick={dismiss}>
 				결과 확인
@@ -242,6 +254,62 @@
 		opacity: 0.8;
 	}
 	.btn-setup:hover { opacity: 1; color: #d1d5db; }
+
+	/* Title Acquired Animation */
+	.title-acquired {
+		margin-bottom: 24px;
+		padding: 20px 16px;
+		border-radius: 16px;
+		background: linear-gradient(135deg, rgba(251, 191, 36, 0.15) 0%, rgba(245, 158, 11, 0.1) 100%);
+		border: 1px solid rgba(251, 191, 36, 0.4);
+		position: relative;
+		z-index: 10;
+		animation: titlePopIn 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) 0.5s both;
+		box-shadow: 0 0 30px rgba(251, 191, 36, 0.15), inset 0 0 20px rgba(251, 191, 36, 0.05);
+	}
+	.title-sparkle-row {
+		display: flex;
+		justify-content: center;
+		gap: 8px;
+		margin-bottom: 8px;
+	}
+	.sparkle {
+		font-size: 1rem;
+		color: #fbbf24;
+		animation: sparklePulse 1.5s ease-in-out infinite;
+		text-shadow: 0 0 8px rgba(251, 191, 36, 0.8);
+	}
+	.sparkle:nth-child(2) { animation-delay: 0.3s; }
+	.sparkle:nth-child(3) { animation-delay: 0.6s; }
+
+	.title-label {
+		font-size: 0.75rem;
+		font-weight: 600;
+		color: #d1d5db;
+		letter-spacing: 0.1em;
+		text-transform: uppercase;
+		margin-bottom: 6px;
+	}
+	.title-name {
+		font-size: 1.3rem;
+		font-weight: 800;
+		background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 30%, #fcd34d 60%, #f59e0b 100%);
+		-webkit-background-clip: text;
+		-webkit-text-fill-color: transparent;
+		background-clip: text;
+		letter-spacing: -0.02em;
+		text-shadow: none;
+		filter: drop-shadow(0 2px 4px rgba(251, 191, 36, 0.3));
+	}
+
+	@keyframes titlePopIn {
+		from { opacity: 0; transform: scale(0.5) translateY(10px); }
+		to { opacity: 1; transform: scale(1) translateY(0); }
+	}
+	@keyframes sparklePulse {
+		0%, 100% { opacity: 0.4; transform: scale(0.8); }
+		50% { opacity: 1; transform: scale(1.2); }
+	}
 
 	@keyframes modalPop {
 		from { opacity: 0; transform: scale(0.9); }

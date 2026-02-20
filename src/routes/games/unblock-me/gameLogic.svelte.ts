@@ -46,6 +46,7 @@ export function createUnblockMeGame() {
     // Score
     let earnedPointsResult = $state(0);
     let calculatedScore = $state(0);
+    let newTitleName = $state<string | null>(null);
 
     // Modal helpers
     function showAlert(msg: string) { alertMessage = msg; }
@@ -197,6 +198,9 @@ export function createUnblockMeGame() {
             if (res.ok) {
                 earnedPointsResult = data.earnedPoints;
                 calculatedScore = data.score;
+                if (data.newTitles && data.newTitles.length > 0) {
+                    newTitleName = data.newTitles[0];
+                }
             }
         } catch (e) {
             console.error('Failed to submit score', e);
@@ -265,6 +269,7 @@ export function createUnblockMeGame() {
         get confirmMessage() { return confirmMessage; },
         get earnedPointsResult() { return earnedPointsResult; },
         get calculatedScore() { return calculatedScore; },
+        get newTitleName() { return newTitleName; },
         // Functions
         showAlert,
         showConfirm,

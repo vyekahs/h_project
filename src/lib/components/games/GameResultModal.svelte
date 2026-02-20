@@ -10,6 +10,7 @@
         onAdReward?: () => void;
         primaryAction: { label: string; onclick: () => void };
         secondaryAction: { label: string; onclick: () => void };
+        newTitleName?: string | null;
     }
 
     const {
@@ -21,6 +22,7 @@
         onAdReward,
         primaryAction,
         secondaryAction,
+        newTitleName = null,
     }: Props = $props();
 </script>
 
@@ -58,6 +60,18 @@
                 </div>
             {/each}
         </div>
+
+        {#if newTitleName}
+            <div class="title-acquired">
+                <div class="title-sparkle-row">
+                    <span class="sparkle">✦</span>
+                    <span class="sparkle">✦</span>
+                    <span class="sparkle">✦</span>
+                </div>
+                <div class="title-label">칭호 획득!</div>
+                <div class="title-name">{newTitleName}</div>
+            </div>
+        {/if}
 
         {#if showAd && onAdReward}
             <RewardedAd onReward={onAdReward} />
@@ -269,5 +283,54 @@
     @keyframes float {
         0%, 100% { transform: translateY(0); }
         50% { transform: translateY(-10px); }
+    }
+
+    /* Title Acquired */
+    .title-acquired {
+        width: 100%;
+        padding: 16px;
+        border-radius: 16px;
+        background: linear-gradient(135deg, rgba(251, 191, 36, 0.12) 0%, rgba(245, 158, 11, 0.08) 100%);
+        border: 1px solid rgba(251, 191, 36, 0.3);
+        text-align: center;
+        animation: titlePopIn 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) 0.5s both;
+        box-shadow: 0 0 20px rgba(251, 191, 36, 0.1);
+    }
+    .title-sparkle-row {
+        display: flex;
+        justify-content: center;
+        gap: 8px;
+        margin-bottom: 6px;
+    }
+    .sparkle {
+        font-size: 0.9rem;
+        color: #f59e0b;
+        animation: sparklePulse 1.5s ease-in-out infinite;
+    }
+    .sparkle:nth-child(2) { animation-delay: 0.3s; }
+    .sparkle:nth-child(3) { animation-delay: 0.6s; }
+    .title-label {
+        font-size: 0.7rem;
+        font-weight: 600;
+        color: #92400e;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        margin-bottom: 4px;
+    }
+    .title-name {
+        font-size: 1.2rem;
+        font-weight: 800;
+        background: linear-gradient(135deg, #f59e0b 0%, #d97706 30%, #fbbf24 60%, #d97706 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+    }
+    @keyframes titlePopIn {
+        from { opacity: 0; transform: scale(0.5) translateY(10px); }
+        to { opacity: 1; transform: scale(1) translateY(0); }
+    }
+    @keyframes sparklePulse {
+        0%, 100% { opacity: 0.4; transform: scale(0.8); }
+        50% { opacity: 1; transform: scale(1.2); }
     }
 </style>
