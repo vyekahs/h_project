@@ -452,7 +452,6 @@
                 {:else}
                     <span class="status-pill closed">마감</span>
                 {/if}
-                <span class="live-time">{lastUpdated.toLocaleTimeString()}</span>
             </div>
         </div>
     </header>
