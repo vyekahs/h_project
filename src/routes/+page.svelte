@@ -2879,10 +2879,10 @@
         width: fit-content;
         max-width: 100%;
         padding: 2px 8px;
-        border: 1px solid #fbbf24;
+        border: 1px solid #fbbf24; /* Amber-400 */
         border-radius: 6px;
         background: rgba(255, 255, 255, 0.5);
-        color: #d97706;
+        color: #d97706; /* Amber-600 */
         font-size: 0.75rem;
         font-weight: 700;
         margin-bottom: 2px;
