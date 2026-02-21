@@ -238,10 +238,7 @@ export const wildBehavior: PresetBehavior = {
 			}
 		}
 
-		// 개를 줬거나 낮은 스트레이트가 있으면 스트레이트 완성 중간숫자
-		const hasDog = hand.some(c => c.type === 'special' && c.special === 'dog');
-		const gaveDog = givenToOpponents.length === 0; // 상대에게 준 카드가 없으면 개를 줬을 가능성
-
+		// 낮은 스트레이트 완성 중간숫자 부르기
 		const normalCards = hand.filter(c => c.type === 'normal') as NormalCard[];
 		const sortedRanks = [...new Set(normalCards.map(c => c.rank))].sort((a, b) => a - b);
 
