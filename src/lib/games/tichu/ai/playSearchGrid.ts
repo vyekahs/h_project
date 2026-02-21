@@ -364,6 +364,11 @@ function calcContextModifier(
 		} else {
 			// 파트너가 이기고 있으면 패스 선호
 			mod -= 0.2;
+
+			// 파트너 트릭에서 드래곤 사용은 최악 (25점 상대 선물 + 파트너 방해)
+			if (combo.cards.some(c => c.type === 'special' && c.special === 'dragon')) {
+				mod -= 0.5;
+			}
 		}
 
 		// 드래곤 팔로우 페널티 (트릭 이기면 25점을 상대에게 선물)
