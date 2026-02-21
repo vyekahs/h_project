@@ -474,23 +474,29 @@ export function decidePlay(
 	}
 
 	// === 봉황 싱글 팔로우 제한 ===
-	// 봉황 싱글은 "무조건 선을 먹을 수 있는 상황"에서만 허용:
-	// 1) 내가 마지막 기회(다음이 트릭 주인)이고 상대가 이기고 있을 때
-	// 2) 봉황이 마지막 카드일 때 (hand.length === 1)
+	// 봉황 싱글은 "봉황이 탑(이길 카드가 게임에 없음)"일 때만 허용
 	const isPhoenixSingle = (c: Combination) =>
 		c.type === 'single' && c.cards[0].type === 'special' && c.cards[0].special === 'phoenix';
-	const amLastBeforeTrickWinner = getNextActiveSeat(currentSeat, players) === lastPlay.seat;
-	const opponentWinning = trickLeaderTeam !== myTeam;
 
 	let playsForFollow = nonBombPlays;
 	if (nonBombPlays.some(isPhoenixSingle)) {
-		const phoenixAllowed =
-			(amLastBeforeTrickWinner && opponentWinning) || // 선 먹기 보장
-			hand.length === 1; // 마지막 카드
+		let phoenixAllowed = hand.length === 1; // 마지막 카드면 무조건 허용
+
+		if (!phoenixAllowed) {
+			// 봉황이 탑인지 확인: 봉황 rank 이상의 카드가 다른 손에 없고 드래곤도 없어야 함
+			const tracker = buildCardTracker(context);
+			const phoenixRank = Math.ceil(lastCombo.rank + 0.5);
+			let higherCardsOut = 0;
+			for (let r = phoenixRank + 1; r <= 14; r++) {
+				higherCardsOut += tracker.remainingByRank.get(r) || 0;
+			}
+			if (!tracker.dragonPlayed && !tracker.dragonInMyHand) higherCardsOut++;
+			phoenixAllowed = higherCardsOut === 0;
+		}
+
 		if (!phoenixAllowed) {
 			const filtered = nonBombPlays.filter(c => !isPhoenixSingle(c));
 			playsForFollow = filtered;
-			// filtered가 비면 봉황 싱글밖에 없으므로 패스 (아래 length===0 처리)
 		}
 	}
 
@@ -601,17 +607,6 @@ function pickBestFollow(
 	}
 
 	return bestResult.combo.cards.map(c => c.id);
-}
-
-/**
- * Get the next active seat after a given seat.
- */
-function getNextActiveSeat(seat: SeatIndex, players: AiDecisionContext['players']): SeatIndex {
-	for (let i = 1; i <= 4; i++) {
-		const next = ((seat + i) % 4) as SeatIndex;
-		if (players[next].finishOrder === null) return next;
-	}
-	return seat;
 }
 
 /**
