@@ -592,6 +592,30 @@ export const actions: Actions = {
         }
         return { success: true };
     },
+    addGuestToGame: async ({ request, cookies }) => {
+        const data = await request.formData();
+        const sessionId = data.get('sessionId');
+        const customName = data.get('guestName')?.toString().trim();
+
+        if (!sessionId) return fail(400, { error: 'Invalid session ID' });
+
+        const sessionToken = cookies.get('admin_session');
+        if (!sessionToken || !(await verifyAdminSession(sessionToken))) return fail(403, { error: 'Unauthorized' });
+
+        const existingGuests = await db.execute(sql`
+            SELECT guest_name FROM session_participants
+            WHERE session_id = ${sessionId} AND attendee_id IS NULL
+        `);
+        const nextNum = existingGuests.length + 1;
+        const guestName = customName || `게스트${nextNum}`;
+
+        await db.execute(sql`
+            INSERT INTO session_participants (session_id, attendee_id, guest_name)
+            VALUES (${sessionId}, NULL, ${guestName})
+        `);
+
+        return { success: true };
+    },
     addTable: async ({ request }) => {
         const data = await request.formData();
         const name = data.get('name')?.toString().trim();

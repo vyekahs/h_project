@@ -437,6 +437,10 @@
                         </select>
                         <button type="submit" class="btn-mini">추가</button>
                     </form>
+                    <form method="POST" action="?/addGuestToGame" use:enhance class="inline-add-form">
+                        <input type="hidden" name="sessionId" value={g.id} />
+                        <button type="submit" class="btn-mini btn-guest">게스트+</button>
+                    </form>
                     <div class="action-group">
                         <form method="POST" action="?/startScheduledGame" use:enhance>
                             <input type="hidden" name="sessionId" value={g.id} />
@@ -624,6 +628,10 @@
                             {/each}
                         </select>
                         <button type="submit" class="btn-mini">추가</button>
+                    </form>
+                    <form method="POST" action="?/addGuestToGame" use:enhance class="inline-add-form">
+                        <input type="hidden" name="sessionId" value={game.id} />
+                        <button type="submit" class="btn-mini btn-guest">게스트+</button>
                     </form>
                     <div class="action-group">
                         <form method="POST" action="?/extendGame" use:enhance>
@@ -1662,6 +1670,12 @@
     }
     .btn-mini:hover {
         background: #3b5bdb;
+    }
+    .btn-guest {
+        background: #868e96;
+    }
+    .btn-guest:hover {
+        background: #495057;
     }
     .btn-manager-toggle {
         background: #e9ecef;
