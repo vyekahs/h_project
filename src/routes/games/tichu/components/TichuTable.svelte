@@ -195,7 +195,7 @@
 		<div class="team-score team-b">
 			상대: {gs()?.cumulativeScoreB ?? 0}
 		</div>
-		<button class="btn-back" onclick={() => game.backToSetup()} title="나가기">
+		<button class="btn-back" onclick={() => game.pauseGame()} title="나가기">
 			✕
 		</button>
 	</div>

@@ -47,6 +47,24 @@
 		<GameOverModal {game} />
 	{/if}
 
+	{#if game.showExitConfirmModal}
+		<!-- svelte-ignore a11y_no_static_element_interactions -->
+		<div class="exit-overlay" onkeydown={(e) => e.key === 'Escape' && game.resumeFromPause()}>
+			<div class="exit-modal">
+				<h3>종료하시겠습니까?</h3>
+				<p>게임을 종료하면 진행 중인 게임이 삭제됩니다.</p>
+				<div class="exit-actions">
+					<button class="exit-btn exit-btn-cancel" onclick={() => game.resumeFromPause()}>
+						계속하기
+					</button>
+					<button class="exit-btn exit-btn-confirm" onclick={() => game.backToSetup()}>
+						종료
+					</button>
+				</div>
+			</div>
+		</div>
+	{/if}
+
 	<!-- Toast Notifications -->
 	<div class="toast-container">
 		{#each game.toasts as toast (toast.id)}
@@ -162,6 +180,81 @@
 	@keyframes toastIn {
 		from { opacity: 0; transform: translateY(-12px) scale(0.95); }
 		to { opacity: 1; transform: translateY(0) scale(1); }
+	}
+
+	/* Exit Confirm Modal */
+	.exit-overlay {
+		position: fixed;
+		inset: 0;
+		background: rgba(0, 0, 0, 0.6);
+		backdrop-filter: blur(5px);
+		-webkit-backdrop-filter: blur(5px);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		z-index: 1500;
+	}
+	.exit-modal {
+		background: rgba(30, 41, 59, 0.9);
+		backdrop-filter: blur(20px);
+		-webkit-backdrop-filter: blur(20px);
+		border: 1px solid rgba(255, 255, 255, 0.1);
+		border-radius: 24px;
+		padding: 28px 32px;
+		text-align: center;
+		color: #f3f4f6;
+		min-width: 260px;
+		max-width: 320px;
+		box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+		animation: exitModalIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+	}
+	.exit-modal h3 {
+		margin: 0 0 8px;
+		font-size: 1.15rem;
+		font-weight: 700;
+		color: #fff;
+	}
+	.exit-modal p {
+		margin: 0 0 24px;
+		font-size: 0.85rem;
+		color: #9ca3af;
+		line-height: 1.4;
+	}
+	.exit-actions {
+		display: flex;
+		gap: 10px;
+	}
+	.exit-btn {
+		flex: 1;
+		padding: 12px 0;
+		border-radius: 14px;
+		border: none;
+		font-size: 0.95rem;
+		font-weight: 700;
+		cursor: pointer;
+		transition: all 0.2s;
+	}
+	.exit-btn-cancel {
+		background: rgba(255, 255, 255, 0.1);
+		border: 1px solid rgba(255, 255, 255, 0.2);
+		color: #e5e7eb;
+	}
+	.exit-btn-cancel:active {
+		background: rgba(255, 255, 255, 0.2);
+		transform: scale(0.97);
+	}
+	.exit-btn-confirm {
+		background: linear-gradient(135deg, #dc2626, #b91c1c);
+		color: #fff;
+		box-shadow: 0 4px 12px rgba(220, 38, 38, 0.3);
+	}
+	.exit-btn-confirm:active {
+		transform: scale(0.97);
+		box-shadow: 0 2px 8px rgba(220, 38, 38, 0.4);
+	}
+	@keyframes exitModalIn {
+		from { opacity: 0; transform: scale(0.95); }
+		to { opacity: 1; transform: scale(1); }
 	}
 
 </style>
