@@ -1,4 +1,5 @@
 import type { PresetBehavior } from './types';
+import { selectBestPartnerCard } from './types';
 import type { Card, NormalCard, Combination, SeatIndex } from '../../types';
 import type { AiDecisionContext } from '../types';
 import { getTeam, getPartnerSeat, getLeftSeat, getRightSeat } from '../../constants';
@@ -20,11 +21,7 @@ import { isBomb } from '../../combinations';
  */
 export const defensiveBehavior: PresetBehavior = {
 	selectPartnerExchangeCard(hand, singletons, rankGroups, protectedIds) {
-		// 항상 파트너에게 가장 높은 카드를 줌
-		const normalCards = hand.filter(c => c.type === 'normal') as NormalCard[];
-		const highCards = normalCards.sort((a, b) => b.rank - a.rank);
-
-		return highCards.length > 0 ? highCards[0] : null;
+		return selectBestPartnerCard(hand, singletons, rankGroups, protectedIds);
 	},
 
 	onPartnerWinning() {

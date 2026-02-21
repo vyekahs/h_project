@@ -19,6 +19,56 @@ export function isTichuCaliberHand(hand: Card[]): boolean {
 }
 
 /**
+ * 파트너에게 줄 교환 카드를 스마트하게 선택.
+ * protectedIds를 존중하면서 가능한 높은 카드를 줌.
+ * 티츄급 핸드면 최고 카드를 보존하고 중간급 카드를 줌.
+ * null 반환 시 strategy.ts 기본 로직으로 폴백.
+ */
+export function selectBestPartnerCard(
+	hand: Card[],
+	singletons: NormalCard[],
+	rankGroups: Map<number, NormalCard[]>,
+	protectedIds: Set<string>
+): Card | null {
+	// 티츄급 핸드: 파워 카드 보존, 중간급(10~Q) 싱글톤을 줌
+	if (isTichuCaliberHand(hand)) {
+		const mediumSingletons = singletons
+			.filter(c => !protectedIds.has(c.id) && c.rank >= 10 && c.rank <= 12)
+			.sort((a, b) => b.rank - a.rank);
+		if (mediumSingletons.length > 0) return mediumSingletons[0];
+
+		const mediumCards = (hand.filter(c => c.type === 'normal') as NormalCard[])
+			.filter(c => !protectedIds.has(c.id) && c.rank >= 8 && c.rank <= 12)
+			.sort((a, b) => b.rank - a.rank);
+		if (mediumCards.length > 0) return mediumCards[0];
+
+		return null;
+	}
+
+	// 일반 핸드: 높은 싱글톤 우선 (페어/폭탄을 안 깨뜨림)
+	const highSingletons = singletons
+		.filter(c => !protectedIds.has(c.id) && c.rank >= 10)
+		.sort((a, b) => b.rank - a.rank);
+	if (highSingletons.length > 0) return highSingletons[0];
+
+	// 3장 이상 그룹에서 1장 (페어를 안 깨뜨림)
+	for (const [rank, cards] of [...rankGroups.entries()].sort((a, b) => b[0] - a[0])) {
+		if (cards.length >= 3) {
+			const nonProtected = cards.filter(c => !protectedIds.has(c.id));
+			if (nonProtected.length > 0) return nonProtected[0];
+		}
+	}
+
+	// 아무 싱글톤 (높은 것부터)
+	const anySingleton = singletons
+		.filter(c => !protectedIds.has(c.id))
+		.sort((a, b) => b.rank - a.rank);
+	if (anySingleton.length > 0) return anySingleton[0];
+
+	return null;
+}
+
+/**
  * 프리셋별 고유 행동을 정의하는 인터페이스.
  * 각 훅은 null을 반환하면 기본 로직으로 폴백.
  */
