@@ -444,7 +444,7 @@
                     <div class="setting-card" style="background: white; padding: 1.5rem; border-radius: 16px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
                         <div class="setting-info">
                             <div class="setting-title" style="font-weight: 700; font-size: 1.05rem; margin-bottom: 0.2rem; color: #1f2937;">진동 효과 (Haptic Feedback)</div>
-                            <div class="setting-desc" style="font-size: 0.85rem; color: #6b7280;">게임 진행 중 중요한 순간에 진동으로 알려줍니다.</div>
+                            <div class="setting-desc" style="font-size: 0.85rem; color: #6b7280;">오락실 게임 진행 중 중요한 순간에 진동으로 알려줍니다.</div>
                         </div>
                         <label class="toggle-switch" style="position: relative; display: inline-block; width: 50px; height: 28px;">
                             <input type="checkbox" bind:checked={$hapticsEnabled} style="opacity: 0; width: 0; height: 0;">
