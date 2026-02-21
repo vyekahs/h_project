@@ -85,15 +85,16 @@ async function performCloseDay(businessDate: string) {
             updateSettingsCache(false);
             markAllLeft();
             await tx.execute(sql`DELETE FROM daily_visit_plans WHERE plan_date < CURRENT_DATE`);
-            // 삭제 전에 반복 게임의 skip 기록 추가 (재생성 방지)
+            // 시간이 지난 예정 게임만 정리 (미래 일정은 유지)
             await tx.execute(sql`
                 INSERT INTO recurring_game_skips (recurring_schedule_id, skip_date)
                 SELECT recurring_schedule_id, ${businessDate}::date
                 FROM game_sessions
                 WHERE status = 'scheduled' AND recurring_schedule_id IS NOT NULL
+                  AND scheduled_at <= NOW()
                 ON CONFLICT DO NOTHING
             `);
-            await tx.execute(sql`DELETE FROM game_sessions WHERE status = 'scheduled'`);
+            await tx.execute(sql`DELETE FROM game_sessions WHERE status = 'scheduled' AND scheduled_at <= NOW()`);
             await tx.execute(sql`INSERT INTO system_settings (key, value) VALUES ('last_auto_close_date', ${businessDate}) ON CONFLICT (key) DO UPDATE SET value = ${businessDate}`);
         });
         emitLiveEvent('visitors');
