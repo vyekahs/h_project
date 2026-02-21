@@ -161,12 +161,14 @@
         letter-spacing: -1px;
         background: linear-gradient(45deg, #333, #666);
         -webkit-background-clip: text;
+        background-clip: text;
         -webkit-text-fill-color: transparent;
     }
 
     .result-card.win .result-title {
         background: linear-gradient(45deg, #FFD700, #FFA500);
         -webkit-background-clip: text;
+        background-clip: text;
     }
 
     .result-message {

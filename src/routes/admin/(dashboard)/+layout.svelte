@@ -143,8 +143,15 @@
 {#if closeDayModalVisible}
     <!-- svelte-ignore a11y-click-events-have-key-events -->
     <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-    <div class="modal-backdrop" on:click={() => closeDayModalVisible = false} role="presentation">
-        <div class="modal-content confirm-modal" on:click|stopPropagation role="dialog">
+    <div 
+        class="modal-backdrop" 
+        on:click={() => closeDayModalVisible = false}
+        on:keydown={(e) => e.key === 'Escape' && (closeDayModalVisible = false)}
+        role="button"
+        tabindex="-1"
+        aria-label="Close modal"
+    >
+        <div class="modal-content confirm-modal" on:click|stopPropagation role="dialog" tabindex="-1">
             <h3>
                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px; vertical-align:text-bottom;"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
                 마감 하기
@@ -175,8 +182,15 @@
 {#if openDayModalVisible}
     <!-- svelte-ignore a11y-click-events-have-key-events -->
     <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-    <div class="modal-backdrop" on:click={() => openDayModalVisible = false} role="presentation">
-        <div class="modal-content confirm-modal" on:click|stopPropagation role="dialog">
+    <div 
+        class="modal-backdrop" 
+        on:click={() => openDayModalVisible = false}
+        on:keydown={(e) => e.key === 'Escape' && (openDayModalVisible = false)}
+        role="button"
+        tabindex="-1"
+        aria-label="Close modal"
+    >
+        <div class="modal-content confirm-modal" on:click|stopPropagation role="dialog" tabindex="-1">
             <h3>
                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px; vertical-align:text-bottom;"><circle cx="12" cy="12" r="5"/><path d="M12 1v2"/><path d="M12 21v2"/><path d="M4.22 4.22l1.42 1.42"/><path d="M18.36 18.36l1.42 1.42"/><path d="M1 12h2"/><path d="M21 12h2"/><path d="M4.22 19.78l1.42-1.42"/><path d="M18.36 5.64l1.42-1.42"/></svg>
                 오픈 하기
@@ -207,8 +221,15 @@
 {#if alertVisible}
     <!-- svelte-ignore a11y-click-events-have-key-events -->
     <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-    <div class="modal-backdrop" on:click={() => alertVisible = false} role="presentation">
-        <div class="modal-content alert-modal" on:click|stopPropagation role="alertdialog">
+    <div 
+        class="modal-backdrop" 
+        on:click={() => alertVisible = false}
+        on:keydown={(e) => e.key === 'Escape' && (alertVisible = false)}
+        role="button"
+        tabindex="-1"
+        aria-label="Close alert"
+    >
+        <div class="modal-content alert-modal" on:click|stopPropagation role="alertdialog" tabindex="-1">
             <h3>알림</h3>
             <p>{alertMessage}</p>
             <div class="modal-actions">
@@ -241,11 +262,6 @@
         margin: 0;
         font-size: 1.5rem;
         color: #ecf0f1;
-    }
-    .sidebar-header p {
-        margin: 0;
-        font-size: 0.8rem;
-        color: #bdc3c7;
     }
     .sidebar-nav {
         display: flex;
@@ -327,9 +343,6 @@
         }
         .sidebar-header h2 {
             font-size: 1.2rem;
-        }
-        .sidebar-header p {
-            display: none;
         }
         
         /* Hide Desktop Nav & Footer on Mobile */
@@ -433,83 +446,5 @@
         color: #d32f2f;
         font-size: 0.9rem;
         margin-top: 0.5rem;
-    }
-    .hint-text {
-        font-size: 0.85rem;
-        color: #666;
-        margin-top: 1rem;
-        background: #f5f5f5;
-        padding: 0.5rem;
-        border-radius: 4px;
-    }
-    .day-selector {
-        display: flex;
-        gap: 0.5rem;
-        flex-wrap: wrap;
-        margin-top: 0.5rem;
-    }
-    .day-checkbox {
-        display: flex;
-        align-items: center;
-        gap: 0.25rem;
-        font-size: 0.9rem;
-        cursor: pointer;
-        background: #f0f0f0;
-        padding: 0.25rem 0.5rem;
-        border-radius: 4px;
-    }
-    .day-checkbox:has(input:checked) {
-        background: #e3f2fd;
-        color: #007bff;
-        font-weight: bold;
-    }
-    .modal-backdrop {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background: rgba(0, 0, 0, 0.5);
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        z-index: 1000;
-    }
-    .modal-content {
-        background: white;
-        padding: 2rem;
-        border-radius: 8px;
-        width: 90%;
-        max-width: 500px;
-        max-height: 90vh;
-        overflow-y: auto;
-    }
-    .alert-modal {
-        max-width: 400px;
-        text-align: center;
-    }
-    .confirm-modal {
-        max-width: 400px;
-    }
-    .modal-actions {
-        display: flex;
-        justify-content: flex-end;
-        gap: 1rem;
-        margin-top: 1.5rem;
-    }
-    .form-group {
-        margin-bottom: 1rem;
-    }
-    .form-group label {
-        display: block;
-        margin-bottom: 0.5rem;
-        font-weight: bold;
-    }
-    .form-group input {
-        width: 100%;
-        padding: 0.5rem;
-        border: 1px solid #ddd;
-        border-radius: 4px;
-        box-sizing: border-box;
     }
 </style>

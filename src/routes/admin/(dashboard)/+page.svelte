@@ -658,8 +658,15 @@
 {#if showModal}
     <!-- svelte-ignore a11y-click-events-have-key-events -->
     <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-    <div class="modal-backdrop" on:click={() => showModal = false} role="presentation">
-        <div class="modal-content" on:click={handleModalClick} role="dialog">
+    <div 
+        class="modal-backdrop" 
+        on:click={() => showModal = false} 
+        on:keydown={(e) => e.key === 'Escape' && (showModal = false)}
+        role="button" 
+        tabindex="-1"
+        aria-label="Close modal"
+    >
+        <div class="modal-content" on:click={handleModalClick} role="dialog" tabindex="-1">
             <h2>새 게임 시작</h2>
             <form method="POST" action="?/createGame" use:enhance={() => {
                 return async ({ result, update }: { result: any, update: (options?: { reset?: boolean }) => Promise<void> }) => {
@@ -760,8 +767,15 @@
 {#if endGameModalVisible && selectedEndGame}
     <!-- svelte-ignore a11y-click-events-have-key-events -->
     <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-    <div class="modal-backdrop" on:click={() => endGameModalVisible = false} role="presentation">
-        <div class="modal-content" on:click|stopPropagation role="dialog">
+    <div 
+        class="modal-backdrop" 
+        on:click={() => endGameModalVisible = false} 
+        on:keydown={(e) => e.key === 'Escape' && (endGameModalVisible = false)}
+        role="button" 
+        tabindex="-1"
+        aria-label="Close modal"
+    >
+        <div class="modal-content" on:click|stopPropagation role="dialog" tabindex="-1">
 
             <h2>
                 <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:#fab005;"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>
@@ -821,8 +835,15 @@
 {#if alertVisible}
     <!-- svelte-ignore a11y-click-events-have-key-events -->
     <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-    <div class="modal-backdrop" on:click={() => alertVisible = false} role="presentation">
-        <div class="modal-content alert-modal" on:click|stopPropagation role="alertdialog">
+    <div 
+        class="modal-backdrop" 
+        on:click={() => alertVisible = false} 
+        on:keydown={(e) => e.key === 'Escape' && (alertVisible = false)}
+        role="button" 
+        tabindex="-1"
+        aria-label="Close alert"
+    >
+        <div class="modal-content alert-modal" on:click|stopPropagation role="alertdialog" tabindex="-1">
             <h3>알림</h3>
             <p>{alertMessage}</p>
             <div class="modal-actions">
@@ -838,8 +859,15 @@
     <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
     <!-- svelte-ignore a11y-click-events-have-key-events -->
     <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-    <div class="modal-backdrop" on:click={() => removeModalVisible = false} role="presentation">
-        <div class="modal-content confirm-modal" on:click|stopPropagation role="dialog">
+    <div 
+        class="modal-backdrop" 
+        on:click={() => removeModalVisible = false} 
+        on:keydown={(e) => e.key === 'Escape' && (removeModalVisible = false)}
+        role="button" 
+        tabindex="-1"
+        aria-label="Close confirm"
+    >
+        <div class="modal-content confirm-modal" on:click|stopPropagation role="dialog" tabindex="-1">
             <h3>참가자 퇴장 확인</h3>
             <p><strong>{removeTarget.name}</strong>님은 현재 <strong>{removeTarget.game_name}</strong> 게임에 참여 중입니다.</p>
             <p>어떻게 처리하시겠습니까?</p>
@@ -876,8 +904,15 @@
 {#if showScheduledGameModal}
     <!-- svelte-ignore a11y-click-events-have-key-events -->
     <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-    <div class="modal-backdrop" on:click={() => showScheduledGameModal = false} role="presentation">
-        <div class="modal-content" on:click={handleModalClick} role="dialog">
+    <div 
+        class="modal-backdrop" 
+        on:click={() => showScheduledGameModal = false} 
+        on:keydown={(e) => e.key === 'Escape' && (showScheduledGameModal = false)}
+        role="button" 
+        tabindex="-1"
+        aria-label="Close modal"
+    >
+        <div class="modal-content" on:click={handleModalClick} role="dialog" tabindex="-1">
 
             <h2>
                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
@@ -1100,7 +1135,7 @@
         border-radius: 4px;
         cursor: pointer;
     }
-    button, .btn-secondary {
+    button {
         padding: 0.5rem 1rem;
         background: #007bff;
         color: white;
@@ -1109,9 +1144,6 @@
         cursor: pointer;
         text-decoration: none;
         display: inline-block;
-    }
-    .btn-secondary {
-        background: #6c757d;
     }
     .player-select {
         width: 100%;
@@ -1160,19 +1192,6 @@
     .btn-cancel {
         background: #ccc;
         color: #333;
-    }
-    .btn-create-game {
-        background: #4caf50;
-        color: white;
-        padding: 0.5rem 1rem;
-        border-radius: 8px;
-        text-decoration: none;
-        font-weight: bold;
-        font-size: 0.9rem;
-        transition: background 0.2s;
-    }
-    .btn-create-game:hover {
-        background: #43a047;
     }
     .modal-backdrop {
         position: fixed;
@@ -1290,11 +1309,6 @@
             width: 100%; /* Keep specific override or reset if needed */
             margin-top: 0.5rem;
         }
-        .game-header {
-            flex-direction: column;
-            align-items: flex-start;
-            gap: 0.5rem;
-        }
         .game-actions-container {
             align-items: stretch;
         }
@@ -1309,12 +1323,6 @@
         }
         .notice-manager {
             gap: 0.5rem;
-        }
-        .game-actions form {
-            flex: 1;
-        }
-        .game-actions button {
-            width: 100%;
         }
         .notice-manager {
             gap: 0.5rem;
@@ -1475,47 +1483,6 @@
         font-size: 0.9rem;
     }
 
-    .reservations-list {
-        display: flex;
-        flex-direction: column;
-        gap: 0.5rem;
-    }
-    .reservation-item {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 0.75rem;
-        background: white;
-        border-radius: 6px;
-        border: 1px solid #eee;
-    }
-    .reservation-item.confirmed { border-left: 4px solid #4caf50; }
-    .reservation-item.pending { border-left: 4px solid #ff9800; }
-    .reservation-item.waitlisted { border-left: 4px solid #9e9e9e; }
-    
-    .res-info {
-        display: flex;
-        align-items: center;
-        gap: 1rem;
-    }
-    .res-status-badge {
-        font-size: 0.75rem;
-        padding: 0.2rem 0.5rem;
-        border-radius: 10px;
-        background: #eee;
-    }
-    .res-status-badge.confirmed { background: #e8f5e9; color: #2e7d32; }
-    .res-status-badge.pending { background: #fff3e0; color: #ef6c00; }
-    .res-status-badge.waitlisted { background: #f5f5f5; color: #616161; }
-
-    .btn-confirm {
-        background: #4caf50;
-        color: white;
-        border: none;
-        padding: 0.25rem 0.75rem;
-        border-radius: 4px;
-        cursor: pointer;
-    }
 
     .input-group {
         position: relative;
@@ -1602,57 +1569,12 @@
     }
 
     /* New Settings & Inline Add Styles */
-    .settings-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-        gap: 1.5rem;
-    }
-    .settings-card {
-        background: white;
-        padding: 1.5rem;
-        border-radius: 12px;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.05);
-        border: 1px solid #eee;
-    }
-    .settings-card h3 {
-        margin-top: 0;
-        margin-bottom: 1.5rem;
-        display: flex;
-        align-items: center;
-        gap: 0.75rem;
-        font-size: 1.1rem;
-        color: #333;
-        border-bottom: 2px solid #f0f0f0;
-        padding-bottom: 0.5rem;
-    }
-    .setting-item {
-        margin-bottom: 1.25rem;
-    }
-    .setting-item label {
-        display: block;
-        font-size: 0.9rem;
-        font-weight: 600;
-        color: #666;
-        margin-bottom: 0.5rem;
-    }
-    .setting-item input {
-        width: 100%;
-        padding: 0.6rem;
-        border: 1px solid #ddd;
-        border-radius: 6px;
-        font-size: 1rem;
-    }
-    .setting-item .hint {
-        font-size: 0.8rem;
-        color: #888;
-        margin-top: 0.25rem;
-    }
     .inline-add-form {
         display: flex;
         gap: 0.5rem;
         align-items: center;
     }
-    .attendee-select-mini, .session-select-mini {
+    .attendee-select-mini {
         padding: 0.4rem;
         border-radius: 6px;
         border: 1px solid #ddd;
@@ -1666,10 +1588,6 @@
         border-radius: 6px;
         cursor: pointer;
         font-size: 0.85rem;
-        font-weight: 600;
-    }
-    .btn-mini:hover {
-        background: #3b5bdb;
     }
     .btn-guest {
         background: #868e96;
@@ -1711,9 +1629,6 @@
         height: 34px; /* Fixed height for alignment */
     }
     
-    .btn-primary.btn-unified {
-        background: #007bff;
-    }
     
     .btn-delete.btn-unified {
         background: #ff4444; 

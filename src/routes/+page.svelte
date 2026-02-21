@@ -1028,16 +1028,23 @@
 {#if showModal}
     <!-- svelte-ignore a11y-click-events-have-key-events -->
     <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-    <div class="modal-backdrop" on:click={() => showModal = false} role="presentation">
-        <div class="modal-content" on:click={handleModalClick} role="dialog">
+    <div 
+        class="modal-backdrop" 
+        on:click={() => showModal = false} 
+        on:keydown={(e) => e.key === 'Escape' && (showModal = false)}
+        role="button" 
+        tabindex="-1"
+        aria-label="Close modal"
+    >
+        <div class="modal-content" on:click={handleModalClick} role="dialog" tabindex="-1">
             <h2>새 게임 시작</h2>
             {#if parties.length > 0}
                 <div class="party-selector">
-                    <label>고정팟 불러오기</label>
+                    <span class="label-heading">고정팟 불러오기</span>
                     <!-- svelte-ignore a11y-click-events-have-key-events -->
                     <!-- svelte-ignore a11y-no-static-element-interactions -->
                     <div class="party-dropdown-wrapper" on:click|stopPropagation>
-                        <button type="button" class="party-dropdown-trigger" on:click={() => partyDropdownOpen = !partyDropdownOpen}>
+                        <button id="partyDropdown" type="button" class="party-dropdown-trigger" on:click={() => partyDropdownOpen = !partyDropdownOpen}>
                             <span>고정팟 선택</span>
                             <span class="party-chevron" class:open={partyDropdownOpen}>&#9662;</span>
                         </button>
@@ -1178,8 +1185,15 @@
 {#if endGameModalVisible && selectedEndGame}
     <!-- svelte-ignore a11y-click-events-have-key-events -->
     <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-    <div class="modal-backdrop" on:click={() => endGameModalVisible = false} role="presentation">
-        <div class="modal-content" on:click|stopPropagation role="dialog">
+    <div 
+        class="modal-backdrop" 
+        on:click={() => endGameModalVisible = false} 
+        on:keydown={(e) => e.key === 'Escape' && (endGameModalVisible = false)}
+        role="button" 
+        tabindex="-1"
+        aria-label="Close modal"
+    >
+        <div class="modal-content" on:click|stopPropagation role="dialog" tabindex="-1">
             <h2>
                 <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px; vertical-align:bottom; color:#fab005;"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>
                 게임 종료 및 승자 선택
@@ -1243,19 +1257,26 @@
 {#if showScheduledGameModal}
     <!-- svelte-ignore a11y-click-events-have-key-events -->
     <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-    <div class="modal-backdrop" on:click={() => showScheduledGameModal = false} role="presentation">
-        <div class="modal-content" on:click={handleModalClick} role="dialog">
+    <div 
+        class="modal-backdrop" 
+        on:click={() => showScheduledGameModal = false} 
+        on:keydown={(e) => e.key === 'Escape' && (showScheduledGameModal = false)}
+        role="button" 
+        tabindex="-1"
+        aria-label="Close modal"
+    >
+        <div class="modal-content" on:click={handleModalClick} role="dialog" tabindex="-1">
             <h2>
                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px; vertical-align:text-bottom;"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
                 시작 예정 게임 생성
             </h2>
             {#if parties.length > 0}
                 <div class="party-selector">
-                    <label>고정팟 불러오기</label>
+                    <span class="label-heading">고정팟 불러오기</span>
                     <!-- svelte-ignore a11y-click-events-have-key-events -->
                     <!-- svelte-ignore a11y-no-static-element-interactions -->
                     <div class="party-dropdown-wrapper" on:click|stopPropagation>
-                        <button type="button" class="party-dropdown-trigger" on:click={() => scheduledPartyDropdownOpen = !scheduledPartyDropdownOpen}>
+                        <button id="scheduledPartyDropdown" type="button" class="party-dropdown-trigger" on:click={() => scheduledPartyDropdownOpen = !scheduledPartyDropdownOpen}>
                             <span>고정팟 선택</span>
                             <span class="party-chevron" class:open={scheduledPartyDropdownOpen}>&#9662;</span>
                         </button>
@@ -1346,7 +1367,7 @@
 
                 {#if scheduledSelectedPlayerIds.length > 0}
                     <div class="input-group">
-                        <label>함께할 멤버</label>
+                        <span class="label-heading">함께할 멤버</span>
                         <div class="selected-members-tags">
                             {#each scheduledSelectedPlayerIds as playerId}
                                 {@const memberName = (attendees || []).find(a => a.id === playerId)?.name || scheduledPartyMembers.find(m => m.id === playerId)?.name || `ID:${playerId}`}
@@ -1396,8 +1417,15 @@
 {#if alertVisible}
     <!-- svelte-ignore a11y-click-events-have-key-events -->
     <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-    <div class="modal-backdrop" on:click={() => alertVisible = false} role="presentation">
-        <div class="modal-content alert-modal" on:click|stopPropagation role="alertdialog">
+    <div 
+        class="modal-backdrop" 
+        on:click={() => alertVisible = false} 
+        on:keydown={(e) => e.key === 'Escape' && (alertVisible = false)}
+        role="button" 
+        tabindex="-1"
+        aria-label="Close alert"
+    >
+        <div class="modal-content alert-modal" on:click|stopPropagation role="alertdialog" tabindex="-1">
             <h3>알림</h3>
             <p>{alertMessage}</p>
             <div class="modal-actions">
@@ -1411,8 +1439,15 @@
 {#if confirmVisible}
     <!-- svelte-ignore a11y-click-events-have-key-events -->
     <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-    <div class="modal-backdrop" on:click={() => handleConfirm(false)} role="presentation">
-        <div class="modal-content alert-modal" on:click|stopPropagation role="alertdialog">
+    <div 
+        class="modal-backdrop" 
+        on:click={() => handleConfirm(false)} 
+        on:keydown={(e) => e.key === 'Escape' && (handleConfirm(false))}
+        role="button" 
+        tabindex="-1"
+        aria-label="Close confirm"
+    >
+        <div class="modal-content alert-modal" on:click|stopPropagation role="alertdialog" tabindex="-1">
             <h3>확인</h3>
             <p>{confirmMessage}</p>
             <div class="modal-actions">
@@ -1424,7 +1459,14 @@
 {/if}
 
 {#if showInstallGuide}
-    <div class="modal-backdrop" on:click|self={() => showInstallGuide = false}>
+    <div 
+        class="modal-backdrop" 
+        on:click|self={() => showInstallGuide = false}
+        on:keydown={(e) => e.key === 'Escape' && (showInstallGuide = false)}
+        role="button"
+        tabindex="-1"
+        aria-label="Close guide"
+    >
         <div class="modal-content install-guide-modal">
             <h3>앱 설치 방법</h3>
             {#if isIOS}
@@ -1802,16 +1844,6 @@
         box-shadow: 0 2px 8px rgba(0,0,0,0.05);
         border-left: 5px solid #ff9800;
     }
-    .game-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 1rem;
-    }
-    .game-header h3 {
-        margin: 0;
-        font-size: 1.1rem;
-    }
     .time-remaining {
         color: #ef6c00;
         border-radius: 20px;
@@ -2159,10 +2191,6 @@
         align-items: center;
         gap: 0.5rem;
         min-width: 100px;
-    }
-    .session-header h4 {
-        margin: 0;
-        font-size: 0.9rem;
     }
     .time-remaining {
         font-weight: bold;

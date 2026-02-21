@@ -9,7 +9,15 @@
     const { stats, onResume, onQuit, onRestart }: Props = $props();
 </script>
 
-<div class="overlay" onclick={onResume}>
+<div 
+    class="overlay" 
+    onclick={onResume} 
+    onkeydown={(e) => e.key === 'Escape' && onResume()} 
+    role="button" 
+    tabindex="-1"
+>
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
+    <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="modal pause-modal" onclick={(e) => e.stopPropagation()}>
         <h2>일시정지</h2>
         <div class="pause-stats">
