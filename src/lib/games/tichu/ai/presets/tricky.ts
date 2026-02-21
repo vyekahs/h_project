@@ -1,4 +1,5 @@
 import type { PresetBehavior } from './types';
+import { selectBestPartnerCard } from './types';
 import type { Card, NormalCard, Combination, SeatIndex } from '../../types';
 import type { AiDecisionContext } from '../types';
 import { findAllPlayableCombinations, findBombs, estimateSimpleTurns } from '../handEvaluator';
@@ -11,7 +12,7 @@ import { canBeat, isBomb } from '../../combinations';
  * 핵심: 카드 카운팅 기반 점수 위주 플레이.
  * - 교환: 파트너에게 좋은 카드
  * - 리드: 기본 로직 (낮은 카드 우선)
- * - 팔로우: 포인트 많은 트릭 적극 뺏기, 포인트 없으면 패스
+ * - 팔로우: 포인트 많은 트릭 적극 뺏기, 포인트 없으면 약하게 팔로우
  * - 파트너 트릭: 기본 (패스)
  * - Dog: 먼저 나가는데 마지막에 낼 수 있으면 내고 나감, 아니면 첫 리드때
  * - 폭탄: 내고도 나머지 패로 나갈 수 있을 때만
@@ -21,15 +22,35 @@ import { canBeat, isBomb } from '../../combinations';
  */
 export const trickyBehavior: PresetBehavior = {
 	selectPartnerExchangeCard(hand, singletons, rankGroups, protectedIds) {
-		// 항상 파트너에게 가장 높은 카드를 줌
-		const normalCards = hand.filter(c => c.type === 'normal') as NormalCard[];
-		const highCards = normalCards.sort((a, b) => b.rank - a.rank);
+		return selectBestPartnerCard(hand, singletons, rankGroups, protectedIds);
+	},
 
-		return highCards.length > 0 ? highCards[0] : null;
+	scoreLeadCandidate(combo, hand, context) {
+		let score = 0;
+
+		// 포인트 카드(5=5점, 10=10점, K=10점) 포함 멀티콤보 보너스
+		const comboPoints = combo.cards.reduce((sum, c) => {
+			if (c.type !== 'normal') return sum;
+			const nc = c as NormalCard;
+			if (nc.rank === 5) return sum + 5;
+			if (nc.rank === 10 || nc.rank === 13) return sum + 10;
+			return sum;
+		}, 0);
+		if (comboPoints > 0 && combo.cards.length > 1) {
+			score += comboPoints; // 포인트 콤보 보너스 (과도하지 않게)
+		}
+
+		// 멀티카드 보너스
+		score += combo.cards.length * 2;
+
+		// 폭탄 강하게 보존
+		if (isBomb(combo)) score -= 60;
+
+		return score;
 	},
 
 	scoreFollowCandidate(play, hand, context, trickPoints, opponentWinning) {
-		// 포인트 많은 트릭 적극 뺏기, 포인트 없으면 패스
+		// 포인트 많은 트릭 적극 뺏기, 포인트 없으면 약하게 팔로우
 		let score = 0;
 
 		if (trickPoints >= 10) {
@@ -37,10 +58,10 @@ export const trickyBehavior: PresetBehavior = {
 			score = trickPoints * 2 - play.rank * 1.5;
 			if (opponentWinning) score += 15;
 		} else {
-			// 포인트 없는 트릭: 패스 선호
+			// 포인트 없는 트릭
 			if (opponentWinning) {
-				// 상대가 이기고 있어도 포인트 없으면 관심 없음
-				score = -5;
+				// 상대가 이기고 있으면 선 잡기 위해 약한 카드로 뺏기
+				score = 5 - play.rank;
 			} else {
 				score = -20;
 			}
