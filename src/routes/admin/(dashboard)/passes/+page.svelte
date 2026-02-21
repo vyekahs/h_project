@@ -144,10 +144,15 @@
 </div>
 
 {#if showGrantModal}
-    <!-- svelte-ignore a11y-click-events-have-key-events -->
-    <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-    <div class="modal-backdrop" on:click={() => showGrantModal = false} role="presentation">
-        <div class="modal-content" on:click|stopPropagation role="dialog">
+    <div 
+        class="modal-backdrop" 
+        on:click={() => showGrantModal = false}
+        on:keydown={(e) => e.key === 'Escape' && (showGrantModal = false)}
+        role="button"
+        tabindex="-1"
+        aria-label="모달 닫기"
+    >
+        <div class="modal-content" on:click|stopPropagation on:keydown|stopPropagation role="dialog" tabindex="-1">
             <h3>정기권 발급</h3>
             <p class="modal-desc">시작일을 선택하면 30일간 유효한 정기권이 발급됩니다.</p>
             <form method="POST" action="?/grantPass" use:enhance={() => {
@@ -183,10 +188,15 @@
 {/if}
 
 {#if alertVisible}
-    <!-- svelte-ignore a11y-click-events-have-key-events -->
-    <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-    <div class="modal-backdrop" on:click={() => alertVisible = false} role="presentation">
-        <div class="modal-content alert-modal" on:click|stopPropagation role="alertdialog">
+    <div 
+        class="modal-backdrop" 
+        on:click={() => alertVisible = false}
+        on:keydown={(e) => e.key === 'Escape' && (alertVisible = false)}
+        role="button"
+        tabindex="-1"
+        aria-label="알림 닫기"
+    >
+        <div class="modal-content alert-modal" on:click|stopPropagation on:keydown|stopPropagation role="alertdialog" tabindex="-1">
             <p>{alertMessage}</p>
             <div class="modal-actions">
                 <button class="btn-primary" on:click={() => alertVisible = false}>확인</button>

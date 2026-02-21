@@ -374,8 +374,15 @@
 
 <!-- Memory Detail Modal -->
 {#if showMemModal && metrics}
-	<div class="modal-backdrop" on:click={() => showMemModal = false} on:keydown={(e) => e.key === 'Escape' && (showMemModal = false)} role="button" tabindex="-1">
-		<div class="modal" on:click|stopPropagation role="dialog" aria-label="메모리 상세">
+	<div 
+		class="modal-backdrop" 
+		on:click={() => showMemModal = false} 
+		on:keydown={(e) => e.key === 'Escape' && (showMemModal = false)} 
+		role="button" 
+		tabindex="-1"
+		aria-label="모달 닫기"
+	>
+		<div class="modal" on:click|stopPropagation on:keydown|stopPropagation role="dialog" aria-label="메모리 상세" tabindex="-1">
 			<div class="modal-header">
 				<h3>메모리 상세</h3>
 				<button class="modal-close" on:click={() => showMemModal = false}>&times;</button>
@@ -416,8 +423,15 @@
 
 <!-- SSE / Connection Detail Modal -->
 {#if showSseModal && metrics}
-	<div class="modal-backdrop" on:click={() => showSseModal = false} on:keydown={(e) => e.key === 'Escape' && (showSseModal = false)} role="button" tabindex="-1">
-		<div class="modal" on:click|stopPropagation role="dialog" aria-label="연결 상세">
+	<div 
+		class="modal-backdrop" 
+		on:click={() => showSseModal = false} 
+		on:keydown={(e) => e.key === 'Escape' && (showSseModal = false)} 
+		role="button" 
+		tabindex="-1"
+		aria-label="모달 닫기"
+	>
+		<div class="modal" on:click|stopPropagation on:keydown|stopPropagation role="dialog" aria-label="연결 상세" tabindex="-1">
 			<div class="modal-header">
 				<h3>연결 상세</h3>
 				<button class="modal-close" on:click={() => showSseModal = false}>&times;</button>
@@ -449,9 +463,6 @@
 {/if}
 
 <style>
-	.monitor-page {
-		/* padding handled by layout */
-	}
 	.header {
 		display: flex;
 		justify-content: space-between;

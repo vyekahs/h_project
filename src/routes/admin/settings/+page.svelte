@@ -17,21 +17,22 @@
                 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
                 운영 시간 설정
             </h3>
-            <div class="setting-item">
-                <label>평일 오픈 시간</label>
-                <input type="time" name="opening_time" value={data.settings.opening_time} />
+            <div 
+                class="setting-item">
+                <label for="openingTime">평일 오픈 시간</label>
+                <input type="time" id="openingTime" name="opening_time" value={data.settings.opening_time} />
             </div>
             <div class="setting-item">
-                <label>평일 마감 시간</label>
-                <input type="time" name="closing_time_weekday" value={data.settings.closing_time_weekday} />
+                <label for="closingWeekday">평일 마감 시간</label>
+                <input type="time" id="closingWeekday" name="closing_time_weekday" value={data.settings.closing_time_weekday} />
             </div>
             <div class="setting-item">
-                <label>주말 마감 시간</label>
-                <input type="time" name="closing_time_weekend" value={data.settings.closing_time_weekend} />
+                <label for="closingWeekend">주말 마감 시간</label>
+                <input type="time" id="closingWeekend" name="closing_time_weekend" value={data.settings.closing_time_weekend} />
             </div>
             <div class="setting-item">
-                <label>주말 요일 (0:일, 6:토)</label>
-                <input type="text" name="weekend_days" value={data.settings.weekend_days} placeholder="5,6" />
+                <label for="weekendDays">주말 요일 (0:일, 6:토)</label>
+                <input type="text" id="weekendDays" name="weekend_days" value={data.settings.weekend_days} placeholder="5,6" />
             </div>
             <button type="submit" class="btn-primary full-width">시간 설정 저장</button>
         </form>
@@ -39,18 +40,18 @@
         <form method="POST" action="?/updateSettings" use:enhance class="settings-card">
             <h3>⚖️ 예약 및 페널티 정책</h3>
             <div class="setting-item">
-                <label>노쇼 판단 (분)</label>
-                <input type="number" name="no_show_limit_minutes" value={data.settings.no_show_limit_minutes} />
+                <label for="noShowLimit">노쇼 판단 (분)</label>
+                <input type="number" id="noShowLimit" name="no_show_limit_minutes" value={data.settings.no_show_limit_minutes} />
                 <p class="hint">시작 시간 {data.settings.no_show_limit_minutes}분 후까지 미도착 시 자동 취소</p>
             </div>
             <div class="setting-item">
-                <label>자동 폭파 (분)</label>
-                <input type="number" name="auto_dissolve_limit_minutes" value={data.settings.auto_dissolve_limit_minutes} />
+                <label for="autoDissolve">자동 폭파 (분)</label>
+                <input type="number" id="autoDissolve" name="auto_dissolve_limit_minutes" value={data.settings.auto_dissolve_limit_minutes} />
                 <p class="hint">시작 {data.settings.auto_dissolve_limit_minutes}분 전 인원 미달 시 자동 삭제</p>
             </div>
             <div class="setting-item">
-                <label>페널티 제한 기준 (점)</label>
-                <input type="number" name="penalty_threshold" value={data.settings.penalty_threshold} />
+                <label for="penaltyThreshold">페널티 제한 기준 (점)</label>
+                <input type="number" id="penaltyThreshold" name="penalty_threshold" value={data.settings.penalty_threshold} />
                 <p class="hint">{data.settings.penalty_threshold}점 이상 시 예약 제한</p>
             </div>
             <button type="submit" class="btn-primary full-width">정책 설정 저장</button>

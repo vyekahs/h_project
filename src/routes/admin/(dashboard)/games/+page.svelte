@@ -120,7 +120,7 @@
         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
         <input type="text" placeholder="게임 이름 검색..." bind:value={gameSearch} />
         {#if gameSearch}
-            <button class="btn-clear-search" on:click={() => gameSearch = ''}>
+            <button class="btn-clear-search" on:click={() => gameSearch = ''} aria-label="검색어 지우기">
                 <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
             </button>
         {/if}
@@ -129,9 +129,15 @@
 
     <div class="games-grid">
         {#each visibleGames as game}
-            <!-- svelte-ignore a11y-click-events-have-key-events -->
-            <!-- svelte-ignore a11y-no-static-element-interactions -->
-            <div class="game-card" class:inactive={!game.is_active} on:click={() => openDetailModal(game)}>
+            <div 
+                class="game-card" 
+                class:inactive={!game.is_active} 
+                on:click={() => openDetailModal(game)}
+                on:keydown={(e) => e.key === 'Enter' && openDetailModal(game)}
+                role="button"
+                tabindex="0"
+                aria-label="{game.name} 상세 정보 보기"
+            >
                 <div class="game-image">
                     {#if game.image_url}
                         <img src={game.image_url} alt={game.name} />
@@ -172,15 +178,14 @@
                             <form method="POST" action="?/delete"
                                 use:enhance={({ cancel }) => {
                                     if (!confirm('정말 삭제하시겠습니까? (기록이 있는 경우 비활성화됩니다)')) { cancel(); return; }
-                                }}
-                                on:click|stopPropagation>
+                                }}>
                                 <input type="hidden" name="id" value={game.id} />
-                                <button type="submit" class="btn-delete">삭제</button>
+                                <button type="submit" class="btn-delete" on:click|stopPropagation>삭제</button>
                             </form>
                         {:else}
-                            <form method="POST" action="?/reactivate" use:enhance on:click|stopPropagation>
+                            <form method="POST" action="?/reactivate" use:enhance>
                                 <input type="hidden" name="id" value={game.id} />
-                                <button type="submit" class="btn-restore">복구</button>
+                                <button type="submit" class="btn-restore" on:click|stopPropagation>복구</button>
                             </form>
                         {/if}
                     </div>
@@ -199,11 +204,18 @@
 </div>
 
 {#if showDetailModal && selectedDetailGame}
-    <div class="modal-backdrop" on:click={closeDetailModal}>
-        <div class="modal detail-modal" on:click|stopPropagation>
+    <div 
+        class="modal-backdrop" 
+        on:click={closeDetailModal}
+        on:keydown={(e) => e.key === 'Escape' && closeDetailModal()}
+        role="button"
+        tabindex="-1"
+        aria-label="모달 닫기"
+    >
+        <div class="modal detail-modal" on:click|stopPropagation role="presentation">
             <div class="detail-header">
                 <h2>{selectedDetailGame.name}</h2>
-                <button class="btn-close" on:click={closeDetailModal}>
+                <button class="btn-close" on:click={closeDetailModal} aria-label="닫기">
                     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                 </button>
             </div>
@@ -284,8 +296,15 @@
 {/if}
 
 {#if showModal}
-    <div class="modal-backdrop" on:click={closeModal}>
-        <div class="modal" on:click|stopPropagation>
+    <div 
+        class="modal-backdrop" 
+        on:click={closeModal}
+        on:keydown={(e) => e.key === 'Escape' && closeModal()}
+        role="button"
+        tabindex="-1"
+        aria-label="모달 닫기"
+    >
+        <div class="modal" on:click|stopPropagation role="presentation">
             <h2>{isEditing ? '게임 수정' : '새 게임 등록'}</h2>
             <form method="POST" action={isEditing ? '?/update' : '?/create'} use:enhance>
                 {#if isEditing}
@@ -293,18 +312,18 @@
                 {/if}
                 
                 <div class="form-group">
-                    <label>게임 이름</label>
-                    <input type="text" name="name" bind:value={selectedGame.name} required placeholder="예: 스플렌더" />
+                    <label for="gameName">게임 이름</label>
+                    <input type="text" id="gameName" name="name" bind:value={selectedGame.name} required placeholder="예: 스플렌더" />
                 </div>
 
                 <div class="row">
                     <div class="form-group">
-                        <label>최소 인원</label>
-                        <input type="number" name="min_players" bind:value={selectedGame.min_players} min="1" />
+                        <label for="minPlayers">최소 인원</label>
+                        <input type="number" id="minPlayers" name="min_players" bind:value={selectedGame.min_players} min="1" />
                     </div>
                     <div class="form-group">
-                        <label>최대 인원</label>
-                        <input type="number" name="max_players" bind:value={selectedGame.max_players} min="1" />
+                        <label for="maxPlayers">최대 인원</label>
+                        <input type="number" id="maxPlayers" name="max_players" bind:value={selectedGame.max_players} min="1" />
                     </div>
                 </div>
 
@@ -318,8 +337,8 @@
                                 step="5" 
                                 disabled={isUnlimitedTime} 
                             />
-                            <label class="checkbox-label">
-                                <input type="checkbox" bind:checked={isUnlimitedTime} on:change={() => {
+                            <label class="checkbox-label" for="unlimitedTime">
+                                <input type="checkbox" id="unlimitedTime" bind:checked={isUnlimitedTime} on:change={() => {
                                     if (isUnlimitedTime) selectedGame.playtime_min = 0;
                                     else selectedGame.playtime_min = 30;
                                 }} />
@@ -334,18 +353,18 @@
                 </div>
 
                 <div class="form-group">
-                    <label for="included_dlcs">포함된 확장 (DLC)</label>
-                    <input type="text" id="included_dlcs" name="included_dlcs" bind:value={selectedGame.included_dlcs} placeholder="예: 도시와 기사, 항해사 (쉼표로 구분)" />
+                    <label for="includedDlcs">포함된 확장 (DLC)</label>
+                    <input type="text" id="includedDlcs" name="included_dlcs" bind:value={selectedGame.included_dlcs} placeholder="예: 도시와 기사, 항해사 (쉼표로 구분)" />
                 </div>
 
                 <div class="form-group">
-                    <label for="image_url">이미지 URL</label>
-                    <input type="text" id="image_url" name="image_url" bind:value={selectedGame.image_url} placeholder="https://..." />
+                    <label for="imageUrl">이미지 URL</label>
+                    <input type="text" id="imageUrl" name="image_url" bind:value={selectedGame.image_url} placeholder="https://..." />
                 </div>
 
                 <div class="form-group">
-                    <label for="description">설명</label>
-                    <textarea id="description" name="description" bind:value={selectedGame.description} rows="3"></textarea>
+                    <label for="gameDescription">설명</label>
+                    <textarea id="gameDescription" name="description" bind:value={selectedGame.description} rows="3"></textarea>
                 </div>
 
                 <div class="modal-actions">
@@ -500,6 +519,7 @@
         flex: 1;
         display: -webkit-box;
         -webkit-line-clamp: 2;
+        line-clamp: 2;
         -webkit-box-orient: vertical;
         overflow: hidden;
     }

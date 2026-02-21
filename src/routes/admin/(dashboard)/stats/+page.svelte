@@ -86,10 +86,15 @@
 
 <!-- Peak Hours Modal -->
 {#if showPeakHoursModal}
-    <!-- svelte-ignore a11y-click-events-have-key-events -->
-    <!-- svelte-ignore a11y-no-static-element-interactions -->
-    <div class="modal-backdrop" on:click={() => showPeakHoursModal = false}>
-        <div class="modal-content" on:click|stopPropagation>
+    <div 
+        class="modal-backdrop" 
+        on:click={() => showPeakHoursModal = false}
+        on:keydown={(e) => e.key === 'Escape' && (showPeakHoursModal = false)}
+        role="button"
+        tabindex="-1"
+        aria-label="모달 닫기"
+    >
+        <div class="modal-content" on:click|stopPropagation on:keydown|stopPropagation role="dialog" tabindex="-1">
             <div class="modal-header">
                 <h3>시간대별 방문 (혼잡도)</h3>
                 <button class="modal-close" on:click={() => showPeakHoursModal = false}>&times;</button>
@@ -112,10 +117,15 @@
 
 <!-- Daily Trend Modal (Last 30 days) -->
 {#if showDailyTrendModal}
-    <!-- svelte-ignore a11y-click-events-have-key-events -->
-    <!-- svelte-ignore a11y-no-static-element-interactions -->
-    <div class="modal-backdrop" on:click={() => showDailyTrendModal = false}>
-        <div class="modal-content" on:click|stopPropagation>
+    <div 
+        class="modal-backdrop" 
+        on:click={() => showDailyTrendModal = false}
+        on:keydown={(e) => e.key === 'Escape' && (showDailyTrendModal = false)}
+        role="button"
+        tabindex="-1"
+        aria-label="모달 닫기"
+    >
+        <div class="modal-content" on:click|stopPropagation on:keydown|stopPropagation role="dialog" tabindex="-1">
             <div class="modal-header">
                 <h3>최근 30일 방문자 추이</h3>
                 <button class="modal-close" on:click={() => showDailyTrendModal = false}>&times;</button>
@@ -166,10 +176,15 @@
 
 <!-- Top 10 Visitors Modal -->
 {#if showTopVisitorsModal}
-    <!-- svelte-ignore a11y-click-events-have-key-events -->
-    <!-- svelte-ignore a11y-no-static-element-interactions -->
-    <div class="modal-backdrop" on:click={() => showTopVisitorsModal = false}>
-        <div class="modal-content" on:click|stopPropagation>
+    <div 
+        class="modal-backdrop" 
+        on:click={() => showTopVisitorsModal = false}
+        on:keydown={(e) => e.key === 'Escape' && (showTopVisitorsModal = false)}
+        role="button"
+        tabindex="-1"
+        aria-label="모달 닫기"
+    >
+        <div class="modal-content" on:click|stopPropagation on:keydown|stopPropagation role="dialog" tabindex="-1">
             <div class="modal-header">
                 <h3>이번 달 Top 10 방문자</h3>
                 <button class="modal-close" on:click={() => showTopVisitorsModal = false}>&times;</button>
@@ -199,10 +214,15 @@
 
 <!-- Popular Games Modal -->
 {#if showPopularGamesModal}
-    <!-- svelte-ignore a11y-click-events-have-key-events -->
-    <!-- svelte-ignore a11y-no-static-element-interactions -->
-    <div class="modal-backdrop" on:click={() => showPopularGamesModal = false}>
-        <div class="modal-content" on:click|stopPropagation>
+    <div 
+        class="modal-backdrop" 
+        on:click={() => showPopularGamesModal = false}
+        on:keydown={(e) => e.key === 'Escape' && (showPopularGamesModal = false)}
+        role="button"
+        tabindex="-1"
+        aria-label="모달 닫기"
+    >
+        <div class="modal-content" on:click|stopPropagation on:keydown|stopPropagation role="dialog" tabindex="-1">
             <div class="modal-header">
                 <h3>인기 게임 Top 5</h3>
                 <button class="modal-close" on:click={() => showPopularGamesModal = false}>&times;</button>
@@ -231,9 +251,6 @@
 {/if}
 
 <style>
-    .stats-page {
-        /* Padding is handled by layout */
-    }
     .header {
         margin-bottom: 2rem;
     }
