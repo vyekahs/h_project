@@ -38,10 +38,19 @@ export const POST: RequestHandler = async ({ request, locals, cookies }) => {
             const assignedCodes = await TitleService.checkAndAssignTitles(userId);
             if (assignedCodes.length > 0) {
                 const titleInfoRes = await db.execute(sql`
-                    SELECT title_name FROM minigame_titles
+                    SELECT title_name, condition_value FROM minigame_titles
                     WHERE title_code = ANY(ARRAY[${sql.join(assignedCodes.map(c => sql`${c}`), sql`, `)}])
                 `);
-                newTitles = titleInfoRes.map((r: any) => r.title_name);
+                
+                // Filter out titles that belong to a different game
+                newTitles = titleInfoRes
+                    .filter((r: any) => {
+                        const cond = r.condition_value;
+                        if (!cond) return true; // General titles might not have a condition_value or gameId
+                        if (cond.gameId && cond.gameId !== gameId) return false;
+                        return true;
+                    })
+                    .map((r: any) => r.title_name);
             }
         } catch (e) {
             console.error('[API] Title check failed:', e);

@@ -72,12 +72,12 @@
 	{#if trick && lastPlay}
 		<div class="trick-display pos-{seatPosition(lastPlay.seat)}">
 			<div class="trick-player">{lastPlayName}</div>
-			<div class="trick-combo">{formatCombination}</div>
 			<div class="trick-cards" style="--trick-overlap: -{trickCardOverlap}px">
 				{#each lastPlay.combination.cards as card (card.id)}
 					<CardComponent {card} />
 				{/each}
 			</div>
+			<div class="trick-combo">{formatCombination}</div>
 		</div>
 	{:else}
 		<div class="trick-empty">
@@ -124,7 +124,8 @@
 		background: rgba(0,0,0,0.6);
 		padding: 2px 10px;
 		border-radius: 10px;
-		margin-bottom: -2px;
+		margin-top: -8px;
+		z-index: 10;
 		backdrop-filter: blur(4px);
 		-webkit-backdrop-filter: blur(4px);
 		border: 1px solid rgba(251, 191, 36, 0.4);
