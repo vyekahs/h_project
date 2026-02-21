@@ -41,6 +41,7 @@ export function createTichuGameState() {
 	let showWishModal = $state(false);
 	let showRoundEndModal = $state(false);
 	let showGameOverModal = $state(false);
+	let showExitConfirmModal = $state(false);
 	let roundResult = $state<TichuRoundResult | null>(null);
 	let gameEndData = $state<{ winner: TeamId; scoreA: number; scoreB: number } | null>(null);
 
@@ -276,7 +277,7 @@ export function createTichuGameState() {
 
 		engine = LocalGameEngine.restore(save, handleStateChange, handleEvent);
 
-		lastPhase = save.state.phase;
+		lastPhase = null; // null로 설정하여 $effect가 복원된 phase를 감지 → 소원/드래곤 모달 표시
 		lastEvent = null;
 		selectedCards = new Set();
 		view = 'game';
@@ -315,6 +316,16 @@ export function createTichuGameState() {
 		}
 	}
 
+	function pauseGame() {
+		engine?.pause();
+		showExitConfirmModal = true;
+	}
+
+	function resumeFromPause() {
+		showExitConfirmModal = false;
+		engine?.resume();
+	}
+
 	function backToSetup() {
 		clearTichuSave();
 		savedGameAvailable = false;
@@ -323,6 +334,7 @@ export function createTichuGameState() {
 			engine = null;
 		}
 		view = 'setup';
+		showExitConfirmModal = false;
 		showRoundEndModal = false;
 		showGameOverModal = false;
 		roundResult = null;
@@ -497,6 +509,7 @@ export function createTichuGameState() {
 		set showRoundEndModal(v: boolean) { showRoundEndModal = v; },
 		get showGameOverModal() { return showGameOverModal; },
 		set showGameOverModal(v: boolean) { showGameOverModal = v; },
+		get showExitConfirmModal() { return showExitConfirmModal; },
 		get roundResult() { return roundResult; },
 		get gameEndData() { return gameEndData; },
 		set gameEndData(v: { winner: TeamId; scoreA: number; scoreB: number } | null) { gameEndData = v; },
@@ -525,6 +538,8 @@ export function createTichuGameState() {
 		// Actions
 		startGame,
 		startNextRound,
+		pauseGame,
+		resumeFromPause,
 		backToSetup,
 		cleanup,
 		toggleCard,

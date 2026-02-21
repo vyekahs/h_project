@@ -94,6 +94,7 @@ export class LocalGameEngine {
 	private processingAi = false;
 	private humanActionInProgress = false;
 	private bombWindowResolve: (() => void) | null = null;
+	private _paused = false;
 
 	constructor(config: LocalGameConfig) {
 		this.aiSpeed = config.aiSpeed;
@@ -155,12 +156,26 @@ export class LocalGameEngine {
 		}
 	}
 
+	get paused(): boolean { return this._paused; }
+
+	pause(): void {
+		this._paused = true;
+	}
+
+	resume(): void {
+		if (!this._paused) return;
+		this._paused = false;
+		// AI 턴이면 처리 재개
+		if (this.state.phase === 'playing' && this.state.round?.currentSeat !== HUMAN_SEAT) {
+			this.processAiTurns();
+		}
+	}
+
 	// ===== Save / Restore =====
 
 	getSaveSnapshot(): TichuSaveData | null {
 		const savablePhases: GamePhase[] = ['grand_tichu_window', 'exchange', 'playing', 'wish_declare', 'dragon_gift'];
 		if (!savablePhases.includes(this.state.phase)) return null;
-		if (this.state.phase === 'playing' && this.state.round?.currentSeat !== HUMAN_SEAT) return null;
 
 		return {
 			version: 1,
@@ -195,6 +210,7 @@ export class LocalGameEngine {
 		engine.onStateChange = onStateChange;
 		engine.onEvent = onEvent ?? (() => {});
 		engine.destroyed = false;
+		engine._paused = false;
 		engine.processingAi = false;
 		engine.humanActionInProgress = false;
 		engine.aiTurnQueued = false;
@@ -217,6 +233,11 @@ export class LocalGameEngine {
 
 	resumeAfterRestore(): void {
 		this.notifyStateChange();
+
+		// 복원 시점에 AI 턴이면 AI 처리 시작
+		if (this.state.phase === 'playing' && this.state.round?.currentSeat !== HUMAN_SEAT) {
+			this.processAiTurns();
+		}
 	}
 
 	// ===== Game Lifecycle =====
@@ -908,13 +929,13 @@ export class LocalGameEngine {
 			this.aiTurnQueued = true;
 			return;
 		}
-		if (this.destroyed) return;
+		if (this.destroyed || this._paused) return;
 		this.processingAi = true;
 		this.aiTurnQueued = false;
 
 		try {
 			let safetyCounter = 0;
-			while (!this.destroyed) {
+			while (!this.destroyed && !this._paused) {
 				if (++safetyCounter > 200) {
 					console.error('[Engine] AI turn loop safety limit reached');
 					break;
@@ -931,7 +952,7 @@ export class LocalGameEngine {
 				if (!ai) break;
 
 				await this.delay();
-				if (this.destroyed) break;
+				if (this.destroyed || this._paused) break;
 
 				// 폭탄 윈도우: 트릭이 곧 종료될 때 인간 플레이어에게 폭탄 기회 제공
 				if (round.trick && round.trick.plays.length > 0 && this.humanHasBombForCurrentTrick()) {
