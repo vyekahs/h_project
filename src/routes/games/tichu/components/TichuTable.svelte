@@ -22,6 +22,7 @@
 	const topSeat = 2 as SeatIndex;   // partner
 	const rightSeat = 1 as SeatIndex;
 
+	const myPlayer = $derived.by(() => gs()?.players[mySeat]);
 	const leftPlayer = $derived.by(() => gs()?.players[leftSeat]);
 	const topPlayer = $derived.by(() => gs()?.players[topSeat]);
 	const rightPlayer = $derived.by(() => gs()?.players[rightSeat]);
@@ -233,8 +234,12 @@
 			{/if}
 		</div>
 
-		<!-- My turn indicator -->
-		{#if game.isMyTurn && trickWonSeat === null && !dogEvent && !dragonGiftEvent}
+		<!-- My turn indicator / Finish indicator -->
+		{#if myPlayer?.finishOrder !== null}
+			<div class="my-finish-indicator badge-{myPlayer?.finishOrder}">
+				{myPlayer?.finishOrder}등 마감!
+			</div>
+		{:else if game.isMyTurn && trickWonSeat === null && !dogEvent && !dragonGiftEvent}
 			<div class="my-turn-indicator">내 차례!</div>
 		{/if}
 	</div>
@@ -475,21 +480,38 @@
 		z-index: 25;
 	}
 
-	.my-turn-indicator {
+	.my-finish-indicator {
 		position: absolute;
-		bottom: 12px;
+		bottom: 24px;
 		left: 50%;
 		transform: translateX(-50%);
-		background: linear-gradient(90deg, transparent, rgba(251, 191, 36, 0.2), transparent);
-		border-top: 1px solid rgba(251, 191, 36, 0.5);
-		border-bottom: 1px solid rgba(251, 191, 36, 0.5);
-		color: #fbbf24;
-		padding: 6px 32px;
-		font-size: 0.9rem;
+		padding: 8px 32px;
+		border-radius: 20px;
+		font-size: 1.2rem;
+		font-weight: 800;
+		box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+		animation: turnPulse 2s ease-in-out infinite;
+		text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+	}
+	.my-finish-indicator.badge-1 { background: linear-gradient(135deg, #fbbf24, #d97706); color: #fff; border: 2px solid #fde68a; }
+	.my-finish-indicator.badge-2 { background: linear-gradient(135deg, #94a3b8, #64748b); color: #fff; border: 2px solid #cbd5e1; }
+	.my-finish-indicator.badge-3 { background: linear-gradient(135deg, #b45309, #78350f); color: #fff; border: 2px solid #fcd34d; }
+	.my-finish-indicator.badge-4 { background: rgba(0,0,0,0.7); color: #9ca3af; border: 2px solid #4b5563; }
+
+	.my-turn-indicator {
+		position: absolute;
+		bottom: 24px;
+		left: 50%;
+		transform: translateX(-50%);
+		background: linear-gradient(90deg, rgba(251, 191, 36, 0.05), rgba(251, 191, 36, 0.8), rgba(251, 191, 36, 0.05));
+		border-radius: 24px;
+		color: #fff;
+		padding: 10px 48px;
+		font-size: 1.1rem;
 		font-weight: 800;
 		letter-spacing: 0.05em;
-		text-transform: uppercase;
-		text-shadow: 0 0 10px rgba(251, 191, 36, 0.6);
+		text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+		box-shadow: 0 0 20px rgba(251, 191, 36, 0.3);
 		animation: turnPulse 1.5s ease-in-out infinite;
 		pointer-events: none;
 	}

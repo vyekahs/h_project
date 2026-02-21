@@ -112,7 +112,7 @@
 	}
 </script>
 
-<div class="hand-area">
+<div class="hand-area" class:is-my-turn={game.isMyTurn}>
 	{#if isExchangePhase}
 		<div class="exchange-controls">
 			<div class="exchange-slots">
@@ -233,6 +233,12 @@
 		border-top: 1px solid rgba(251, 191, 36, 0.3);
 		box-shadow: 0 -4px 20px rgba(0,0,0,0.4);
 		font-family: 'Inter', sans-serif;
+		transition: all 0.3s ease;
+	}
+	.hand-area.is-my-turn {
+		background: rgba(40, 25, 0, 0.6);
+		border-top: 1px solid rgba(251, 191, 36, 0.8);
+		box-shadow: 0 -10px 30px rgba(251, 191, 36, 0.15), inset 0 20px 30px rgba(251, 191, 36, 0.05);
 	}
 
 	.hand-cards {

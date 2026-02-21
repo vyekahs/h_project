@@ -45,7 +45,9 @@
 				<span class="name">{player.name}</span>
 				{#if isPartner}<span class="partner-badge">P</span>{/if}
 			</div>
-			{#if cardCount > 0}
+			{#if player.finishOrder !== null}
+				<div class="finish-banner badge-{player.finishOrder}">{finishLabel[player.finishOrder]} 마감</div>
+			{:else if cardCount > 0}
 				<div class="card-count-badge">
 					<span class="count-num">{cardCount}</span>
 					<span class="count-label">장</span>
@@ -188,6 +190,19 @@
 		color: #94a3b8;
 		font-weight: 500;
 	}
+
+	.finish-banner {
+		font-size: 0.75rem;
+		font-weight: 800;
+		padding: 2px 8px;
+		border-radius: 6px;
+		box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+		margin-top: 2px;
+	}
+	.finish-banner.badge-1 { background: linear-gradient(135deg, #fbbf24, #d97706); color: #fff; border: 1px solid #fde68a; }
+	.finish-banner.badge-2 { background: linear-gradient(135deg, #94a3b8, #64748b); color: #fff; border: 1px solid #cbd5e1; }
+	.finish-banner.badge-3 { background: linear-gradient(135deg, #b45309, #78350f); color: #fff; border: 1px solid #fcd34d; }
+	.finish-banner.badge-4 { background: rgba(0,0,0,0.5); color: #9ca3af; border: 1px solid #4b5563; }
 
 	.pass-badge {
 		position: absolute;

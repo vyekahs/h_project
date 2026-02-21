@@ -18,7 +18,8 @@
 
 	const scoreOptions = [300, 500, 700, 1000];
 
-	let showSetup = $state(!game.savedGameAvailable);
+	let forceSetup = $state(false);
+	let showSetup = $derived(!game.savedGameAvailable || forceSetup);
 	let activeTab = $state<'setup' | 'ranking'>('setup');
 
 	// Ranking state
@@ -55,7 +56,7 @@
 <div class="setup-container">
 	<div class="setup-content">
 		<div class="top-nav">
-			<a href="/minigames" class="nav-btn back-btn">
+			<a href="/minigames" class="nav-btn back-btn" aria-label="뒤로 가기">
 				<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
 			</a>
 			<h1 class="nav-title">티츄</h1>
@@ -129,7 +130,7 @@
 				<button class="resume-btn" onclick={() => game.resumeGame()}>
 					이어하기
 				</button>
-				<button class="new-game-btn" onclick={() => { showSetup = true; }}>
+				<button class="new-game-btn" onclick={() => { forceSetup = true; }}>
 					새 게임
 				</button>
 			{/if}
@@ -246,6 +247,7 @@
 		text-transform: uppercase;
 		background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 50%, #d97706 100%);
 		-webkit-background-clip: text;
+		background-clip: text;
 		-webkit-text-fill-color: transparent;
 		filter: drop-shadow(0 2px 10px rgba(217, 119, 6, 0.4));
 	}

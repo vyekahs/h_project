@@ -11,7 +11,15 @@
 	}
 </script>
 
-<div class="modal-overlay" onclick={close}>
+<div 
+	class="modal-overlay" 
+	onclick={close}
+	onkeydown={(e) => e.key === 'Escape' && close()}
+	role="button"
+	tabindex="-1"
+>
+	<!-- svelte-ignore a11y_click_events_have_key_events -->
+	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div class="modal-content" onclick={(e: Event) => e.stopPropagation()}>
 		<h2>라운드 {result?.roundNumber} 결과</h2>
 

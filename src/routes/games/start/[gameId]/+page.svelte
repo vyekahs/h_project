@@ -157,7 +157,7 @@
     <div class="screen start-screen">
         <!-- Header -->
         <div class="start-header">
-            <a href="/minigames" class="back-btn glass-btn">
+            <a href="/minigames" class="back-btn glass-btn" aria-label="뒤로 가기">
                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
             </a>
             <h1>{gameConfig.displayTitle}</h1>
