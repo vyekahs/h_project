@@ -1,7 +1,9 @@
 
 import { redirect } from '@sveltejs/kit';
 
-export async function load({ locals }) {
+import type { PageServerLoad } from './$types';
+
+export const load: PageServerLoad = async ({ locals }) => {
     // In a real app we'd redirect if not logged in.
     // For now, pass a mock user if locals.user is missing, or relies on client fetch.
     

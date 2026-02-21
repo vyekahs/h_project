@@ -1,7 +1,9 @@
 import { json } from '@sveltejs/kit';
 import { ShopService } from '$lib/server/services/shopService';
 
-export async function POST({ request, locals }) {
+import type { RequestHandler } from './$types';
+
+export const POST: RequestHandler = async ({ request, locals }) => {
     // const userId = locals.user?.id; 
     const userId = 1; // Mock
     

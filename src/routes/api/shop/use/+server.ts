@@ -2,7 +2,9 @@ import { json } from '@sveltejs/kit';
 import { ShopService } from '$lib/server/services/shopService';
 import { verifyAttendeeSession } from '$lib/server/auth';
 
-export async function POST({ request, cookies }) {
+import type { RequestHandler } from './$types';
+
+export const POST: RequestHandler = async ({ request, cookies }) => {
     const sessionToken = cookies.get('user_session');
     let userId = 1; // Fallback
 

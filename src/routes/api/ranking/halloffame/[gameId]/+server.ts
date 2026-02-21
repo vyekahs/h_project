@@ -1,7 +1,9 @@
 import { json } from '@sveltejs/kit';
 import { RankingService } from '$lib/server/services/rankingService';
 
-export async function GET({ params }) {
+import type { RequestHandler } from './$types';
+
+export const GET: RequestHandler = async ({ params }) => {
     const { gameId } = params;
 
     try {

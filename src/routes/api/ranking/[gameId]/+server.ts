@@ -1,7 +1,9 @@
 import { json } from '@sveltejs/kit';
 import { RankingService } from '$lib/server/services/rankingService';
 
-export async function GET({ params, url }) {
+import type { RequestHandler } from './$types';
+
+export const GET: RequestHandler = async ({ params, url }) => {
     const { gameId } = params;
     const limit = parseInt(url.searchParams.get('limit') || '100');
     

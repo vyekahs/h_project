@@ -1,7 +1,9 @@
 import { json } from '@sveltejs/kit';
 import { TitleService } from '$lib/server/services/titleService';
 
-export async function GET({ locals }) {
+import type { RequestHandler } from './$types';
+
+export const GET: RequestHandler = async ({ locals }) => {
     if (!locals.user) {
         return json({ error: 'Unauthorized' }, { status: 401 });
     }

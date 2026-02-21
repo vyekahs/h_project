@@ -5,7 +5,9 @@ import bcrypt from 'bcryptjs';
 
 // POST /api/user/verify
 // Used by ESP32 Captive Portal to pre-validate credentials BEFORE adding to queue.
-export async function POST({ request }) {
+import type { RequestHandler } from './$types';
+
+export const POST: RequestHandler = async ({ request }) => {
     try {
         let { username, password, mode, confirmPassword } = await request.json();
 

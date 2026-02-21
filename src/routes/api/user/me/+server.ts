@@ -5,7 +5,9 @@ import { TitleService } from '$lib/server/services/titleService';
 import { TutorialService } from '$lib/server/services/tutorialService';
 import { verifyAttendeeSession } from '$lib/server/auth';
 
-export async function GET({ cookies }) {
+import type { RequestHandler } from './$types';
+
+export const GET: RequestHandler = async ({ cookies }) => {
     const sessionToken = cookies.get('user_session');
     let userId = 1; // Fallback for dev/test if no session
     let name = 'Guest';
