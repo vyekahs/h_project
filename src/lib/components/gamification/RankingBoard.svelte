@@ -114,11 +114,6 @@
         border: none;
     }
     
-    .score-cell-compact {
-        font-weight: bold;
-        text-align: right;
-        font-size: 0.9rem;
-    }
     
     .name-cell {
         max-width: 100px;
@@ -127,12 +122,6 @@
         white-space: nowrap;
     }
 
-    .difficulty-cell {
-        font-size: 0.8rem;
-        color: #666;
-        text-transform: uppercase;
-        font-weight: 600;
-    }
     
     .score-cell {
         font-weight: 700;
@@ -181,17 +170,7 @@
         text-align: center;
     }
     
-    .record {
-        font-weight: 600;
-        color: #888; /* Demote visuals slightly as Score is king */
-        font-variant-numeric: tabular-nums;
-        font-size: 0.9rem;
-    }
     
-    .date {
-        font-size: 0.8rem;
-        color: #aaa;
-    }
     
     .top3 {
         background: rgba(255, 251, 240, 0.5); /* Lighter bg */

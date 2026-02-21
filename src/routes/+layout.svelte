@@ -76,22 +76,6 @@
 		padding-bottom: calc(70px + env(safe-area-inset-bottom));
 	}
 
-    .top-bar {
-        position: absolute;
-        top: env(safe-area-inset-top);
-        left: 0;
-        width: 100%;
-        padding: 1rem;
-        display: flex;
-        justify-content: space-between;
-        pointer-events: none;
-        z-index: 100;
-        box-sizing: border-box;
-    }
-
-    .top-bar > :global(*) {
-        pointer-events: auto;
-    }
 
 	.bottom-nav {
 		position: fixed;

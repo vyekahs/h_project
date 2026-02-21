@@ -84,14 +84,6 @@
         display: block;
         margin: 0 auto;
     }
-    .timer {
-        margin-bottom: 2rem;
-    }
-    .timer p {
-        color: #666;
-        font-size: 0.9rem;
-        margin: 0;
-    }
     .instructions {
         text-align: left;
         background: #f8f9fa;

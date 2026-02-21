@@ -566,8 +566,6 @@
     button:hover { background: #0056b3; }
     .btn-primary { background: #28a745; }
     .btn-primary:hover { background: #218838; }
-    .btn-secondary { background: #6c757d; margin-top: 10px; }
-    .btn-secondary:hover { background: #545b62; }
     .btn-alt { background: #6c757d; }
     .btn-alt:hover { background: #545b62; }
     .error { color: #dc3545; margin: 10px 0; font-weight: bold; }
