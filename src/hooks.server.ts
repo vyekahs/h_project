@@ -4,8 +4,9 @@ import { verifyAdminSession, verifyAttendeeSession } from '$lib/server/auth';
 // Start the scheduler when the server starts
 startAutoCloseScheduler();
 
-/** @type {import('@sveltejs/kit').Handle} */
-export async function handle({ event, resolve }) {
+import type { Handle } from '@sveltejs/kit';
+
+export const handle: Handle = async ({ event, resolve }) => {
     // 1+2. 인증 쿼리 순차 실행 (커넥션 1개씩만 사용)
     const userSessionToken = event.cookies.get('user_session');
     if (userSessionToken) {

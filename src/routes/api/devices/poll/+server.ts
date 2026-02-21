@@ -4,7 +4,9 @@ import { DeviceRegistrationService } from '$lib/server/deviceRegistration';
 
 // GET /api/devices/poll?deviceId=XXXX
 // ESP32 calls this to check if it should switch mode
-export async function GET({ url }) {
+import type { RequestHandler } from './$types';
+
+export const GET: RequestHandler = async ({ url }) => {
     // For single device mode, deviceId might be irrelevant, but ESP32 sends it.
     // If missing, we can assume 'unknown' or just proceed since service handles wildcard.
     const deviceId = url.searchParams.get('deviceId') || 'unknown';

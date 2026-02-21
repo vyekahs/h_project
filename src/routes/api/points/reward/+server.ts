@@ -1,7 +1,9 @@
 import { json } from '@sveltejs/kit';
 import { PointService } from '$lib/server/services/pointService';
 
-export async function POST({ request }) {
+import type { RequestHandler } from './$types';
+
+export const POST: RequestHandler = async ({ request }) => {
     // const userId = locals.user?.id;
     const userId = 1; // Mock
     

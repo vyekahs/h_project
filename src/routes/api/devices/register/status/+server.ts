@@ -2,7 +2,9 @@ import { json } from '@sveltejs/kit';
 import { db } from '$lib/server/db/index';
 import { sql } from 'drizzle-orm';
 
-export async function GET({ url }) {
+import type { RequestHandler } from './$types';
+
+export const GET: RequestHandler = async ({ url }) => {
     const regId = url.searchParams.get('regId');
 
     if (!regId) {

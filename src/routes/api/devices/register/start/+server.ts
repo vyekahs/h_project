@@ -6,7 +6,9 @@ import { sql } from 'drizzle-orm';
 
 // POST /api/devices/register/start
 // User starts the flow.
-export async function POST({ request, locals }) {
+import type { RequestHandler } from './$types';
+
+export const POST: RequestHandler = async ({ request, locals }) => {
     // NOTE: In a real app we check locals.user or similar.
     // For now assuming the client sends attendee_id or we use session.
     // Let's require body: { deviceId, attendeeId }

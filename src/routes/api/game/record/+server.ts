@@ -6,7 +6,9 @@ import { db } from '$lib/server/db/index';
 import { sql } from 'drizzle-orm';
 
 
-export async function POST({ request, locals, cookies }) {
+import type { RequestHandler } from './$types';
+
+export const POST: RequestHandler = async ({ request, locals, cookies }) => {
     // Authenticate
     const sessionToken = cookies.get('user_session');
     let userId = 1; // Fallback
