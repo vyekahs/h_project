@@ -7,6 +7,7 @@
 	import PlayerHand from './PlayerHand.svelte';
 	import TichuDeclareModal from './TichuDeclareModal.svelte';
 	import CardComponent from './CardComponent.svelte';
+	import { triggerHaptic } from '$lib/stores/haptics';
 
 	let { game } = $props<{ game: any }>();
 
@@ -70,6 +71,53 @@
 	const leftPassed = $derived(passedSeats.has(leftSeat));
 	const topPassed = $derived(passedSeats.has(topSeat));
 	const rightPassed = $derived(passedSeats.has(rightSeat));
+
+	// Haptic feedback for my turn and big events
+	$effect(() => {
+		const evt = lastEvent;
+		if (!evt) return;
+
+		untrack(() => {
+			// My turn
+			if (game.isMyTurn && evt.type !== 'play' && evt.type !== 'pass' && evt.type !== 'bomb') {
+				// Prevent triggering multiple times if the event hasn't really changed the phase
+				// We mostly want to trigger when a previous player plays or passes and now it's my turn over.
+				// However, `game.isMyTurn` could be true initially or after someone plays.
+				// A reliable way is to watch `currentSeat` transitions to `mySeat`.
+			}
+			
+			// Big Impact: Bomb
+			if (evt.type === 'bomb') {
+				triggerHaptic([100, 100, 100]);
+			}
+		});
+	});
+
+	// Separate effect to watch turn transitions clearly
+	let previousTurnSeat: SeatIndex | null = $state(null);
+	$effect(() => {
+		const current = currentSeat;
+		untrack(() => {
+			if (current === mySeat && previousTurnSeat !== mySeat) {
+				// It just became my turn
+				triggerHaptic([30, 50, 30]);
+			}
+			previousTurnSeat = current;
+		});
+	});
+
+	// Watch for Grand Tichu declarations
+	let previousGrandDecls: number = $state(0);
+	$effect(() => {
+		const currentDecls = tichuDeclarations.filter(d => d.type === 'grand').length;
+		untrack(() => {
+			if (currentDecls > previousGrandDecls) {
+				// Someone declared Grand Tichu
+				triggerHaptic([100, 100, 100]);
+			}
+			previousGrandDecls = currentDecls;
+		});
+	});
 
 	function seatPosition(seat: SeatIndex): 'left' | 'top' | 'right' | 'bottom' {
 		const rel = ((seat - mySeat + 4) % 4);

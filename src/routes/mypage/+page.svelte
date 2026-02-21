@@ -2,6 +2,7 @@
     import { invalidateAll } from '$app/navigation';
     import { onMount } from 'svelte';
     import { fade } from 'svelte/transition';
+    import { hapticsEnabled } from '$lib/stores/haptics';
     import type { PageData } from './$types';
     export let data: PageData;
 
@@ -436,6 +437,23 @@
                     </div>
                 </div>
 
+                <div class="settings-section" style="margin-bottom: 2rem;">
+                    <div class="section-header">
+                        <h3>설정</h3>
+                    </div>
+                    <div class="setting-card" style="background: white; padding: 1.5rem; border-radius: 16px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 4px 12px rgba(0,0,0,0.05);">
+                        <div class="setting-info">
+                            <div class="setting-title" style="font-weight: 700; font-size: 1.05rem; margin-bottom: 0.2rem; color: #1f2937;">진동 효과 (Haptic Feedback)</div>
+                            <div class="setting-desc" style="font-size: 0.85rem; color: #6b7280;">게임 진행 중 중요한 순간에 진동으로 알려줍니다.</div>
+                        </div>
+                        <label class="toggle-switch" style="position: relative; display: inline-block; width: 50px; height: 28px;">
+                            <input type="checkbox" bind:checked={$hapticsEnabled} style="opacity: 0; width: 0; height: 0;">
+                            <span class="slider" style="position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: {$hapticsEnabled ? '#fbbf24' : '#ccc'}; transition: .4s; border-radius: 34px;">
+                                <span style="position: absolute; content: ''; height: 20px; width: 20px; left: {$hapticsEnabled ? '26px' : '4px'}; bottom: 4px; background-color: white; transition: .4s; border-radius: 50%;"></span>
+                            </span>
+                        </label>
+                    </div>
+                </div>
 
                 <div class="feedback-section">
                     <button class="btn-feedback-block" on:click={() => showFeedbackModal = true}>

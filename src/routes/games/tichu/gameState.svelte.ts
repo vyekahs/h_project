@@ -3,6 +3,7 @@ import type {
 } from '$lib/games/tichu/types';
 import type { AiStrategy, AiSpeed } from '$lib/games/tichu/ai/types';
 import { LocalGameEngine, type LocalGameConfig, type GameEvent, type ExchangeResultEntry, saveTichuGame, loadTichuGame, clearTichuSave, hasTichuSave } from '$lib/games/tichu/ai/localGameEngine';
+import { triggerHaptic } from '$lib/stores/haptics';
 
 export type GameView = 'setup' | 'game';
 export type ToastType = 'info' | 'success' | 'error' | 'warning';
@@ -197,6 +198,11 @@ export function createTichuGameState() {
 	function addToast(message: string, type: ToastType = 'info') {
 		const id = ++toastIdCounter;
 		toasts = [...toasts, { id, message, type }];
+
+		if (type === 'error') {
+			triggerHaptic([50, 100, 50]);
+		}
+
 		setTimeout(() => {
 			toasts = toasts.filter(t => t.id !== id);
 		}, 3000);
