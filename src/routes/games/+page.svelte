@@ -79,6 +79,10 @@
         alertMessage = msg;
         alertVisible = true;
     }
+
+    function focusOnMount(node: HTMLElement) {
+        node.focus();
+    }
 </script>
 
 <svelte:window on:click={handleWindowClick} />
@@ -116,9 +120,15 @@
 
     <div class="games-grid">
         {#each filteredGames.slice(0, visibleCount) as game}
-            <!-- svelte-ignore a11y-click-events-have-key-events -->
-            <!-- svelte-ignore a11y-no-static-element-interactions -->
-            <div class="game-card" class:inactive={!game.is_active} on:click={() => openDetailModal(game)}>
+            <div 
+                class="game-card" 
+                class:inactive={!game.is_active} 
+                on:click={() => openDetailModal(game)}
+                on:keydown={(e) => e.key === 'Enter' && openDetailModal(game)}
+                role="button"
+                tabindex="0"
+                aria-label="{game.name} 상세 정보 보기"
+            >
                 <div class="game-image">
                     {#if game.image_url}
                         <img src={game.image_url} alt={game.name} />
@@ -161,8 +171,15 @@
 </div>
 
 {#if showDetailModal && selectedDetailGame}
-    <div class="modal-backdrop" on:click={closeDetailModal} on:keydown={(e) => e.key === 'Escape' && closeDetailModal()} role="button" tabindex="0" aria-label="Close modal">
-        <div class="modal detail-modal" on:click|stopPropagation role="presentation">
+    <div 
+        class="modal-backdrop" 
+        on:click={closeDetailModal} 
+        on:keydown={(e) => e.key === 'Escape' && closeDetailModal()} 
+        role="button" 
+        tabindex="-1" 
+        aria-label="모달 닫기"
+    >
+        <div class="modal detail-modal" on:click|stopPropagation on:keydown|stopPropagation role="dialog" tabindex="-1">
             <div class="detail-header">
                 <h2>{selectedDetailGame.name}</h2>
                 <button class="btn-close" on:click={closeDetailModal}>✕</button>
@@ -227,10 +244,15 @@
 
 <!-- BGG Search Modal -->
 {#if showBggModal}
-    <!-- svelte-ignore a11y-click-events-have-key-events -->
-    <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-    <div class="modal-backdrop" on:click={() => showBggModal = false} role="presentation">
-        <div class="modal" on:click|stopPropagation role="dialog">
+    <div 
+        class="modal-backdrop" 
+        on:click={() => showBggModal = false} 
+        on:keydown={(e) => e.key === 'Escape' && (showBggModal = false)} 
+        role="button" 
+        tabindex="-1" 
+        aria-label="모달 닫기"
+    >
+        <div class="modal" on:click|stopPropagation on:keydown|stopPropagation role="dialog" tabindex="-1">
             <h2>🎲 BGG 게임 검색 및 추가</h2>
             
             <form method="POST" action="?/searchBgg" use:enhance={() => {
@@ -249,7 +271,7 @@
                     }
                 };
             }} class="bgg-search-form">
-                <input type="text" name="query" placeholder="게임 이름 (영문 추천)" bind:value={bggQuery} required autoFocus>
+                <input type="text" name="query" placeholder="게임 이름 (영문 추천)" bind:value={bggQuery} required use:focusOnMount>
                 <button type="submit" class="btn-primary" disabled={bggLoading}>
                     {bggLoading ? '...' : '검색'}
                 </button>
@@ -299,10 +321,15 @@
 
 <!-- Alert Modal -->
 {#if alertVisible}
-    <!-- svelte-ignore a11y-click-events-have-key-events -->
-    <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-    <div class="modal-backdrop" on:click={() => alertVisible = false} role="presentation">
-        <div class="modal alert-modal" on:click|stopPropagation role="alertdialog">
+    <div 
+        class="modal-backdrop" 
+        on:click={() => alertVisible = false} 
+        on:keydown={(e) => e.key === 'Escape' && (alertVisible = false)} 
+        role="button" 
+        tabindex="-1" 
+        aria-label="알림 닫기"
+    >
+        <div class="modal alert-modal" on:click|stopPropagation on:keydown|stopPropagation role="alertdialog" tabindex="-1">
             <h3>알림</h3>
             <p>{alertMessage}</p>
             <div class="modal-actions" style="justify-content: center;">
@@ -502,6 +529,7 @@
         margin: 0;
         display: -webkit-box;
         -webkit-line-clamp: 3;
+        line-clamp: 3;
         -webkit-box-orient: vertical;
         overflow: hidden;
     }

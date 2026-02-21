@@ -24,6 +24,10 @@
     let dragSource: 'unassigned' | 'teamA' | 'teamB' | null = null;
     let highlightZone: 'unassigned' | 'teamA' | 'teamB' | null = $state(null);
 
+    function focusOnMount(node: HTMLElement) {
+        node.focus();
+    }
+
     onMount(() => {
         // Prevent page scroll
         document.body.style.overflow = 'hidden';
@@ -264,6 +268,9 @@
                                 <div class="drop-zone-items">
                                     {#each unassigned as p}
                                         <div class="player-chip draggable"
+                                            role="button"
+                                            tabindex="0"
+                                            onkeydown={(e) => e.key === 'Enter' && handleTouchStart(null as any, p, 'unassigned')}
                                             ontouchstart={(e) => handleTouchStart(e, p, 'unassigned')}>{p.name}</div>
                                     {/each}
                                 </div>
@@ -275,6 +282,9 @@
                                 <div class="drop-zone-items">
                                     {#each teamA as p}
                                         <div class="player-chip chip-a draggable"
+                                            role="button"
+                                            tabindex="0"
+                                            onkeydown={(e) => e.key === 'Enter' && handleTouchStart(null as any, p, 'teamA')}
                                             ontouchstart={(e) => handleTouchStart(e, p, 'teamA')}>{p.name}</div>
                                     {/each}
                                     {#if teamA.length < 2}
@@ -287,6 +297,9 @@
                                 <div class="drop-zone-items">
                                     {#each teamB as p}
                                         <div class="player-chip chip-b draggable"
+                                            role="button"
+                                            tabindex="0"
+                                            onkeydown={(e) => e.key === 'Enter' && handleTouchStart(null as any, p, 'teamB')}
                                             ontouchstart={(e) => handleTouchStart(e, p, 'teamB')}>{p.name}</div>
                                     {/each}
                                     {#if teamB.length < 2}
@@ -297,7 +310,7 @@
                         </div>
                     {/if}
 
-                    <label class="input-label" style="margin-top: 1rem;">목표 점수</label>
+                    <div class="input-label" style="margin-top: 1rem;">목표 점수</div>
                     <div class="target-input-row">
                         {#each [500, 700, 1000] as t}
                             <button class="target-option" class:selected={game.targetScore === t}
@@ -309,7 +322,7 @@
             {:else}
                 <!-- Standard start screen (no URL params) -->
                 <div class="start-card">
-                    <label class="input-label">목표 점수</label>
+                    <div class="input-label">목표 점수</div>
                     <div class="target-input-row">
                         {#each [500, 700, 1000] as t}
                             <button class="target-option" class:selected={game.targetScore === t}
@@ -326,11 +339,11 @@
         <div class="game-screen">
             <!-- Header -->
             <header class="app-header">
-                <button class="icon-btn" onclick={() => history.back()}>
+                <button class="icon-btn" onclick={() => history.back()} aria-label="뒤로 가기">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
                 </button>
                 <h1>티츄 점수판</h1>
-                <button class="icon-btn" onclick={() => game.showConfirmReset = true}>
+                <button class="icon-btn" onclick={() => game.showConfirmReset = true} aria-label="초기화">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
                 </button>
             </header>
@@ -340,7 +353,8 @@
                 <div class="team team-a">
                     {#if editingTeam === 'A'}
                         <input class="team-name-input" type="text" bind:value={game.teamAName}
-                            onblur={finishEditTeam} onkeydown={(e) => e.key === 'Enter' && finishEditTeam()} autofocus />
+                            onblur={finishEditTeam} onkeydown={(e) => e.key === 'Enter' && finishEditTeam()} 
+                            use:focusOnMount />
                     {:else}
                         <button class="team-name" onclick={() => startEditTeam('A')}>{game.teamAName}</button>
                     {/if}
@@ -355,7 +369,8 @@
                 <div class="team team-b">
                     {#if editingTeam === 'B'}
                         <input class="team-name-input" type="text" bind:value={game.teamBName}
-                            onblur={finishEditTeam} onkeydown={(e) => e.key === 'Enter' && finishEditTeam()} autofocus />
+                            onblur={finishEditTeam} onkeydown={(e) => e.key === 'Enter' && finishEditTeam()} 
+                            use:focusOnMount />
                     {:else}
                         <button class="team-name" onclick={() => startEditTeam('B')}>{game.teamBName}</button>
                     {/if}
@@ -646,21 +661,6 @@
         align-items: center;
         margin-bottom: 0.4rem;
     }
-    .undo-btn {
-        display: flex;
-        align-items: center;
-        gap: 0.2rem;
-        background: none;
-        border: 1px solid rgba(239, 68, 68, 0.3);
-        color: #f87171;
-        padding: 0.25rem 0.5rem;
-        border-radius: 6px;
-        font-size: 0.7rem;
-        font-weight: 600;
-        cursor: pointer;
-        transition: all 0.2s;
-    }
-    .undo-btn:active { background: rgba(239, 68, 68, 0.1); }
     .empty-history {
         display: flex;
         align-items: center;
@@ -707,45 +707,6 @@
     .rs-a { color: #60a5fa; }
     .rs-sep { color: #475569; margin: 0 0.1rem; }
     .rs-b { color: #f87171; }
-    .round-cumul {
-        font-size: 0.7rem;
-        color: #64748b;
-        font-weight: 600;
-    }
-    .expand-icon {
-        transition: transform 0.2s;
-        color: #475569;
-    }
-    .expand-icon.expanded { transform: rotate(180deg); }
-    .round-detail {
-        grid-column: 1 / -1;
-        padding: 0.3rem 0.3rem 0.5rem 1.8rem;
-        font-size: 0.75rem;
-        color: #94a3b8;
-        display: flex;
-        flex-direction: column;
-        gap: 0.2rem;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-    }
-    .detail-badge {
-        display: inline-block;
-        padding: 0.15rem 0.5rem;
-        border-radius: 5px;
-        font-weight: 700;
-        font-size: 0.7rem;
-        width: fit-content;
-    }
-    .onetwo-badge-a {
-        background: rgba(96, 165, 250, 0.15);
-        color: #60a5fa;
-    }
-    .onetwo-badge-b {
-        background: rgba(248, 113, 113, 0.15);
-        color: #f87171;
-    }
-    .detail-line { line-height: 1.3; }
-    .success-text { color: #22c55e; font-weight: 600; }
-    .fail-text { color: #ef4444; font-weight: 600; }
 
     /* Round Input - fixed bottom */
     .round-input {
@@ -763,12 +724,6 @@
         display: flex;
         align-items: center;
         justify-content: center;
-    }
-    .round-label {
-        font-size: 0.8rem;
-        font-weight: 700;
-        color: #94a3b8;
-        text-transform: uppercase;
     }
     .inline-preview {
         font-weight: 800;
@@ -805,19 +760,6 @@
     }
     .adj-btn:active:not(:disabled) { background: rgba(255, 255, 255, 0.15); transform: scale(0.95); }
     .adj-btn:disabled { opacity: 0.3; cursor: default; }
-    .score-display {
-        display: flex;
-        align-items: center;
-        gap: 0.3rem;
-        font-size: 1.3rem;
-        font-weight: 800;
-        min-width: 100px;
-        justify-content: center;
-    }
-    .score-display.disabled { opacity: 0.3; }
-    .score-a { color: #60a5fa; }
-    .score-sep { color: #475569; }
-    .score-b { color: #f87171; }
     .score-slider {
         flex: 1;
         accent-color: #60a5fa;
@@ -886,14 +828,6 @@
     .bonus-btn.negative {
         border-color: rgba(239, 68, 68, 0.3);
         background: rgba(239, 68, 68, 0.1);
-        color: #ef4444;
-    }
-    .bonus-val {
-        font-size: 0.8rem;
-        font-weight: 800;
-        color: #22c55e;
-    }
-    .bonus-val.negative-val {
         color: #ef4444;
     }
 

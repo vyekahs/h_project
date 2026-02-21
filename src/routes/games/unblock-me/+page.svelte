@@ -111,7 +111,15 @@
 
     <!-- Alert Modal -->
     {#if game.alertMessage}
-        <div class="overlay" onclick={() => game.alertMessage = null}>
+        <div 
+            class="overlay" 
+            onclick={() => game.alertMessage = null}
+            onkeydown={(e) => e.key === 'Escape' && (game.alertMessage = null)}
+            role="button"
+            tabindex="-1"
+        >
+            <!-- svelte-ignore a11y_click_events_have_key_events -->
+            <!-- svelte-ignore a11y_no_static_element_interactions -->
             <div class="modal alert-modal" onclick={(e) => e.stopPropagation()}>
                 <p>{game.alertMessage}</p>
                 <button class="btn-primary" onclick={() => game.alertMessage = null}>확인</button>
@@ -121,7 +129,15 @@
 
     <!-- Confirm Modal -->
     {#if game.confirmMessage}
-        <div class="overlay" onclick={() => game.handleConfirm(false)}>
+        <div 
+            class="overlay" 
+            onclick={() => game.handleConfirm(false)}
+            onkeydown={(e) => e.key === 'Escape' && game.handleConfirm(false)}
+            role="button"
+            tabindex="-1"
+        >
+            <!-- svelte-ignore a11y_click_events_have_key_events -->
+            <!-- svelte-ignore a11y_no_static_element_interactions -->
             <div class="modal alert-modal" onclick={(e) => e.stopPropagation()}>
                 <p>{game.confirmMessage}</p>
                 <div class="modal-actions">
@@ -195,12 +211,6 @@
         background: #e9ecef;
     }
     
-    .btn-text {
-        background: none;
-        border: none;
-        color: #888;
-        cursor: pointer;
-    }
 
     /* Game Header - matches Sudoku */
     header {

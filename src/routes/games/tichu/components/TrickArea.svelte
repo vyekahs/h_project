@@ -37,12 +37,42 @@
 		if (rel === 2) return 'top';
 		return 'left';
 	}
+
+	const formatCombination = $derived.by(() => {
+		if (!lastPlay) return '';
+		const combo = lastPlay.combination;
+		const r = Math.floor(combo.rank);
+		const ranks: Record<number, string> = {
+			2: '2', 3: '3', 4: '4', 5: '5', 6: '6', 7: '7', 8: '8',
+			9: '9', 10: '10', 11: 'J', 12: 'Q', 13: 'K', 14: 'A',
+			1: '참새', 15: '용', 0: '개'
+		};
+		// Handle phoenix rank mapping if necessary, floor of 14.5 is 14.
+		let rankStr = ranks[r] ?? r.toString();
+		// If it's single phoenix, make it explicit.
+		if (combo.type === 'single' && combo.cards[0].type === 'special' && combo.cards[0].special === 'phoenix') {
+			rankStr = '봉황';
+		}
+
+		switch (combo.type) {
+			case 'single': return `${rankStr} 싱글`;
+			case 'pair': return `${rankStr} 페어`;
+			case 'triple': return `${rankStr} 트리플`;
+			case 'full_house': return `${rankStr} 풀하우스`;
+			case 'straight': return `${rankStr}탑 스트레이트`;
+			case 'stairs': return `${rankStr}탑 연속 페어`;
+			case 'four_bomb': return `💣 ${rankStr} 포카드 폭탄`;
+			case 'straight_flush_bomb': return `💣 ${rankStr}탑 스티플 폭탄`;
+			default: return '알 수 없음';
+		}
+	});
 </script>
 
 <div class="trick-area">
 	{#if trick && lastPlay}
 		<div class="trick-display pos-{seatPosition(lastPlay.seat)}">
 			<div class="trick-player">{lastPlayName}</div>
+			<div class="trick-combo">{formatCombination}</div>
 			<div class="trick-cards" style="--trick-overlap: -{trickCardOverlap}px">
 				{#each lastPlay.combination.cards as card (card.id)}
 					<CardComponent {card} />
@@ -85,6 +115,25 @@
 		backdrop-filter: blur(4px);
 		-webkit-backdrop-filter: blur(4px);
 		border: 1px solid rgba(255, 255, 255, 0.15);
+	}
+
+	.trick-combo {
+		font-size: 0.75rem;
+		font-weight: 700;
+		color: #fbbf24;
+		background: rgba(0,0,0,0.6);
+		padding: 2px 10px;
+		border-radius: 10px;
+		margin-bottom: -2px;
+		backdrop-filter: blur(4px);
+		-webkit-backdrop-filter: blur(4px);
+		border: 1px solid rgba(251, 191, 36, 0.4);
+		box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+		animation: comboPop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+	}
+	@keyframes comboPop {
+		from { transform: scale(0.8); opacity: 0; }
+		to { transform: scale(1); opacity: 1; }
 	}
 
 	.trick-cards {

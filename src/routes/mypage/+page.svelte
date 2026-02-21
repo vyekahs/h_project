@@ -680,7 +680,14 @@
 </div>
 
 {#if showGuideModal}
-    <div class="modal-backdrop" on:click|self={() => showGuideModal = false}>
+    <div 
+        class="modal-backdrop" 
+        on:click|self={() => showGuideModal = false}
+        on:keydown={(e) => e.key === 'Escape' && (showGuideModal = false)}
+        role="button"
+        tabindex="-1"
+        aria-label="Close modal"
+    >
         <div class="modal-content">
             <h3>기기 등록 방법</h3>
             <ol class="guide-steps">
@@ -711,7 +718,14 @@
 {/if}
 
 {#if showFeedbackModal}
-    <div class="modal-backdrop" on:click|self={() => showFeedbackModal = false}>
+    <div 
+        class="modal-backdrop" 
+        on:click|self={() => showFeedbackModal = false}
+        on:keydown={(e) => e.key === 'Escape' && (showFeedbackModal = false)}
+        role="button"
+        tabindex="-1"
+        aria-label="Close modal"
+    >
         <div class="modal-content">
             <h3>건의사항 보내기</h3>
             <p class="modal-desc">
@@ -739,7 +753,15 @@
 {/if}
 
 {#if showSuccessModal}
-    <div class="modal-backdrop" on:click|self={() => showSuccessModal = false} transition:fade>
+    <div 
+        class="modal-backdrop" 
+        on:click|self={() => showSuccessModal = false} 
+        on:keydown={(e) => e.key === 'Escape' && (showSuccessModal = false)}
+        role="button"
+        tabindex="-1"
+        aria-label="Close modal"
+        transition:fade
+    >
         <div class="modal-content success-modal">
             <div class="success-icon">
                 <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
@@ -752,7 +774,14 @@
 {/if}
 
 {#if showPartyModal}
-    <div class="modal-backdrop" on:click|self={() => showPartyModal = false}>
+    <div 
+        class="modal-backdrop" 
+        on:click|self={() => showPartyModal = false}
+        on:keydown={(e) => e.key === 'Escape' && (showPartyModal = false)}
+        role="button"
+        tabindex="-1"
+        aria-label="Close modal"
+    >
         <div class="modal-content party-modal">
             <h3>{editingParty ? '고정팟 수정' : '새 고정팟 만들기'}</h3>
             <form method="POST" action={editingParty ? '?/updateParty' : '?/createParty'} use:enhance={() => {
@@ -775,9 +804,12 @@
                 </div>
 
                 <div class="form-group">
-                    <label>게임 (선택사항)</label>
+                    <label for="gameSearch">게임 (선택사항)</label>
+                    <!-- svelte-ignore a11y_click_events_have_key_events -->
+                    <!-- svelte-ignore a11y_no_static_element_interactions -->
                     <div class="game-search-wrapper" on:click|stopPropagation>
                         <input
+                            id="gameSearch"
                             type="text"
                             placeholder="게임 검색..."
                             bind:value={partyGameSearch}
@@ -819,7 +851,7 @@
                 </div>
 
                 <div class="form-group">
-                    <label>멤버 선택 <span class="member-hint">함께 플레이한 사람만 표시됩니다</span></label>
+                    <span class="label-heading">멤버 선택 <span class="member-hint">함께 플레이한 사람만 표시됩니다</span></span>
                     <div class="member-select-list">
                         {#each (data.allAttendees || []) as attendee}
                             <label class="member-checkbox" class:owner={data.user && attendee.id === data.user.id}>
@@ -969,11 +1001,6 @@
         text-decoration: none;
         font-weight: bold;
     }
-    .btn-admin-link {
-        text-decoration: none;
-        font-size: 1.2rem;
-        padding: 0 5px;
-    }
 
 
     /* Season Pass Banner */
@@ -995,10 +1022,6 @@
         align-items: center;
         text-align: center;
         gap: 0.5rem;
-    }
-    .pass-expired-cta {
-        font-size: 0.85rem;
-        opacity: 0.9;
     }
     .pass-expired-date {
         font-size: 0.8rem;
@@ -1303,47 +1326,6 @@
     .devices-section {
         margin-bottom: 2rem;
     }
-    .btn-add-device {
-        background: #4dabf7;
-        color: white;
-        border: none;
-        padding: 0.3rem 0.8rem;
-        border-radius: 6px;
-        font-size: 0.85rem;
-        cursor: pointer;
-        font-weight: 600;
-    }
-    .add-device-form {
-        background: #f8f9fa;
-        padding: 1rem;
-        border-radius: 8px;
-        margin-bottom: 1rem;
-        border: 1px solid #eee;
-    }
-    .form-group {
-        margin-bottom: 0.8rem;
-    }
-    .form-group label {
-        display: block;
-        font-size: 0.85rem;
-        color: #555;
-        margin-bottom: 0.25rem;
-        font-weight: 600;
-    }
-    .form-group input {
-        width: 100%;
-        padding: 0.5rem;
-        border: 1px solid #ddd;
-        border-radius: 6px;
-        font-size: 0.9rem;
-        box-sizing: border-box;
-    }
-    .help-text {
-        display: block;
-        font-size: 0.75rem;
-        color: #999;
-        margin-top: 0.2rem;
-    }
     .btn-submit {
         width: 100%;
         background: #339af0;
@@ -1361,20 +1343,6 @@
         padding: 1rem;
         border-radius: 12px;
         box-shadow: 0 2px 10px rgba(0,0,0,0.03);
-    }
-    .btn-add-device {
-        background: #4dabf7;
-        color: white;
-        border: none;
-        padding: 0.3rem 0.8rem;
-        border-radius: 6px;
-        font-size: 0.85rem;
-        cursor: pointer;
-        font-weight: 600;
-        transition: background 0.2s;
-    }
-    .btn-add-device:hover {
-        background: #339af0;
     }
 
     .device-list {
@@ -1484,10 +1452,6 @@
         border-radius: 6px;
         margin-right: 0.5rem;
     }
-    .emphasis {
-        color: #e03131;
-        font-weight: bold;
-    }
     .modal-close-btn {
         width: 100%;
         padding: 0.8rem;
@@ -1503,11 +1467,6 @@
     /* Title Section Styles */
     .titles-section {
         margin-bottom: 2rem;
-    }
-    .titles-section h3 {
-        font-size: 1.1rem;
-        color: #444;
-        margin-bottom: 1rem;
     }
     .titles-grid {
         display: grid;
@@ -1543,14 +1502,6 @@
         color: #666;
         margin: 0;
         flex-grow: 1;
-    }
-    .badge-equipped {
-        font-size: 0.75rem;
-        background: #333;
-        color: white;
-        padding: 2px 6px;
-        border-radius: 4px;
-        font-weight: 600;
     }
     .actions {
         display: flex;
@@ -1605,30 +1556,6 @@
     }
 
     /* Feedback Styles */
-    .btn-feedback {
-        display: flex;
-        align-items: center;
-        gap: 0.4rem;
-        background: #e7f5ff;
-        color: #339af0;
-        border: none;
-        padding: 0.4rem 0.8rem;
-        border-radius: 20px;
-        font-size: 0.85rem;
-        font-weight: 600;
-        cursor: pointer;
-        margin-right: 0.5rem;
-        transition: all 0.2s;
-    }
-    .btn-feedback:hover {
-        background: #d0ebff;
-        color: #1c7ed6;
-    }
-    .divider {
-        color: #eee;
-        margin: 0 0.8rem;
-        font-size: 0.8rem;
-    }
     
     .modal-desc {
         font-size: 0.9rem;

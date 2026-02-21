@@ -180,8 +180,15 @@
     {/if}
     <!-- Confirmation Modal -->
     {#if game.confirmMessage}
-        <div class="overlay" onclick={() => game.handleConfirm(false)}>
-            <div class="modal alert-modal" onclick={(e) => e.stopPropagation()}>
+        <div 
+            class="overlay" 
+            onclick={() => game.handleConfirm(false)}
+            onkeydown={(e) => e.key === 'Escape' && game.handleConfirm(false)}
+            role="button"
+            tabindex="-1"
+            aria-label="모달 닫기"
+        >
+            <div class="modal alert-modal" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="presentation">
                 <h3>확인 🤔</h3>
                 <p>{game.confirmMessage}</p>
                 <div class="modal-actions">
@@ -194,8 +201,15 @@
 
     <!-- Simple Alert Modal -->
     {#if game.alertMessage}
-        <div class="overlay" onclick={() => game.alertMessage = null}>
-            <div class="modal alert-modal" onclick={(e) => e.stopPropagation()}>
+        <div 
+            class="overlay" 
+            onclick={() => game.alertMessage = null}
+            onkeydown={(e) => e.key === 'Escape' && (game.alertMessage = null)}
+            role="button"
+            tabindex="-1"
+            aria-label="알림 닫기"
+        >
+            <div class="modal alert-modal" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="presentation">
                 <h3>알림 🔔</h3>
                 <p>{game.alertMessage}</p>
                 <button class="btn-primary" onclick={() => game.alertMessage = null}>확인</button>
@@ -467,173 +481,6 @@
         background: #e0e0e0;
     }
 
-    .tutorial-modal {
-        max-width: 400px;
-        text-align: left;
-    }
-    
-    .tutorial-content {
-        display: flex;
-        flex-direction: column;
-        gap: 1rem;
-        font-size: 1rem;
-        line-height: 1.5;
-        color: #444;
-    }
-    
-    .tutorial-content ul {
-        list-style: none;
-        padding: 0;
-        display: flex;
-        flex-direction: column;
-        gap: 0.5rem;
-        background: #f9f9f9;
-        padding: 1rem;
-        border-radius: 12px;
-    }
-    
-    .tutorial-content .tip {
-        background: #e3f2fd;
-        color: #1565c0;
-        padding: 0.8rem;
-        border-radius: 8px;
-        margin-top: 0.5rem;
-        font-size: 0.95rem;
-    }
 
-    .earned-points {
-        font-size: 1.2rem;
-        font-weight: 700;
-        color: #007aff;
-        margin-top: 0.5rem;
-        animation: pop 0.5s cubic-bezier(0.18, 0.89, 0.32, 1.28);
-    }
-    
-    @keyframes pop {
-        0% { transform: scale(0.8); opacity: 0; }
-        100% { transform: scale(1); opacity: 1; }
-    }
-
-    /* Sudoku Board Styles */
-    .sudoku-board {
-        display: flex;
-        flex-direction: column;
-        border: 3px solid #333;
-        border-radius: 12px;
-        background: #333;
-        gap: 1px;
-        box-shadow: 0 8px 32px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.08);
-        user-select: none;
-        overflow: hidden;
-    }
-
-    .row {
-        display: flex;
-        gap: 2px;
-    }
-
-    .row:nth-child(3n) {
-        margin-bottom: 2px; /* Thicker gap for 3x3 boxes */
-    }
-    .row:last-child {
-        margin-bottom: 0;
-    }
-
-    .cell {
-        width: 40px;
-        height: 40px;
-        background: #fafafa;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 1.4rem;
-        font-weight: 500;
-        cursor: pointer;
-        transition: background 0.15s, transform 0.1s;
-        position: relative;
-        color: #1a73e8; /* User-entered numbers in blue */
-    }
-
-    .cell:nth-child(3n) {
-        margin-right: 2px;
-    }
-    .cell:last-child {
-        margin-right: 0;
-    }
-    
-    .cell:active {
-        transform: scale(0.95);
-    }
-
-    .cell.fixed {
-        font-weight: 700;
-        color: #333;
-        background-color: #fff;
-    }
-
-    .cell.selected {
-        background-color: #e8f0fe;
-        box-shadow: inset 0 0 0 2px #1a73e8;
-        z-index: 2;
-    }
-
-    /* Related cells (same row/col/box) */
-    .cell.related {
-        background-color: #f8f9fa;
-    }
-
-    /* Highlighted number (same value as selected) */
-    .cell.highlighted {
-        background-color: #c8e6ff;
-        color: #0d47a1;
-        font-weight: 700;
-    }
-
-    .cell.error {
-        color: #d32f2f !important;
-        background-color: #ffcdd2 !important;
-        animation: shake 0.3s;
-    }
-
-    .cell .value {
-        line-height: 1;
-    }
-
-    .cell .notes {
-        display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        width: 100%;
-        height: 100%;
-        padding: 2px;
-    }
-
-    .note {
-        font-size: 9px;
-        color: #666;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-    }
-
-    @keyframes shake {
-        0%, 100% { transform: translateX(0); }
-        25% { transform: translateX(-2px); }
-        75% { transform: translateX(2px); }
-    }
-
-    @media (max-width: 450px) {
-        .cell {
-            width: 36px;
-            height: 36px;
-            font-size: 1.3rem;
-        }
-    }
-    @media (max-width: 350px) {
-        .cell {
-            width: 32px;
-            height: 32px;
-            font-size: 1.1rem;
-        }
-    }
 
 </style>

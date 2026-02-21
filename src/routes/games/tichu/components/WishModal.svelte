@@ -30,7 +30,7 @@
 		game.showWishModal = false;
 	}
 
-	const mahjongCard: Card = { type: 'special', special: 'mahjong', rank: 1, suit: 'mahjong' };
+	const mahjongCard: Card = { type: 'special', special: 'mahjong', id: 'mahjong' };
 </script>
 
 <div class="modal-overlay">
@@ -107,6 +107,7 @@
 		font-weight: 800;
 		background: linear-gradient(135deg, #34d399 0%, #059669 100%);
 		-webkit-background-clip: text;
+		background-clip: text;
 		-webkit-text-fill-color: transparent;
 		letter-spacing: -0.02em;
 	}

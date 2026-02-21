@@ -171,21 +171,6 @@
         line-height: 1.1;
     }
 
-    .subtitle {
-        margin-top: 0.2rem;
-        font-size: 0.8rem;
-        color: #666;
-        font-weight: 500;
-        letter-spacing: -0.01em;
-        opacity: 0.8;
-    }
-
-    .subtitle {
-        color: #666;
-        margin-top: 0.5rem;
-        font-size: 1rem;
-        font-weight: 500;
-    }
 
     .ticker-wrapper {
         margin-bottom: 2rem;

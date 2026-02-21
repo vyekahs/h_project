@@ -84,9 +84,6 @@
         color: #333;
         font-size: 2rem;
     }
-    .header p {
-        color: #666;
-    }
 
     .rankings-grid {
         display: grid;

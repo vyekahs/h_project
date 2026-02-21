@@ -143,8 +143,15 @@
     {/if}
 
     {#if game.confirmMessage}
-        <div class="overlay" onclick={() => game.handleConfirm(false)}>
-            <div class="modal alert-modal" onclick={(e) => e.stopPropagation()}>
+        <div 
+            class="overlay" 
+            onclick={() => game.handleConfirm(false)}
+            onkeydown={(e) => e.key === 'Escape' && game.handleConfirm(false)}
+            role="button"
+            tabindex="-1"
+            aria-label="모달 닫기"
+        >
+            <div class="modal alert-modal" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="presentation">
                 <h3>확인 🤔</h3>
                 <p>{game.confirmMessage}</p>
                 <div class="modal-actions">
@@ -156,8 +163,15 @@
     {/if}
 
     {#if game.alertMessage}
-        <div class="overlay" onclick={() => game.alertMessage = null}>
-            <div class="modal alert-modal" onclick={(e) => e.stopPropagation()}>
+        <div 
+            class="overlay" 
+            onclick={() => game.alertMessage = null}
+            onkeydown={(e) => e.key === 'Escape' && (game.alertMessage = null)}
+            role="button"
+            tabindex="-1"
+            aria-label="알림 닫기"
+        >
+            <div class="modal alert-modal" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="presentation">
                 <h3>알림 🔔</h3>
                 <p>{game.alertMessage}</p>
                 <button class="btn-primary" onclick={() => game.alertMessage = null}>확인</button>
