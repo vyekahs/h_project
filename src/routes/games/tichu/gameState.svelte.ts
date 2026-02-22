@@ -198,8 +198,7 @@ export function createTichuGameState() {
 				savedGameAvailable = false;
 				// 랭킹 점수 제출
 				const isWin = s.winner === myTeam;
-				const margin = Math.abs(s.cumulativeScoreA - s.cumulativeScoreB);
-				submitTichuScore(isWin, margin);
+				submitTichuScore(isWin, s.completedRounds);
 			}
 		}
 	});
@@ -305,11 +304,40 @@ export function createTichuGameState() {
 		saveNow();
 	}
 
-	async function submitTichuScore(isWin: boolean, margin: number) {
+	function calculateRankingScore(isWin: boolean, rounds: TichuRoundResult[]): number {
+		let score = 0;
+
+		for (const round of rounds) {
+			score += round.teamAScore > round.teamBScore ? 30 : 5;
+
+			if (round.oneTwo === 'A') score += 40;
+
+			for (const d of round.grandTichuDeclarations) {
+				if (d.seat === 0 || d.seat === 2) {
+					score += d.success ? 50 : -10;
+				}
+			}
+
+			for (const d of round.smallTichuDeclarations) {
+				if (d.seat === 0 || d.seat === 2) {
+					score += d.success ? 25 : -5;
+				}
+			}
+
+			const diff = round.teamAScore - round.teamBScore;
+			if (diff > 0) score += Math.floor(diff / 25);
+		}
+
+		if (isWin) score += 30;
+
+		return Math.max(10, score);
+	}
+
+	async function submitTichuScore(isWin: boolean, rounds: TichuRoundResult[]) {
 		if (scoreSubmitting) return;
 		scoreSubmitting = true;
 		try {
-			const score = isWin ? Math.min(300, 100 + Math.floor(margin / 50) * 10) : 10;
+			const score = calculateRankingScore(isWin, rounds);
 			const res = await fetch('/api/game/record', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
@@ -321,11 +349,9 @@ export function createTichuGameState() {
 				if (data.newTitles && data.newTitles.length > 0) {
 					newTitleName = data.newTitles[0];
 				}
-				// 성공 시 pending 클리어
 				localStorage.removeItem('tichu_pending_score');
 			} else if (res.status === 401) {
-				// 비로그인 → pending 저장 + 회원가입 유도
-				localStorage.setItem('tichu_pending_score', JSON.stringify({ isWin, margin }));
+				localStorage.setItem('tichu_pending_score', JSON.stringify({ isWin, rounds }));
 				showSignupPrompt = true;
 			}
 		} catch (e) {
@@ -340,8 +366,12 @@ export function createTichuGameState() {
 		const pending = localStorage.getItem('tichu_pending_score');
 		if (pending) {
 			try {
-				const { isWin, margin } = JSON.parse(pending);
-				submitTichuScore(isWin, margin);
+				const data = JSON.parse(pending);
+				if (data.rounds) {
+					submitTichuScore(data.isWin, data.rounds);
+				} else {
+					localStorage.removeItem('tichu_pending_score');
+				}
 			} catch {
 				localStorage.removeItem('tichu_pending_score');
 			}
