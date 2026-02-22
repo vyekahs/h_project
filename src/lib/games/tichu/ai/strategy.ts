@@ -409,6 +409,18 @@ export function decidePlay(
 		if (lastCombo.rank >= passThreshold) {
 			return 'pass';
 		}
+
+		// passThreshold 통과: 파트너 트릭을 뺏되, A/K 포함 콤보는 사용 금지 (선먹기용 보존)
+		const beatableForPartner = findBeatablePlays(hand, lastCombo)
+			.filter(c => !isBomb(c))
+			.filter(c => !c.cards.some(card => card.type === 'normal' && (card as NormalCard).rank >= 13));
+
+		if (beatableForPartner.length === 0) {
+			return 'pass';
+		}
+		// 가장 약한 카드로 뺏기
+		beatableForPartner.sort((a, b) => a.rank - b.rank);
+		return beatableForPartner[0].cards.map(c => c.id);
 	}
 
 	// Must play wish if active
@@ -591,12 +603,11 @@ function pickBestFollow(
 		const mustPlay =
 			// 상대가 나가기 직전이면 뺏어야 함 (4장 이하로 확대)
 			context.players.some(p => getTeam(p.seat) !== myTeam && p.finishOrder === null && p.hand.length <= 4) ||
-			// 티츄 선언 상대가 카드 적으면 반드시 차단
+			// 티츄 선언 상대가 있으면 반드시 차단
 			context.players.some(p =>
 				getTeam(p.seat) !== myTeam &&
 				(p.grandTichu === true || p.smallTichu) &&
-				p.finishOrder === null &&
-				p.hand.length <= 5
+				p.finishOrder === null
 			) ||
 			// 트릭 포인트가 높으면 뺏어야 함
 			(trickPoints >= 15 && getTeam(lastPlay.seat) !== myTeam);
@@ -1089,10 +1100,10 @@ export function shouldPlayBomb(
 		return beatable[0];
 	}
 
-	// 상대 티츄 선언 + 카드 적으면 → 무조건 폭탄
+	// 상대 티츄 선언 → 적극 폭탄 (카드 7장 이하)
 	if (hasOpponentDeclaredTichu(tracker)) {
 		const tichuer = tracker.opponents.find(o => o.declaredTichu && !o.finished);
-		if (tichuer && tichuer.cardsRemaining <= 5) {
+		if (tichuer && tichuer.cardsRemaining <= 7) {
 			return beatable[0];
 		}
 	}

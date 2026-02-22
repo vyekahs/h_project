@@ -4,14 +4,14 @@
  * 각 플레이 후보에 대해 확률 기반으로 최적의 플레이를 탐색.
  * winProb × exitRate + contextModifier → totalScore 비교.
  */
-import type { Card, Combination, NormalCard } from '../types';
+import type { Card, Combination, NormalCard, SeatIndex } from '../types';
 import type { AiDecisionContext, PersonalityWeights } from './types';
 import type { PresetBehavior } from './presets/types';
 import type { CardTracker } from './cardTracker';
 import { comboLikelyToWin, rankStrengthInContext } from './cardTracker';
 import { findAllPlayableCombinations } from './handEvaluator';
 import { isBomb, detectCombination } from '../combinations';
-import { getTeam, getPartnerSeat } from '../constants';
+import { getTeam, getPartnerSeat, getLeftSeat } from '../constants';
 
 // ===== Types =====
 
@@ -235,12 +235,11 @@ function calcContextModifier(
 	const opponentThreat = context.players.some(
 		p => getTeam(p.seat) !== myTeam && p.finishOrder === null && p.hand.length <= 4
 	);
-	// 티츄 선언 + 카드 적은 상대
+	// 티츄 선언 상대 (카드 수 무관 — 선언 자체가 위협)
 	const opponentTichuThreat = context.players.some(
 		p => getTeam(p.seat) !== myTeam &&
 			(p.grandTichu === true || p.smallTichu) &&
-			p.finishOrder === null &&
-			p.hand.length <= 5
+			p.finishOrder === null
 	);
 
 	if (mode === 'lead') {
@@ -315,6 +314,23 @@ function calcContextModifier(
 			mod += 0.1;
 			// 많은 카드 한 번에 처리 → 빨리 나가기
 			mod += combo.cards.length * 0.02;
+		}
+
+		// 다음 플레이어가 상대이고 1장 남았으면 → 이길 수 있는 리드 강제
+		const nextSeat = getLeftSeat(context.currentSeat) as SeatIndex;
+		const nextPlayer = context.players[nextSeat];
+		if (getTeam(nextSeat) !== myTeam && nextPlayer.finishOrder === null && nextPlayer.hand.length === 1) {
+			if (combo.type === 'single' && combo.cards[0].type !== 'special') {
+				// 낮은 싱글(≤10)은 상대가 이길 가능성 높음
+				if (combo.rank <= 10) {
+					mod -= 0.3;
+				} else {
+					mod += 0.15;
+				}
+			} else if (combo.type !== 'single') {
+				// 멀티카드 콤보: 1장인 상대는 못 따라옴
+				mod += 0.1;
+			}
 		}
 
 		// Aggressiveness: 카드 수 보너스
