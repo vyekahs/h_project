@@ -88,7 +88,7 @@
 			
 			// Big Impact: Bomb
 			if (evt.type === 'bomb') {
-				triggerHaptic([100, 100, 100]);
+				triggerHaptic([300, 100, 300]);
 			}
 		});
 	});
@@ -100,7 +100,7 @@
 		untrack(() => {
 			if (current === mySeat && previousTurnSeat !== mySeat) {
 				// It just became my turn
-				triggerHaptic([30, 50, 30]);
+				triggerHaptic([100, 50, 100]); // Increased duration
 			}
 			previousTurnSeat = current;
 		});
@@ -113,7 +113,7 @@
 		untrack(() => {
 			if (currentDecls > previousGrandDecls) {
 				// Someone declared Grand Tichu
-				triggerHaptic([100, 100, 100]);
+				triggerHaptic([300, 100, 300]);
 			}
 			previousGrandDecls = currentDecls;
 		});

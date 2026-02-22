@@ -201,7 +201,7 @@ export function createTichuGameState() {
 		toasts = [...toasts, { id, message, type }];
 
 		if (type === 'error') {
-			triggerHaptic([50, 100, 50]);
+			triggerHaptic([200, 50, 200]);
 		}
 
 		setTimeout(() => {
