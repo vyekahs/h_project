@@ -931,19 +931,19 @@ export const actions: Actions = {
         }
     },
 
-    toggleVisitPlan: async ({ cookies }) => {
+    toggleVisitPlan: async ({ request, cookies }) => {
         const userSessionToken = cookies.get('user_session');
         if (!userSessionToken) return fail(401, { error: '로그인이 필요합니다.' });
         const user = await verifyAttendeeSession(userSessionToken);
         if (!user) return fail(401, { error: 'Invalid session' });
 
-        try {
-            const existing = await db.execute(sql`
-                SELECT id FROM daily_visit_plans WHERE attendee_id = ${user.id} AND plan_date = CURRENT_DATE
-            `);
+        const data = await request.formData();
+        const isCancel = data.get('cancel') === 'true';
+        const plannedTime = data.get('plannedTime')?.toString() || null;
 
-            if (existing.length > 0) {
-                await db.execute(sql`DELETE FROM daily_visit_plans WHERE id = ${(existing[0] as any).id}`);
+        try {
+            if (isCancel) {
+                await db.execute(sql`DELETE FROM daily_visit_plans WHERE attendee_id = ${user.id} AND plan_date = CURRENT_DATE`);
             } else {
                 // 이미 참여중(present)인 유저는 추가 불가
                 const statusCheck = await db.execute(sql`SELECT status FROM attendees WHERE id = ${user.id}`);
@@ -951,7 +951,9 @@ export const actions: Actions = {
                     return fail(400, { error: '이미 입장한 상태에서는 갈 예정에 추가할 수 없습니다.' });
                 }
                 await db.execute(sql`
-                    INSERT INTO daily_visit_plans (attendee_id, plan_date) VALUES (${user.id}, CURRENT_DATE)
+                    INSERT INTO daily_visit_plans (attendee_id, plan_date, planned_time)
+                    VALUES (${user.id}, CURRENT_DATE, ${plannedTime})
+                    ON CONFLICT (attendee_id, plan_date) DO UPDATE SET planned_time = ${plannedTime}
                 `);
             }
 

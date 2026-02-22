@@ -84,7 +84,7 @@ async function fetchSharedData(): Promise<SharedData> {
         db.execute(sql`SELECT content FROM notices WHERE is_active = true ORDER BY created_at DESC LIMIT 1`),
         db.execute(sql`SELECT value FROM system_settings WHERE key = 'is_open'`),
         db.execute(sql`
-            SELECT dvp.id, dvp.attendee_id, a.name,
+            SELECT dvp.id, dvp.attendee_id, a.name, dvp.planned_time,
                    t.title_name
             FROM daily_visit_plans dvp
             JOIN attendees a ON dvp.attendee_id = a.id

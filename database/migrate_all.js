@@ -186,6 +186,7 @@ async function migrate() {
             );
         `);
         await pool.query('CREATE INDEX IF NOT EXISTS idx_daily_visit_plans_date ON daily_visit_plans(plan_date);');
+        await pool.query('ALTER TABLE daily_visit_plans ADD COLUMN IF NOT EXISTS planned_time TIME;');
 
         // 19. Recurring Game Schedules (반복 게임 스케줄)
         console.log('[19] Checking recurring_game_schedules table...');

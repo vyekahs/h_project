@@ -50,7 +50,7 @@
         allGames: any[];
         parties: Party[];
         userPartyIds: number[];
-        dailyVisitPlans: { id: number; attendee_id: number; name: string; title_name?: string }[];
+        dailyVisitPlans: { id: number; attendee_id: number; name: string; planned_time?: string | null; title_name?: string }[];
         mainScheduledGames: GameSession[];
         userHasVisitPlan: boolean;
     };
@@ -164,6 +164,54 @@
 
     let endGameModalVisible = false;
     let selectedEndGame: GameSession | null = null;
+
+    // Visit Plan Modal
+    let showVisitPlanModal = false;
+    let selectedVisitTime = '';
+    let isTimeDropdownOpen = false;
+
+    function getDefaultVisitTime(): string {
+        const now = new Date();
+        const kst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+        let h = kst.getUTCHours() + 2;
+        let m = kst.getUTCMinutes();
+        // 30분 단위 올림
+        if (m > 0 && m <= 30) { m = 30; }
+        else if (m > 30) { m = 0; h++; }
+        if (h > 23) h = 23;
+        return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+    }
+
+    function getVisitTimeOptions(): string[] {
+        const now = new Date();
+        const kst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+        const currentH = kst.getUTCHours();
+        const currentM = kst.getUTCMinutes();
+        const options: string[] = [];
+        for (let h = 9; h <= 23; h++) {
+            for (const m of [0, 30]) {
+                if (h === 23 && m === 30) continue;
+                // 현재 시간 이후만
+                if (h < currentH || (h === currentH && m <= currentM)) continue;
+                options.push(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`);
+            }
+        }
+        return options;
+    }
+
+    function formatVisitTime(time: string | null | undefined): string {
+        if (!time) return '';
+        const parts = time.split(':');
+        const h = parseInt(parts[0]);
+        const m = parts[1] || '00';
+        return `${h}시${m !== '00' ? ' ' + m + '분' : ''}`;
+    }
+
+    function openVisitPlanModal() {
+        selectedVisitTime = getDefaultVisitTime();
+        isTimeDropdownOpen = false;
+        showVisitPlanModal = true;
+    }
 
     let alertVisible = false;
     let alertMessage = '';
@@ -699,16 +747,15 @@
                 <h2>오늘 갈예정 ({(data.dailyVisitPlans || []).length})</h2>
                 {#if data.user && !(data.attendees || []).some((a: any) => a.id === data.user!.id)}
                     {@const hasScheduledGame = (data.userScheduledGames || []).some((g: any) => !g.party_id)}
-                    {#if !(data.userHasVisitPlan && hasScheduledGame)}
+                    {#if data.userHasVisitPlan}
                         <form method="POST" action="?/toggleVisitPlan" use:enhance={() => {
-                            return async ({ result, update }) => {
-                                await update();
-                            };
+                            return async ({ result, update }) => { await update(); };
                         }}>
-                            <button type="submit" class="btn-visit-plan" class:active={data.userHasVisitPlan}>
-                                {data.userHasVisitPlan ? '취소하기' : '나도 갈예정!'}
-                            </button>
+                            <input type="hidden" name="cancel" value="true" />
+                            <button type="submit" class="btn-visit-plan active">취소하기</button>
                         </form>
+                    {:else if !(hasScheduledGame)}
+                        <button type="button" class="btn-visit-plan" on:click={openVisitPlanModal}>나도 갈예정!</button>
                     {/if}
                 {/if}
             </div>
@@ -719,6 +766,11 @@
                             <span class="mini-title">{plan.title_name}</span>
                         {/if}
                         <span class="name">{plan.name}</span>
+                        {#if plan.planned_time}
+                            <span class="visit-time">{formatVisitTime(plan.planned_time)} ~</span>
+                        {:else}
+                            <span class="visit-time maybe">상황봐서</span>
+                        {/if}
                     </div>
                 {/each}
                 {#if (data.dailyVisitPlans || []).length === 0}
@@ -1522,6 +1574,62 @@
     </div>
 {/if}
 
+{#if showVisitPlanModal}
+    <!-- svelte-ignore a11y-click-events-have-key-events -->
+    <!-- svelte-ignore a11y-no-static-element-interactions -->
+    <div
+        class="modal-backdrop"
+        on:click|self={() => showVisitPlanModal = false}
+        on:keydown={(e) => e.key === 'Escape' && (showVisitPlanModal = false)}
+        role="button"
+        tabindex="-1"
+        aria-label="Close modal"
+    >
+        <div class="modal-content visit-plan-modal">
+            <h3>몇 시쯤 올 예정인가요?</h3>
+            <div class="visit-time-picker">
+                <!-- Custom Dropdown container -->
+                <div class="custom-dropdown" tabindex="0" on:blur={() => setTimeout(() => isTimeDropdownOpen = false, 150)}>
+                    <div class="dropdown-selected" class:open={isTimeDropdownOpen} on:click={() => isTimeDropdownOpen = !isTimeDropdownOpen}>
+                        <span>{selectedVisitTime ? formatVisitTime(selectedVisitTime) : '시간 선택'}</span>
+                        <div class="dropdown-arrow"></div>
+                    </div>
+                    
+                    {#if isTimeDropdownOpen}
+                        <div class="dropdown-options">
+                            {#each getVisitTimeOptions() as option}
+                                <div class="dropdown-option" class:active={option === selectedVisitTime} on:click={() => {
+                                    selectedVisitTime = option;
+                                    isTimeDropdownOpen = false;
+                                }}>
+                                    {formatVisitTime(option)}
+                                </div>
+                            {/each}
+                        </div>
+                    {/if}
+                </div>
+                <span class="time-hint">쯤 갈게요</span>
+            </div>
+            <div class="visit-modal-actions">
+                <form method="POST" action="?/toggleVisitPlan" use:enhance={() => {
+                    showVisitPlanModal = false;
+                    return async ({ result, update }) => { await update(); };
+                }}>
+                    <input type="hidden" name="plannedTime" value={selectedVisitTime} />
+                    <button type="submit" class="btn-visit-confirm">확인</button>
+                </form>
+                <form method="POST" action="?/toggleVisitPlan" use:enhance={() => {
+                    showVisitPlanModal = false;
+                    return async ({ result, update }) => { await update(); };
+                }}>
+                    <button type="submit" class="btn-visit-maybe">상황 봐서 갈 수도 못갈수도</button>
+                </form>
+                <button type="button" class="btn-visit-cancel" on:click={() => showVisitPlanModal = false}>취소</button>
+            </div>
+        </div>
+    </div>
+{/if}
+
 <style>
     :global(body) {
         margin: 0;
@@ -1571,6 +1679,102 @@
     }
     .btn-visit-plan.active:hover {
         background: #cc6a00;
+    }
+    .visit-plan-card .visit-time {
+        font-size: 0.7rem;
+        color: #e67700;
+        font-weight: 600;
+        margin-top: 2px;
+    }
+    .visit-plan-card .visit-time.maybe {
+        color: #adb5bd;
+        font-weight: 500;
+        font-style: italic;
+    }
+
+    /* Visit Plan Modal */
+    .visit-plan-modal {
+        max-width: 360px;
+        text-align: center;
+    }
+    .visit-plan-modal h3 {
+        margin: 0 0 1.2rem;
+        font-size: 1.1rem;
+        color: #333;
+    }
+    .visit-time-picker {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+        margin-bottom: 1.5rem;
+    }
+    .time-select {
+        padding: 0.6rem 1rem;
+        border: 2px solid #ffe0b2;
+        border-radius: 10px;
+        font-size: 1.1rem;
+        font-weight: 600;
+        color: #e67700;
+        background: #fff8f0;
+        cursor: pointer;
+        outline: none;
+        appearance: auto;
+    }
+    .time-select:focus {
+        border-color: #e67700;
+    }
+    .time-hint {
+        font-size: 0.95rem;
+        color: #666;
+    }
+    .visit-modal-actions {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+    .btn-visit-confirm {
+        width: 100%;
+        padding: 0.75rem;
+        background: #e67700;
+        color: white;
+        border: none;
+        border-radius: 10px;
+        font-size: 1rem;
+        font-weight: 700;
+        cursor: pointer;
+        transition: background 0.2s;
+    }
+    .btn-visit-confirm:hover {
+        background: #cc6a00;
+    }
+    .btn-visit-maybe {
+        width: 100%;
+        padding: 0.65rem;
+        background: #f8f9fa;
+        color: #868e96;
+        border: 1px solid #dee2e6;
+        border-radius: 10px;
+        font-size: 0.85rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    .btn-visit-maybe:hover {
+        background: #e9ecef;
+        color: #495057;
+    }
+    .btn-visit-cancel {
+        width: 100%;
+        padding: 0.5rem;
+        background: none;
+        color: #adb5bd;
+        border: none;
+        font-size: 0.85rem;
+        cursor: pointer;
+    }
+    .btn-visit-cancel:hover {
+        color: #868e96;
     }
 
     /* Tab System */
