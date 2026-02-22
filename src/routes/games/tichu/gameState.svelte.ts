@@ -1,5 +1,5 @@
 import type {
-	Card, SeatIndex, TeamId, TichuRoundResult, ExchangeCards, GamePhase
+	Card, Combination, SeatIndex, TeamId, TichuRoundResult, ExchangeCards, GamePhase
 } from '$lib/games/tichu/types';
 import type { AiStrategy, AiSpeed } from '$lib/games/tichu/ai/types';
 import { LocalGameEngine, type LocalGameConfig, type GameEvent, type ExchangeResultEntry, saveTichuGame, loadTichuGame, clearTichuSave, hasTichuSave } from '$lib/games/tichu/ai/localGameEngine';
@@ -43,12 +43,16 @@ export function createTichuGameState() {
 	let showGameOverModal = $state(false);
 	let showExitConfirmModal = $state(false);
 	let roundResult = $state<TichuRoundResult | null>(null);
+	let lastTrickPlay = $state<{ seat: SeatIndex; combination: Combination } | null>(null);
 	let gameEndData = $state<{ winner: TeamId; scoreA: number; scoreB: number } | null>(null);
 
 	// Ranking
 	let rankingResult = $state<{ score: number; earnedPoints: number } | null>(null);
 	let scoreSubmitting = $state(false);
 	let newTitleName = $state<string | null>(null);
+
+	// Signup prompt (비로그인 시 회원가입 유도)
+	let showSignupPrompt = $state(false);
 
 	// Exchange result display
 	let exchangeResultData = $state<ExchangeResultEntry[] | null>(null);
@@ -165,6 +169,14 @@ export function createTichuGameState() {
 
 			if (currentPhase === 'dragon_gift' && s?.round?.dragonGiftSeat === 0) {
 				showDragonGiftModal = true;
+			}
+
+			// round_ending 시 마지막 트릭 플레이 저장 (trick이 아직 남아있음)
+			if (currentPhase === 'round_ending' && s?.round?.trick) {
+				const plays = s.round.trick.plays;
+				if (plays.length > 0) {
+					lastTrickPlay = plays[plays.length - 1];
+				}
 			}
 
 			if (currentPhase === 'round_end' && s) {
@@ -287,6 +299,7 @@ export function createTichuGameState() {
 	function startNextRound() {
 		showRoundEndModal = false;
 		roundResult = null;
+		lastTrickPlay = null;
 		selectedCards = new Set();
 		engine?.startNextRound();
 		saveNow();
@@ -308,11 +321,30 @@ export function createTichuGameState() {
 				if (data.newTitles && data.newTitles.length > 0) {
 					newTitleName = data.newTitles[0];
 				}
+				// 성공 시 pending 클리어
+				localStorage.removeItem('tichu_pending_score');
+			} else if (res.status === 401) {
+				// 비로그인 → pending 저장 + 회원가입 유도
+				localStorage.setItem('tichu_pending_score', JSON.stringify({ isWin, margin }));
+				showSignupPrompt = true;
 			}
 		} catch (e) {
 			console.error('[Tichu] Score submit failed:', e);
 		} finally {
 			scoreSubmitting = false;
+		}
+	}
+
+	// 페이지 로드 시 pending score 체크 (회원가입 후 복귀)
+	function checkPendingScore() {
+		const pending = localStorage.getItem('tichu_pending_score');
+		if (pending) {
+			try {
+				const { isWin, margin } = JSON.parse(pending);
+				submitTichuScore(isWin, margin);
+			} catch {
+				localStorage.removeItem('tichu_pending_score');
+			}
 		}
 	}
 
@@ -338,6 +370,7 @@ export function createTichuGameState() {
 		showRoundEndModal = false;
 		showGameOverModal = false;
 		roundResult = null;
+		lastTrickPlay = null;
 		gameEndData = null;
 		rankingResult = null;
 		newTitleName = null;
@@ -511,11 +544,14 @@ export function createTichuGameState() {
 		set showGameOverModal(v: boolean) { showGameOverModal = v; },
 		get showExitConfirmModal() { return showExitConfirmModal; },
 		get roundResult() { return roundResult; },
+		get lastTrickPlay() { return lastTrickPlay; },
 		get gameEndData() { return gameEndData; },
 		set gameEndData(v: { winner: TeamId; scoreA: number; scoreB: number } | null) { gameEndData = v; },
 		get rankingResult() { return rankingResult; },
 		get newTitleName() { return newTitleName; },
 		set newTitleName(v: string | null) { newTitleName = v; },
+		get showSignupPrompt() { return showSignupPrompt; },
+		set showSignupPrompt(v: boolean) { showSignupPrompt = v; },
 		get toasts() { return toasts; },
 		get lastEvent() { return lastEvent; },
 		get exchangeResultData() { return exchangeResultData; },
@@ -555,6 +591,7 @@ export function createTichuGameState() {
 		setWish,
 		giftDragon,
 		playBomb,
-		addToast
+		addToast,
+		checkPendingScore
 	};
 }

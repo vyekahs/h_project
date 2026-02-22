@@ -119,43 +119,49 @@ async function checkRecurringGames() {
         if (currentHour < 9) {
             businessDateObj.setUTCDate(businessDateObj.getUTCDate() - 1);
         }
-        const businessDate = businessDateObj.toISOString().split('T')[0];
-        const dayOfWeek = businessDateObj.getUTCDay();
 
-        // 현재 KST 시간 (HH:MM 형식) - 이미 지난 시간의 일정은 생성하지 않음
+        // 현재 KST 시간 (HH:MM 형식) - 오늘은 이미 지난 시간의 일정은 생성하지 않음
         const currentTime = `${String(currentHour).padStart(2, '0')}:${String(kstNow.getUTCMinutes()).padStart(2, '0')}`;
 
-        const schedules = await db.execute(sql`
-            SELECT rs.*
-            FROM recurring_game_schedules rs
-            WHERE rs.is_active = true
-              AND rs.day_of_week = ${dayOfWeek}
-              AND rs.scheduled_time > ${currentTime}::time
-              AND NOT EXISTS (
-                  SELECT 1 FROM recurring_game_skips rsk
-                  WHERE rsk.recurring_schedule_id = rs.id
-                    AND rsk.skip_date = ${businessDate}::date
-              )
-              AND NOT EXISTS (
-                  SELECT 1 FROM game_sessions gs
-                  WHERE gs.recurring_schedule_id = rs.id
-                    AND gs.scheduled_at::date = ${businessDate}::date
-              )
-        `);
+        let created = 0;
 
-        for (const schedule of schedules) {
-            const s = schedule as any;
-            const scheduledAt = `${businessDate} ${s.scheduled_time}`;
-            const result = await db.execute(sql`
-                INSERT INTO game_sessions (game_id, game_name, status, scheduled_at, max_players, show_on_main, recurring_schedule_id, party_id)
-                VALUES (${s.game_id}, ${s.game_name}, 'scheduled', ${scheduledAt}::timestamp AT TIME ZONE 'Asia/Seoul', ${s.max_players}, ${s.show_on_main}, ${s.id}, ${s.party_id})
-                RETURNING id
-            `);
+        // 오늘 + 향후 6일 = 총 7일간의 반복 일정 미리 생성
+        for (let dayOffset = 0; dayOffset < 7; dayOffset++) {
+            const targetDateObj = new Date(businessDateObj);
+            targetDateObj.setUTCDate(targetDateObj.getUTCDate() + dayOffset);
+            const targetDate = targetDateObj.toISOString().split('T')[0];
+            const dayOfWeek = targetDateObj.getUTCDay();
 
-            console.log(`Auto-created recurring game session ${(result[0] as any).id} (${s.game_name}, schedule ${s.id})`);
+            // 오늘은 미래 시간만, 미래 날짜는 시간 조건 없이
+            const schedules = dayOffset === 0
+                ? await db.execute(sql`
+                    SELECT rs.* FROM recurring_game_schedules rs
+                    WHERE rs.is_active = true AND rs.day_of_week = ${dayOfWeek}
+                      AND rs.scheduled_time > ${currentTime}::time
+                      AND NOT EXISTS (SELECT 1 FROM recurring_game_skips rsk WHERE rsk.recurring_schedule_id = rs.id AND rsk.skip_date = ${targetDate}::date)
+                      AND NOT EXISTS (SELECT 1 FROM game_sessions gs WHERE gs.recurring_schedule_id = rs.id AND gs.scheduled_at::date = ${targetDate}::date)
+                `)
+                : await db.execute(sql`
+                    SELECT rs.* FROM recurring_game_schedules rs
+                    WHERE rs.is_active = true AND rs.day_of_week = ${dayOfWeek}
+                      AND NOT EXISTS (SELECT 1 FROM recurring_game_skips rsk WHERE rsk.recurring_schedule_id = rs.id AND rsk.skip_date = ${targetDate}::date)
+                      AND NOT EXISTS (SELECT 1 FROM game_sessions gs WHERE gs.recurring_schedule_id = rs.id AND gs.scheduled_at::date = ${targetDate}::date)
+                `);
+
+            for (const schedule of schedules) {
+                const s = schedule as any;
+                const scheduledAt = `${targetDate} ${s.scheduled_time}`;
+                const result = await db.execute(sql`
+                    INSERT INTO game_sessions (game_id, game_name, status, scheduled_at, max_players, show_on_main, recurring_schedule_id, party_id)
+                    VALUES (${s.game_id}, ${s.game_name}, 'scheduled', ${scheduledAt}::timestamp AT TIME ZONE 'Asia/Seoul', ${s.max_players}, ${s.show_on_main}, ${s.id}, ${s.party_id})
+                    RETURNING id
+                `);
+                console.log(`Auto-created recurring game session ${(result[0] as any).id} (${s.game_name}, schedule ${s.id}, date ${targetDate})`);
+                created++;
+            }
         }
 
-        if (schedules.length > 0) {
+        if (created > 0) {
             emitLiveEvent('games');
         }
     } catch (error) {

@@ -1,10 +1,18 @@
 <script lang="ts">
+	import CardComponent from './CardComponent.svelte';
+
 	let { game } = $props<{ game: any }>();
 
 	function gs() { void game.stateVersion; return game.gameState; }
 
 	const result = $derived(game.roundResult);
+	const lastPlay = $derived(game.lastTrickPlay);
 	const completedRounds = $derived.by(() => gs()?.completedRounds ?? []);
+
+	const lastPlayName = $derived.by(() => {
+		if (!lastPlay) return '';
+		return gs()?.players[lastPlay.seat]?.name ?? `P${lastPlay.seat + 1}`;
+	});
 
 	function close() {
 		game.startNextRound();
@@ -22,6 +30,17 @@
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div class="modal-content" onclick={(e: Event) => e.stopPropagation()}>
 		<h2>라운드 {result?.roundNumber} 결과</h2>
+
+		{#if lastPlay}
+			<div class="last-play">
+				<span class="last-play-label">{lastPlayName}의 마지막 패</span>
+				<div class="last-play-cards">
+					{#each lastPlay.combination.cards as card (card.id)}
+						<CardComponent {card} />
+					{/each}
+				</div>
+			</div>
+		{/if}
 
 		{#if result}
 			<!-- Round Score -->
@@ -281,6 +300,28 @@
 	}
 	.btn-ok:active {
 		transform: translateY(0);
+	}
+
+	.last-play {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 8px;
+		margin-bottom: 16px;
+		padding: 12px;
+		background: rgba(0, 0, 0, 0.25);
+		border-radius: 14px;
+		border: 1px solid rgba(255, 255, 255, 0.06);
+	}
+	.last-play-label {
+		font-size: 0.72rem;
+		color: #9ca3af;
+		font-weight: 500;
+	}
+	.last-play-cards {
+		display: flex;
+		gap: 2px;
+		filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
 	}
 
 	@keyframes modalPop {
