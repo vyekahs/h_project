@@ -11,17 +11,14 @@ import type { RequestHandler } from './$types';
 export const POST: RequestHandler = async ({ request, locals, cookies }) => {
     // Authenticate
     const sessionToken = cookies.get('user_session');
-    let userId = 1; // Fallback
-
-    if (sessionToken) {
-        const user = await verifyAttendeeSession(sessionToken);
-        if (user) {
-            userId = user.id;
-        } else {
-             // If token exists but is invalid, maybe 401? For now fall back to 1 or error.
-             // return json({ error: 'Unauthorized' }, { status: 401 });
-        }
+    if (!sessionToken) {
+        return json({ error: '로그인이 필요합니다' }, { status: 401 });
     }
+    const user = await verifyAttendeeSession(sessionToken);
+    if (!user) {
+        return json({ error: '세션이 만료되었습니다' }, { status: 401 });
+    }
+    const userId = user.id;
 
     const { gameId, difficulty, clearTime, score, skipReward, mistakes } = await request.json();
 

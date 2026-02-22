@@ -29,6 +29,11 @@
 	</main>
 
 	{#if !$page.url.pathname.startsWith('/admin') && !$page.url.pathname.startsWith('/games/') && !$page.url.pathname.startsWith('/tools/')}
+	<footer class="site-footer">
+		<a href="/about">소개</a>
+		<span class="divider">|</span>
+		<a href="/privacy">개인정보처리방침</a>
+	</footer>
 	<nav class="bottom-nav">
 		<a href="/" class="nav-item home" class:active={$page.url.pathname === '/'}>
 			<span class="icon">
@@ -119,4 +124,22 @@
         transform: scale(1.1);
         transition: transform 0.2s;
     }
+
+	.site-footer {
+		text-align: center;
+		padding: 16px 0 8px;
+		font-size: 0.8rem;
+	}
+	.site-footer a {
+		color: #999;
+		text-decoration: none;
+	}
+	.site-footer a:hover {
+		color: #666;
+		text-decoration: underline;
+	}
+	.site-footer .divider {
+		color: #ddd;
+		margin: 0 8px;
+	}
 </style>

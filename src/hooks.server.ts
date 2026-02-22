@@ -20,16 +20,6 @@ export const handle: Handle = async ({ event, resolve }) => {
         if (isAdmin) event.locals.isAdmin = isAdmin;
     }
 
-    // 로그인 필요 경로 체크 (미니게임 라운지 + 개별 게임)
-    const needsLogin = event.url.pathname.startsWith('/minigames') ||
-        (event.url.pathname.startsWith('/games/') && event.url.pathname !== '/games');
-    if (needsLogin && !event.locals.user) {
-        return new Response('Redirect', {
-            status: 303,
-            headers: { Location: '/login?redirectTo=' + encodeURIComponent(event.url.pathname) }
-        });
-    }
-
     // /admin 경로 보호 (admin 전용)
     if (event.url.pathname.startsWith('/admin') && !event.url.pathname.startsWith('/admin/login')) {
         if (!event.locals.isAdmin) {
