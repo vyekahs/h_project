@@ -99,6 +99,11 @@
                 tutorialData = m.KILLER_TUTORIALS;
                 tutorialOrder = m.KILLER_TUTORIAL_ORDER;
             });
+        } else if (gameConfig.id === 'energy') {
+            import('../../../games/energy/energyTutorialData').then(m => {
+                tutorialData = m.ENERGY_TUTORIALS;
+                tutorialOrder = m.ENERGY_TUTORIAL_ORDER;
+            });
         } else {
             tutorialData = null;
             tutorialOrder = [];
@@ -137,6 +142,9 @@
             TutorialModalComponent = mod.default;
         } else if (gameConfig.id === 'killer-sudoku') {
             const mod = await import('../../../games/killer-sudoku/KillerTutorialModal.svelte');
+            TutorialModalComponent = mod.default;
+        } else if (gameConfig.id === 'energy') {
+            const mod = await import('../../../games/energy/EnergyTutorialModal.svelte');
             TutorialModalComponent = mod.default;
         }
         showTutorial = true;
@@ -249,6 +257,8 @@
                             <div class="hall-of-fame-limit">
                                 {#if gameConfig.id === 'unblock-me'}
                                     <p class="score-desc">점수 = 기본점수 + (제한시간 - 클리어시간) x 배율 - 초과이동 x 감점</p>
+                                {:else if gameConfig.id === 'energy'}
+                                    <p class="score-desc">점수 = 기본점수 + (제한시간 - 클리어시간) x 배율 - 초과회전 x 감점</p>
                                 {:else}
                                     <p class="score-desc">점수 = 기본점수 + 시간보너스 - 실수페널티(15%/회)</p>
                                 {/if}
@@ -288,6 +298,12 @@
                                                                         <polyline points="15 19 12 22 9 19" />
                                                                         <line x1="2" y1="12" x2="22" y2="12" />
                                                                         <line x1="12" y1="2" x2="12" y2="22" />
+                                                                    </svg>
+                                                                {:else if gameConfig.id === 'energy'}
+                                                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                                                        <path d="M21.5 2v6h-6M2.5 22v-6h6"/>
+                                                                        <path d="M2.5 11.5a10 10 0 0 1 18.8-4.3"/>
+                                                                        <path d="M21.5 12.5a10 10 0 0 1-18.8 4.2"/>
                                                                     </svg>
                                                                 {:else}
                                                                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 4H8l-7 8 7 8h13a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z"/><line x1="18" y1="9" x2="12" y2="15"/><line x1="12" y1="9" x2="18" y2="15"/></svg>

@@ -63,5 +63,23 @@ export const GAME_REGISTRY: Record<string, GameConfig> = {
 		},
 		localStorageSaveKey: 'unblockme_save',
 		hasTutorials: false
+	},
+	energy: {
+		id: 'energy',
+		name: '에너지 서킷',
+		displayTitle: 'Energy Circuit',
+		gameUrl: '/games/energy',
+		difficulties: ['easy', 'medium', 'hard', 'expert', 'master'],
+		difficultyLabels: {
+			easy: '쉬움',
+			medium: '보통',
+			hard: '어려움',
+			expert: '전문가',
+			master: '마스터'
+		},
+		localStorageSaveKey: 'energy_save',
+		hasTutorials: true,
+		tutorialPrefix: 'energy_',
+		tutorialLocalStorageKey: 'energy_unlocked_tutorials'
 	}
 };

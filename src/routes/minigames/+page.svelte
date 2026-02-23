@@ -31,6 +31,13 @@
             tagline: '2:2 트릭테이킹 카드게임',
             url: '/games/tichu',
             accentColor: '#22c55e'
+        },
+        {
+            id: 'energy',
+            name: '에너지 서킷',
+            tagline: '회로를 연결하여 전구를 켜세요',
+            url: '/games/start/energy',
+            accentColor: '#f59e0b'
         }
     ];
 </script>
@@ -74,6 +81,14 @@
                                     <rect x="3" y="2" width="12" height="17" rx="2"/>
                                     <rect x="9" y="5" width="12" height="17" rx="2" fill="rgba(255,255,255,0.3)"/>
                                     <text x="7" y="13" font-size="7" font-weight="bold" fill="currentColor" stroke="none">T</text>
+                                </svg>
+                            {:else if game.id === 'energy'}
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <circle cx="12" cy="8" r="4" stroke-width="1.5"/>
+                                    <path d="M12 4v-2M12 12v2M8 8H6M18 8h-2" stroke-width="1.5"/>
+                                    <path d="M11 14l-1.5 4h5L13 14" fill="rgba(255,255,255,0.3)" stroke-width="1.5"/>
+                                    <line x1="10" y1="19" x2="14" y2="19" stroke-width="1.5"/>
+                                    <line x1="10.5" y1="20.5" x2="13.5" y2="20.5" stroke-width="1.5"/>
                                 </svg>
                             {/if}
                         </div>

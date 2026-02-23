@@ -195,9 +195,12 @@ async function main() {
 const seedData = `
 -- Seed Titles
 INSERT INTO minigame_titles (title_code, title_name, description, condition_type, condition_value) VALUES
-('sudoku_master', '스도쿠 깎는', '스도쿠 총점 1위', 'ranking', '{"gameId": "sudoku", "rank": 1}'),
-('monthly_king', '집에 안가는', '월간 최다 플레이 (최소 3회)', 'ranking', '{"type": "monthly_play_count", "rank": 1, "min_count": 3}'),
-('beginner', '새내기', '가입 후 30일 이내', 'account', '{"type": "account_age", "value": 30}')
+('sudoku_master', '스도쿠 마스터', '스도쿠 월간 랭킹 1위', 'ranking', '{"gameId": "sudoku", "rank": 1}'),
+('beginner', '새내기', '가입 후 30일 이내', 'account', '{"type": "account_age", "value": 30}'),
+('tichu_master', '티츄 마스터', '티츄 월간 랭킹 1위', 'ranking', '{"gameId": "tichu", "rank": 1}'),
+('killer_sudoku_master', '킬러 스도쿠 마스터', '킬러 스도쿠 월간 랭킹 1위', 'ranking', '{"gameId": "killer-sudoku", "rank": 1}'),
+('unblock_me_master', '언블록미 마스터', '언블록미 월간 랭킹 1위', 'ranking', '{"gameId": "unblock-me", "rank": 1}'),
+('energy_master', '에너지 서킷 마스터', '에너지 서킷 월간 랭킹 1위', 'ranking', '{"gameId": "energy", "rank": 1}')
 ON CONFLICT (title_code) DO UPDATE SET
     description = EXCLUDED.description,
     condition_value = EXCLUDED.condition_value;

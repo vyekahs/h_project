@@ -45,11 +45,14 @@ export const POST: RequestHandler = async ({ request, locals, cookies }) => {
                     WHERE title_code = ANY(ARRAY[${sql.join(assignedCodes.map(c => sql`${c}`), sql`, `)}])
                 `);
                 
-                // Filter out titles that belong to a different game
+                // Only show titles relevant to this game
                 newTitles = titleInfoRes
                     .filter((r: any) => {
                         const cond = r.condition_value;
-                        if (!cond) return true; // General titles might not have a condition_value or gameId
+                        if (!cond) return false;
+                        // Exclude non-game titles (account_age, gift_count, etc.)
+                        if (!cond.gameId && !cond.rank && cond.type !== 'total_points' && cond.type !== 'play_count') return false;
+                        // Exclude titles for a different game
                         if (cond.gameId && cond.gameId !== gameId) return false;
                         return true;
                     })
