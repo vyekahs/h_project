@@ -38,12 +38,10 @@
 			</div>
 		</div>
 
-		{#if game.showSignupPrompt}
-			<div class="signup-prompt">
-				<div class="signup-icon">📝</div>
-				<div class="signup-text">회원가입하면 기록이 저장됩니다!</div>
-				<a href="/signup?redirectTo=/games/tichu" class="btn-signup">회원가입</a>
-				<a href="/login?redirectTo=/games/tichu" class="btn-login-link">이미 계정이 있나요?</a>
+		{#if game.showVisitPrompt}
+			<div class="visit-prompt">
+				<div class="visit-icon">🏠</div>
+				<div class="visit-text">카페를 방문하시면 기록을 저장하고<br>랭킹에 도전할 수 있어요!</div>
 			</div>
 		{:else if game.rankingResult}
 			<div class="ranking-info">
@@ -262,49 +260,27 @@
 	}
 	.btn-setup:hover { opacity: 1; color: #d1d5db; }
 
-	/* Signup Prompt */
-	.signup-prompt {
+	/* Visit Prompt */
+	.visit-prompt {
 		margin-bottom: 24px;
 		padding: 20px 16px;
 		border-radius: 16px;
-		background: linear-gradient(135deg, rgba(59, 130, 246, 0.15) 0%, rgba(37, 99, 235, 0.1) 100%);
-		border: 1px solid rgba(59, 130, 246, 0.4);
+		background: linear-gradient(135deg, rgba(245, 158, 11, 0.12) 0%, rgba(217, 119, 6, 0.08) 100%);
+		border: 1px solid rgba(245, 158, 11, 0.3);
 		position: relative;
 		z-index: 10;
 		text-align: center;
 	}
-	.signup-icon {
+	.visit-icon {
 		font-size: 2rem;
 		margin-bottom: 8px;
 	}
-	.signup-text {
-		font-size: 0.95rem;
+	.visit-text {
+		font-size: 0.9rem;
 		color: #d1d5db;
-		margin-bottom: 16px;
 		font-weight: 500;
+		line-height: 1.5;
 	}
-	.btn-signup {
-		display: block;
-		padding: 12px 32px;
-		border-radius: 14px;
-		background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
-		color: #fff;
-		font-weight: 700;
-		font-size: 1rem;
-		text-decoration: none;
-		text-align: center;
-		box-shadow: 0 4px 15px rgba(59, 130, 246, 0.4);
-		transition: all 0.2s;
-	}
-	.btn-signup:hover { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(59, 130, 246, 0.6); }
-	.btn-login-link {
-		display: block;
-		margin-top: 10px;
-		font-size: 0.8rem;
-		color: #9ca3af;
-		text-decoration: underline;
-	}
-	.btn-login-link:hover { color: #d1d5db; }
 
 	/* Title Acquired Animation */
 	.title-acquired {

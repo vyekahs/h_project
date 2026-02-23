@@ -47,6 +47,7 @@ export function createUnblockMeGame() {
     let earnedPointsResult = $state(0);
     let calculatedScore = $state(0);
     let newTitleName = $state<string | null>(null);
+    let showVisitPrompt = $state(false);
 
     // Modal helpers
     function showAlert(msg: string) { alertMessage = msg; }
@@ -142,6 +143,7 @@ export function createUnblockMeGame() {
             history = [];
             earnedPointsResult = 0;
             calculatedScore = 0;
+            showVisitPrompt = false;
             hasRestarted = false;
 
             gameState = 'playing';
@@ -201,6 +203,8 @@ export function createUnblockMeGame() {
                 if (data.newTitles && data.newTitles.length > 0) {
                     newTitleName = data.newTitles[0];
                 }
+            } else if (res.status === 401 || res.status === 403) {
+                showVisitPrompt = true;
             }
         } catch (e) {
             console.error('Failed to submit score', e);
@@ -270,6 +274,7 @@ export function createUnblockMeGame() {
         get earnedPointsResult() { return earnedPointsResult; },
         get calculatedScore() { return calculatedScore; },
         get newTitleName() { return newTitleName; },
+        get showVisitPrompt() { return showVisitPrompt; },
         // Functions
         showAlert,
         showConfirm,

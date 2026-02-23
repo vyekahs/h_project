@@ -20,6 +20,12 @@ export const POST: RequestHandler = async ({ request, locals, cookies }) => {
     }
     const userId = user.id;
 
+    // 카페 방문 이력 확인
+    const visitCheck = await db.execute(sql`SELECT 1 FROM visits WHERE attendee_id = ${userId} LIMIT 1`);
+    if (visitCheck.length === 0) {
+        return json({ error: '카페 방문 기록이 없습니다' }, { status: 403 });
+    }
+
     const { gameId, difficulty, clearTime, score, skipReward, mistakes } = await request.json();
 
     if (!gameId || !difficulty || clearTime === undefined) {

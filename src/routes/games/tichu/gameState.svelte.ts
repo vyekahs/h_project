@@ -51,8 +51,8 @@ export function createTichuGameState() {
 	let scoreSubmitting = $state(false);
 	let newTitleName = $state<string | null>(null);
 
-	// Signup prompt (비로그인 시 회원가입 유도)
-	let showSignupPrompt = $state(false);
+	// Visit prompt (비로그인 시 카페 방문 안내)
+	let showVisitPrompt = $state(false);
 
 	// Exchange result display
 	let exchangeResultData = $state<ExchangeResultEntry[] | null>(null);
@@ -349,32 +349,13 @@ export function createTichuGameState() {
 				if (data.newTitles && data.newTitles.length > 0) {
 					newTitleName = data.newTitles[0];
 				}
-				localStorage.removeItem('tichu_pending_score');
-			} else if (res.status === 401) {
-				localStorage.setItem('tichu_pending_score', JSON.stringify({ isWin, rounds }));
-				showSignupPrompt = true;
+			} else if (res.status === 401 || res.status === 403) {
+				showVisitPrompt = true;
 			}
 		} catch (e) {
 			console.error('[Tichu] Score submit failed:', e);
 		} finally {
 			scoreSubmitting = false;
-		}
-	}
-
-	// 페이지 로드 시 pending score 체크 (회원가입 후 복귀)
-	function checkPendingScore() {
-		const pending = localStorage.getItem('tichu_pending_score');
-		if (pending) {
-			try {
-				const data = JSON.parse(pending);
-				if (data.rounds) {
-					submitTichuScore(data.isWin, data.rounds);
-				} else {
-					localStorage.removeItem('tichu_pending_score');
-				}
-			} catch {
-				localStorage.removeItem('tichu_pending_score');
-			}
 		}
 	}
 
@@ -580,8 +561,8 @@ export function createTichuGameState() {
 		get rankingResult() { return rankingResult; },
 		get newTitleName() { return newTitleName; },
 		set newTitleName(v: string | null) { newTitleName = v; },
-		get showSignupPrompt() { return showSignupPrompt; },
-		set showSignupPrompt(v: boolean) { showSignupPrompt = v; },
+		get showVisitPrompt() { return showVisitPrompt; },
+		set showVisitPrompt(v: boolean) { showVisitPrompt = v; },
 		get toasts() { return toasts; },
 		get lastEvent() { return lastEvent; },
 		get exchangeResultData() { return exchangeResultData; },
@@ -621,7 +602,6 @@ export function createTichuGameState() {
 		setWish,
 		giftDragon,
 		playBomb,
-		addToast,
-		checkPendingScore
+		addToast
 	};
 }

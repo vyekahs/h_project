@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onDestroy, onMount } from 'svelte';
+	import { onDestroy } from 'svelte';
 	import { createTichuGameState } from './gameState.svelte';
 	import GameSetup from './components/GameSetup.svelte';
 	import TichuTable from './components/TichuTable.svelte';
@@ -9,10 +9,6 @@
 	import GameOverModal from './components/GameOverModal.svelte';
 
 	const game = createTichuGameState();
-
-	onMount(() => {
-		game.checkPendingScore();
-	});
 
 	onDestroy(() => {
 		game.cleanup();

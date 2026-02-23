@@ -36,6 +36,7 @@ export function createKillerSudokuGame() {
     let earnedPointsResult = $state(0);
     let calculatedScore = $state(0);
     let newTitleName = $state<string | null>(null);
+    let showVisitPrompt = $state(false);
     let isTimeFrozen = $state(false);
 
     let hasSavedGame = $state(false);
@@ -476,6 +477,8 @@ export function createKillerSudokuGame() {
                 if (data.newTitles && data.newTitles.length > 0) {
                     newTitleName = data.newTitles[0];
                 }
+            } else if (res.status === 401 || res.status === 403) {
+                showVisitPrompt = true;
             } else {
                 console.error('Score submit failed:', res.status, data);
             }
@@ -525,6 +528,7 @@ export function createKillerSudokuGame() {
         get earnedPointsResult() { return earnedPointsResult; },
         get calculatedScore() { return calculatedScore; },
         get newTitleName() { return newTitleName; },
+        get showVisitPrompt() { return showVisitPrompt; },
         get isTimeFrozen() { return isTimeFrozen; },
         get hasSavedGame() { return hasSavedGame; },
         get hasRestarted() { return hasRestarted; },

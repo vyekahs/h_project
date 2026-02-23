@@ -174,6 +174,7 @@
             showAd={game.isWon && !game.hasRestarted && GAME_CONFIG.ENABLE_ADS}
             onAdReward={game.handleAdReward}
             newTitleName={game.newTitleName}
+            showVisitPrompt={game.showVisitPrompt}
             primaryAction={{ label: '다시 도전하기', onclick: () => goto(`/games/start/${game.gameMode === 'killer' ? 'killer-sudoku' : 'sudoku'}`) }}
             secondaryAction={{ label: '나가기', onclick: game.quitGame }}
         />

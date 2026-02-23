@@ -11,6 +11,7 @@
         primaryAction: { label: string; onclick: () => void };
         secondaryAction: { label: string; onclick: () => void };
         newTitleName?: string | null;
+        showVisitPrompt?: boolean;
     }
 
     const {
@@ -23,6 +24,7 @@
         primaryAction,
         secondaryAction,
         newTitleName = null,
+        showVisitPrompt = false,
     }: Props = $props();
 </script>
 
@@ -70,6 +72,13 @@
                 </div>
                 <div class="title-label">칭호 획득!</div>
                 <div class="title-name">{newTitleName}</div>
+            </div>
+        {/if}
+
+        {#if showVisitPrompt}
+            <div class="visit-prompt">
+                <div class="visit-icon">🏠</div>
+                <div class="visit-text">카페를 방문하시면 기록을 저장하고<br>랭킹에 도전할 수 있어요!</div>
             </div>
         {/if}
 
@@ -327,6 +336,26 @@
         -webkit-text-fill-color: transparent;
         background-clip: text;
     }
+    /* Visit Prompt */
+    .visit-prompt {
+        width: 100%;
+        padding: 16px;
+        border-radius: 16px;
+        background: linear-gradient(135deg, rgba(245, 158, 11, 0.1) 0%, rgba(217, 119, 6, 0.06) 100%);
+        border: 1px solid rgba(245, 158, 11, 0.25);
+        text-align: center;
+    }
+    .visit-icon {
+        font-size: 1.8rem;
+        margin-bottom: 6px;
+    }
+    .visit-text {
+        font-size: 0.9rem;
+        color: #92400e;
+        font-weight: 500;
+        line-height: 1.5;
+    }
+
     @keyframes titlePopIn {
         from { opacity: 0; transform: scale(0.5) translateY(10px); }
         to { opacity: 1; transform: scale(1) translateY(0); }
