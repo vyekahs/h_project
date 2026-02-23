@@ -20,16 +20,19 @@
 
 	// Track which tile was just tapped for animation
 	let tappedTile: string | null = $state(null);
+	let tappedTimeout: ReturnType<typeof setTimeout> | null = null;
 
-	function handleTap(row: number, col: number) {
+	function handleTap(e: PointerEvent, row: number, col: number) {
+		e.preventDefault();
 		if (isGameOver) return;
 		const tile = tiles[row]?.[col];
 		if (!tile || tile.fixed || tile.type === 'empty') return;
 
+		if (tappedTimeout) clearTimeout(tappedTimeout);
 		tappedTile = `${row},${col}`;
-		setTimeout(() => {
+		tappedTimeout = setTimeout(() => {
 			tappedTile = null;
-		}, 200);
+		}, 300);
 
 		onrotate(row, col);
 	}
@@ -109,16 +112,25 @@
 					<g
 						class="tile-group"
 						class:tapped={tappedTile === `${r},${c}`}
-						onclick={() => handleTap(r, c)}
+						class:tappable={!tile.fixed && tile.type !== 'empty'}
+						onpointerdown={(e) => handleTap(e, r, c)}
 						style="cursor: {tile.fixed ? 'default' : 'pointer'}"
 					>
+						<!-- Invisible hit area covering entire cell -->
+						<rect
+							x={c * cellSize}
+							y={r * cellSize}
+							width={cellSize}
+							height={cellSize}
+							fill="transparent"
+						/>
 						<!-- Pipe paths with rotation -->
 						<g
 							class="pipe-rotate"
 							style="
 								transform-origin: {c * cellSize + half}px {r * cellSize + half}px;
 								transform: rotate({tile.rotation * 90}deg);
-								transition: transform 0.15s cubic-bezier(0.2, 0.8, 0.2, 1);
+								transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
 							"
 						>
 							{#if tile.type === 'straight'}
@@ -253,6 +265,10 @@
 		aspect-ratio: 1;
 		max-width: 500px;
 		margin: 0 auto;
+		touch-action: manipulation;
+		-webkit-tap-highlight-color: transparent;
+		-webkit-touch-callout: none;
+		user-select: none;
 	}
 
 	.board-svg {
@@ -335,8 +351,17 @@
 		filter: drop-shadow(0 0 1px rgba(251, 191, 36, 0.5));
 	}
 
+	/* Touch behavior */
+	.tile-group.tappable {
+		touch-action: manipulation;
+	}
+
 	/* Tap feedback */
 	.tile-group.tapped {
-		opacity: 0.8;
+		opacity: 0.85;
+	}
+
+	.tile-group.tapped rect {
+		fill: rgba(245, 158, 11, 0.12) !important;
 	}
 </style>
