@@ -300,6 +300,14 @@ function calcContextModifier(
 			else mod -= 0.15;                    // K 페어/트리플: 중간 보존
 		}
 
+		// 봉황 페어/트리플: 낮은 랭크에 봉황 낭비 페널티
+		if ((combo.type === 'pair' || combo.type === 'triple') &&
+			combo.cards.some(c => c.type === 'special' && c.special === 'phoenix') &&
+			hand.length > 2) {
+			if (combo.rank <= 8) mod -= 0.3;       // 8 이하: 강한 페널티
+			else if (combo.rank <= 10) mod -= 0.15; // 9-10: 중간 페널티
+		}
+
 		// 싱글: 멀티콤보 구성 카드를 싱글로 내면 감점
 		if (combo.type === 'single' && combo.cards[0].type === 'normal') {
 			const card = combo.cards[0] as NormalCard;
@@ -442,6 +450,14 @@ function calcContextModifier(
 			const hasKing = combo.cards.some(c => c.type === 'normal' && (c as NormalCard).rank === 13);
 			if (hasAce) mod -= 0.15;
 			if (hasKing) mod -= 0.08;
+		}
+
+		// 봉황 페어/트리플: 낮은 랭크에 봉황 낭비 페널티
+		if ((combo.type === 'pair' || combo.type === 'triple') &&
+			combo.cards.some(c => c.type === 'special' && c.special === 'phoenix') &&
+			hand.length > 2) {
+			if (combo.rank <= 8) mod -= 0.3;
+			else if (combo.rank <= 10) mod -= 0.15;
 		}
 
 		// 엔드게임: 이 트릭 이기면 나갈 수 있나?

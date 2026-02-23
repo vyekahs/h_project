@@ -1097,7 +1097,10 @@ export function shouldPlayBomb(
 		if (attacker.hand.length <= 2) {
 			return beatable[0]; // Must stop them
 		}
-		if (weights.aggressiveness > 0.7 && weights.bombHolding < 0.4) {
+		// 카운터폭탄은 트릭 포인트가 충분할 때만 (10점 이상)
+		const counterTrickCards = context.trick?.plays.flatMap(p => p.combination.cards) || [];
+		const counterTrickPoints = getTrickPoints(counterTrickCards);
+		if (weights.aggressiveness > 0.7 && weights.bombHolding < 0.4 && counterTrickPoints >= 10) {
 			return beatable[0];
 		}
 		return null;
