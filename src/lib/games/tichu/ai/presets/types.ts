@@ -2,27 +2,9 @@ import type { Card, Combination, SeatIndex, NormalCard, TichuPlayer } from '../.
 import type { AiDecisionContext } from '../types';
 
 /**
- * 티츄급 패인지 판별 (드래곤+봉황+A 2장 이상 → 보존 우선)
- * 교환 시 파트너에게 좋은 카드를 줄지 결정하는 데 사용
- */
-export function isTichuCaliberHand(hand: Card[]): boolean {
-	const hasDragon = hand.some(c => c.type === 'special' && c.special === 'dragon');
-	const hasPhoenix = hand.some(c => c.type === 'special' && c.special === 'phoenix');
-	const aceCount = hand.filter(c => c.type === 'normal' && c.rank === 14).length;
-
-	// 드래곤 + 봉황 + A 1장 이상이면 티츄급
-	if (hasDragon && hasPhoenix && aceCount >= 1) return true;
-	// 드래곤 + A 2장 이상이면 티츄급
-	if (hasDragon && aceCount >= 2) return true;
-
-	return false;
-}
-
-/**
  * 파트너에게 줄 교환 카드를 스마트하게 선택.
  * protectedIds를 존중하면서 가능한 높은 카드를 줌.
- * 티츄급 핸드면 최고 카드를 보존하고 중간급 카드를 줌.
- * null 반환 시 strategy.ts 기본 로직으로 폴백.
+ * null 반환 시 strategy.ts 기본 로직으로 폴백 (용 > 봉 > A > K).
  */
 export function selectBestPartnerCard(
 	hand: Card[],
@@ -30,22 +12,7 @@ export function selectBestPartnerCard(
 	rankGroups: Map<number, NormalCard[]>,
 	protectedIds: Set<string>
 ): Card | null {
-	// 티츄급 핸드: 파워 카드 보존, 중간급(10~Q) 싱글톤을 줌
-	if (isTichuCaliberHand(hand)) {
-		const mediumSingletons = singletons
-			.filter(c => !protectedIds.has(c.id) && c.rank >= 10 && c.rank <= 12)
-			.sort((a, b) => b.rank - a.rank);
-		if (mediumSingletons.length > 0) return mediumSingletons[0];
-
-		const mediumCards = (hand.filter(c => c.type === 'normal') as NormalCard[])
-			.filter(c => !protectedIds.has(c.id) && c.rank >= 8 && c.rank <= 12)
-			.sort((a, b) => b.rank - a.rank);
-		if (mediumCards.length > 0) return mediumCards[0];
-
-		return null;
-	}
-
-	// 일반 핸드: 높은 싱글톤 우선 (페어/폭탄을 안 깨뜨림)
+	// 높은 싱글톤 우선 (페어/폭탄을 안 깨뜨림)
 	const highSingletons = singletons
 		.filter(c => !protectedIds.has(c.id) && c.rank >= 10)
 		.sort((a, b) => b.rank - a.rank);

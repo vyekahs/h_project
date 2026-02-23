@@ -414,8 +414,11 @@ export class LocalGameEngine {
 				this.state.players[seat].smallTichu = true;
 			}
 
-			// AI exchange
-			const exchange = ai.makeExchangeDecision(this.state.players[seat].hand);
+			// AI exchange — 파트너가 티츄 선언했으면 최고 카드를 줘야 함
+			const partnerSeat = ((seat + 2) % 4) as SeatIndex;
+			const partnerPlayer = this.state.players[partnerSeat];
+			const partnerDeclaredTichu = partnerPlayer.grandTichu === true || partnerPlayer.smallTichu === true;
+			const exchange = ai.makeExchangeDecision(this.state.players[seat].hand, partnerDeclaredTichu);
 			this.exchangeSubmissions[seat] = exchange;
 		}
 

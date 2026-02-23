@@ -187,7 +187,8 @@ export function selectExchangeCards(
 	hand: Card[],
 	seat: SeatIndex,
 	weights: PersonalityWeights,
-	behavior: PresetBehavior = {}
+	behavior: PresetBehavior = {},
+	partnerDeclaredTichu: boolean = false
 ): ExchangeCards {
 	const normalCards = hand.filter(c => c.type === 'normal') as NormalCard[];
 	const rankGroups = new Map<number, NormalCard[]>();
@@ -239,8 +240,9 @@ export function selectExchangeCards(
 		protectedIds.delete(mahjongCard.id); // 마작을 주기로 했으므로 보호 해제
 	}
 
+	// 파트너가 티츄를 선언했으면 무조건 최고 카드를 줌 (behavior hook 스킵)
 	// Behavior hook: 프리셋별 파트너 교환 카드 선택
-	if (!toPartner) {
+	if (!toPartner && !partnerDeclaredTichu) {
 		const behaviorCard = behavior.selectPartnerExchangeCard?.(hand, singletons, rankGroups, protectedIds);
 		if (behaviorCard) {
 			toPartner = behaviorCard;
@@ -258,24 +260,14 @@ export function selectExchangeCards(
 		if (phoenix) toPartner = phoenix;
 	}
 	if (!toPartner) {
-		// A 싱글톤 (페어 깨지 않음)
-		const aceSingletons = singletons.filter(c => c.rank === 14);
-		if (aceSingletons.length > 0) toPartner = aceSingletons[0];
-	}
-	if (!toPartner) {
-		// A 3장 이상 (1장 줘도 페어 유지)
+		// A가 있으면 무조건 1장 줌 (페어여도 파트너 지원이 더 중요)
 		const aceGroup = rankGroups.get(14);
-		if (aceGroup && aceGroup.length >= 3) toPartner = aceGroup[0];
+		if (aceGroup && aceGroup.length > 0) toPartner = aceGroup[0];
 	}
 	if (!toPartner) {
-		// K 싱글톤
-		const kingSingletons = singletons.filter(c => c.rank === 13);
-		if (kingSingletons.length > 0) toPartner = kingSingletons[0];
-	}
-	if (!toPartner) {
-		// K 3장 이상
+		// K가 있으면 무조건 1장 줌
 		const kingGroup = rankGroups.get(13);
-		if (kingGroup && kingGroup.length >= 3) toPartner = kingGroup[0];
+		if (kingGroup && kingGroup.length > 0) toPartner = kingGroup[0];
 	}
 	if (!toPartner) {
 		// Fallback: 가장 강한 카드 (개, 마작 제외)
