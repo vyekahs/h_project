@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { Combination, SeatIndex } from '$lib/games/tichu/types';
+	import { getTeam } from '$lib/games/tichu/constants';
 	import CardComponent from './CardComponent.svelte';
 
 	let { trick, lastPlay = null, mySeat, playerNames = {}, isMyTurn = false } = $props<{
@@ -16,6 +17,7 @@
 	}>();
 
 	const lastPlayName = $derived(lastPlay ? (lastPlay.seat === mySeat ? '나' : (playerNames[lastPlay.seat] ?? '')) : '');
+	const isSameTeam = $derived(lastPlay ? getTeam(lastPlay.seat) === getTeam(mySeat) : false);
 
 	// Dynamic overlap for trick cards when many are played
 	const trickCardOverlap = $derived.by(() => {
@@ -71,7 +73,7 @@
 <div class="trick-area">
 	{#if trick && lastPlay}
 		<div class="trick-display pos-{seatPosition(lastPlay.seat)}">
-			<div class="trick-player">{lastPlayName}</div>
+			<div class="trick-player" class:team-mine={isSameTeam} class:team-opponent={!isSameTeam}>{lastPlayName}</div>
 			<div class="trick-cards" style="--trick-overlap: -{trickCardOverlap}px">
 				{#each lastPlay.combination.cards as card (card.id)}
 					<CardComponent {card} />
@@ -115,6 +117,14 @@
 		backdrop-filter: blur(4px);
 		-webkit-backdrop-filter: blur(4px);
 		border: 1px solid rgba(255, 255, 255, 0.15);
+	}
+	.trick-player.team-mine {
+		color: #93c5fd;
+		border-color: rgba(147, 197, 253, 0.3);
+	}
+	.trick-player.team-opponent {
+		color: #fca5a5;
+		border-color: rgba(252, 165, 165, 0.3);
 	}
 
 	.trick-combo {

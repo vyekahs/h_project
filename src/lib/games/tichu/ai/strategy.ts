@@ -448,7 +448,10 @@ export function decidePlay(
 	}
 
 	// Filter out bombs (handle separately)
-	const iAmCloseToFinishing = hand.length <= 3;
+	// 파트너 티츄 선언 시 내가 먼저 나가기 억제
+	const partnerTichuInFollow = partner.finishOrder === null &&
+		(partner.grandTichu === true || partner.smallTichu);
+	const iAmCloseToFinishing = hand.length <= 3 && !partnerTichuInFollow;
 	// A 트리플/풀하우스는 나갈 수 있는 상황이 아니면 제외
 	const nonBombPlays = beatablePlays.filter(c => {
 		if (isBomb(c)) return false;
@@ -715,7 +718,11 @@ function decideLead(
 	}
 
 	// === Close to finishing: play the combo that empties our hand ===
-	if (hand.length <= 5) {
+	// 파트너가 티츄 선언하고 아직 안 나갔으면 → 내가 먼저 나가지 않음
+	const partnerForEndgame = context.players[getPartnerSeat(context.currentSeat)];
+	const partnerTichuActive = partnerForEndgame.finishOrder === null &&
+		(partnerForEndgame.grandTichu === true || partnerForEndgame.smallTichu);
+	if (hand.length <= 5 && !partnerTichuActive) {
 		const endgameResult = decideLeadEndgame(hand, plan, weights, context);
 		if (endgameResult.length > 0) return endgameResult;
 	}

@@ -109,6 +109,9 @@
 		<div class="special-content">
 			<img src={displayInfo.imageSrc} alt={displayInfo.name} class="special-image" />
 		</div>
+		{#if card.type === 'special' && card.special === 'mahjong'}
+			<div class="mahjong-rank">1</div>
+		{/if}
 		<div class="glow"></div>
 	{:else}
 		<div class="card-top-left">
@@ -144,7 +147,7 @@
 	@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
 	.card {
-		width: 46px; 
+		width: 46px;
 		height: 66px;
 		border-radius: 6px;
 		background: #fff;
@@ -160,6 +163,7 @@
 		flex-direction: column;
 		justify-content: space-between;
 		padding: 3px;
+		isolation: isolate;
 	}
 
 	/* Hover effect for mouse users */
@@ -206,6 +210,16 @@
 		height: 36px;
 		object-fit: contain;
 		filter: drop-shadow(0 2px 4px rgba(0,0,0,0.15));
+	}
+	.mahjong-rank {
+		position: absolute;
+		top: 2px;
+		left: 4px;
+		font-size: 0.7rem;
+		font-weight: 800;
+		color: #065f46;
+		z-index: 3;
+		line-height: 1;
 	}
 
 	/* Normal Card Layout */

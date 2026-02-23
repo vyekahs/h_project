@@ -35,8 +35,8 @@
 	// object — TrickArea's $derived won't detect plays array mutations.
 	const lastPlay = $derived.by(() => {
 		const t = gs()?.round?.trick;
-		if (!t || t.plays.length === 0) return null;
-		return t.plays[t.plays.length - 1];
+		if (t && t.plays.length > 0) return t.plays[t.plays.length - 1];
+		return game.lastTrickPlay ?? null;
 	});
 
 	// Player names for trick display
@@ -256,7 +256,7 @@
 
 		<!-- Center Trick (only show during play phases) -->
 		<div class="center-area">
-			{#if game.phase === 'playing' || game.phase === 'wish_declare' || game.phase === 'dragon_gift' || game.phase === 'round_ending'}
+			{#if game.phase === 'playing' || game.phase === 'wish_declare' || game.phase === 'dragon_gift' || game.phase === 'round_ending' || game.phase === 'game_end'}
 				{#if dogEvent}
 					<div class="special-event-notice dog-notice">
 						<img src="/tichu/dog.svg" alt="Dog" class="event-icon-img" />

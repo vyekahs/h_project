@@ -52,6 +52,12 @@ export function searchBestPlay(
 ): PlayCandidate[] {
 	if (candidates.length === 0) return [];
 
+	// 파트너 티츄 선언 시 나가기 보너스 억제
+	const partnerSeat = getPartnerSeat(context.currentSeat);
+	const partnerInfo = context.players[partnerSeat];
+	const partnerTichuActive = partnerInfo.finishOrder === null &&
+		(partnerInfo.grandTichu === true || partnerInfo.smallTichu);
+
 	// hand의 콤보를 루프 밖에서 한 번만 계산 (성능 최적화)
 	const handCombos = findAllPlayableCombinations(hand);
 	const handMultiCombos = handCombos.filter(c => !isBomb(c) && c.type !== 'single');
@@ -98,17 +104,17 @@ export function searchBestPlay(
 			// (1 - winProb)가 높으면 팔로우로 이기기 어려운 카드 → 리드에서 먼저 처리
 			totalScore = exitRate * 0.5 + (1 - winProb) * 0.3 + contextMod;
 
-			// 나갈 수 있으면 대폭 보너스
+			// 나갈 수 있으면 대폭 보너스 (파트너 티츄면 억제)
 			if (remainingHand.length === 0) {
-				totalScore = 2.0 + contextMod;
+				totalScore = (partnerTichuActive ? 0.8 : 2.0) + contextMod;
 			}
 		} else {
 			// 팔로우: winProb과 exitRate 균형
 			totalScore = winProb * 0.3 + exitRate * 0.4 + contextMod;
 
-			// 나갈 수 있으면 대폭 보너스
+			// 나갈 수 있으면 대폭 보너스 (파트너 티츄면 억제)
 			if (remainingHand.length === 0) {
-				totalScore = 2.0 + contextMod;
+				totalScore = (partnerTichuActive ? 0.8 : 2.0) + contextMod;
 			}
 		}
 
@@ -286,6 +292,12 @@ function calcContextModifier(
 			const hasKing = combo.cards.some(c => c.type === 'normal' && (c as NormalCard).rank === 13);
 			if (hasAce) mod -= 0.15;
 			if (hasKing) mod -= 0.08;
+		}
+
+		// A/K 페어/트리플 리드 보존: 팔로우에서 상대 콤보를 이기는 데 필요
+		if ((combo.type === 'pair' || combo.type === 'triple') && combo.rank >= 13 && hand.length > 4) {
+			if (combo.rank === 14) mod -= 0.25; // A 페어/트리플: 강한 보존
+			else mod -= 0.15;                    // K 페어/트리플: 중간 보존
 		}
 
 		// 싱글: 멀티콤보 구성 카드를 싱글로 내면 감점
