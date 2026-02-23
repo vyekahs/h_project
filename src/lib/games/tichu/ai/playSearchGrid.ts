@@ -280,6 +280,14 @@ function calcContextModifier(
 			mod += applyFullHousePenalty(combo, hand);
 		}
 
+		// 스트레이트: A/K 포함 시 고가치 카드 낭비 페널티
+		if (combo.type === 'straight') {
+			const hasAce = combo.cards.some(c => c.type === 'normal' && (c as NormalCard).rank === 14);
+			const hasKing = combo.cards.some(c => c.type === 'normal' && (c as NormalCard).rank === 13);
+			if (hasAce) mod -= 0.15;
+			if (hasKing) mod -= 0.08;
+		}
+
 		// 싱글: 멀티콤보 구성 카드를 싱글로 내면 감점
 		if (combo.type === 'single' && combo.cards[0].type === 'normal') {
 			const card = combo.cards[0] as NormalCard;
@@ -416,6 +424,14 @@ function calcContextModifier(
 			mod += applyFullHousePenalty(combo, hand);
 		}
 
+		// 스트레이트: A/K 포함 시 고가치 카드 낭비 페널티
+		if (combo.type === 'straight') {
+			const hasAce = combo.cards.some(c => c.type === 'normal' && (c as NormalCard).rank === 14);
+			const hasKing = combo.cards.some(c => c.type === 'normal' && (c as NormalCard).rank === 13);
+			if (hasAce) mod -= 0.15;
+			if (hasKing) mod -= 0.08;
+		}
+
 		// 엔드게임: 이 트릭 이기면 나갈 수 있나?
 		if (hand.length <= 5 && remainingHand.length > 0) {
 			const afterCombo = detectCombination(remainingHand);
@@ -477,7 +493,8 @@ function applyFullHousePenalty(combo: Combination, hand: Card[]): number {
 		if (pc.type !== 'normal') continue;
 		const pRank = (pc as NormalCard).rank;
 		if (isSingletonInHand(pc, hand)) {
-			if (pRank >= 13) penalty -= 0.12;
+			if (pRank === 14) penalty -= 0.25;        // A 싱글톤 페어: 강한 페널티
+			else if (pRank === 13) penalty -= 0.18;    // K 싱글톤 페어: 중간 페널티
 			else if (pRank >= 11) penalty -= 0.06;
 		}
 	}

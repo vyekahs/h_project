@@ -930,6 +930,9 @@ export class LocalGameEngine {
 			return;
 		}
 		if (this.destroyed || this._paused) return;
+		// Safety: Human 턴이면 AI 처리 시작하지 않음
+		const initialRound = this.state.round;
+		if (initialRound && initialRound.currentSeat === HUMAN_SEAT) return;
 		this.processingAi = true;
 		this.aiTurnQueued = false;
 
@@ -1035,7 +1038,11 @@ export class LocalGameEngine {
 			// If another call was queued while we were processing, restart
 			if (this.aiTurnQueued && !this.destroyed) {
 				this.aiTurnQueued = false;
-				this.processAiTurns();
+				// Human 턴이면 재시작하지 않음 (턴 스킵 방지)
+				const round = this.state.round;
+				if (round && round.currentSeat !== HUMAN_SEAT && this.state.phase === 'playing') {
+					this.processAiTurns();
+				}
 			}
 		}
 	}

@@ -247,38 +247,43 @@ export function selectExchangeCards(
 		}
 	}
 
-	// Default: give partner a strong card, preferring one that is a singleton for US
-	if (!toPartner && weights.partnerAwareness > 0.4) {
-		// Prefer giving a high singleton (A or K that we have only one of)
-		const highSingletons = singletons
-			.filter(c => c.rank >= 13 && !protectedIds.has(c.id))
-			.sort((a, b) => b.rank - a.rank);
-		if (highSingletons.length > 0) {
-			toPartner = highSingletons[0];
-		}
-	}
-
+	// Default: 용 > 봉 > A > K 순서로 가장 좋은 카드를 파트너에게 줌
+	// (protectedIds 무시 — 파트너에게는 최고의 카드를 줘야 함)
 	if (!toPartner) {
-		// Give strongest non-protected card
+		const dragon = hand.find(c => c.type === 'special' && c.special === 'dragon');
+		if (dragon) toPartner = dragon;
+	}
+	if (!toPartner) {
+		const phoenix = hand.find(c => c.type === 'special' && c.special === 'phoenix');
+		if (phoenix) toPartner = phoenix;
+	}
+	if (!toPartner) {
+		// A 싱글톤 (페어 깨지 않음)
+		const aceSingletons = singletons.filter(c => c.rank === 14);
+		if (aceSingletons.length > 0) toPartner = aceSingletons[0];
+	}
+	if (!toPartner) {
+		// A 3장 이상 (1장 줘도 페어 유지)
+		const aceGroup = rankGroups.get(14);
+		if (aceGroup && aceGroup.length >= 3) toPartner = aceGroup[0];
+	}
+	if (!toPartner) {
+		// K 싱글톤
+		const kingSingletons = singletons.filter(c => c.rank === 13);
+		if (kingSingletons.length > 0) toPartner = kingSingletons[0];
+	}
+	if (!toPartner) {
+		// K 3장 이상
+		const kingGroup = rankGroups.get(13);
+		if (kingGroup && kingGroup.length >= 3) toPartner = kingGroup[0];
+	}
+	if (!toPartner) {
+		// Fallback: 가장 강한 카드 (개, 마작 제외)
 		const candidates = [...hand]
-			.filter(c => !protectedIds.has(c.id))
+			.filter(c => !(c.type === 'special' && (c.special === 'dog' || c.special === 'mahjong')))
 			.sort((a, b) => getCardSortRank(b) - getCardSortRank(a));
-
-		// For partner: give strong card but not from a pair/triple we want to keep
-		for (const card of candidates) {
-			if (card.type === 'special' && card.special === 'dog') continue;
-			if (card.type === 'special' && card.special === 'mahjong') continue;
-			const rank = card.type === 'normal' ? card.rank : 0;
-			const groupSize = rank > 0 ? (rankGroups.get(rank)?.length ?? 0) : 0;
-			// Prefer giving singletons or from groups of 3+ (won't break pair)
-			if (groupSize !== 2) {
-				toPartner = card;
-				break;
-			}
-		}
-		if (!toPartner) {
-			toPartner = candidates[0] || hand[0];
-		}
+		if (candidates.length > 0) toPartner = candidates[0];
+		else toPartner = hand[0];
 	}
 
 	// === Cards to give to opponents ===
@@ -447,7 +452,7 @@ export function decidePlay(
 	// A 트리플/풀하우스는 나갈 수 있는 상황이 아니면 제외
 	const nonBombPlays = beatablePlays.filter(c => {
 		if (isBomb(c)) return false;
-		if (!iAmCloseToFinishing && c.rank === 14 && (c.type === 'triple' || c.type === 'full_house' || c.type === 'stairs')) return false;
+		if (!iAmCloseToFinishing && c.rank === 14 && (c.type === 'triple' || c.type === 'full_house' || c.type === 'stairs' || c.type === 'straight')) return false;
 		return true;
 	});
 	// A 폭탄은 가능하면 사용하지 않음 (A는 싱글 선먹기용으로 보존)
@@ -724,7 +729,7 @@ function decideLead(
 		if (isDogCombo(c)) return false;
 		if (isBomb(c) && weights.bombHolding > 0.3) return false;
 		// A 포함 트리플/풀하우스/연속페어 리드 금지 (나갈 수 있는 상황 제외)
-		if (!canFinishSoon && c.rank === 14 && (c.type === 'triple' || c.type === 'full_house' || c.type === 'stairs')) return false;
+		if (!canFinishSoon && c.rank === 14 && (c.type === 'triple' || c.type === 'full_house' || c.type === 'stairs' || c.type === 'straight')) return false;
 		// 드래곤 리드 금지 시 드래곤 싱글 제외
 		if (dragonLeadAllowed === false &&
 			c.type === 'single' &&
@@ -1143,8 +1148,8 @@ export function shouldPlayBomb(
 		}
 	}
 
-	// If I'm close to finishing and bombing would let me lead
-	if (hand.length <= 4 && weights.aggressiveness > 0.3) {
+	// If I'm close to finishing and bombing would let me lead (최소 5점 트릭)
+	if (hand.length <= 4 && weights.aggressiveness > 0.3 && trickPoints >= 5) {
 		return beatable[0];
 	}
 
