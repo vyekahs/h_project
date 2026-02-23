@@ -79,6 +79,11 @@
 		min-height: 100vh;
 		position: relative;
 		padding-bottom: calc(70px + env(safe-area-inset-bottom));
+		display: flex;
+		flex-direction: column;
+	}
+	.content {
+		flex: 1;
 	}
 
 
