@@ -386,6 +386,10 @@
                 {#if game.rounds.length > 0}
                     <div class="history-header">
                         <h2 class="section-title">라운드 기록</h2>
+                        <button class="undo-btn" onclick={() => game.undoLastRound()} aria-label="실행취소">
+                            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+                            취소
+                        </button>
                     </div>
 
                     <div class="rounds-list">
@@ -661,6 +665,21 @@
         align-items: center;
         margin-bottom: 0.4rem;
     }
+    .undo-btn {
+        display: flex;
+        align-items: center;
+        gap: 0.25rem;
+        padding: 0.3rem 0.6rem;
+        background: rgba(251, 191, 36, 0.1);
+        border: 1px solid rgba(251, 191, 36, 0.25);
+        color: #fbbf24;
+        border-radius: 8px;
+        font-weight: 600;
+        font-size: 0.7rem;
+        cursor: pointer;
+        transition: all 0.15s;
+    }
+    .undo-btn:active { background: rgba(251, 191, 36, 0.2); transform: scale(0.95); }
     .empty-history {
         display: flex;
         align-items: center;
@@ -763,9 +782,28 @@
     .score-slider {
         flex: 1;
         accent-color: #60a5fa;
-        height: 4px;
+        height: 24px;
         margin: 0;
         min-width: 0;
+        -webkit-appearance: none;
+        appearance: none;
+        background: transparent;
+        cursor: pointer;
+    }
+    .score-slider::-webkit-slider-runnable-track {
+        height: 6px;
+        background: rgba(255, 255, 255, 0.12);
+        border-radius: 3px;
+    }
+    .score-slider::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        background: #60a5fa;
+        border: 2px solid #93bbfc;
+        margin-top: -11px;
+        box-shadow: 0 2px 6px rgba(96, 165, 250, 0.4);
     }
     .score-slider:disabled { opacity: 0.3; }
 

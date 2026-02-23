@@ -885,8 +885,8 @@
                                         </div>
                                     {/each}
                                 </div>
-                                {#if isParticipant && game.game_name.includes('티츄') && (game.players || []).filter((p) => !p.is_guest).length === 4}
-                                    <a href="/tools/tichu-counter?sessionId={game.id}&players={encodeURIComponent(JSON.stringify((game.players || []).filter((p) => !p.is_guest).map(p => ({ id: p.id, name: p.name }))))}"
+                                {#if isParticipant && game.game_name.includes('티츄') && (game.players || []).length === 4}
+                                    <a href="/tools/tichu-counter?sessionId={game.id}&players={encodeURIComponent(JSON.stringify((game.players || []).map(p => ({ id: p.id, name: p.name }))))}"
                                        class="btn-tichu-counter">점수판 열기</a>
                                 {/if}
                             </div>
