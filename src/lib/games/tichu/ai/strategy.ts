@@ -942,8 +942,13 @@ export function decideWish(
 		return wishOverride;
 	}
 
-	// Less aggressive players might skip wish
-	if (Math.random() > weights.aggressiveness + 0.3) return null;
+	// 참새를 조합(스트레이트 등)으로 냈을 때만 확률로 소원 스킵
+	// 싱글로 냈으면 무조건 소원 선언
+	const mahjongPlay = context.trick?.plays[0]?.combination;
+	if (mahjongPlay && mahjongPlay.type !== 'single') {
+		// 조합: aggressiveness 기반 확률로 스킵 가능
+		if (Math.random() > weights.aggressiveness + 0.3) return null;
+	}
 
 	const tracker = buildCardTracker(context);
 
@@ -957,13 +962,14 @@ export function decideWish(
 		rankCounts.set(c.rank, (rankCounts.get(c.rank) || 0) + 1);
 	}
 
-	// Strategy 1: Wish for a rank where we have 2+ copies AND opponents likely have some too
+	// Strategy 1: 내가 가진 랭크 + 상대도 가지고 있을 가능성 높은 랭크
 	const goodWishRanks: { rank: number; score: number }[] = [];
 	for (const [rank, count] of rankCounts) {
-		if (rank <= 5) continue;
+		if (rank <= 3) continue; // 2,3은 너무 낮아서 제외
 		const stillOut = tracker.remainingByRank.get(rank) || 0;
-		if (count >= 2 && stillOut >= 1) {
-			goodWishRanks.push({ rank, score: rank + count * 5 + stillOut * 3 });
+		if (count >= 1 && stillOut >= 1) {
+			// 높은 랭크 + 내가 많이 가진 + 밖에 많이 남은 → 좋은 소원
+			goodWishRanks.push({ rank, score: rank * 2 + count * 5 + stillOut * 3 });
 		}
 	}
 
@@ -972,31 +978,20 @@ export function decideWish(
 		return goodWishRanks[0].rank;
 	}
 
-	// Strategy 2: 상대가 플레이한 랭크 추적 → 상대 스트레이트 방해하는 랭크 위시
-	// 상대가 안 플레이한 높은 랭크를 위시하면 강제로 내게 됨
+	// Strategy 2: 내가 안 가진 높은 랭크 → 상대가 강제로 내게 됨
 	const highRanks = [14, 13, 12, 11];
 	for (const rank of highRanks) {
 		if (!myRanks.has(rank)) {
 			const stillOut = tracker.remainingByRank.get(rank) || 0;
-			if (stillOut >= 2) {
+			if (stillOut >= 1) {
 				return rank;
 			}
 		}
 	}
 
-	// Strategy 3: 내 팀이 많이 가진 랭크 위시 (정보 우위)
-	for (const [rank, count] of rankCounts) {
-		if (rank >= 8 && count >= 3) {
-			// 3장 가지고 있으면 상대는 1장뿐 → 강제 소모
-			return rank;
-		}
-	}
-
-	// Strategy 4: Any high rank we don't have
+	// Strategy 3: 아무 높은 랭크라도 (A → K → Q → J)
 	for (const rank of highRanks) {
-		if (!myRanks.has(rank)) {
-			return rank;
-		}
+		return rank;
 	}
 
 	return null;
@@ -1104,6 +1099,14 @@ export function shouldPlayBomb(
 			return beatable[0];
 		}
 		return null;
+	}
+
+	// 소원이 활성화된 상태에서 낮은 포인트 트릭에 폭탄 자제
+	// (소원이 아직 충족 안 됐으면 상대가 결국 소원 카드를 내야 하므로 기다리는 게 유리)
+	if (context.wish.active && context.wish.requestedRank !== null) {
+		const wishTrickCards = context.trick?.plays.flatMap(p => p.combination.cards) || [];
+		const wishTrickPoints = getTrickPoints(wishTrickCards);
+		if (wishTrickPoints < 15) return null;
 	}
 
 	// High bomb holding = reluctant to use bombs

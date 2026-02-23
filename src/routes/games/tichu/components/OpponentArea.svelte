@@ -12,25 +12,28 @@
 
 	// player is a mutable object — access stateVersion to force reactivity
 	const cardCount = $derived.by(() => { void stateVersion; return player.hand.length; });
+	const finishOrder = $derived.by(() => { void stateVersion; return player.finishOrder; });
+	const isGrandTichu = $derived.by(() => { void stateVersion; return player.grandTichu === true; });
+	const isSmallTichu = $derived.by(() => { void stateVersion; return player.smallTichu; });
 	const finishLabel: Record<number, string> = { 1: '1등', 2: '2등', 3: '3등', 4: '4등' };
 </script>
 
 <div class="opponent {position}" class:current-turn={isCurrentTurn}>
 	<!-- Declarations -->
 	<div class="declarations">
-		{#if player.grandTichu === true}
+		{#if isGrandTichu}
 			<div class="declaration grand">GT</div>
 		{/if}
-		{#if player.smallTichu}
+		{#if isSmallTichu}
 			<div class="declaration small-tichu">ST</div>
 		{/if}
 	</div>
 
 	<div class="opponent-card">
 		<div class="avatar-container">
-			<div class="avatar team-{player.team}" class:finished={player.finishOrder !== null}>
-				{#if player.finishOrder !== null}
-					<span class="finish-badge">{finishLabel[player.finishOrder]}</span>
+			<div class="avatar team-{player.team}" class:finished={finishOrder !== null}>
+				{#if finishOrder !== null}
+					<span class="finish-badge">{finishLabel[finishOrder]}</span>
 				{:else}
 					{player.name.charAt(0)}
 				{/if}
@@ -45,8 +48,8 @@
 				<span class="name">{player.name}</span>
 				{#if isPartner}<span class="partner-badge">P</span>{/if}
 			</div>
-			{#if player.finishOrder !== null}
-				<div class="finish-banner badge-{player.finishOrder}">{finishLabel[player.finishOrder]} 마감</div>
+			{#if finishOrder !== null}
+				<div class="finish-banner badge-{finishOrder}">{finishLabel[finishOrder]} 마감</div>
 			{:else if cardCount > 0}
 				<div class="card-count-badge">
 					<span class="count-num">{cardCount}</span>
