@@ -3,7 +3,7 @@ import {
 	type Tile,
 	type TileType,
 	type Difficulty,
-	GRID_SIZES,
+	DIFFICULTY_CONFIG,
 	getOpenDirections,
 	getNeighborCoords,
 	oppositeDirection
@@ -54,8 +54,37 @@ export interface EnergyLevel {
 	optimalMoves: number;
 }
 
-export function generateLevel(size: number, _difficulty?: Difficulty): EnergyLevel {
-	// 1. Initialize connection map
+function randInt(min: number, max: number): number {
+	return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+function generateGrid(size: number, obstacleCount: number): EnergyLevel | null {
+	const key = (r: number, c: number) => `${r},${c}`;
+
+	// 1. Place source near center with small random offset
+	const center = Math.floor(size / 2);
+	const offset = size >= 7 ? Math.floor(Math.random() * 3) - 1 : 0;
+	const sourceRow = Math.max(1, Math.min(size - 2, center + offset));
+	const sourceCol = Math.max(1, Math.min(size - 2, center + offset));
+
+	// 2. Place obstacles (blocked cells)
+	const blocked = new Set<string>();
+	if (obstacleCount > 0) {
+		const candidates: [number, number][] = [];
+		for (let r = 0; r < size; r++) {
+			for (let c = 0; c < size; c++) {
+				// Skip source and its direct neighbors
+				if (Math.abs(r - sourceRow) + Math.abs(c - sourceCol) <= 1) continue;
+				candidates.push([r, c]);
+			}
+		}
+		shuffle(candidates);
+		for (let i = 0; i < Math.min(obstacleCount, candidates.length); i++) {
+			blocked.add(key(candidates[i][0], candidates[i][1]));
+		}
+	}
+
+	// 3. Initialize connection map
 	const connections: Set<Direction>[][] = [];
 	for (let r = 0; r < size; r++) {
 		connections[r] = [];
@@ -64,15 +93,10 @@ export function generateLevel(size: number, _difficulty?: Difficulty): EnergyLev
 		}
 	}
 
-	// 2. Place source near center with small random offset
-	const center = Math.floor(size / 2);
-	const offset = size >= 7 ? Math.floor(Math.random() * 3) - 1 : 0;
-	const sourceRow = Math.max(1, Math.min(size - 2, center + offset));
-	const sourceCol = Math.max(1, Math.min(size - 2, center + offset));
-
-	// 3. Randomized DFS spanning tree from source
+	// 4. Randomized DFS spanning tree from source (skipping blocked cells)
 	const visited = new Set<string>();
-	const key = (r: number, c: number) => `${r},${c}`;
+	// Pre-mark blocked cells as visited so DFS skips them
+	for (const b of blocked) visited.add(b);
 
 	const stack: [number, number][] = [[sourceRow, sourceCol]];
 	visited.add(key(sourceRow, sourceCol));
@@ -82,7 +106,6 @@ export function generateLevel(size: number, _difficulty?: Difficulty): EnergyLev
 	while (stack.length > 0) {
 		const [r, c] = stack[stack.length - 1];
 
-		// Find unvisited neighbors
 		const neighbors: [number, number, Direction][] = [];
 		for (const dir of allDirs) {
 			const [nr, nc] = getNeighborCoords(r, c, dir);
@@ -100,47 +123,53 @@ export function generateLevel(size: number, _difficulty?: Difficulty): EnergyLev
 		const [nr, nc, dir] = neighbors[0];
 		visited.add(key(nr, nc));
 
-		// Add bidirectional connections
 		connections[r][c].add(dir);
 		connections[nr][nc].add(oppositeDirection(dir));
 
 		stack.push([nr, nc]);
 	}
 
-	// 4. Build tiles from connections
+	// 5. Verify all non-blocked cells are connected
+	const expectedCells = size * size - blocked.size;
+	const connectedCells = visited.size - blocked.size;
+	if (connectedCells !== expectedCells) return null;
+
+	// 6. Build tiles from connections
 	const tiles: Tile[][] = [];
 	let optimalMoves = 0;
 
 	for (let r = 0; r < size; r++) {
 		tiles[r] = [];
 		for (let c = 0; c < size; c++) {
-			const dirs = connections[r][c];
+			const isBlocked = blocked.has(key(r, c));
 			const isSource = r === sourceRow && c === sourceCol;
 
-			let type: TileType;
-			if (isSource) {
-				type = 'source';
-			} else {
-				type = determineTileType(dirs);
+			if (isBlocked) {
+				tiles[r][c] = {
+					type: 'empty',
+					rotation: 0,
+					row: r,
+					col: c,
+					powered: false,
+					fixed: true,
+					solutionRotation: 0
+				};
+				continue;
 			}
 
-			// Find the correct rotation for this tile
+			const dirs = connections[r][c];
+			const type: TileType = isSource ? 'source' : determineTileType(dirs);
 			const solutionRotation = findRotation(type, dirs);
 
-			// Scramble: apply random rotation (1-3, never 0)
 			let scramble = 0;
 			const fixed = isSource;
 			if (!fixed && type !== 'empty') {
-				// For cross tiles (rotationally symmetric), no scramble needed
 				if (type === 'cross') {
 					scramble = 0;
 				} else if (type === 'straight') {
-					// Straight has 2 unique rotations (0=horizontal, 1=vertical)
-					scramble = Math.random() < 0.5 ? 1 : 0;
-					// Ensure not in solved position
-					if (scramble === 0) scramble = 1;
+					scramble = 1; // always flip
 				} else {
-					scramble = Math.floor(Math.random() * 3) + 1; // 1, 2, or 3
+					scramble = Math.floor(Math.random() * 3) + 1;
 				}
 				const minRotations = Math.min(scramble, 4 - scramble);
 				optimalMoves += minRotations;
@@ -160,10 +189,22 @@ export function generateLevel(size: number, _difficulty?: Difficulty): EnergyLev
 		}
 	}
 
-	// Compute initial powered state
 	computePoweredTiles(tiles);
-
 	return { tiles, optimalMoves };
+}
+
+export function generateLevel(difficulty: Difficulty): EnergyLevel {
+	const config = DIFFICULTY_CONFIG[difficulty];
+	const size = randInt(config.gridSizeRange[0], config.gridSizeRange[1]);
+
+	// Retry up to 20 times if obstacles cause disconnected graph
+	for (let attempt = 0; attempt < 20; attempt++) {
+		const result = generateGrid(size, config.obstacles);
+		if (result) return result;
+	}
+
+	// Fallback: generate without obstacles
+	return generateGrid(size, 0)!;
 }
 
 export function computePoweredTiles(tiles: Tile[][]): void {

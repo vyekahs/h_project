@@ -80,6 +80,7 @@
 					class="cell-bg"
 					class:powered={tile.powered}
 					class:source={tile.type === 'source'}
+					class:obstacle={tile.type === 'empty'}
 				/>
 			{/each}
 		{/each}
@@ -107,7 +108,58 @@
 		<!-- Tiles -->
 		{#each tiles as row, r}
 			{#each row as tile, c}
-				{#if tile.type !== 'empty'}
+				{#if tile.type === 'empty'}
+					<!-- Obstacle tile -->
+					<g class="obstacle-tile">
+						<!-- Diagonal hatching lines -->
+						<line
+							x1={c * cellSize + cellSize * 0.2}
+							y1={r * cellSize + cellSize * 0.8}
+							x2={c * cellSize + cellSize * 0.8}
+							y2={r * cellSize + cellSize * 0.2}
+							stroke="#d1d5db"
+							stroke-width={cellSize * 0.035}
+							stroke-linecap="round"
+						/>
+						<line
+							x1={c * cellSize + cellSize * 0.35}
+							y1={r * cellSize + cellSize * 0.88}
+							x2={c * cellSize + cellSize * 0.88}
+							y2={r * cellSize + cellSize * 0.35}
+							stroke="#d1d5db"
+							stroke-width={cellSize * 0.025}
+							stroke-linecap="round"
+						/>
+						<line
+							x1={c * cellSize + cellSize * 0.12}
+							y1={r * cellSize + cellSize * 0.65}
+							x2={c * cellSize + cellSize * 0.65}
+							y2={r * cellSize + cellSize * 0.12}
+							stroke="#d1d5db"
+							stroke-width={cellSize * 0.025}
+							stroke-linecap="round"
+						/>
+						<!-- X mark in center -->
+						<line
+							x1={c * cellSize + half - cellSize * 0.1}
+							y1={r * cellSize + half - cellSize * 0.1}
+							x2={c * cellSize + half + cellSize * 0.1}
+							y2={r * cellSize + half + cellSize * 0.1}
+							stroke="#b0b8c4"
+							stroke-width={cellSize * 0.045}
+							stroke-linecap="round"
+						/>
+						<line
+							x1={c * cellSize + half + cellSize * 0.1}
+							y1={r * cellSize + half - cellSize * 0.1}
+							x2={c * cellSize + half - cellSize * 0.1}
+							y2={r * cellSize + half + cellSize * 0.1}
+							stroke="#b0b8c4"
+							stroke-width={cellSize * 0.045}
+							stroke-linecap="round"
+						/>
+					</g>
+				{:else}
 					<!-- svelte-ignore a11y_no_static_element_interactions -->
 					<g
 						class="tile-group"
@@ -291,6 +343,10 @@
 
 	.cell-bg.source {
 		fill: rgba(245, 158, 11, 0.08);
+	}
+
+	.cell-bg.obstacle {
+		fill: #eef0f4;
 	}
 
 	/* Pipe powered glow */

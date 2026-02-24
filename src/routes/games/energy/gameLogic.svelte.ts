@@ -1,10 +1,10 @@
 import { GAME_CONFIG } from '$lib/config';
 import { generateLevel, computePoweredTiles, checkWin } from '$lib/games/energy/levels';
 import type { Tile, Difficulty } from '$lib/games/energy/types';
-import { GRID_SIZES } from '$lib/games/energy/types';
 import { goto } from '$app/navigation';
 import { formatTime } from '$lib/games/utils';
 import { browser } from '$app/environment';
+import { rankUpStore } from '$lib/stores/rankUpStore.svelte';
 
 export type GameState = 'start' | 'playing' | 'paused' | 'finished';
 
@@ -198,9 +198,9 @@ export function createEnergyGame() {
 
 		showTutorial = false;
 		localStorage.removeItem('energy_save');
-		gridSize = GRID_SIZES[difficulty];
-		const level = generateLevel(gridSize, difficulty);
+		const level = generateLevel(difficulty);
 		tiles = level.tiles;
+		gridSize = tiles.length;
 		optimalMoves = level.optimalMoves;
 		moveCount = 0;
 		timerValue = 0;
@@ -240,9 +240,9 @@ export function createEnergyGame() {
 		// Check win
 		if (checkWin(tiles)) {
 			handleWin();
+		} else {
+			saveGame();
 		}
-
-		saveGame();
 	}
 
 	function saveHistory() {
@@ -266,7 +266,6 @@ export function createEnergyGame() {
 		}
 		computePoweredTiles(tiles);
 		tiles = tiles.map((row) => [...row]);
-		moveCount = Math.max(0, moveCount - 1);
 	}
 
 	function handleWin() {
@@ -301,6 +300,12 @@ export function createEnergyGame() {
 			if (res.ok) {
 				earnedPointsResult = data.earnedPoints;
 				calculatedScore = data.score;
+
+				// Show Rank Up animation if rank increased
+				if (data.currentRank && (!data.previousRank || data.currentRank < data.previousRank)) {
+					rankUpStore.show(data.previousRank, data.currentRank, 'energy', data.score);
+				}
+
 				if (data.newTitles && data.newTitles.length > 0) {
 					newTitleName = data.newTitles[0];
 				}
@@ -324,9 +329,9 @@ export function createEnergyGame() {
 			stopTimer();
 			hasRestarted = true;
 
-			// Regenerate same-size level
-			const level = generateLevel(gridSize, difficulty);
+			const level = generateLevel(difficulty);
 			tiles = level.tiles;
+			gridSize = tiles.length;
 			optimalMoves = level.optimalMoves;
 			moveCount = 0;
 			timerValue = 0;

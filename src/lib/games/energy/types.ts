@@ -27,6 +27,19 @@ export const GRID_SIZES: Record<Difficulty, number> = {
 	master: 9
 };
 
+export interface EnergyDifficultyConfig {
+	gridSizeRange: [number, number];
+	obstacles: number;
+}
+
+export const DIFFICULTY_CONFIG: Record<Difficulty, EnergyDifficultyConfig> = {
+	easy:   { gridSizeRange: [5, 5],  obstacles: 0 },
+	medium: { gridSizeRange: [5, 6],  obstacles: 0 },
+	hard:   { gridSizeRange: [6, 7],  obstacles: 2 },
+	expert: { gridSizeRange: [7, 8],  obstacles: 4 },
+	master: { gridSizeRange: [8, 9],  obstacles: 6 },
+};
+
 // Base connections at rotation=0 for each tile type
 export const TILE_CONNECTIONS: Record<Exclude<TileType, 'empty'>, Direction[]> = {
 	source: [Direction.TOP, Direction.RIGHT, Direction.BOTTOM, Direction.LEFT],
