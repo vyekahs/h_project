@@ -131,6 +131,12 @@ export function invalidateSharedCache() {
     cacheTime = 0;
 }
 
+// change 이벤트: 캐시를 null로 날리지 않고 백그라운드에서 새 데이터로 교체
+// → 갱신 중 들어오는 요청도 stale 캐시로 즉시 응답
 getLiveEmitter().on('change', () => {
-    invalidateSharedCache();
+    fetchSharedData().then(data => {
+        cache = data;
+        cacheTime = Date.now();
+        cachePromise = null;
+    }).catch(() => {});
 });
