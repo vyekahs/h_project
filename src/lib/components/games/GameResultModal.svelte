@@ -108,6 +108,8 @@
         z-index: 100;
         backdrop-filter: blur(8px);
         background: rgba(0, 0, 0, 0.6);
+        overflow-y: auto;
+        padding: 1rem 0;
     }
 
     .result-card {
@@ -256,8 +258,9 @@
         background: none;
         border: none;
         cursor: pointer;
-        padding: 0.5rem;
+        padding: 0.8rem 1rem;
         font-size: 1rem;
+        min-height: 44px;
     }
 
     .secondary-btn:hover {

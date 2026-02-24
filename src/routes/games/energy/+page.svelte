@@ -3,7 +3,7 @@
 	import EnergyTutorialModal from './EnergyTutorialModal.svelte';
 	import GamePauseModal from '$lib/components/games/GamePauseModal.svelte';
 	import GameResultModal from '$lib/components/games/GameResultModal.svelte';
-	import { goto } from '$app/navigation';
+	import { goto, replaceState } from '$app/navigation';
 	import { browser } from '$app/environment';
 	import { onMount } from 'svelte';
 	import { user } from '$lib/stores/user';
@@ -39,8 +39,13 @@
 			isAutostart = true;
 			const diff = params.get('difficulty');
 			if (diff) game.difficulty = diff as Difficulty;
+			// Remove query params so refresh won't restart
+			replaceState(window.location.pathname, {});
 			user.refresh().then(() => game.startGame());
 		} else if (params.get('resume') === 'true') {
+			replaceState(window.location.pathname, {});
+			game.loadGame();
+		} else if (localStorage.getItem('energy_save')) {
 			game.loadGame();
 		} else {
 			goto('/games/start/energy', { replaceState: true });
