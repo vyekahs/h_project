@@ -300,12 +300,13 @@ function calcContextModifier(
 			else mod -= 0.15;                    // K 페어/트리플: 중간 보존
 		}
 
-		// 봉황 페어/트리플: 낮은 랭크에 봉황 낭비 페널티
+		// 봉황 페어/트리플 리드: 나갈 수 있을 때만 허용
 		if ((combo.type === 'pair' || combo.type === 'triple') &&
 			combo.cards.some(c => c.type === 'special' && c.special === 'phoenix') &&
 			hand.length > 2) {
-			if (combo.rank <= 8) mod -= 0.3;       // 8 이하: 강한 페널티
-			else if (combo.rank <= 10) mod -= 0.15; // 9-10: 중간 페널티
+			mod -= 1.5;
+			// 예외: 이 콤보로 나갈 수 있으면 허용
+			if (remainingHand.length === 0 || finishTurns <= 1) mod += 1.5;
 		}
 
 		// 싱글: 멀티콤보 구성 카드를 싱글로 내면 감점
@@ -452,12 +453,26 @@ function calcContextModifier(
 			if (hasKing) mod -= 0.08;
 		}
 
-		// 봉황 페어/트리플: 낮은 랭크에 봉황 낭비 페널티
+		// 봉황 페어/트리플 팔로우: 나갈 수 있거나 봉황 없이 이길 페어가 없을 때만 허용
 		if ((combo.type === 'pair' || combo.type === 'triple') &&
 			combo.cards.some(c => c.type === 'special' && c.special === 'phoenix') &&
 			hand.length > 2) {
-			if (combo.rank <= 8) mod -= 0.3;
-			else if (combo.rank <= 10) mod -= 0.15;
+			mod -= 1.5;
+			if (remainingHand.length === 0 || finishTurns <= 1) {
+				// 예외1: 나갈 수 있으면 허용
+				mod += 1.5;
+			} else {
+				// 예외2: 봉황 없이 현재 트릭을 이길 수 있는 자연 페어/트리플이 없으면 허용
+				const beatRank = lastPlay.combination.rank;
+				const normalCards = hand.filter(c => c.type === 'normal') as NormalCard[];
+				const rankCounts = new Map<number, number>();
+				for (const c of normalCards) rankCounts.set(c.rank, (rankCounts.get(c.rank) ?? 0) + 1);
+				const needed = combo.type === 'pair' ? 2 : 3;
+				const hasNaturalBeater = [...rankCounts.entries()].some(
+					([rank, cnt]) => cnt >= needed && rank > beatRank
+				);
+				if (!hasNaturalBeater) mod += 1.5;
+			}
 		}
 
 		// 엔드게임: 이 트릭 이기면 나갈 수 있나?
