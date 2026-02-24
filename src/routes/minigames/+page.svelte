@@ -38,6 +38,13 @@
             tagline: '회로를 연결하여 전구를 켜세요',
             url: '/games/start/energy',
             accentColor: '#f59e0b'
+        },
+        {
+            id: 'water-sort',
+            name: '워터소트',
+            tagline: '색깔 물을 정리하세요',
+            url: '/games/start/water-sort',
+            accentColor: '#6366f1'
         }
     ];
 </script>
@@ -89,6 +96,13 @@
                                     <path d="M11 14l-1.5 4h5L13 14" fill="rgba(255,255,255,0.3)" stroke-width="1.5"/>
                                     <line x1="10" y1="19" x2="14" y2="19" stroke-width="1.5"/>
                                     <line x1="10.5" y1="20.5" x2="13.5" y2="20.5" stroke-width="1.5"/>
+                                </svg>
+                            {:else if game.id === 'water-sort'}
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <rect x="3" y="3" width="7" height="18" rx="3.5" stroke-width="1.5"/>
+                                    <rect x="14" y="3" width="7" height="18" rx="3.5" stroke-width="1.5"/>
+                                    <rect x="4" y="12" width="5" height="8" rx="2.5" fill="rgba(255,255,255,0.5)" stroke="none"/>
+                                    <rect x="15" y="9" width="5" height="11" rx="2.5" fill="rgba(255,255,255,0.5)" stroke="none"/>
                                 </svg>
                             {/if}
                         </div>

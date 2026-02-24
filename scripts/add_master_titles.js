@@ -12,7 +12,8 @@ async function main() {
                 ('tichu_master', '티츄 마스터', '티츄 월간 랭킹 1위', 'ranking', '{"gameId": "tichu", "rank": 1}'),
                 ('killer_sudoku_master', '킬러 스도쿠 마스터', '킬러 스도쿠 월간 랭킹 1위', 'ranking', '{"gameId": "killer-sudoku", "rank": 1}'),
                 ('unblock_me_master', '언블록미 마스터', '언블록미 월간 랭킹 1위', 'ranking', '{"gameId": "unblock-me", "rank": 1}'),
-                ('energy_master', '에너지 서킷 마스터', '에너지 서킷 월간 랭킹 1위', 'ranking', '{"gameId": "energy", "rank": 1}')
+                ('energy_master', '에너지 서킷 마스터', '에너지 서킷 월간 랭킹 1위', 'ranking', '{"gameId": "energy", "rank": 1}'),
+                ('water_sort_master', '워터소트 마스터', '워터소트 월간 랭킹 1위', 'ranking', '{"gameId": "water-sort", "rank": 1}')
             ON CONFLICT (title_code) DO NOTHING;
         `);
         console.log('Done!');

@@ -81,5 +81,21 @@ export const GAME_REGISTRY: Record<string, GameConfig> = {
 		hasTutorials: true,
 		tutorialPrefix: 'energy_',
 		tutorialLocalStorageKey: 'energy_unlocked_tutorials'
+	},
+	'water-sort': {
+		id: 'water-sort',
+		name: '워터소트',
+		displayTitle: 'Water Sort',
+		gameUrl: '/games/water-sort',
+		difficulties: ['easy', 'medium', 'hard', 'expert', 'master'],
+		difficultyLabels: {
+			easy: '쉬움',
+			medium: '보통',
+			hard: '어려움',
+			expert: '전문가',
+			master: '마스터'
+		},
+		localStorageSaveKey: 'watersort_save',
+		hasTutorials: false
 	}
 };

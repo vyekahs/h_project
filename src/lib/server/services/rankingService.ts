@@ -4,6 +4,9 @@ import { PointService } from './pointService';
 
 export const RankingService = {
     async submitScore(userId: number, gameId: string, difficulty: string, clearTime: number, score?: number, skipReward: boolean = false, mistakes: number = 0) {
+        
+        // 0. Get Previous Rank Before Score Update
+        const previousRank = await this.getUserRank(userId, gameId);
 
         // 1. Calculate Unified Score
         let calculatedScore = 0;
@@ -55,6 +58,32 @@ export const RankingService = {
 
              calculatedScore = Math.max(baseScore, baseScore + timeBonus - movePenalty);
         } else if (gameId === 'energy') {
+             const timeLimit = difficulty === 'easy' ? 120 :
+                              difficulty === 'medium' ? 180 :
+                              difficulty === 'hard' ? 300 :
+                              difficulty === 'expert' ? 480 : 600;
+
+             const baseScore = difficulty === 'easy' ? 10 :
+                               difficulty === 'medium' ? 50 :
+                               difficulty === 'hard' ? 120 :
+                               difficulty === 'expert' ? 250 : 400;
+
+             const timeMultiplier = difficulty === 'easy' ? 1 :
+                                    difficulty === 'medium' ? 2 :
+                                    difficulty === 'hard' ? 3 :
+                                    difficulty === 'expert' ? 4 : 5;
+
+             const timeBonus = Math.max(0, (timeLimit - clearTime) * timeMultiplier);
+
+             const extraMoves = Math.max(0, mistakes);
+             const movePenaltyPerMove = difficulty === 'easy' ? 1 :
+                                        difficulty === 'medium' ? 2 :
+                                        difficulty === 'hard' ? 4 :
+                                        difficulty === 'expert' ? 6 : 10;
+             const movePenalty = extraMoves * movePenaltyPerMove;
+
+             calculatedScore = Math.max(baseScore, baseScore + timeBonus - movePenalty);
+        } else if (gameId === 'water-sort') {
              const timeLimit = difficulty === 'easy' ? 120 :
                               difficulty === 'medium' ? 180 :
                               difficulty === 'hard' ? 300 :
@@ -137,9 +166,14 @@ export const RankingService = {
             }
         }
 
+        // 5. Get New Rank
+        const currentRank = await this.getUserRank(userId, gameId);
+
         return {
             earnedPoints: skipReward ? 0 : finalPoints,
-            score: calculatedScore
+            score: calculatedScore,
+            previousRank,
+            currentRank
         };
     },
 

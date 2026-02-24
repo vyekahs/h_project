@@ -259,6 +259,8 @@
                                     <p class="score-desc">점수 = 기본점수 + (제한시간 - 클리어시간) x 배율 - 초과이동 x 감점</p>
                                 {:else if gameConfig.id === 'energy'}
                                     <p class="score-desc">점수 = 기본점수 + (제한시간 - 클리어시간) x 배율 - 초과회전 x 감점</p>
+                                {:else if gameConfig.id === 'water-sort'}
+                                    <p class="score-desc">점수 = 기본점수 + 시간보너스 - 초과이동 x 감점 (목표이동수 초과분)</p>
                                 {:else}
                                     <p class="score-desc">점수 = 기본점수 + 시간보너스 - 실수페널티(15%/회)</p>
                                 {/if}
@@ -304,6 +306,15 @@
                                                                         <path d="M21.5 2v6h-6M2.5 22v-6h6"/>
                                                                         <path d="M2.5 11.5a10 10 0 0 1 18.8-4.3"/>
                                                                         <path d="M21.5 12.5a10 10 0 0 1-18.8 4.2"/>
+                                                                    </svg>
+                                                                {:else if gameConfig.id === 'water-sort'}
+                                                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                                                        <polyline points="5 9 2 12 5 15" />
+                                                                        <polyline points="9 5 12 2 15 5" />
+                                                                        <polyline points="19 9 22 12 19 15" />
+                                                                        <polyline points="15 19 12 22 9 19" />
+                                                                        <line x1="2" y1="12" x2="22" y2="12" />
+                                                                        <line x1="12" y1="2" x2="12" y2="22" />
                                                                     </svg>
                                                                 {:else}
                                                                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 4H8l-7 8 7 8h13a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z"/><line x1="18" y1="9" x2="12" y2="15"/><line x1="12" y1="9" x2="18" y2="15"/></svg>
