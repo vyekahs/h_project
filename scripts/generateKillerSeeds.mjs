@@ -361,14 +361,6 @@ function countKillerSolutionsOptimized(board, cages, limit = 2) {
 // Puzzle Generation (with optimized solver)
 // ============================================================
 
-const INITIAL_REVEAL_COUNTS = {
-    easy: 35,
-    medium: 25,
-    hard: 15,
-    expert: 0,
-    master: 0
-};
-
 function generateOnePuzzle(difficulty) {
     const MAX_ATTEMPTS = 100;
 
@@ -380,31 +372,10 @@ function generateOnePuzzle(difficulty) {
     for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
         const cages = generateCages(solution, difficulty);
 
-        // For verification, use more reveals to speed up solver
-        // We verify with 0 reveals for expert/master by using the cage constraints
-        const verifyRevealCount = difficulty === 'expert' || difficulty === 'master' ? 10 : INITIAL_REVEAL_COUNTS[difficulty];
-        const coords = [];
-        for(let r=0; r<9; r++) for(let c=0; c<9; c++) coords.push({r, c});
-        coords.sort(() => Math.random() - 0.5);
-
-        const revealed = new Set();
-        for(let i=0; i<verifyRevealCount; i++) {
-            revealed.add(`${coords[i].r},${coords[i].c}`);
-        }
-
-        // Build a simple board for the solver
-        const initialSimple = Array.from({ length: 9 }, (_, rIdx) =>
-            Array.from({ length: 9 }, (_, cIdx) => {
-                return revealed.has(`${rIdx},${cIdx}`) ? solution[rIdx][cIdx] : 0;
-            })
-        );
-
-        // Skip uniqueness check for easy/medium
-        if (difficulty === 'easy' || difficulty === 'medium') {
-            return { solution, cages };
-        }
-
-        const solutions = countKillerSolutionsOptimized(initialSimple, cages, 2);
+        // Verify uniqueness with 0 reveals (cage constraints only)
+        // This ensures the puzzle has exactly one solution for all difficulties
+        const emptySimple = Array.from({ length: 9 }, () => Array(9).fill(0));
+        const solutions = countKillerSolutionsOptimized(emptySimple, cages, 2);
 
         if (solutions === 1) {
             return { solution, cages };
