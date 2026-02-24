@@ -110,7 +110,11 @@
 			<img src={displayInfo.imageSrc} alt={displayInfo.name} class="special-image" />
 		</div>
 		{#if card.type === 'special' && card.special === 'mahjong'}
-			<div class="mahjong-rank">1</div>
+			<div class="special-label mahjong-label">1</div>
+		{:else if card.type === 'special' && card.special === 'dragon'}
+			<div class="special-label dragon-label">용</div>
+		{:else if card.type === 'special' && card.special === 'phoenix'}
+			<div class="special-label phoenix-label">봉</div>
 		{/if}
 		<div class="glow"></div>
 	{:else}
@@ -211,16 +215,18 @@
 		object-fit: contain;
 		filter: drop-shadow(0 2px 4px rgba(0,0,0,0.15));
 	}
-	.mahjong-rank {
+	.special-label {
 		position: absolute;
 		top: 2px;
 		left: 4px;
 		font-size: 0.7rem;
 		font-weight: 800;
-		color: #065f46;
 		z-index: 3;
 		line-height: 1;
 	}
+	.mahjong-label { color: #065f46; }
+	.dragon-label { color: #1e3a5f; }
+	.phoenix-label { color: #7c2d12; }
 
 	/* Normal Card Layout */
 	.card-top-left {

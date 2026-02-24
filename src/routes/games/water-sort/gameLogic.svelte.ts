@@ -111,7 +111,7 @@ export function createWaterSortGame() {
 
 	// Save / Load
 	function saveGame() {
-		if (gameState !== 'playing') return;
+		if (gameState !== 'playing' || showWinAnimation) return;
 		try {
 			const data = {
 				tubes: tubes.map(t => ({ id: t.id, layers: [...t.layers] })),
@@ -346,10 +346,10 @@ export function createWaterSortGame() {
 
 	function handleWin() {
 		showWinAnimation = true;
+		localStorage.removeItem('watersort_save');
 		setTimeout(() => {
 			gameState = 'finished';
 			stopTimer();
-			localStorage.removeItem('watersort_save');
 			hasSavedGame = false;
 			if (!hasRestarted) {
 				submitScore();
