@@ -68,6 +68,14 @@
 					<span class="moves">{game.moveCount}회</span>
 				</div>
 				<div class="timer-controls">
+					<button
+						class="undo-btn"
+						onclick={game.undo}
+						disabled={game.history.length === 0 || game.gameState !== 'playing'}
+					>
+						<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7v6h6" /><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13" /></svg>
+						<span>되돌리기</span>
+					</button>
 					<div class="timer">
 						{formatTime(game.displayTimer)}
 					</div>
@@ -106,29 +114,6 @@
 				/>
 			</div>
 
-			<div class="controls-area">
-				<button
-					class="undo-btn"
-					onclick={game.undo}
-					disabled={game.history.length === 0 || game.gameState !== 'playing'}
-				>
-					<svg
-						xmlns="http://www.w3.org/2000/svg"
-						width="18"
-						height="18"
-						viewBox="0 0 24 24"
-						fill="none"
-						stroke="currentColor"
-						stroke-width="2.5"
-						stroke-linecap="round"
-						stroke-linejoin="round"
-						><path d="M3 7v6h6" /><path
-							d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"
-						/></svg
-					>
-					<span>되돌리기</span>
-				</button>
-			</div>
 		</div>
 
 		{#if game.gameState === 'paused'}
@@ -398,23 +383,15 @@
 		align-items: center;
 	}
 
-	.controls-area {
-		width: 100%;
-		display: flex;
-		justify-content: center;
-		padding: 0.5rem 0;
-		padding-bottom: env(safe-area-inset-bottom, 0.5rem);
-	}
-
 	.undo-btn {
 		display: flex;
 		align-items: center;
-		gap: 6px;
+		gap: 4px;
 		background: #f0f0f0;
 		border: none;
-		padding: 0.7rem 1.4rem;
+		padding: 0.4rem 0.8rem;
 		border-radius: 50px;
-		font-size: 0.9rem;
+		font-size: 0.8rem;
 		font-weight: 600;
 		color: #555;
 		cursor: pointer;

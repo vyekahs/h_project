@@ -33,8 +33,8 @@
 	});
 
 	// Layout calculations
-	const tubeWidth = 40;
-	const tubeHeight = 120;
+	const tubeWidth = 34;
+	const tubeHeight = 100;
 	const layerHeight = tubeHeight / TUBE_CAPACITY;
 	const tubeGap = 12;
 	const tubeRadius = 8;
