@@ -447,4 +447,41 @@
         font-size: 0.9rem;
         margin-top: 0.5rem;
     }
+    .modal-backdrop {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.5);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 1000;
+    }
+    .modal-content {
+        background: white;
+        padding: 2rem;
+        border-radius: 12px;
+        width: 90%;
+        max-width: 420px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+    }
+    .modal-content h3 {
+        margin: 0 0 1rem;
+        font-size: 1.2rem;
+    }
+    .modal-content p {
+        margin: 0.5rem 0;
+        color: #555;
+    }
+    .modal-actions {
+        display: flex;
+        gap: 0.75rem;
+        margin-top: 1.5rem;
+        justify-content: flex-end;
+    }
+    .modal-actions form {
+        margin: 0;
+    }
 </style>
