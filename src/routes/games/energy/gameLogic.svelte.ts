@@ -54,6 +54,10 @@ export function createEnergyGame() {
 	// Win animation
 	let showWinAnimation = $state(false);
 
+	// Initial state for restart (same puzzle)
+	let initialRotations: number[][] = [];
+	let initialOptimalMoves = 0;
+
 	// Tutorial
 	let showTutorial = $state(false);
 	let activeTutorialId = $state('energy_easy_1');
@@ -118,7 +122,9 @@ export function createEnergyGame() {
 				difficulty,
 				gridSize,
 				history,
-				hasRestarted
+				hasRestarted,
+				initialRotations,
+				initialOptimalMoves
 			};
 			localStorage.setItem('energy_save', JSON.stringify(data));
 		} catch {}
@@ -162,6 +168,15 @@ export function createEnergyGame() {
 			difficulty = data.difficulty || 'medium';
 			history = data.history || [];
 			hasRestarted = data.hasRestarted || false;
+			// Restore initial state for restart
+			if (data.initialRotations) {
+				initialRotations = data.initialRotations;
+				initialOptimalMoves = data.initialOptimalMoves ?? optimalMoves;
+			} else {
+				// Fallback: use current rotations as initial (old saves)
+				initialRotations = tiles.map(row => row.map(t => t.rotation));
+				initialOptimalMoves = optimalMoves;
+			}
 
 			gameState = 'paused';
 			startTimer();
@@ -202,6 +217,9 @@ export function createEnergyGame() {
 		tiles = level.tiles;
 		gridSize = tiles.length;
 		optimalMoves = level.optimalMoves;
+		// Save initial state for restart
+		initialRotations = tiles.map(row => row.map(t => t.rotation));
+		initialOptimalMoves = optimalMoves;
 		moveCount = 0;
 		timerValue = 0;
 		displayTimer = 0;
@@ -329,10 +347,15 @@ export function createEnergyGame() {
 			stopTimer();
 			hasRestarted = true;
 
-			const level = generateLevel(difficulty);
-			tiles = level.tiles;
-			gridSize = tiles.length;
-			optimalMoves = level.optimalMoves;
+			// Restore initial puzzle state (same seed)
+			for (let r = 0; r < tiles.length; r++) {
+				for (let c = 0; c < tiles[r].length; c++) {
+					tiles[r][c].rotation = initialRotations[r][c];
+				}
+			}
+			computePoweredTiles(tiles);
+			tiles = tiles.map(row => [...row]);
+			optimalMoves = initialOptimalMoves;
 			moveCount = 0;
 			timerValue = 0;
 			displayTimer = 0;

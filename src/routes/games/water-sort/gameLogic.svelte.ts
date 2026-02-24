@@ -54,6 +54,10 @@ export function createWaterSortGame() {
 	// Win animation
 	let showWinAnimation = $state(false);
 
+	// Initial state for restart (same puzzle)
+	let initialTubes: number[][] = [];
+	let initialMoveLimit = 0;
+
 	// Stuck (no valid moves)
 	let isGameStuck = $state(false);
 
@@ -120,7 +124,9 @@ export function createWaterSortGame() {
 				timer: timerValue,
 				difficulty,
 				history: history.map(h => ({ layers: h.layers.map(l => [...l]), moveCount: h.moveCount })),
-				hasRestarted
+				hasRestarted,
+				initialTubes: initialTubes.map(l => [...l]),
+				initialMoveLimit
 			};
 			localStorage.setItem('watersort_save', JSON.stringify(data));
 		} catch {}
@@ -157,6 +163,15 @@ export function createWaterSortGame() {
 				moveCount: h.moveCount ?? 0
 			}));
 			hasRestarted = data.hasRestarted || false;
+			// Restore initial state for restart
+			if (data.initialTubes) {
+				initialTubes = data.initialTubes.map((l: number[]) => [...l]);
+				initialMoveLimit = data.initialMoveLimit ?? moveLimit;
+			} else {
+				// Fallback: use current state as initial (old saves)
+				initialTubes = tubes.map(t => [...t.layers]);
+				initialMoveLimit = moveLimit;
+			}
 			selectedTubeId = null;
 
 			gameState = 'paused';
@@ -174,6 +189,9 @@ export function createWaterSortGame() {
 		const level = generateLevel(difficulty);
 		tubes = level.tubes;
 		moveLimit = level.moveLimit;
+		// Save initial state for restart
+		initialTubes = tubes.map(t => [...t.layers]);
+		initialMoveLimit = moveLimit;
 		moveCount = 0;
 		timerValue = 0;
 		displayTimer = 0;
@@ -408,9 +426,9 @@ export function createWaterSortGame() {
 			stopTimer();
 			hasRestarted = true;
 
-			const level = generateLevel(difficulty);
-			tubes = level.tubes;
-			moveLimit = level.moveLimit;
+			// Restore initial puzzle state (same seed)
+			tubes = initialTubes.map((layers, i) => ({ id: i, layers: [...layers] }));
+			moveLimit = initialMoveLimit;
 			moveCount = 0;
 			timerValue = 0;
 			displayTimer = 0;
@@ -418,6 +436,7 @@ export function createWaterSortGame() {
 			earnedPointsResult = 0;
 			calculatedScore = 0;
 			showWinAnimation = false;
+			isGameStuck = false;
 			selectedTubeId = null;
 
 			gameState = 'playing';
