@@ -4,6 +4,7 @@ import type {
 import type { AiStrategy, AiSpeed } from '$lib/games/tichu/ai/types';
 import { LocalGameEngine, type LocalGameConfig, type GameEvent, type ExchangeResultEntry, saveTichuGame, loadTichuGame, clearTichuSave, hasTichuSave } from '$lib/games/tichu/ai/localGameEngine';
 import { triggerHaptic } from '$lib/stores/haptics';
+import { rankUpStore } from '$lib/stores/rankUpStore.svelte';
 
 export type GameView = 'setup' | 'game';
 export type ToastType = 'info' | 'success' | 'error' | 'warning';
@@ -346,6 +347,12 @@ export function createTichuGameState() {
 			if (res.ok) {
 				const data = await res.json();
 				rankingResult = { score: data.score, earnedPoints: data.earnedPoints };
+
+				// Show Rank Up animation if rank increased
+				if (data.currentRank && (!data.previousRank || data.currentRank < data.previousRank)) {
+					rankUpStore.show(data.previousRank, data.currentRank, 'tichu', data.score);
+				}
+
 				if (data.newTitles && data.newTitles.length > 0) {
 					newTitleName = data.newTitles[0];
 				}

@@ -4,6 +4,7 @@
     import { onMount } from 'svelte';
     import PointDisplay from '$lib/components/gamification/PointDisplay.svelte';
     import AdBanner from '$lib/components/ads/AdBanner.svelte';
+    import RankUpModal from '$lib/components/gamification/RankUpModal.svelte';
 
 	let { children } = $props();
 </script>
@@ -61,6 +62,8 @@
 		</a>
 	</nav>
 	{/if}
+
+	<RankUpModal />
 </div>
 
 <style>

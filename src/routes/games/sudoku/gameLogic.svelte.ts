@@ -5,6 +5,7 @@ import { browser } from '$app/environment';
 import { user } from '$lib/stores/user';
 import { GAME_CONFIG } from '$lib/config';
 import { formatTime } from '$lib/games/utils';
+import { rankUpStore } from '$lib/stores/rankUpStore.svelte';
 
 export type GameState = 'start' | 'playing' | 'paused' | 'finished';
 export type GameMode = 'standard' | 'killer';
@@ -523,6 +524,12 @@ export function createSudokuGame() {
             if (res.ok) {
                 earnedPointsResult = data.earnedPoints;
                 calculatedScore = data.score;
+                
+                // Show Rank Up animation if rank increased
+                if (data.currentRank && (!data.previousRank || data.currentRank < data.previousRank)) {
+                    rankUpStore.show(data.previousRank, data.currentRank, gameMode === 'killer' ? 'killer-sudoku' : 'sudoku', data.score);
+                }
+
                 if (data.newTitles && data.newTitles.length > 0) {
                     newTitleName = data.newTitles[0];
                 }
