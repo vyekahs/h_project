@@ -78,13 +78,8 @@
             {/if}
             <tbody>
                 {#each displayRankings as rank}
-                    <tr class:top3={rank.rank <= 3}>
-                        <td class="rank-cell">
-                            {#if rank.rank === 1}🥇
-                            {:else if rank.rank === 2}🥈
-                            {:else if rank.rank === 3}🥉
-                            {:else}{rank.rank}{/if}
-                        </td>
+                    <tr class:top3={Number(rank.rank) <= 3}>
+                        <td class="rank-cell">{rank.rank}</td>
                         <td class="name-cell">{rank.nickname || '익명'}</td>
                         <td class="score-cell">{rank.score.toLocaleString()} P</td>
                     </tr>
