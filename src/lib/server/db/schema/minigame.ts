@@ -23,6 +23,16 @@ export const minigameRankings = pgTable('minigame_rankings', {
 	unique('unique_ranking').on(table.gameId, table.difficulty, table.userId),
 ]);
 
+export const minigamePlayLog = pgTable('minigame_play_log', {
+	id: bigserial('id', { mode: 'number' }).primaryKey(),
+	gameId: varchar('game_id', { length: 50 }).notNull(),
+	difficulty: varchar('difficulty', { length: 20 }),
+	userId: integer('user_id').notNull().references(() => attendees.id, { onDelete: 'cascade' }),
+	score: integer('score'),
+	clearTime: integer('clear_time'),
+	playedAt: timestamp('played_at').defaultNow(),
+});
+
 export const minigameMonthlyRankings = pgTable('minigame_monthly_rankings', {
 	id: serial('id').primaryKey(),
 	userId: integer('user_id').notNull().references(() => attendees.id, { onDelete: 'cascade' }),

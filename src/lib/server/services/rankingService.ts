@@ -126,7 +126,13 @@ export const RankingService = {
                 score_updated_at = NOW()
         `);
 
-        // 3. Update All-time Best Record
+        // 3. Log every clear for activity feed
+        await db.execute(sql`
+            INSERT INTO minigame_play_log (game_id, difficulty, user_id, score, clear_time)
+            VALUES (${gameId}, ${difficulty}, ${userId}, ${calculatedScore}, ${clearTime})
+        `);
+
+        // 4. Update All-time Best Record
         await db.execute(sql`
             INSERT INTO minigame_rankings (game_id, difficulty, user_id, clear_time, score, mistakes, achieved_at)
             VALUES (${gameId}, ${difficulty}, ${userId}, ${clearTime}, ${calculatedScore}, ${mistakes}, NOW())
@@ -198,16 +204,16 @@ export const RankingService = {
     async getRecentActivity(limit = 20) {
         const res = await db.execute(sql`
             SELECT
-                r.game_id,
-                r.difficulty,
-                r.user_id,
+                p.game_id,
+                p.difficulty,
+                p.user_id,
                 a.name as nickname,
-                r.score,
-                r.clear_time,
-                r.achieved_at
-            FROM minigame_rankings r
-            LEFT JOIN attendees a ON r.user_id = a.id
-            ORDER BY r.achieved_at DESC
+                p.score,
+                p.clear_time,
+                p.played_at as achieved_at
+            FROM minigame_play_log p
+            LEFT JOIN attendees a ON p.user_id = a.id
+            ORDER BY p.played_at DESC
             LIMIT ${limit}
         `);
         return res;
@@ -219,7 +225,7 @@ export const RankingService = {
 
         const result = await db.execute(sql`
             SELECT rank FROM (
-                SELECT user_id, RANK() OVER (ORDER BY total_score DESC) as rank
+                SELECT user_id, RANK() OVER (ORDER BY total_score DESC, score_updated_at ASC) as rank
                 FROM minigame_monthly_rankings
                 WHERE game_id = ${gameId} AND month_key = ${monthKey}
             ) ranked
@@ -242,11 +248,11 @@ export const RankingService = {
                 a.name as nickname,
                 r.total_score as score,
                 r.score_updated_at as achieved_at,
-                RANK() OVER (ORDER BY r.total_score DESC) as rank
+                RANK() OVER (ORDER BY r.total_score DESC, r.score_updated_at ASC) as rank
             FROM minigame_monthly_rankings r
             LEFT JOIN attendees a ON r.user_id = a.id
             WHERE r.game_id = ${gameId} AND r.month_key = ${monthKey}
-            ORDER BY r.total_score DESC
+            ORDER BY r.total_score DESC, r.score_updated_at ASC
             LIMIT ${limit}
         `);
         return res;

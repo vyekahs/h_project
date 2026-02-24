@@ -136,6 +136,17 @@ const queries = [
         ALTER TABLE tutorial_progress ADD CONSTRAINT fk_tutorial_attendees FOREIGN KEY (user_id) REFERENCES attendees(id) ON DELETE CASCADE;
      EXCEPTION WHEN others THEN null; END $$;`,
 
+    `CREATE TABLE IF NOT EXISTS minigame_play_log (
+        id              BIGSERIAL PRIMARY KEY,
+        game_id         VARCHAR(50) NOT NULL,
+        difficulty      VARCHAR(20),
+        user_id         INTEGER NOT NULL REFERENCES attendees(id) ON DELETE CASCADE,
+        score           INT,
+        clear_time      INT,
+        played_at       TIMESTAMP DEFAULT NOW()
+    );`,
+    `CREATE INDEX IF NOT EXISTS idx_play_log_played_at ON minigame_play_log (played_at DESC);`,
+
     `-- Recalculate sudoku scores from cumulative to single-game best (one-time fix)
      UPDATE minigame_rankings
      SET score = CASE difficulty
