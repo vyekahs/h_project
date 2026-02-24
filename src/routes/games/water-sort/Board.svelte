@@ -43,7 +43,7 @@
 	const padding = 16;
 
 	let tubeCount = $derived(tubes.length);
-	let rows = $derived(tubeCount <= 7 ? 1 : 2);
+	let rows = $derived(Math.ceil(tubeCount / 6));
 	let cols = $derived(Math.ceil(tubeCount / rows));
 
 	let totalWidth = $derived(cols * tubeWidth + (cols - 1) * tubeGap + padding * 2);
