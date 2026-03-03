@@ -8,6 +8,7 @@
 	const hand = $derived(game.sortedHand);
 	const isExchangePhase = $derived(game.phase === 'exchange');
 	const isPlaying = $derived(game.phase === 'playing');
+	const isDragonGift = $derived(game.phase === 'dragon_gift');
 	const busy = $derived(game.actionInProgress);
 
 	// Detect if selected cards form a bomb (for out-of-turn bomb play)
@@ -187,22 +188,24 @@
 		</div>
 	{/if}
 
-	{#if !isExchangePhase && isPlaying}
+	{#if !isExchangePhase && (isPlaying || isDragonGift)}
 		<div class="play-controls">
-			<button
-				class="btn-play"
-				disabled={game.selectedCards.size === 0 || !game.isMyTurn || busy}
-				onclick={() => game.playSelectedCards()}
-			>
-				내기 ({game.selectedCards.size})
-			</button>
-			<button
-				class="btn-pass"
-				disabled={!game.isMyTurn || busy}
-				onclick={() => game.pass()}
-			>
-				패스
-			</button>
+			{#if isPlaying}
+				<button
+					class="btn-play"
+					disabled={game.selectedCards.size === 0 || !game.isMyTurn || busy}
+					onclick={() => game.playSelectedCards()}
+				>
+					내기 ({game.selectedCards.size})
+				</button>
+				<button
+					class="btn-pass"
+					disabled={!game.isMyTurn || busy}
+					onclick={() => game.pass()}
+				>
+					패스
+				</button>
+			{/if}
 			{#if selectedIsBomb}
 				<button class="btn-bomb" disabled={busy} onclick={playBomb}>
 					폭탄!

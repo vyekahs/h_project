@@ -17,7 +17,7 @@ import {
 	hasOpponentDeclaredTichu,
 	type CardTracker
 } from './cardTracker';
-import { searchBestPlay } from './playSearchGrid';
+import { searchBestPlay, calcExitRate } from './playSearchGrid';
 
 // ===== Hand Analysis Helpers =====
 
@@ -499,7 +499,7 @@ export function decidePlay(
 			const tracker = buildCardTracker(context);
 			const phoenixRank = Math.ceil(lastCombo.rank + 0.5);
 			let higherCardsOut = 0;
-			for (let r = phoenixRank + 1; r <= 14; r++) {
+			for (let r = phoenixRank; r <= 14; r++) {
 				higherCardsOut += tracker.remainingByRank.get(r) || 0;
 			}
 			if (!tracker.dragonPlayed && !tracker.dragonInMyHand) higherCardsOut++;
@@ -797,6 +797,15 @@ function decideLeadEndgame(
 			score += (1 - winProb) * 10;
 			// 멀티카드 콤보 보너스: 여러 장 한번에 처리
 			score += c.cards.length * 2;
+			// 남은 패 나가기 효율 평가: 이 콤보를 내고 남은 패가 효율적인지
+			const remaining = hand.filter(card => !c.cards.some(cc => cc.id === card.id));
+			if (remaining.length > 0) {
+				const exitInfo = calcExitRate(remaining, tracker);
+				score += exitInfo.rate * 8;       // 효율 높으면 보너스
+				score -= exitInfo.turns * 1.5;    // 턴 많으면 페널티
+			} else {
+				score += 15; // 이 콤보로 나갈 수 있음
+			}
 			// 드래곤/봉황 싱글 리드 강한 페널티 (보존해야 할 강한 카드)
 			if (c.type === 'single' && c.cards[0].type === 'special') {
 				if (c.cards[0].special === 'dragon') score -= 20;

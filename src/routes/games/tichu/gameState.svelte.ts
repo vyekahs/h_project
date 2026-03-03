@@ -172,6 +172,11 @@ export function createTichuGameState() {
 				showDragonGiftModal = true;
 			}
 
+			// dragon_gift에서 폭탄 사용으로 playing으로 복귀하면 모달 닫기
+			if (prevPhase === 'dragon_gift' && currentPhase === 'playing') {
+				showDragonGiftModal = false;
+			}
+
 			// round_ending 시 마지막 트릭 플레이 저장 (trick이 아직 남아있음)
 			if (currentPhase === 'round_ending' && s?.round?.trick) {
 				const plays = s.round.trick.plays;

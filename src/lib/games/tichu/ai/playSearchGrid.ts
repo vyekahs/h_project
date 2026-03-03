@@ -138,7 +138,7 @@ interface ExitInfo {
  * Greedy 파티션: 가장 큰 콤보부터 선택 → 나머지는 싱글.
  * 각 턴의 승률을 합산하여 효율을 계산.
  */
-function calcExitRate(hand: Card[], tracker: CardTracker): ExitInfo {
+export function calcExitRate(hand: Card[], tracker: CardTracker): ExitInfo {
 	if (hand.length === 0) return { rate: 1.0, turns: 0 };
 
 	const combos = findAllPlayableCombinations(hand);

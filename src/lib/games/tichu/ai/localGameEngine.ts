@@ -804,7 +804,9 @@ export class LocalGameEngine {
 		if (!Array.isArray(cardIds) || cardIds.length < 4 || cardIds.length > 14) {
 			return { success: false, error: '유효하지 않은 폭탄입니다' };
 		}
-		if (this.state.phase !== 'playing') return { success: false, error: '지금은 폭탄을 쓸 수 없습니다' };
+		if (this.state.phase !== 'playing' && this.state.phase !== 'dragon_gift') {
+			return { success: false, error: '지금은 폭탄을 쓸 수 없습니다' };
+		}
 		const round = this.state.round;
 		if (!round) return { success: false, error: '라운드가 없습니다' };
 
@@ -849,6 +851,13 @@ export class LocalGameEngine {
 		if (player.hand.length === 0) {
 			this.playerFinished(seat);
 		}
+
+		// dragon_gift 중 폭탄이 사용됐으면 dragon_gift 상태 해제
+		if (round.dragonGiftPending) {
+			round.dragonGiftPending = false;
+			round.dragonGiftSeat = null;
+		}
+		this.setPhase('playing');
 
 		if (this.checkRoundEnd()) return { success: true };
 
