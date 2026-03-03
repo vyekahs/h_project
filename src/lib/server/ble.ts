@@ -284,7 +284,7 @@ async function ensureCachesLoaded(source: string = 'BLE') {
 export async function processScanResults(scannerId: string, timestamp: number, scans: ScanResult[], isLastBatch: boolean = true) {
     await ensureCachesLoaded('BLE');
 
-    // 오픈 시간 전이면 스캔 처리 완전 스킵
+    // 오픈 시간 전후 2시간 범위 밖이면 스캔 처리 완전 스킵
     const nowCheck = new Date();
     const kstCheck = new Date(nowCheck.getTime() + 9 * 60 * 60 * 1000);
     const checkHour = kstCheck.getUTCHours();
@@ -292,7 +292,7 @@ export async function processScanResults(scannerId: string, timestamp: number, s
     const [ohCheck, omCheck] = settingsCache!.openingTime.split(':').map(Number);
     const currentMinutesTotal = checkHour * 60 + checkMinute;
     const openMinutesTotal = ohCheck * 60 + omCheck;
-    const beforeOpeningWindow = currentMinutesTotal < (openMinutesTotal - 30);
+    const beforeOpeningWindow = currentMinutesTotal < (openMinutesTotal - 120);
 
     if (!settingsCache!.isOpen && beforeOpeningWindow) {
         console.log(`[${kstTime()}][BLE] Gym closed & before opening window, skipping (${scans.length} devices)`);
@@ -377,14 +377,18 @@ export async function processScanResults(scannerId: string, timestamp: number, s
     const currentMinute = kstNow.getUTCMinutes();
     const [openHour, openMinute] = settingsCache!.openingTime.split(':').map(Number);
 
-    const isPastOpeningTime = (currentHour > openHour) || (currentHour === openHour && currentMinute >= openMinute);
+    // 오픈시간 전후 2시간만 자동 오픈 허용 (예: 09:00 오픈이면 07:00~11:00)
+    const currentMins = currentHour * 60 + currentMinute;
+    const openMins = openHour * 60 + openMinute;
+    const diffFromOpening = currentMins - openMins;
+    const isWithinAutoOpenWindow = diffFromOpening >= -120 && diffFromOpening <= 120;
 
     for (const attendeeId of detectedAttendeeIds) {
         const attendee = attendeeCache.get(attendeeId);
         if (!attendee) continue;
 
-        // Auto-Open Logic
-        if (!settingsCache!.isOpen && attendee.isAdmin && isPastOpeningTime) {
+        // Auto-Open Logic (오픈시간 ±2시간만 허용)
+        if (!settingsCache!.isOpen && attendee.isAdmin && isWithinAutoOpenWindow) {
             console.log(`[${kstTime()}][BLE] 🚨 Admin ${attendeeId} (${attendee.name}) detected! Auto-Opening Gym...`);
             await db.execute(sql`INSERT INTO system_settings (key, value) VALUES ('is_open', 'true') ON CONFLICT (key) DO UPDATE SET value = 'true'`);
             settingsCache!.isOpen = true;
@@ -470,6 +474,7 @@ async function checkAutoCheckout() {
 export async function processWifiReport(_scannerId: string, devices: { mac: string }[]) {
     await ensureCachesLoaded('WiFi');
 
+    // 오픈 시간 전후 2시간 범위 밖이면 스캔 처리 완전 스킵
     const nowCheck = new Date();
     const kstCheck = new Date(nowCheck.getTime() + 9 * 60 * 60 * 1000);
     const checkHour = kstCheck.getUTCHours();
@@ -477,7 +482,7 @@ export async function processWifiReport(_scannerId: string, devices: { mac: stri
     const [ohCheck, omCheck] = settingsCache!.openingTime.split(':').map(Number);
     const currentMinutesTotal = checkHour * 60 + checkMinute;
     const openMinutesTotal = ohCheck * 60 + omCheck;
-    const beforeOpeningWindow = currentMinutesTotal < (openMinutesTotal - 30);
+    const beforeOpeningWindow = currentMinutesTotal < (openMinutesTotal - 120);
 
     if (!settingsCache!.isOpen && beforeOpeningWindow) {
         console.log(`[${kstTime()}][WiFi] Gym closed & before opening window, skipping (${devices.length} devices)`);
@@ -518,13 +523,18 @@ export async function processWifiReport(_scannerId: string, devices: { mac: stri
     const currentHour = kstNow.getUTCHours();
     const currentMinute = kstNow.getUTCMinutes();
     const [openHour, openMinute] = settingsCache!.openingTime.split(':').map(Number);
-    const isPastOpeningTime = (currentHour > openHour) || (currentHour === openHour && currentMinute >= openMinute);
+
+    // 오픈시간 전후 2시간만 자동 오픈 허용 (예: 09:00 오픈이면 07:00~11:00)
+    const currentMins = currentHour * 60 + currentMinute;
+    const openMins = openHour * 60 + openMinute;
+    const diffFromOpening = currentMins - openMins;
+    const isWithinAutoOpenWindow = diffFromOpening >= -120 && diffFromOpening <= 120;
 
     for (const attendeeId of detectedAttendeeIds) {
         const attendee = attendeeCache.get(attendeeId);
         if (!attendee) continue;
 
-        if (!settingsCache!.isOpen && attendee.isAdmin && isPastOpeningTime) {
+        if (!settingsCache!.isOpen && attendee.isAdmin && isWithinAutoOpenWindow) {
             console.log(`[${kstTime()}][WiFi] Admin ${attendeeId} (${attendee.name}) detected via WiFi! Auto-Opening...`);
             await db.execute(sql`INSERT INTO system_settings (key, value) VALUES ('is_open', 'true') ON CONFLICT (key) DO UPDATE SET value = 'true'`);
             settingsCache!.isOpen = true;
