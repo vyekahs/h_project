@@ -11,6 +11,8 @@ interface SharedData {
     notice: string | null;
     isOpen: boolean;
     dailyVisitPlans: any[];
+    todayScheduledParticipants: any[];
+    todayPlayingMainGames: any[];
 }
 
 let cache: SharedData | null = null;
@@ -24,7 +26,7 @@ function isStale() {
 }
 
 async function fetchSharedData(): Promise<SharedData> {
-    const [attendeesResult, gamesResult, scheduledGamesResult, allGamesResult, reservationsResult, noticeResult, sysRes, dailyVisitPlansResult] = await Promise.all([
+    const [attendeesResult, gamesResult, scheduledGamesResult, allGamesResult, reservationsResult, noticeResult, sysRes, dailyVisitPlansResult, todayScheduledParticipantsResult, todayPlayingMainGamesResult] = await Promise.all([
         db.execute(sql`
             SELECT DISTINCT ON (a.id) a.id, a.name, v.arrival_time,
                    t.title_name,
@@ -93,6 +95,40 @@ async function fetchSharedData(): Promise<SharedData> {
             WHERE dvp.plan_date = CURRENT_DATE
             ORDER BY dvp.created_at ASC
         `),
+        db.execute(sql`
+            SELECT DISTINCT ON (sp.attendee_id) sp.attendee_id, a.name, t.title_name,
+                   gs.party_id IS NOT NULL as is_party,
+                   TO_CHAR(gs.scheduled_at AT TIME ZONE 'Asia/Seoul', 'HH24:MI') as planned_time
+            FROM session_participants sp
+            JOIN game_sessions gs ON sp.session_id = gs.id
+            JOIN attendees a ON sp.attendee_id = a.id
+            LEFT JOIN minigame_user_points up ON a.id = up.user_id
+            LEFT JOIN minigame_titles t ON up.equipped_title_id = t.id
+            WHERE gs.status = 'scheduled'
+              AND gs.scheduled_at::date = (NOW() AT TIME ZONE 'Asia/Seoul')::date
+              AND sp.attendee_id IS NOT NULL
+            ORDER BY sp.attendee_id, gs.scheduled_at ASC
+        `),
+        db.execute(sql`
+            SELECT gs.id, gs.game_name, gs.game_id, gs.start_time, gs.end_time, gs.created_by, gs.party_id, gs.show_on_main, g.image_url,
+                   gs.min_players, gs.max_players, gs.status,
+                   COALESCE(json_agg(json_build_object(
+                       'id', COALESCE(a.id, -sp.id),
+                       'name', COALESCE(a.name, sp.guest_name),
+                       'title_name', t.title_name,
+                       'is_guest', (sp.attendee_id IS NULL)
+                   )) FILTER (WHERE sp.id IS NOT NULL), '[]') as participants
+            FROM game_sessions gs
+            LEFT JOIN session_participants sp ON gs.id = sp.session_id
+            LEFT JOIN attendees a ON sp.attendee_id = a.id
+            LEFT JOIN games g ON gs.game_id = g.id
+            LEFT JOIN minigame_user_points up ON a.id = up.user_id
+            LEFT JOIN minigame_titles t ON up.equipped_title_id = t.id
+            WHERE gs.status = 'playing'
+              AND gs.show_on_main = true
+              AND gs.start_time::date = (NOW() AT TIME ZONE 'Asia/Seoul')::date
+            GROUP BY gs.id, gs.game_name, gs.game_id, gs.start_time, gs.end_time, gs.created_by, gs.party_id, gs.show_on_main, g.image_url, gs.min_players, gs.max_players, gs.status
+        `),
     ]);
 
     return {
@@ -104,6 +140,8 @@ async function fetchSharedData(): Promise<SharedData> {
         notice: (noticeResult[0] as any)?.content || null,
         isOpen: (sysRes[0] as any)?.value !== 'false',
         dailyVisitPlans: dailyVisitPlansResult as any[],
+        todayScheduledParticipants: todayScheduledParticipantsResult as any[],
+        todayPlayingMainGames: todayPlayingMainGamesResult as any[],
     };
 }
 

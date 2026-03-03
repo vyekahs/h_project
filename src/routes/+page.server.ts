@@ -113,7 +113,11 @@ export const load: PageServerLoad = async ({ locals }) => {
         parties,
         userPartyIds,
         dailyVisitPlans: shared.dailyVisitPlans,
-        mainScheduledGames: shared.scheduledGames.filter((g: any) => g.show_on_main),
+        mainScheduledGames: [
+            ...shared.scheduledGames.filter((g: any) => g.show_on_main),
+            ...shared.todayPlayingMainGames,
+        ],
+        todayScheduledParticipants: shared.todayScheduledParticipants,
         userHasVisitPlan,
     };
 };

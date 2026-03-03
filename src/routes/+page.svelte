@@ -52,6 +52,7 @@
         userPartyIds: number[];
         dailyVisitPlans: { id: number; attendee_id: number; name: string; planned_time?: string | null; title_name?: string }[];
         mainScheduledGames: GameSession[];
+        todayScheduledParticipants: { attendee_id: number; name: string; title_name?: string; is_party: boolean; planned_time: string }[];
         userHasVisitPlan: boolean;
     };
 
@@ -103,6 +104,12 @@
     $: scheduledGames = data.scheduledGames as GameSession[];
     $: userReservation = data.userReservation as Reservation | null;
     $: userScheduledGames = (data.userScheduledGames || []) as GameSession[]; // Change to array
+
+    // 오늘 갈 예정: 예약 참가자 합치기 (체크인한 사람, 이미 등록된 사람 제외)
+    $: checkedInIds = new Set((data.attendees || []).map((a: any) => a.id));
+    $: visitPlanIds = new Set((data.dailyVisitPlans || []).map((p: any) => p.attendee_id));
+    $: scheduledVisitors = (data.todayScheduledParticipants || []).filter((p: any) => !checkedInIds.has(p.attendee_id) && !visitPlanIds.has(p.attendee_id));
+    $: mergedVisitPlans = [...(data.dailyVisitPlans || []), ...scheduledVisitors.map((p: any) => ({ attendee_id: p.attendee_id, name: p.name, planned_time: p.planned_time, title_name: p.title_name, is_party: p.is_party }))];
 
     function getGameReservations(gameId: number) {
         return (data.reservations || []).filter((r: any) => r.session_id === gameId);
@@ -631,16 +638,17 @@
                 </div>
                 <div class="tables-grid">
                     {#each showAllMainGames ? mainGames : mainGames.slice(0, 1) as game}
-                        {@const time = formatScheduledTime(game.scheduled_at)}
+                        {@const isPlaying = game.status === 'playing'}
+                        {@const time = isPlaying ? null : formatScheduledTime(game.scheduled_at)}
                         <div class="table-card available">
                             <div class="table-header">
                                 <h3>
                                     <span class="game-title-text">{game.game_name}</span>
                                     {#if game.party_id}<span class="party-badge">고정팟</span>{/if}
-                                    <span class="sub-text">({(game.participants || []).length} / {game.max_players})</span>
+                                    <span class="sub-text">({(game.participants || game.players || []).length}{#if game.max_players} / {game.max_players}{/if})</span>
                                 </h3>
                                 <div class="header-meta-row">
-                                    {#if data.user && !(game.participants || []).some((p: any) => p.id === data.user!.id)}
+                                    {#if !isPlaying && data.user && !(game.participants || []).some((p: any) => p.id === data.user!.id)}
                                         {@const hasConflict = (() => {
                                             const targetDate = new Date(game.scheduled_at).toDateString();
                                             if (data.userPlayingGame) {
@@ -681,13 +689,17 @@
                                 <div class="session-info next">
                                     <div class="session-header">
                                         <span class="start-time">
-                                            <span class="highlight-green">{time.relative}</span>
-                                            <span class="sub-text">({time.absolute} 시작)</span>
+                                            {#if isPlaying}
+                                                <span class="highlight-playing">진행중</span>
+                                            {:else if time}
+                                                <span class="highlight-green">{time.relative}</span>
+                                                <span class="sub-text">({time.absolute} 시작)</span>
+                                            {/if}
                                         </span>
                                     </div>
                                     <div class="participants">
                                         <div class="participant-list">
-                                            {#each (game.participants || []) as p}
+                                            {#each (game.participants || game.players || []) as p}
                                                 {@const participant = p as any}
                                                 <span class="p-name" class:guest-name={participant.is_guest}>
                                                     {#if participant.title_name}
@@ -744,8 +756,8 @@
 
         <section class="visit-plan-section">
             <div class="section-header">
-                <h2>오늘 갈예정 ({(data.dailyVisitPlans || []).length})</h2>
-                {#if data.user && !(data.attendees || []).some((a: any) => a.id === data.user!.id)}
+                <h2>오늘 갈예정 ({mergedVisitPlans.length})</h2>
+                {#if data.user && !checkedInIds.has(data.user.id)}
                     {@const hasScheduledGame = (data.userScheduledGames || []).some((g: any) => !g.party_id)}
                     {#if data.userHasVisitPlan}
                         <form method="POST" action="?/toggleVisitPlan" use:enhance={() => {
@@ -760,12 +772,15 @@
                 {/if}
             </div>
             <div class="visit-plan-grid">
-                {#each (data.dailyVisitPlans || []) as plan}
+                {#each mergedVisitPlans as plan}
                     <div class="visit-plan-card">
                         {#if plan.title_name}
                             <span class="mini-title">{plan.title_name}</span>
                         {/if}
                         <span class="name">{plan.name}</span>
+                        {#if (plan as any).is_party}
+                            <span class="party-chip">고정팟</span>
+                        {/if}
                         {#if plan.planned_time}
                             <span class="visit-time">{formatVisitTime(plan.planned_time)} ~</span>
                         {:else}
@@ -773,7 +788,7 @@
                         {/if}
                     </div>
                 {/each}
-                {#if (data.dailyVisitPlans || []).length === 0}
+                {#if mergedVisitPlans.length === 0}
                     <p class="empty-state">아직 오늘의 첫 번째 방문자가 없어요. 내가 먼저 등록해볼까요?</p>
                 {/if}
             </div>
@@ -1759,6 +1774,15 @@
         font-weight: 500;
         font-style: italic;
     }
+    .visit-plan-card .party-chip {
+        font-size: 0.6rem;
+        background: #e8d5f5;
+        color: #7c3aed;
+        padding: 1px 5px;
+        border-radius: 4px;
+        font-weight: 500;
+        margin-top: 2px;
+    }
 
     /* Visit Plan Modal */
     .visit-plan-modal {
@@ -2706,6 +2730,11 @@
     }
     .highlight-green {
         color: #4caf50;
+        font-weight: 700;
+        margin-right: 0.25rem;
+    }
+    .highlight-playing {
+        color: #e67700;
         font-weight: 700;
         margin-right: 0.25rem;
     }
