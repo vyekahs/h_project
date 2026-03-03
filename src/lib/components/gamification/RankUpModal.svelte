@@ -87,8 +87,8 @@
                 id: isUser ? 'user-row' : `row-${r}-${rowData?.nickname || 'empty'}`,
                 isUser,
                 nickname: rowData ? rowData.nickname : '---',
-                avatar: rowData ? rowData.avatar : null,
                 score: rowData ? rowData.score : 0,
+                gapToNext: 0,
             });
         }
         
