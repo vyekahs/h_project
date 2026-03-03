@@ -1,12 +1,39 @@
 <script lang="ts">
 	import favicon from '$lib/assets/favicon.svg';
     import { page } from '$app/stores';
-    import { onMount } from 'svelte';
+    import { onMount, onDestroy } from 'svelte';
+    import { version } from '$app/environment';
     import PointDisplay from '$lib/components/gamification/PointDisplay.svelte';
     import AdBanner from '$lib/components/ads/AdBanner.svelte';
     import RankUpModal from '$lib/components/gamification/RankUpModal.svelte';
 
 	let { children } = $props();
+
+    const GAME_PATHS = ['/games/tichu', '/games/sudoku', '/games/killer-sudoku', '/games/unblock-me', '/games/energy', '/games/water-sort'];
+    let versionCheckTimer: ReturnType<typeof setInterval> | null = null;
+
+    function isInGame(pathname: string): boolean {
+        return GAME_PATHS.some(p => pathname.startsWith(p));
+    }
+
+    onMount(() => {
+        versionCheckTimer = setInterval(async () => {
+            try {
+                const res = await fetch(`/_app/version.json`, { cache: 'no-store' });
+                if (!res.ok) return;
+                const data = await res.json();
+                if (data.version && data.version !== version) {
+                    if (!isInGame($page.url.pathname)) {
+                        location.reload();
+                    }
+                }
+            } catch {}
+        }, 60_000);
+    });
+
+    onDestroy(() => {
+        if (versionCheckTimer) clearInterval(versionCheckTimer);
+    });
 </script>
 
 <svelte:head>
