@@ -2,7 +2,6 @@ import type { Board, Cell } from '$lib/games/sudoku/logic';
 import { generateKillerSudoku, getCageErrors, findCageForCell, type Cage } from '$lib/games/sudoku/killerLogic';
 import { goto } from '$app/navigation';
 import { browser } from '$app/environment';
-import { user } from '$lib/stores/user';
 import { GAME_CONFIG } from '$lib/config';
 import { formatTime } from '$lib/games/utils';
 import { rankUpStore } from '$lib/stores/rankUpStore.svelte';
@@ -45,6 +44,7 @@ export function createKillerSudokuGame() {
 
     let showTutorial = $state(false);
     let activeTutorialId = $state('killer_easy_1');
+    let showGuide = $state(false);
 
     let completedNumbers = $derived.by(() => {
         const counts = Array(10).fill(0);
@@ -103,13 +103,6 @@ export function createKillerSudokuGame() {
         }
     }
 
-    // Tutorial checker (set externally)
-    let checkAndShowTutorialFn: ((diff: string) => boolean) | null = null;
-
-    function setTutorialChecker(fn: (diff: string) => boolean) {
-        checkAndShowTutorialFn = fn;
-    }
-
     function loadSavedGame() {
         const saved = localStorage.getItem('killer_sudoku_save');
         if (saved) {
@@ -163,32 +156,9 @@ export function createKillerSudokuGame() {
         hasSavedGame = false;
     }
 
-    async function startGame(force = false, skipTutorialCheck = false) {
-        // Tutorial check
-        if (!skipTutorialCheck && !force) {
-            const shouldShow = checkAndShowTutorialFn?.(difficulty) ?? false;
-            if (shouldShow) return;
-        }
-
-        // Track tutorial completion
-        if (showTutorial && activeTutorialId) {
-            const unlocked = JSON.parse(localStorage.getItem('killer_sudoku_unlocked_tutorials') || '[]');
-            if (!unlocked.includes(activeTutorialId)) {
-                unlocked.push(activeTutorialId);
-                localStorage.setItem('killer_sudoku_unlocked_tutorials', JSON.stringify(unlocked));
-
-                fetch('/api/user/tutorials/complete', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ tutorialId: activeTutorialId })
-                }).then(async (res) => {
-                    if (res.ok) {
-                        await user.refresh();
-                    }
-                });
-            }
-        }
+    async function startGame(force = false) {
         showTutorial = false;
+        showGuide = false;
 
         localStorage.removeItem('killer_sudoku_save');
 
@@ -226,7 +196,7 @@ export function createKillerSudokuGame() {
     function startTimer() {
         clearInterval(timerInterval);
         timerInterval = setInterval(() => {
-            if (gameState === 'playing' && !isTimeFrozen && !alertMessage && !confirmMessage) {
+            if (gameState === 'playing' && !isTimeFrozen && !alertMessage && !confirmMessage && !showGuide && !showTutorial) {
                 timerValue++;
                 displayTimer = timerValue;
                 if (timerValue % 5 === 0) {
@@ -532,6 +502,8 @@ export function createKillerSudokuGame() {
         set showTutorial(v: boolean) { showTutorial = v; },
         get activeTutorialId() { return activeTutorialId; },
         set activeTutorialId(v: string) { activeTutorialId = v; },
+        get showGuide() { return showGuide; },
+        set showGuide(v: boolean) { showGuide = v; },
         get earnedPointsResult() { return earnedPointsResult; },
         get calculatedScore() { return calculatedScore; },
         get newTitleName() { return newTitleName; },
@@ -562,7 +534,6 @@ export function createKillerSudokuGame() {
         handleAction,
         handleAdReward,
         clearTimerInterval,
-        setTutorialChecker,
         formatTime,
     };
 }

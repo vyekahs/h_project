@@ -11,21 +11,9 @@
     import { GAME_CONFIG } from '$lib/config';
 
     import { createKillerSudokuGame, difficultyLabels, formatTime } from './gameLogic.svelte';
-    import { createKillerTutorialLogic } from './tutorialLogic.svelte';
+    import { KILLER_TUTORIALS, KILLER_TUTORIAL_ORDER } from './killerTutorialData';
 
     const game = createKillerSudokuGame();
-
-    function openTutorial(id: string) {
-        game.activeTutorialId = id;
-        game.showTutorial = true;
-    }
-
-    const tutorial = createKillerTutorialLogic(
-        () => $user.completedTutorials || [],
-        openTutorial
-    );
-
-    game.setTutorialChecker(tutorial.checkAndShowTutorial);
 
     let isAutostart = false;
 
@@ -59,7 +47,7 @@
 
 <div class="game-container">
     {#if game.gameState !== 'start'}
-        <div class="game-play-area" class:blurred={game.alertMessage || game.confirmMessage || game.gameState === 'paused'}>
+        <div class="game-play-area" class:blurred={game.alertMessage || game.confirmMessage || game.gameState === 'paused' || game.showGuide || game.showTutorial}>
             <header>
                 <div class="header-info">
                     <span class="difficulty-badge">{difficultyLabels[game.difficulty]}</span>
@@ -68,6 +56,9 @@
 
                 <div class="timer-controls">
                     <div class="header-items">
+                        <button class="icon-btn theme-btn" onclick={() => game.showGuide = true} title="공략집">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+                        </button>
                         {#if $user.inventory.some((i: any) => i.item_code === 'time_stop')}
                             <button class="icon-btn theme-btn" onclick={() => game.handleAction('time_stop')} title="타임 스톱 (시간 정지)">
                                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="2" x2="22" y1="12" y2="12"/><line x1="12" x2="12" y1="2" y2="22"/><path d="m20 16-4-4 4-4"/><path d="m4 8 4 4-4 4"/><path d="m16 4-4 4-4-4"/><path d="m8 20 4-4 4 4"/></svg>
@@ -180,17 +171,29 @@
         </div>
     {/if}
 
+    {#if game.showGuide && !game.showTutorial}
+        <div class="overlay" onclick={() => game.showGuide = false} role="button" tabindex="-1" aria-label="공략집 닫기">
+            <div class="modal guide-modal" onclick={(e) => e.stopPropagation()} role="presentation">
+                <h3>공략집</h3>
+                <div class="guide-list">
+                    {#each KILLER_TUTORIAL_ORDER as tid}
+                        {@const t = KILLER_TUTORIALS[tid]}
+                        {#if t}
+                            <button class="guide-item" onclick={() => { game.activeTutorialId = tid; game.showTutorial = true; }}>
+                                <span class="guide-diff-badge {t.difficulty}">{difficultyLabels[t.difficulty] || t.difficulty}</span>
+                                <span class="guide-title">{t.title}</span>
+                                <span class="guide-arrow">›</span>
+                            </button>
+                        {/if}
+                    {/each}
+                </div>
+                <button class="btn-secondary guide-close-btn" onclick={() => game.showGuide = false}>닫기</button>
+            </div>
+        </div>
+    {/if}
+
     {#if game.showTutorial}
-        <KillerTutorialModal tutorialId={game.activeTutorialId} onclose={(shouldStart: boolean) => {
-            if (shouldStart) {
-                game.startGame(true);
-            } else {
-                game.showTutorial = false;
-                if (isAutostart) {
-                    goto('/games/start/killer-sudoku');
-                }
-            }
-        }} />
+        <KillerTutorialModal tutorialId={game.activeTutorialId} onclose={() => { game.showTutorial = false; }} />
     {/if}
 
 </div>
@@ -221,6 +224,69 @@
         font-size: 1.05rem;
         color: #555;
         line-height: 1.4;
+    }
+
+    /* Guide Modal */
+    .guide-modal {
+        max-width: 360px;
+        width: 90%;
+        padding: 1.5rem;
+    }
+    .guide-modal h3 {
+        margin: 0 0 1rem 0;
+        font-size: 1.2rem;
+        color: #333;
+        text-align: center;
+    }
+    .guide-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        max-height: 50vh;
+        overflow-y: auto;
+    }
+    .guide-item {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 0.75rem;
+        background: #f8f9fa;
+        border: 1px solid #e9ecef;
+        border-radius: 10px;
+        cursor: pointer;
+        transition: background 0.15s;
+        width: 100%;
+        text-align: left;
+    }
+    .guide-item:hover {
+        background: #e9ecef;
+    }
+    .guide-diff-badge {
+        font-size: 0.7rem;
+        font-weight: 700;
+        padding: 0.15rem 0.5rem;
+        border-radius: 6px;
+        white-space: nowrap;
+        background: #e9ecef;
+        color: #495057;
+    }
+    .guide-diff-badge.easy { background: #d3f9d8; color: #2b8a3e; }
+    .guide-diff-badge.medium { background: #fff3bf; color: #e67700; }
+    .guide-diff-badge.hard { background: #ffd8a8; color: #d9480f; }
+    .guide-diff-badge.expert { background: #ffc9c9; color: #c92a2a; }
+    .guide-diff-badge.master { background: #eebefa; color: #862e9c; }
+    .guide-title {
+        flex: 1;
+        font-size: 0.9rem;
+        color: #333;
+    }
+    .guide-arrow {
+        font-size: 1.2rem;
+        color: #adb5bd;
+    }
+    .guide-close-btn {
+        margin-top: 1rem;
+        width: 100%;
     }
 
     :global(.app-layout:has(.game-container)) {

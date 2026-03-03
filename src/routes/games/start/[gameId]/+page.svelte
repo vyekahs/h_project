@@ -2,7 +2,6 @@
     import { goto } from '$app/navigation';
     import { browser } from '$app/environment';
     import RankingBoard from '$lib/components/gamification/RankingBoard.svelte';
-    import { user } from '$lib/stores/user';
     import type { GameConfig } from '$lib/games/gameRegistry';
     import { formatTime } from '$lib/games/utils';
 
@@ -32,14 +31,12 @@
     let hallOfFameLoading = $state(false);
 
     // Tutorials
-    let hasUnlockedTutorials = $state(false);
     let tutorialData: Record<string, any> | null = $state(null);
     let tutorialOrder: string[] = $state([]);
-    let unlockedTutorialIDs: Set<string> = $state(new Set());
-    
+
     let visibleTutorials = $derived(
         (tutorialData && tutorialOrder)
-        ? tutorialOrder.filter(tid => tutorialData![tid] && unlockedTutorialIDs.has(tid))
+        ? tutorialOrder.filter(tid => tutorialData![tid])
         : []
     );
 
@@ -79,16 +76,6 @@
             return;
         }
 
-        const localKey = gameConfig.tutorialLocalStorageKey;
-        const localData = localKey ? JSON.parse(localStorage.getItem(localKey) || '[]') : [];
-        const dbData = ($user as any)?.completedTutorials || [];
-        const allUnlocked = [...localData, ...dbData];
-        unlockedTutorialIDs = new Set(allUnlocked);
-
-        const prefix = gameConfig.tutorialPrefix || '';
-        hasUnlockedTutorials = allUnlocked.some((id: string) => typeof id === 'string' && id.startsWith(prefix));
-
-        // Dynamically load tutorial data
         if (gameConfig.id === 'sudoku') {
             import('../../../games/sudoku/tutorialData').then(m => {
                 tutorialData = m.TUTORIALS;
@@ -150,12 +137,9 @@
         showTutorial = true;
     }
 
-    function handleTutorialClose(shouldStart: boolean) {
+    function handleTutorialClose() {
         showTutorial = false;
         TutorialModalComponent = null;
-        if (shouldStart) {
-            startGame();
-        }
     }
 </script>
 
@@ -345,28 +329,22 @@
                 <!-- 3. Guide Tab -->
                 {:else if activeTab === 'guide'}
                     <div class="subpage-body">
-                        {#if visibleTutorials.length > 0}
-                            <div class="tutorial-list-container">
-                                <div class="tutorial-list">
-                                    {#each visibleTutorials as tid}
-                                        {@const t = tutorialData![tid]}
-                                        <button class="tutorial-list-item glass-list-item" onclick={() => openTutorial(tid)}>
-                                            <div class="t-info">
-                                                <div class="hof-diff-badge {t.difficulty}">
-                                                    {gameConfig.difficultyLabels[t.difficulty] || t.difficulty.toUpperCase()}
-                                                </div>
-                                                <span class="t-title">{t.title}</span>
+                        <div class="tutorial-list-container">
+                            <div class="tutorial-list">
+                                {#each visibleTutorials as tid}
+                                    {@const t = tutorialData![tid]}
+                                    <button class="tutorial-list-item glass-list-item" onclick={() => openTutorial(tid)}>
+                                        <div class="t-info">
+                                            <div class="hof-diff-badge {t.difficulty}">
+                                                {gameConfig.difficultyLabels[t.difficulty] || t.difficulty.toUpperCase()}
                                             </div>
-                                            <span class="t-arrow">›</span>
-                                        </button>
-                                    {/each}
-                                </div>
+                                            <span class="t-title">{t.title}</span>
+                                        </div>
+                                        <span class="t-arrow">›</span>
+                                    </button>
+                                {/each}
                             </div>
-                        {:else}
-                            <div class="empty-state">
-                                <p>아직 해금된 공략이 없습니다.</p>
-                            </div>
-                        {/if}
+                        </div>
                     </div>
                 {/if}
             </div>

@@ -166,8 +166,7 @@
 
             <div class="action-buttons">
                 {#if step === totalSteps - 1}
-                    <button class="btn-secondary" onclick={() => onclose(false)}>닫기</button>
-                    <button class="btn-primary" onclick={() => onclose(true)}>시작하기!</button>
+                    <button class="btn-primary" onclick={() => onclose()}>닫기</button>
                 {:else}
                     <button class="btn-primary" onclick={next}>다음</button>
                 {/if}

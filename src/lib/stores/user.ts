@@ -11,7 +11,6 @@ interface UserState {
     } | null;
     inventory: any[];
     name: string | null;
-    completedTutorials: string[];
     loading: boolean;
 }
 
@@ -20,7 +19,6 @@ const initialState: UserState = {
     currentTitle: null,
     inventory: [],
     name: null,
-    completedTutorials: [],
     loading: true
 };
 
@@ -42,7 +40,6 @@ function createUserStore() {
                         currentTitle: data.title,
                         inventory: data.inventory,
                         name: data.name,
-                        completedTutorials: data.completedTutorials || [],
                         loading: false
                     }));
                 } else {

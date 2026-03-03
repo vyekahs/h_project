@@ -58,14 +58,10 @@ export function createEnergyGame() {
 	let initialRotations: number[][] = [];
 	let initialOptimalMoves = 0;
 
-	// Tutorial
+	// Tutorial / Guide
 	let showTutorial = $state(false);
 	let activeTutorialId = $state('energy_easy_1');
-	let checkAndShowTutorialFn: ((diff: string) => boolean) | null = null;
-
-	function setTutorialChecker(fn: (diff: string) => boolean) {
-		checkAndShowTutorialFn = fn;
-	}
+	let showGuide = $state(false);
 
 	// Modal helpers
 	function showAlert(msg: string) {
@@ -87,7 +83,7 @@ export function createEnergyGame() {
 	function startTimer() {
 		clearInterval(timerInterval);
 		timerInterval = setInterval(() => {
-			if (gameState === 'playing' && !alertMessage && !confirmMessage) {
+			if (gameState === 'playing' && !alertMessage && !confirmMessage && !showGuide && !showTutorial) {
 				timerValue++;
 				displayTimer = timerValue;
 				if (timerValue % 5 === 0) {
@@ -189,29 +185,8 @@ export function createEnergyGame() {
 
 	// Game flow
 	function startGame(force = false) {
-		// 1. Tutorial check
-		if (!force) {
-			const shouldShow = checkAndShowTutorialFn?.(difficulty) ?? false;
-			if (shouldShow) return;
-		}
-
-		// 2. Track unlocked tutorial
-		if (browser && showTutorial && activeTutorialId) {
-			const unlocked: string[] = JSON.parse(
-				localStorage.getItem('energy_unlocked_tutorials') || '[]'
-			);
-			if (!unlocked.includes(activeTutorialId)) {
-				unlocked.push(activeTutorialId);
-				localStorage.setItem('energy_unlocked_tutorials', JSON.stringify(unlocked));
-				fetch('/api/user/tutorials/complete', {
-					method: 'POST',
-					headers: { 'Content-Type': 'application/json' },
-					body: JSON.stringify({ tutorialId: activeTutorialId })
-				}).catch(() => {});
-			}
-		}
-
 		showTutorial = false;
+		showGuide = false;
 		localStorage.removeItem('energy_save');
 		const level = generateLevel(difficulty);
 		tiles = level.tiles;
@@ -449,6 +424,12 @@ export function createEnergyGame() {
 		set activeTutorialId(v: string) {
 			activeTutorialId = v;
 		},
+		get showGuide() {
+			return showGuide;
+		},
+		set showGuide(v: boolean) {
+			showGuide = v;
+		},
 		// Functions
 		showAlert,
 		showConfirm,
@@ -462,7 +443,6 @@ export function createEnergyGame() {
 		undo,
 		pauseGame,
 		resumeGame,
-		restartGame,
-		setTutorialChecker
+		restartGame
 	};
 }

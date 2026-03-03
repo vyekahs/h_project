@@ -7,8 +7,6 @@ export interface GameConfig {
 	difficultyLabels: Record<string, string>;
 	localStorageSaveKey: string;
 	hasTutorials: boolean;
-	tutorialPrefix?: string; // e.g. 'sudoku_' or 'killer_'
-	tutorialLocalStorageKey?: string;
 }
 
 export const GAME_REGISTRY: Record<string, GameConfig> = {
@@ -26,9 +24,7 @@ export const GAME_REGISTRY: Record<string, GameConfig> = {
 			master: '마스터'
 		},
 		localStorageSaveKey: 'sudoku_save',
-		hasTutorials: true,
-		tutorialPrefix: 'sudoku_',
-		tutorialLocalStorageKey: 'sudoku_unlocked_tutorials'
+		hasTutorials: true
 	},
 	'killer-sudoku': {
 		id: 'killer-sudoku',
@@ -44,9 +40,7 @@ export const GAME_REGISTRY: Record<string, GameConfig> = {
 			master: '마스터'
 		},
 		localStorageSaveKey: 'killer_sudoku_save',
-		hasTutorials: true,
-		tutorialPrefix: 'killer_',
-		tutorialLocalStorageKey: 'killer_sudoku_unlocked_tutorials'
+		hasTutorials: true
 	},
 	'unblock-me': {
 		id: 'unblock-me',
@@ -78,9 +72,7 @@ export const GAME_REGISTRY: Record<string, GameConfig> = {
 			master: '마스터'
 		},
 		localStorageSaveKey: 'energy_save',
-		hasTutorials: true,
-		tutorialPrefix: 'energy_',
-		tutorialLocalStorageKey: 'energy_unlocked_tutorials'
+		hasTutorials: true
 	},
 	'water-sort': {
 		id: 'water-sort',

@@ -2,7 +2,6 @@ import { generateSudoku, type Board, type Cell } from '$lib/games/sudoku/logic';
 import { generateKillerSudoku, type Cage, getCageErrors } from '$lib/games/sudoku/killerLogic';
 import { goto } from '$app/navigation';
 import { browser } from '$app/environment';
-import { user } from '$lib/stores/user';
 import { GAME_CONFIG } from '$lib/config';
 import { formatTime } from '$lib/games/utils';
 import { rankUpStore } from '$lib/stores/rankUpStore.svelte';
@@ -39,9 +38,10 @@ export function createSudokuGame() {
     // Simple history stack
     let history: string[] = $state([]);
 
-    // Tutorial state (managed here, but tutorial check logic is in tutorialLogic)
+    // Tutorial / Guide state
     let showTutorial = $state(false);
     let activeTutorialId = $state('sudoku_easy_1');
+    let showGuide = $state(false);
 
     let earnedPointsResult = $state(0);
     let calculatedScore = $state(0);
@@ -178,51 +178,18 @@ export function createSudokuGame() {
         hasSavedGame = false;
     }
 
-    // Tutorial helpers (actual check logic is external)
-    let checkAndShowTutorialFn: ((diff: string) => boolean) | null = null;
-
-    function setTutorialChecker(fn: (diff: string) => boolean) {
-        checkAndShowTutorialFn = fn;
-    }
-
-    async function startGame(force = false, skipTutorialCheck = false) {
-        // 1. Tutorial Check
-        if (!skipTutorialCheck && !force) {
-             const shouldShow = checkAndShowTutorialFn?.(difficulty) ?? false;
-             if (shouldShow) return;
-        }
-
-        // 2. Play Count & Unlock Logic (Only for new games)
+    async function startGame(force = false) {
+        // Play Count (Only for new games)
             if (force || !hasSavedGame) {
                 if (browser) {
                     const playCounts = JSON.parse(localStorage.getItem('sudoku_play_counts') || '{}');
                     playCounts[difficulty] = (playCounts[difficulty] || 0) + 1;
                     localStorage.setItem('sudoku_play_counts', JSON.stringify(playCounts));
-
-                    // Track unlocked tutorials
-                    if (showTutorial && activeTutorialId) {
-                        const storageKey = gameMode === 'killer' ? 'killer_sudoku_unlocked_tutorials' : 'sudoku_unlocked_tutorials';
-                        const unlocked = JSON.parse(localStorage.getItem(storageKey) || '[]');
-                        if (!unlocked.includes(activeTutorialId)) {
-                            unlocked.push(activeTutorialId);
-                            localStorage.setItem(storageKey, JSON.stringify(unlocked));
-
-                            // Sync to DB
-                            fetch('/api/user/tutorials/complete', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' },
-                                body: JSON.stringify({ tutorialId: activeTutorialId })
-                            }).then(async (res) => {
-                                if (res.ok) {
-                                    await user.refresh();
-                                }
-                            });
-                        }
-                    }
                 }
             }
 
             showTutorial = false;
+            showGuide = false;
 
             // Clear any old save first
             localStorage.removeItem('sudoku_save');
@@ -279,7 +246,7 @@ export function createSudokuGame() {
     function startTimer() {
         clearInterval(timerInterval);
         timerInterval = setInterval(() => {
-            if (gameState === 'playing' && !isTimeFrozen && !alertMessage && !confirmMessage) {
+            if (gameState === 'playing' && !isTimeFrozen && !alertMessage && !confirmMessage && !showGuide && !showTutorial) {
                 timerValue++;
                 displayTimer = timerValue;
                 if (timerValue % 5 === 0) {
@@ -584,6 +551,8 @@ export function createSudokuGame() {
         set showTutorial(v: boolean) { showTutorial = v; },
         get activeTutorialId() { return activeTutorialId; },
         set activeTutorialId(v: string) { activeTutorialId = v; },
+        get showGuide() { return showGuide; },
+        set showGuide(v: boolean) { showGuide = v; },
         get earnedPointsResult() { return earnedPointsResult; },
         get calculatedScore() { return calculatedScore; },
         get newTitleName() { return newTitleName; },
@@ -615,7 +584,6 @@ export function createSudokuGame() {
         handleAdReward,
         handleGameOver,
         clearTimerInterval,
-        setTutorialChecker,
         formatTime,
     };
 }
