@@ -15,6 +15,20 @@
 
     const game = createKillerSudokuGame();
 
+    // Prevent pull-to-refresh during gameplay
+    $effect(() => {
+        if (game.gameState !== 'playing' && game.gameState !== 'paused') return;
+        const handler = (e: TouchEvent) => {
+            e.preventDefault();
+        };
+        document.addEventListener('touchmove', handler, { passive: false });
+        document.body.style.overscrollBehavior = 'none';
+        return () => {
+            document.removeEventListener('touchmove', handler);
+            document.body.style.overscrollBehavior = '';
+        };
+    });
+
     let isAutostart = false;
 
     onMount(() => {
