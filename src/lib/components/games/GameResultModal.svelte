@@ -87,10 +87,10 @@
         {/if}
 
         <div class="result-actions">
-            <button class="btn-primary huge-btn" onclick={primaryAction.onclick}>
+            <button class="btn-primary huge-btn" onclick={() => setTimeout(primaryAction.onclick, 0)}>
                 {primaryAction.label}
             </button>
-            <button class="btn-text secondary-btn" onclick={secondaryAction.onclick}>
+            <button class="btn-text secondary-btn" onclick={() => setTimeout(secondaryAction.onclick, 0)}>
                 {secondaryAction.label}
             </button>
         </div>
@@ -110,6 +110,7 @@
         background: rgba(0, 0, 0, 0.6);
         overflow-y: auto;
         padding: 1rem 0;
+        touch-action: manipulation;
     }
 
     .result-card {
