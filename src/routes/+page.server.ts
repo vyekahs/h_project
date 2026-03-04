@@ -298,13 +298,15 @@ export const actions: Actions = {
             if (!partyId && scheduledAt) {
                 const isToday = new Date(scheduledAt).toDateString() === new Date().toDateString();
                 if (isToday) {
+                    const gameTime = new Date(scheduledAt).toTimeString().slice(0, 5);
                     const allPlayerIds = creatorId ? [creatorId.toString(), ...playerIds] : [...playerIds];
                     const uniqueIds = [...new Set(allPlayerIds)].filter(Boolean);
                     for (const pid of uniqueIds) {
                         await db.execute(sql`
-                            INSERT INTO daily_visit_plans (attendee_id, plan_date)
-                            VALUES (${parseInt(pid)}, CURRENT_DATE)
-                            ON CONFLICT DO NOTHING
+                            INSERT INTO daily_visit_plans (attendee_id, plan_date, planned_time)
+                            VALUES (${parseInt(pid)}, CURRENT_DATE, ${gameTime})
+                            ON CONFLICT (attendee_id, plan_date) DO UPDATE SET
+                                planned_time = COALESCE(daily_visit_plans.planned_time, EXCLUDED.planned_time)
                         `);
                     }
                     if (uniqueIds.length > 0) emitLiveEvent('visitors');
@@ -434,10 +436,12 @@ export const actions: Actions = {
         if (!isPartyGame && isToday) {
             const statusCheck = await db.execute(sql`SELECT status FROM attendees WHERE id = ${finalAttendeeId}`);
             if ((statusCheck[0] as any)?.status !== 'present') {
+                const gameTime = new Date((targetSession[0] as any).scheduled_at).toTimeString().slice(0, 5);
                 await db.execute(sql`
-                    INSERT INTO daily_visit_plans (attendee_id, plan_date)
-                    VALUES (${finalAttendeeId}, CURRENT_DATE)
-                    ON CONFLICT DO NOTHING
+                    INSERT INTO daily_visit_plans (attendee_id, plan_date, planned_time)
+                    VALUES (${finalAttendeeId}, CURRENT_DATE, ${gameTime})
+                    ON CONFLICT (attendee_id, plan_date) DO UPDATE SET
+                        planned_time = COALESCE(daily_visit_plans.planned_time, EXCLUDED.planned_time)
                 `);
             }
         }
