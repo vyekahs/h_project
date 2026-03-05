@@ -38,15 +38,18 @@
 	});
 
 	// Prevent pull-to-refresh during gameplay
+	let gameAreaEl = $state<HTMLDivElement | null>(null);
 	$effect(() => {
 		if (game.gameState !== 'playing' && game.gameState !== 'paused') return;
+		const el = gameAreaEl;
+		if (!el) return;
 		const handler = (e: TouchEvent) => {
 			e.preventDefault();
 		};
-		document.addEventListener('touchmove', handler, { passive: false });
+		el.addEventListener('touchmove', handler, { passive: false });
 		document.body.style.overscrollBehavior = 'none';
 		return () => {
-			document.removeEventListener('touchmove', handler);
+			el.removeEventListener('touchmove', handler);
 			document.body.style.overscrollBehavior = '';
 		};
 	});
@@ -55,6 +58,7 @@
 <div class="game-container">
 	{#if game.gameState !== 'start'}
 		<div
+			bind:this={gameAreaEl}
 			class="game-play-area"
 			class:blurred={game.alertMessage ||
 				game.confirmMessage ||
