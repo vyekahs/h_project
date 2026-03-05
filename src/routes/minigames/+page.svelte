@@ -9,51 +9,80 @@
             name: '스도쿠',
             tagline: '논리 퍼즐의 정석',
             url: '/games/start/sudoku',
-            accentColor: '#60a5fa'
+            accentColor: '#60a5fa',
+            releasedAt: '2024-12-01',
+            forceNew: false
         },
         {
             id: 'killer-sudoku',
             name: '킬러 스도쿠',
             tagline: '스도쿠에 연산 한 스푼',
             url: '/games/start/killer-sudoku',
-            accentColor: '#facc15'
+            accentColor: '#facc15',
+            releasedAt: '2025-01-10',
+            forceNew: false
         },
         {
             id: 'unblock-me',
             name: '언블록미',
             tagline: '슬라이딩 블록 퍼즐',
             url: '/games/start/unblock-me',
-            accentColor: '#f87171'
+            accentColor: '#f87171',
+            releasedAt: '2025-01-15',
+            forceNew: false
         },
         {
             id: 'tichu',
             name: '티츄',
             tagline: '2:2 트릭테이킹 카드게임',
             url: '/games/tichu',
-            accentColor: '#22c55e'
+            accentColor: '#22c55e',
+            releasedAt: '2025-01-20',
+            forceNew: false
         },
         {
             id: 'energy',
             name: '에너지 서킷',
             tagline: '회로를 연결하여 전구를 켜세요',
             url: '/games/start/energy',
-            accentColor: '#f59e0b'
+            accentColor: '#f59e0b',
+            releasedAt: '2025-02-01',
+            forceNew: false
         },
         {
             id: 'water-sort',
             name: '워터소트',
             tagline: '색깔 물을 정리하세요',
             url: '/games/start/water-sort',
-            accentColor: '#6366f1'
+            accentColor: '#6366f1',
+            releasedAt: '2025-02-10',
+            forceNew: false
         },
         {
             id: 'triple-tile',
             name: '트리플 타일',
             tagline: '3개를 모아 타일을 제거하세요',
             url: '/games/start/triple-tile',
-            accentColor: '#ec4899'
+            accentColor: '#ec4899',
+            releasedAt: '2025-03-01',
+            forceNew: true
         }
     ];
+
+    const TWO_WEEKS = 14 * 24 * 60 * 60 * 1000;
+    const now = Date.now();
+
+    function isNewGame(game: typeof games[0]) {
+        return game.forceNew || (now - new Date(game.releasedAt).getTime()) <= TWO_WEEKS;
+    }
+
+    const newGames = games.filter(isNewGame);
+
+    const popularGames = $derived(
+        data.popularGames
+            .map((pg: { gameId: string }) => games.find(g => g.id === pg.gameId))
+            .filter(Boolean) as typeof games
+    );
 </script>
 
 <div class="page-background"></div>
@@ -68,6 +97,76 @@
     <div class="ticker-wrapper">
         <ActivityTicker activities={data.activityFeed} />
     </div>
+
+    <div class="featured-row">
+        {#if popularGames.length > 0}
+            <section class="featured-section">
+                <h2 class="section-title"><span class="section-emoji" style="color: #ea580c;"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg></span> 인기 게임</h2>
+                <div class="featured-list">
+                    {#each popularGames as game}
+                        <a href={game.url} class="featured-card" style="--accent: {game.accentColor}">
+                            <div class="featured-icon">
+                                <div class="featured-icon-box">
+                                    {#if game.id === 'sudoku'}
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 9h18" /><path d="M3 15h18" /><path d="M9 3v18" /><path d="M15 3v18" /></svg>
+                                    {:else if game.id === 'killer-sudoku'}
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2" stroke-dasharray="3 3"/><text x="5.5" y="9" font-size="4.5" font-weight="bold" fill="currentColor" stroke="none">20</text></svg>
+                                    {:else if game.id === 'unblock-me'}
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="9" width="10" height="6" rx="1.5" fill="currentColor" stroke="none"/><path d="M16 12h5m-2-2l2 2l-2 2" stroke-width="2.5"/></svg>
+                                    {:else if game.id === 'tichu'}
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="2" width="12" height="17" rx="2"/><rect x="9" y="5" width="12" height="17" rx="2" fill="rgba(255,255,255,0.3)"/><text x="7" y="13" font-size="7" font-weight="bold" fill="currentColor" stroke="none">T</text></svg>
+                                    {:else if game.id === 'energy'}
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4" stroke-width="1.5"/><path d="M12 4v-2M12 12v2M8 8H6M18 8h-2" stroke-width="1.5"/><path d="M11 14l-1.5 4h5L13 14" fill="rgba(255,255,255,0.3)" stroke-width="1.5"/></svg>
+                                    {:else if game.id === 'water-sort'}
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="18" rx="3.5" stroke-width="1.5"/><rect x="14" y="3" width="7" height="18" rx="3.5" stroke-width="1.5"/></svg>
+                                    {:else if game.id === 'triple-tile'}
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="10" width="8" height="8" rx="2" fill="rgba(255,255,255,0.3)"/><rect x="8" y="7" width="8" height="8" rx="2" fill="rgba(255,255,255,0.5)"/><rect x="14" y="4" width="8" height="8" rx="2" fill="rgba(255,255,255,0.7)"/></svg>
+                                    {/if}
+                                </div>
+                            </div>
+                            <span class="featured-name">{game.name}</span>
+                        </a>
+                    {/each}
+                </div>
+            </section>
+        {/if}
+
+        {#if newGames.length > 0}
+            <section class="featured-section">
+                <h2 class="section-title"><span class="section-emoji" style="color: #059669;"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg></span> 새로운 게임</h2>
+                <div class="featured-list">
+                    {#each newGames as game}
+                        <a href={game.url} class="featured-card" style="--accent: {game.accentColor}">
+                            <div class="featured-icon">
+                                <div class="featured-icon-box">
+                                    {#if game.id === 'sudoku'}
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 9h18" /><path d="M3 15h18" /><path d="M9 3v18" /><path d="M15 3v18" /></svg>
+                                    {:else if game.id === 'killer-sudoku'}
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2" stroke-dasharray="3 3"/><text x="5.5" y="9" font-size="4.5" font-weight="bold" fill="currentColor" stroke="none">20</text></svg>
+                                    {:else if game.id === 'unblock-me'}
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="9" width="10" height="6" rx="1.5" fill="currentColor" stroke="none"/><path d="M16 12h5m-2-2l2 2l-2 2" stroke-width="2.5"/></svg>
+                                    {:else if game.id === 'tichu'}
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="2" width="12" height="17" rx="2"/><rect x="9" y="5" width="12" height="17" rx="2" fill="rgba(255,255,255,0.3)"/><text x="7" y="13" font-size="7" font-weight="bold" fill="currentColor" stroke="none">T</text></svg>
+                                    {:else if game.id === 'energy'}
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4" stroke-width="1.5"/><path d="M12 4v-2M12 12v2M8 8H6M18 8h-2" stroke-width="1.5"/><path d="M11 14l-1.5 4h5L13 14" fill="rgba(255,255,255,0.3)" stroke-width="1.5"/></svg>
+                                    {:else if game.id === 'water-sort'}
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="18" rx="3.5" stroke-width="1.5"/><rect x="14" y="3" width="7" height="18" rx="3.5" stroke-width="1.5"/></svg>
+                                    {:else if game.id === 'triple-tile'}
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="10" width="8" height="8" rx="2" fill="rgba(255,255,255,0.3)"/><rect x="8" y="7" width="8" height="8" rx="2" fill="rgba(255,255,255,0.5)"/><rect x="14" y="4" width="8" height="8" rx="2" fill="rgba(255,255,255,0.7)"/></svg>
+                                    {/if}
+                                </div>
+                            </div>
+                            <span class="featured-name">{game.name}</span>
+                        </a>
+                    {/each}
+                </div>
+            </section>
+        {/if}
+    </div>
+
+    <section class="section-title-row">
+        <h2 class="section-title"><span class="section-emoji" style="color: #6366f1;"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 12h4"/><path d="M8 10v4"/><path d="M15 13h.01"/><path d="M18 11h.01"/></svg></span> 전체 게임</h2>
+    </section>
 
     <section class="games-grid">
         {#each games as game}
@@ -208,6 +307,99 @@
 
     .ticker-wrapper {
         margin-bottom: 2rem;
+    }
+
+    /* Featured Row - side by side */
+    .featured-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0.75rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .featured-section {
+        margin-bottom: 0;
+    }
+
+    .section-title-row {
+        margin-bottom: 0.75rem;
+    }
+
+    .section-title {
+        font-size: 0.85rem;
+        font-weight: 700;
+        color: #374151;
+        margin: 0 0 0.75rem 0;
+        display: flex;
+        align-items: center;
+        gap: 0.35rem;
+    }
+
+    .section-emoji {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .section-emoji svg {
+        width: 1.2rem;
+        height: 1.2rem;
+    }
+
+    .featured-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    .featured-card {
+        display: flex;
+        align-items: center;
+        gap: 0.6rem;
+        padding: 0.55rem 0.7rem;
+        background: rgba(255, 255, 255, 0.7);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border: 1px solid rgba(255, 255, 255, 0.8);
+        border-radius: 14px;
+        text-decoration: none;
+        color: #1f2937;
+        transition: transform 0.15s ease, box-shadow 0.15s ease;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+    }
+
+    .featured-card:active {
+        transform: scale(0.97);
+    }
+
+    .featured-icon {
+        flex-shrink: 0;
+        width: 36px;
+        height: 36px;
+    }
+
+    .featured-icon-box {
+        width: 100%;
+        height: 100%;
+        border-radius: 10px;
+        background: linear-gradient(135deg, var(--accent, #3b82f6) 0%, white 200%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+    }
+
+    .featured-icon-box svg {
+        width: 55%;
+        height: 55%;
+    }
+
+    .featured-name {
+        font-size: 0.8rem;
+        font-weight: 700;
+        color: #1f2937;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
     }
 
     /* Grid Layout - App Icon Grid */

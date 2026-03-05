@@ -264,6 +264,17 @@ export const RankingService = {
         return null;
     },
 
+    async getPopularGames(limit = 3): Promise<{ gameId: string; playCount: number }[]> {
+        const res = await db.execute(sql`
+            SELECT game_id, COUNT(*) as play_count
+            FROM minigame_play_log
+            GROUP BY game_id
+            ORDER BY play_count DESC
+            LIMIT ${limit}
+        `);
+        return (res as any[]).map(r => ({ gameId: r.game_id, playCount: Number(r.play_count) }));
+    },
+
     async getLeaderboard(gameId: string, limit = 100) {
         const now = new Date();
         const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
