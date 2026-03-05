@@ -179,35 +179,4 @@ export function pickTemplate(difficulty: string, requiredCount: number): TilePos
 
 	return positions;
 }
-	expert: [
-		{ baseCols: 7, baseRows: 5, layers: 5 },
-		{ baseCols: 8, baseRows: 5, layers: 5 },
-	],
-	master: [
-		{ baseCols: 7, baseRows: 6, layers: 5 },
-		{ baseCols: 8, baseRows: 6, layers: 5 },
-	],
-};
 
-/**
- * Pick a random layout for the given difficulty.
- * Each call generates a unique layout with a random shape.
- * Returns positions (always a multiple of 3).
- */
-export function pickTemplate(difficulty: string): TilePosition[] {
-	const specs = DIFFICULTY_SPECS[difficulty] || DIFFICULTY_SPECS.easy;
-	const spec = specs[Math.floor(Math.random() * specs.length)];
-	const seed = Math.floor(Math.random() * 2147483647);
-
-	// Pick a random shape
-	const shapeFn = SHAPES[Math.floor(Math.random() * SHAPES.length)];
-
-	const positions = generateLayout(spec.baseCols, spec.baseRows, spec.layers, seed, shapeFn);
-
-	// If the shape produced too few tiles (< 12), fall back to rectangle
-	if (positions.length < 12) {
-		return generateLayout(spec.baseCols, spec.baseRows, spec.layers, seed, rectangle);
-	}
-
-	return positions;
-}

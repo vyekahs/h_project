@@ -19,7 +19,7 @@ export function generatePuzzle(difficulty: Difficulty): Tile[] {
 	const config = DIFFICULTY_CONFIG[difficulty];
 
 	// Get positions from template (uses full template, always multiple of 3)
-	const positions = pickTemplate(difficulty);
+	const positions = pickTemplate(difficulty, config.tileTypes * 3);
 	const numTypes = positions.length / 3;
 
 	// Clamp to available tile types from config
