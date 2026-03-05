@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { Tile } from '$lib/games/triple-tile/types';
+	import { isExposed } from '$lib/games/triple-tile/tileLogic';
 	import TileComponent from './TileComponent.svelte';
 
 	let {
@@ -16,56 +17,38 @@
 	let wrapperWidth = $state(0);
 	let wrapperHeight = $state(0);
 
+	// Calculate board dimensions for centering
+	const boardTiles = $derived(tiles.filter((t) => !t.removed));
+	const maxCol = $derived(boardTiles.length > 0 ? Math.max(...boardTiles.map((t) => t.col)) : 0);
+	const maxRow = $derived(boardTiles.length > 0 ? Math.max(...boardTiles.map((t) => t.row)) : 0);
+	const maxLayer = $derived(boardTiles.length > 0 ? Math.max(...boardTiles.map((t) => t.layer)) : 0);
+
 	const tileSize = 44;
 	const tileGap = 2;
 
-	// Pre-compute board metrics, exposed map, and sorted tiles in a single pass
-	const boardData = $derived.by(() => {
-		let mCol = 0;
-		let mRow = 0;
-		const active: Tile[] = [];
-
-		for (const t of tiles) {
-			if (t.col > mCol) mCol = t.col;
-			if (t.row > mRow) mRow = t.row;
-			if (!t.removed) active.push(t);
-		}
-
-		// Build exposed map: a tile is exposed if no higher-layer tile covers it
-		const exposedSet = new Set<number>();
-		for (const tile of active) {
-			let covered = false;
-			for (const other of active) {
-				if (other.layer > tile.layer &&
-					Math.abs(other.col - tile.col) < 1 &&
-					Math.abs(other.row - tile.row) < 1) {
-					covered = true;
-					break;
-				}
-			}
-			if (!covered) exposedSet.add(tile.id);
-		}
-
-		// Sort: lower layers first, then row, then col
-		active.sort((a, b) => a.layer - b.layer || a.row - b.row || a.col - b.col);
-
-		return {
-			width: (mCol + 1) * (tileSize + tileGap) + tileGap,
-			height: (mRow + 1) * (tileSize + tileGap) + tileGap,
-			sorted: active,
-			exposed: exposedSet,
-		};
-	});
+	const boardWidth = $derived(
+		(maxCol + 1) * (tileSize + tileGap) + tileGap
+	);
+	const boardHeight = $derived(
+		(maxRow + 1) * (tileSize + tileGap) + tileGap
+	);
 
 	// Auto-scale: shrink board if it doesn't fit the wrapper
 	const scale = $derived.by(() => {
 		if (wrapperWidth <= 0 || wrapperHeight <= 0) return 1;
 		const padX = 16;
 		const padY = 16;
-		const scaleX = (wrapperWidth - padX) / boardData.width;
-		const scaleY = (wrapperHeight - padY) / boardData.height;
+		const scaleX = (wrapperWidth - padX) / boardWidth;
+		const scaleY = (wrapperHeight - padY) / boardHeight;
 		return Math.min(1, scaleX, scaleY);
 	});
+
+	// Sort tiles: lower layers first, then by row, then by col
+	const sortedTiles = $derived(
+		[...tiles]
+			.filter((t) => !t.removed)
+			.sort((a, b) => a.layer - b.layer || a.row - b.row || a.col - b.col)
+	);
 </script>
 
 <div class="board-wrapper" bind:clientWidth={wrapperWidth} bind:clientHeight={wrapperHeight}>
@@ -82,13 +65,14 @@
 				style="
 					left: {x}px;
 					top: {y}px;
-					z-index: {Math.floor(tile.layer * 10000 + tile.row * 100 + tile.col * 10)};
+					z-index: {tile.layer * 100 + tile.row * 10 + tile.col};
 				"
 			>
 				<TileComponent
 					typeId={tile.typeId}
 					{exposed}
 					layer={tile.layer}
+					matching={matchingTypeId === tile.typeId}
 					onclick={(e) => {
 						const btn = e.currentTarget;
 						if (btn instanceof HTMLElement) {

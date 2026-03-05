@@ -5,12 +5,14 @@
 		typeId,
 		exposed = false,
 		layer = 0,
+		matching = false,
 		onclick,
 	}: {
 		typeId: number;
 		exposed?: boolean;
 		layer?: number;
-		onclick?: (e: MouseEvent) => void;
+		matching?: boolean;
+		onclick?: () => void;
 	} = $props();
 
 	const emoji = $derived(TILE_TYPES[typeId] ?? '❓');
@@ -20,6 +22,7 @@
 	class="tile"
 	class:exposed
 	class:blocked={!exposed}
+	class:matching
 	style="--layer: {layer}"
 	onclick={exposed ? onclick : undefined}
 	disabled={!exposed}
@@ -31,7 +34,7 @@
 	.tile {
 		width: var(--tile-size, 44px);
 		height: var(--tile-size, 44px);
-		border: 1px solid #dcd3c6;
+		border: none;
 		border-radius: 8px;
 		display: flex;
 		align-items: center;
@@ -39,19 +42,11 @@
 		cursor: default;
 		padding: 0;
 		position: relative;
-		will-change: transform;
-		background: #fffcfa;
-
-		/* Lift the higher tiles UP visually by 6px times their layer height to match thickness */
-		transform: translateY(calc(var(--layer, 0) * -6px));
-
-		/* 3D thickness using box-shadow — simplified for performance */
+		transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.2s ease;
+		background: linear-gradient(145deg, #ffffff, #f0f0f0);
 		box-shadow:
-			inset 0 1px 0 rgba(255, 255, 255, 1),
-			0 2px 0 #f0eadf,
-			0 4px 0 #dfd7ca,
-			0 6px 0 #9e9a90,
-			0 8px 12px rgba(0, 0, 0, 0.12);
+			0 calc(var(--layer, 0) * 1px + 2px) calc(var(--layer, 0) * 2px + 4px) rgba(0, 0, 0, 0.12),
+			inset 0 1px 0 rgba(255, 255, 255, 0.8);
 		user-select: none;
 		-webkit-user-select: none;
 		-webkit-tap-highlight-color: transparent;
@@ -59,27 +54,42 @@
 
 	.tile.exposed {
 		cursor: pointer;
-		background: #ffffff;
-		border-color: #d6ccbd;
+		background: linear-gradient(145deg, #ffffff, #fafafa);
 	}
 
 	.tile.exposed:active {
-		transform: translateY(calc(var(--layer, 0) * -6px + 3px));
-		box-shadow:
-			inset 0 1px 0 rgba(255, 255, 255, 0.8),
-			0 1px 0 #e8e1d5,
-			0 2px 0 #9e9a90,
-			0 4px 6px rgba(0, 0, 0, 0.12);
+		transform: scale(0.92);
+		box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 	}
 
 	.tile.blocked {
-		opacity: 0.55;
+		opacity: 0.5;
 		pointer-events: none;
+		filter: brightness(0.85);
+	}
+
+	.tile.matching {
+		animation: matchPop 0.4s ease forwards;
 	}
 
 	.tile-emoji {
 		font-size: calc(var(--tile-size, 44px) * 0.55);
 		line-height: 1;
 		pointer-events: none;
+	}
+
+	@keyframes matchPop {
+		0% {
+			transform: scale(1);
+			opacity: 1;
+		}
+		40% {
+			transform: scale(1.2);
+			opacity: 1;
+		}
+		100% {
+			transform: scale(0);
+			opacity: 0;
+		}
 	}
 </style>
