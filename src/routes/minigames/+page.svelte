@@ -101,7 +101,7 @@
     <div class="featured-row">
         {#if popularGames.length > 0}
             <section class="featured-section">
-                <h2 class="section-title"><span class="section-emoji" style="color: #ea580c;"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg></span> 인기 게임</h2>
+                <h2 class="section-title"><span class="section-emoji">🔥</span> 인기 게임</h2>
                 <div class="featured-list">
                     {#each popularGames as game}
                         <a href={game.url} class="featured-card" style="--accent: {game.accentColor}">
@@ -133,7 +133,7 @@
 
         {#if newGames.length > 0}
             <section class="featured-section">
-                <h2 class="section-title"><span class="section-emoji" style="color: #059669;"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg></span> 새로운 게임</h2>
+                <h2 class="section-title"><span class="section-emoji">🆕</span> 새로운 게임</h2>
                 <div class="featured-list">
                     {#each newGames as game}
                         <a href={game.url} class="featured-card" style="--accent: {game.accentColor}">
@@ -165,7 +165,7 @@
     </div>
 
     <section class="section-title-row">
-        <h2 class="section-title"><span class="section-emoji" style="color: #6366f1;"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 12h4"/><path d="M8 10v4"/><path d="M15 13h.01"/><path d="M18 11h.01"/></svg></span> 전체 게임</h2>
+        <h2 class="section-title"><span class="section-emoji">🎮</span> 전체 게임</h2>
     </section>
 
     <section class="games-grid">
@@ -336,13 +336,7 @@
     }
 
     .section-emoji {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-    }
-    .section-emoji svg {
-        width: 1.2rem;
-        height: 1.2rem;
+        font-size: 1rem;
     }
 
     .featured-list {
