@@ -17,6 +17,8 @@ self.addEventListener('install', (event) => {
 	}
 
 	event.waitUntil(addFilesToCache());
+	// 새 SW가 설치되면 즉시 활성화 (대기 상태 건너뜀)
+	(self as any).skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
@@ -27,6 +29,8 @@ self.addEventListener('activate', (event) => {
 	}
 
 	event.waitUntil(deleteOldCaches());
+	// 새 SW가 즉시 모든 클라이언트를 제어
+	(event as any).waitUntil((self as any).clients.claim());
 });
 
 self.addEventListener('fetch', (e) => {
