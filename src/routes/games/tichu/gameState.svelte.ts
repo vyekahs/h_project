@@ -5,8 +5,12 @@ import type { AiStrategy, AiSpeed } from '$lib/games/tichu/ai/types';
 import { LocalGameEngine, type LocalGameConfig, type GameEvent, type ExchangeResultEntry, saveTichuGame, loadTichuGame, clearTichuSave, hasTichuSave } from '$lib/games/tichu/ai/localGameEngine';
 import { triggerHaptic } from '$lib/stores/haptics';
 import { rankUpStore } from '$lib/stores/rankUpStore.svelte';
+import { TutorialEngine } from '$lib/games/tichu/tutorial/tutorialEngine';
+import { getLessonById, LESSONS } from '$lib/games/tichu/tutorial/tutorialScenarios';
+import type { TutorialStep } from '$lib/games/tichu/tutorial/tutorialTypes';
+import { getPhoenixSubstituteRank } from '$lib/games/tichu/combinations';
 
-export type GameView = 'setup' | 'game';
+export type GameView = 'setup' | 'game' | 'tutorial';
 export type ToastType = 'info' | 'success' | 'error' | 'warning';
 
 export interface Toast {
@@ -69,12 +73,22 @@ export function createTichuGameState() {
 	let lastEvent = $state<GameEvent | null>(null);
 	let lastEventTimer: ReturnType<typeof setTimeout> | null = null;
 
+	// Tutorial state
+	let tutorialEngine = $state<TutorialEngine | null>(null);
+	let tutorialStep = $state<TutorialStep | null>(null);
+	let tutorialStepIndex = $state(0);
+	let tutorialTotalSteps = $state(0);
+	let highlightCardIds = $state<Set<string>>(new Set());
+	let tutorialLessonId = $state<string | null>(null);
+	let showGrandTichuInTutorial = $state(false);
+	const isTutorialMode = $derived(view === 'tutorial');
+
 	// Derived states — all use getState() helper which accesses stateVersion
 	// to ensure reactivity, since engine.state is a mutable object (same reference)
 	// and $derived on it won't propagate changes to dependents.
 	function getState() {
 		void stateVersion;
-		return engine?.state ?? null;
+		return tutorialEngine?.state ?? engine?.state ?? null;
 	}
 
 	const gameState = $derived.by(() => getState());
@@ -95,7 +109,8 @@ export function createTichuGameState() {
 		const s = getState();
 		return s !== null &&
 			s.phase === 'grand_tichu_window' &&
-			s.players[0]?.grandTichu === null;
+			s.players[0]?.grandTichu === null &&
+			!isTutorialMode;
 	});
 
 	const canDeclareSmallTichu = $derived.by(() => {
@@ -112,14 +127,20 @@ export function createTichuGameState() {
 	const sortedHand = $derived.by(() => {
 		const hand = (getState()?.players[0]?.hand ?? []).filter(c => c != null);
 		if (!hand.length) return [];
-		// Sort rank: mahjong=1, dog=0, phoenix=14.5, dragon=15
-		// dog and mahjong go left, normal cards in the middle, phoenix and dragon go right
+
+		// 봉황이 선택된 상태에서 유효 조합이면, 대체하는 랭크 위치로 정렬
+		let phoenixSortRank: number | null = null;
+		if (selectedCards.has('phoenix')) {
+			const selectedCardObjs = hand.filter(c => selectedCards.has(c.id));
+			phoenixSortRank = getPhoenixSubstituteRank(selectedCardObjs);
+		}
+
 		const getSortValue = (c: Card): number => {
 			if (c.type === 'normal') return c.rank;
 			switch (c.special) {
 				case 'dog': return 0;
 				case 'mahjong': return 1;
-				case 'phoenix': return 14.5;
+				case 'phoenix': return phoenixSortRank ?? 14.5;
 				case 'dragon': return 15;
 				default: return 0;
 			}
@@ -164,7 +185,7 @@ export function createTichuGameState() {
 				exchangeResultData = engine.exchangeResult;
 			}
 
-			if (currentPhase === 'wish_declare' && s?.round?.currentSeat === 0) {
+			if (currentPhase === 'wish_declare' && s?.round?.currentSeat === 0 && (!isTutorialMode || tutorialEngine?.freePlayMode)) {
 				showWishModal = true;
 			}
 
@@ -185,7 +206,7 @@ export function createTichuGameState() {
 				}
 			}
 
-			if (currentPhase === 'round_end' && s) {
+			if (currentPhase === 'round_end' && s && !isTutorialMode) {
 				const rounds = s.completedRounds;
 				if (rounds.length > 0) {
 					roundResult = rounds[rounds.length - 1];
@@ -193,7 +214,7 @@ export function createTichuGameState() {
 				}
 			}
 
-			if (currentPhase === 'game_end' && s && s.winner) {
+			if (currentPhase === 'game_end' && s && s.winner && !isTutorialMode) {
 				gameEndData = {
 					winner: s.winner,
 					scoreA: s.cumulativeScoreA,
@@ -372,16 +393,30 @@ export function createTichuGameState() {
 	}
 
 	function pauseGame() {
+		if (isTutorialMode) {
+			tutorialEngine?.pause();
+			showExitConfirmModal = true;
+			return;
+		}
 		engine?.pause();
 		showExitConfirmModal = true;
 	}
 
 	function resumeFromPause() {
 		showExitConfirmModal = false;
+		if (isTutorialMode) {
+			tutorialEngine?.resume();
+			return;
+		}
 		engine?.resume();
 	}
 
 	function backToSetup() {
+		if (isTutorialMode) {
+			exitTutorial();
+			showExitConfirmModal = false;
+			return;
+		}
 		clearTichuSave();
 		savedGameAvailable = false;
 		if (engine) {
@@ -412,6 +447,98 @@ export function createTichuGameState() {
 			engine.destroy();
 			engine = null;
 		}
+		if (tutorialEngine) {
+			tutorialEngine.destroy();
+			tutorialEngine = null;
+		}
+	}
+
+	// ===== Tutorial =====
+
+	function startTutorial(lessonId: string) {
+		const lesson = getLessonById(lessonId);
+		if (!lesson) return;
+
+		if (engine) { engine.pause(); }
+		if (tutorialEngine) { tutorialEngine.destroy(); }
+
+		tutorialLessonId = lessonId;
+		tutorialStep = null;
+		tutorialStepIndex = 0;
+		tutorialTotalSteps = lesson.steps.length;
+		highlightCardIds = new Set();
+		selectedCards = new Set();
+		lastPhase = null;
+		lastEvent = null;
+
+		tutorialEngine = new TutorialEngine({
+			lesson,
+			onStateChange: handleStateChange,
+			onEvent: handleEvent,
+			onStepChange: (step: TutorialStep, index: number) => {
+				tutorialStepIndex = index;
+				// free_play 스텝: 오버레이 숨기고 자유 플레이
+				if (step.expectedAction.type === 'free_play') {
+					tutorialStep = null;
+					highlightCardIds = new Set();
+					showGrandTichuInTutorial = false;
+					return;
+				}
+				tutorialStep = step;
+				highlightCardIds = new Set(step.highlightCards ?? []);
+				// set_wish 스텝이면 WishModal 표시
+				if (step.expectedAction.type === 'set_wish') {
+					showWishModal = true;
+				}
+				// grand tichu 스텝이면 모달 표시, 아니면 숨김
+				const actionType = step.expectedAction.type;
+				showGrandTichuInTutorial = (actionType === 'declare_grand_tichu' || actionType === 'pass_grand_tichu');
+			},
+			onComplete: () => {
+				// Mark lesson as completed in localStorage
+				try {
+					const key = 'tichu_tutorial_progress';
+					const progress = JSON.parse(localStorage.getItem(key) || '{}');
+					progress[lessonId] = true;
+					localStorage.setItem(key, JSON.stringify(progress));
+				} catch { /* ignore */ }
+				// 다음 레슨이 있으면 바로 시작, 없으면 종료
+				const currentIndex = LESSONS.findIndex(l => l.id === lessonId);
+				const nextLesson = LESSONS[currentIndex + 1];
+				if (nextLesson) {
+					startTutorial(nextLesson.id);
+				} else {
+					exitTutorial();
+				}
+			}
+		});
+
+		// Use tutorial engine's internal LocalGameEngine as our engine for rendering
+		engine = null; // Clear regular engine reference
+		stateVersion = 0;
+		view = 'tutorial';
+		tutorialEngine.start();
+	}
+
+	function exitTutorial() {
+		if (tutorialEngine) {
+			tutorialEngine.destroy();
+			tutorialEngine = null;
+		}
+		tutorialStep = null;
+		tutorialStepIndex = 0;
+		tutorialTotalSteps = 0;
+		highlightCardIds = new Set();
+		tutorialLessonId = null;
+		selectedCards = new Set();
+		lastPhase = null;
+		lastEvent = null;
+		stateVersion = 0;
+		view = 'setup';
+	}
+
+	function tutorialTapNext() {
+		tutorialEngine?.tapNext();
 	}
 
 	// ===== Card Selection =====
@@ -445,6 +572,22 @@ export function createTichuGameState() {
 
 	function submitExchange() {
 		if (!exchangePartner || !exchangeLeft || !exchangeRight) return;
+		if (isTutorialMode && tutorialEngine) {
+			const result = tutorialEngine.humanSubmitExchange({
+				toPartner: exchangePartner,
+				toLeft: exchangeLeft,
+				toRight: exchangeRight
+			});
+			if (result.success) {
+				exchangePartner = null;
+				exchangeLeft = null;
+				exchangeRight = null;
+				addToast('카드를 교환했습니다', 'info');
+			} else {
+				addToast(result.error || '교환할 수 없습니다', 'error');
+			}
+			return;
+		}
 		const result = engine?.humanSubmitExchange({
 			toPartner: exchangePartner,
 			toLeft: exchangeLeft,
@@ -459,7 +602,26 @@ export function createTichuGameState() {
 	// ===== Game Actions =====
 
 	async function playSelectedCards() {
-		if (selectedCards.size === 0 || !engine || actionInProgress) return;
+		if (selectedCards.size === 0 || actionInProgress) return;
+
+		// Tutorial mode
+		if (isTutorialMode && tutorialEngine) {
+			actionInProgress = true;
+			try {
+				const cardIds = Array.from(selectedCards);
+				const result = await tutorialEngine.humanPlayCards(cardIds);
+				if (result.success) {
+					selectedCards = new Set();
+				} else {
+					addToast(result.error || '카드를 낼 수 없습니다', 'error');
+				}
+			} finally {
+				actionInProgress = false;
+			}
+			return;
+		}
+
+		if (!engine) return;
 		actionInProgress = true;
 		try {
 			const cardIds = Array.from(selectedCards);
@@ -476,6 +638,17 @@ export function createTichuGameState() {
 	}
 
 	function pass() {
+		// Tutorial mode
+		if (isTutorialMode && tutorialEngine) {
+			const result = tutorialEngine.humanPass();
+			if (result.success) {
+				selectedCards = new Set();
+			} else {
+				addToast(result.error || '패스할 수 없습니다', 'error');
+			}
+			return;
+		}
+
 		if (!engine || actionInProgress) return;
 		const result = engine.humanPass();
 		if (result.success) {
@@ -486,6 +659,15 @@ export function createTichuGameState() {
 	}
 
 	function declareGrandTichu() {
+		if (isTutorialMode && tutorialEngine) {
+			const result = tutorialEngine.humanDeclareGrandTichu();
+			if (result.success) {
+				addToast('그랜드 티츄를 선언했습니다!', 'success');
+			} else {
+				addToast(result.error || '그랜드 티츄를 선언할 수 없습니다', 'error');
+			}
+			return;
+		}
 		const result = engine?.humanDeclareGrandTichu();
 		if (result) {
 			saveNow();
@@ -494,12 +676,28 @@ export function createTichuGameState() {
 	}
 
 	function passGrandTichu() {
+		if (isTutorialMode && tutorialEngine) {
+			const result = tutorialEngine.humanPassGrandTichu();
+			if (!result.success) {
+				addToast(result.error || '패스할 수 없습니다', 'error');
+			}
+			return;
+		}
 		if (engine?.humanPassGrandTichu()) {
 			saveNow();
 		}
 	}
 
 	function declareSmallTichu() {
+		if (isTutorialMode && tutorialEngine) {
+			const result = tutorialEngine.humanDeclareSmallTichu();
+			if (result.success) {
+				addToast('스몰 티츄를 선언했습니다!', 'success');
+			} else {
+				addToast(result.error || '스몰 티츄를 선언할 수 없습니다', 'error');
+			}
+			return;
+		}
 		if (engine?.humanDeclareSmallTichu()) {
 			saveNow();
 			addToast('스몰 티츄를 선언했습니다!', 'success');
@@ -508,12 +706,28 @@ export function createTichuGameState() {
 
 	function setWish(rank: number | null) {
 		showWishModal = false;
+		if (isTutorialMode && tutorialEngine) {
+			const ok = tutorialEngine.humanSetWish(rank);
+			if (!ok) {
+				showWishModal = true;
+				const step = tutorialEngine.currentStep;
+				if (step) addToast(tutorialEngine.getHintForStep(step), 'info');
+			}
+			return;
+		}
 		engine?.humanSetWish(rank);
 		saveNow();
 	}
 
 	function giftDragon(seat: SeatIndex) {
 		showDragonGiftModal = false;
+		if (isTutorialMode && tutorialEngine) {
+			const result = tutorialEngine.humanGiftDragon(seat);
+			if (!result.success) {
+				addToast(result.error || '양도할 수 없습니다', 'error');
+			}
+			return;
+		}
 		engine?.humanGiftDragon(seat);
 		saveNow();
 	}
@@ -581,7 +795,7 @@ export function createTichuGameState() {
 
 		// Derived
 		get isMyTurn() { return isMyTurn; },
-		get isGrandTichuPhase() { return isGrandTichuPhase; },
+		get isGrandTichuPhase() { return isGrandTichuPhase || showGrandTichuInTutorial; },
 		get actionInProgress() { return actionInProgress; },
 		get myTeam() { return myTeam; },
 		get partnerSeat() { return partnerSeat; },
@@ -593,6 +807,17 @@ export function createTichuGameState() {
 		get savedGameAvailable() { return savedGameAvailable; },
 		resumeGame,
 		flushSave,
+
+		// Tutorial
+		get isTutorialMode() { return isTutorialMode; },
+		get tutorialStep() { return tutorialStep; },
+		get tutorialStepIndex() { return tutorialStepIndex; },
+		get tutorialTotalSteps() { return tutorialTotalSteps; },
+		get highlightCardIds() { return highlightCardIds; },
+		get tutorialLessonId() { return tutorialLessonId; },
+		startTutorial,
+		exitTutorial,
+		tutorialTapNext,
 
 		// Actions
 		startGame,
