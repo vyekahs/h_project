@@ -224,8 +224,7 @@ export function createTichuGameState() {
 				clearTichuSave();
 				savedGameAvailable = false;
 				// 랭킹 점수 제출
-				const isWin = s.winner === myTeam;
-				submitTichuScore(isWin, s.completedRounds);
+				submitTichuScore(s.cumulativeScoreA);
 			}
 		}
 	});
@@ -331,40 +330,15 @@ export function createTichuGameState() {
 		saveNow();
 	}
 
-	function calculateRankingScore(isWin: boolean, rounds: TichuRoundResult[]): number {
-		let score = 0;
-
-		for (const round of rounds) {
-			score += round.teamAScore > round.teamBScore ? 30 : 5;
-
-			if (round.oneTwo === 'A') score += 40;
-
-			for (const d of round.grandTichuDeclarations) {
-				if (d.seat === 0 || d.seat === 2) {
-					score += d.success ? 50 : -10;
-				}
-			}
-
-			for (const d of round.smallTichuDeclarations) {
-				if (d.seat === 0 || d.seat === 2) {
-					score += d.success ? 25 : -5;
-				}
-			}
-
-			const diff = round.teamAScore - round.teamBScore;
-			if (diff > 0) score += Math.floor(diff / 25);
-		}
-
-		if (isWin) score += 30;
-
-		return Math.max(10, score);
+	function calculateRankingScore(teamAScore: number): number {
+		return Math.min(teamAScore, targetScore);
 	}
 
-	async function submitTichuScore(isWin: boolean, rounds: TichuRoundResult[]) {
+	async function submitTichuScore(teamAScore: number) {
 		if (scoreSubmitting) return;
 		scoreSubmitting = true;
 		try {
-			const score = calculateRankingScore(isWin, rounds);
+			const score = calculateRankingScore(teamAScore);
 			const res = await fetch('/api/game/record', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
