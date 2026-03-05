@@ -91,6 +91,11 @@
                 tutorialData = m.ENERGY_TUTORIALS;
                 tutorialOrder = m.ENERGY_TUTORIAL_ORDER;
             });
+        } else if (gameConfig.id === 'triple-tile') {
+            import('../../../games/triple-tile/tutorialData').then(m => {
+                tutorialData = m.TUTORIALS;
+                tutorialOrder = m.TUTORIAL_ORDER;
+            });
         } else {
             tutorialData = null;
             tutorialOrder = [];
@@ -132,6 +137,9 @@
             TutorialModalComponent = mod.default;
         } else if (gameConfig.id === 'energy') {
             const mod = await import('../../../games/energy/EnergyTutorialModal.svelte');
+            TutorialModalComponent = mod.default;
+        } else if (gameConfig.id === 'triple-tile') {
+            const mod = await import('../../../games/triple-tile/TripleTileTutorialModal.svelte');
             TutorialModalComponent = mod.default;
         }
         showTutorial = true;
@@ -245,6 +253,8 @@
                                     <p class="score-desc">점수 = 기본점수 + (제한시간 - 클리어시간) x 배율 - 초과회전 x 감점</p>
                                 {:else if gameConfig.id === 'water-sort'}
                                     <p class="score-desc">점수 = 기본점수 + 시간보너스 - 초과이동 x 감점 (목표이동수 초과분)</p>
+                                {:else if gameConfig.id === 'triple-tile'}
+                                    <p class="score-desc">점수 = 기본점수 + 시간보너스 - 셔플사용 x 감점</p>
                                 {:else}
                                     <p class="score-desc">점수 = 기본점수 + 시간보너스 - 실수페널티(15%/회)</p>
                                 {/if}
@@ -299,6 +309,10 @@
                                                                         <polyline points="15 19 12 22 9 19" />
                                                                         <line x1="2" y1="12" x2="22" y2="12" />
                                                                         <line x1="12" y1="2" x2="12" y2="22" />
+                                                                    </svg>
+                                                                {:else if gameConfig.id === 'triple-tile'}
+                                                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                                                        <path d="M16 3h5v5"/><path d="M4 20L21 3"/><path d="M21 16v5h-5"/><path d="M15 15l6 6"/><path d="M4 4l5 5"/>
                                                                     </svg>
                                                                 {:else}
                                                                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 4H8l-7 8 7 8h13a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z"/><line x1="18" y1="9" x2="12" y2="15"/><line x1="12" y1="9" x2="18" y2="15"/></svg>

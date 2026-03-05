@@ -109,6 +109,32 @@ export const RankingService = {
              const movePenalty = extraMoves * movePenaltyPerMove;
 
              calculatedScore = Math.max(baseScore, baseScore + timeBonus - movePenalty);
+        } else if (gameId === 'triple-tile') {
+             const timeLimit = difficulty === 'easy' ? 120 :
+                              difficulty === 'medium' ? 180 :
+                              difficulty === 'hard' ? 300 :
+                              difficulty === 'expert' ? 480 : 600;
+
+             const baseScore = difficulty === 'easy' ? 10 :
+                               difficulty === 'medium' ? 50 :
+                               difficulty === 'hard' ? 120 :
+                               difficulty === 'expert' ? 250 : 400;
+
+             const timeMultiplier = difficulty === 'easy' ? 1 :
+                                    difficulty === 'medium' ? 2 :
+                                    difficulty === 'hard' ? 3 :
+                                    difficulty === 'expert' ? 4 : 5;
+
+             const timeBonus = Math.max(0, (timeLimit - clearTime) * timeMultiplier);
+
+             // mistakes = shuffle uses
+             const shufflePenaltyPerUse = difficulty === 'easy' ? 5 :
+                                           difficulty === 'medium' ? 10 :
+                                           difficulty === 'hard' ? 20 :
+                                           difficulty === 'expert' ? 40 : 60;
+             const shufflePenalty = Math.max(0, mistakes) * shufflePenaltyPerUse;
+
+             calculatedScore = Math.max(baseScore, baseScore + timeBonus - shufflePenalty);
         } else {
              calculatedScore = score || 0;
         }

@@ -89,5 +89,21 @@ export const GAME_REGISTRY: Record<string, GameConfig> = {
 		},
 		localStorageSaveKey: 'watersort_save',
 		hasTutorials: false
+	},
+	'triple-tile': {
+		id: 'triple-tile',
+		name: '트리플 타일',
+		displayTitle: 'Triple Tile',
+		gameUrl: '/games/triple-tile',
+		difficulties: ['easy', 'medium', 'hard', 'expert', 'master'],
+		difficultyLabels: {
+			easy: '쉬움',
+			medium: '보통',
+			hard: '어려움',
+			expert: '전문가',
+			master: '마스터'
+		},
+		localStorageSaveKey: 'triple_tile_save',
+		hasTutorials: true
 	}
 };
