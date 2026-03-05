@@ -91,13 +91,3 @@ export const pointTransactions = pgTable('point_transactions', {
 	referenceId: varchar('reference_id', { length: 100 }),
 	createdAt: timestamp('created_at').defaultNow(),
 });
-
-// DEPRECATED: 튜토리얼 해금 시스템 제거됨. DB 마이그레이션 시 테이블 삭제 예정.
-export const tutorialProgress = pgTable('tutorial_progress', {
-	id: bigserial('id', { mode: 'number' }).primaryKey(),
-	userId: integer('user_id').notNull().references(() => attendees.id, { onDelete: 'cascade' }),
-	tutorialId: varchar('tutorial_id', { length: 50 }).notNull(),
-	completedAt: timestamp('completed_at').defaultNow(),
-}, (table) => [
-	unique('unique_user_tutorial').on(table.userId, table.tutorialId),
-]);

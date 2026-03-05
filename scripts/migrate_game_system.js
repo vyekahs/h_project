@@ -124,17 +124,7 @@ const queries = [
     `CREATE INDEX IF NOT EXISTS idx_daily_points ON point_transactions (user_id, created_at, transaction_type);`,
     `CREATE INDEX IF NOT EXISTS idx_title_condition ON minigame_titles (condition_type, id);`,
     `CREATE INDEX IF NOT EXISTS idx_user_date ON point_transactions (user_id, created_at);`,
-    `CREATE TABLE IF NOT EXISTS tutorial_progress (
-        id              BIGSERIAL PRIMARY KEY,
-        user_id         INTEGER NOT NULL REFERENCES attendees(id) ON DELETE CASCADE,
-        tutorial_id     VARCHAR(50) NOT NULL,
-        completed_at    TIMESTAMP DEFAULT NOW(),
-        CONSTRAINT unique_user_tutorial UNIQUE (user_id, tutorial_id)
-    );`,
-    `DO $$ BEGIN
-        ALTER TABLE tutorial_progress DROP CONSTRAINT IF EXISTS fk_tutorial_attendees;
-        ALTER TABLE tutorial_progress ADD CONSTRAINT fk_tutorial_attendees FOREIGN KEY (user_id) REFERENCES attendees(id) ON DELETE CASCADE;
-     EXCEPTION WHEN others THEN null; END $$;`,
+    `DROP TABLE IF EXISTS tutorial_progress;`,
 
     `CREATE TABLE IF NOT EXISTS minigame_play_log (
         id              BIGSERIAL PRIMARY KEY,
