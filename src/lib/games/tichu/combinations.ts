@@ -382,3 +382,94 @@ export function getPlayableCards(hand: Card[], currentCombo: Combination | null,
 
 	return results;
 }
+
+/**
+ * 봉황이 포함된 조합에서 봉황이 대체하는 랭크를 반환.
+ * 유효한 조합이 아니거나 봉황이 없으면 null.
+ */
+export function getPhoenixSubstituteRank(cards: Card[]): number | null {
+	if (cards.length < 2) return null;
+	if (!cards.some(isPhoenix)) return null;
+
+	const normalCards = cards.filter(c => c.type === 'normal') as NormalCard[];
+	const mahjongCard = cards.find(isMahjong);
+
+	// 페어: 봉황 + 일반카드 1장
+	if (cards.length === 2 && normalCards.length === 1) {
+		return normalCards[0].rank;
+	}
+
+	// 트리플: 봉황 + 같은 랭크 2장
+	if (cards.length === 3 && normalCards.length === 2 && normalCards[0].rank === normalCards[1].rank) {
+		return normalCards[0].rank;
+	}
+
+	// 풀하우스: 봉황 + 일반 4장
+	if (cards.length === 5 && normalCards.length === 4) {
+		const rankCounts = new Map<number, number>();
+		for (const c of normalCards) rankCounts.set(c.rank, (rankCounts.get(c.rank) || 0) + 1);
+		const entries = [...rankCounts.entries()].sort((a, b) => b[1] - a[1]);
+		if (entries.length === 2) {
+			if (entries[0][1] === 3 && entries[1][1] === 1) {
+				return entries[1][0]; // 1장짜리 랭크를 봉황이 대체 (페어 완성)
+			}
+			if (entries[0][1] === 2 && entries[1][1] === 2) {
+				return Math.max(entries[0][0], entries[1][0]); // 높은 쪽을 트리플로
+			}
+		}
+	}
+
+	// 스트레이트: 빠진 숫자를 봉황이 대체
+	if (cards.length >= 5) {
+		const allRanks = getRanksWithSpecials(normalCards, mahjongCard);
+		const sorted = [...new Set(allRanks)].sort((a, b) => a - b);
+		const needed = cards.length;
+
+		for (let start = 0; start <= sorted.length - (needed - 1); start++) {
+			let gapRank: number | null = null;
+			let gaps = 0;
+			const base = sorted[start];
+			for (let i = 0; i < needed; i++) {
+				const expectedRank = base + i;
+				if (!sorted.includes(expectedRank)) {
+					gaps++;
+					gapRank = expectedRank;
+				}
+			}
+			if (gaps === 1 && gapRank !== null) {
+				const highRank = base + needed - 1;
+				if (highRank <= 14) return gapRank;
+			}
+		}
+	}
+
+	// 계단: 봉황이 한 쪽 페어를 채움
+	if (cards.length >= 4 && cards.length % 2 === 0) {
+		const allRanks = getRanksWithSpecials(normalCards, mahjongCard);
+		const rankCounts = new Map<number, number>();
+		for (const r of allRanks) rankCounts.set(r, (rankCounts.get(r) || 0) + 1);
+
+		const pairCount = cards.length / 2;
+		const sortedRanks = [...rankCounts.keys()].sort((a, b) => a - b);
+
+		for (let start = 0; start <= sortedRanks.length - pairCount + 1; start++) {
+			const startRank = sortedRanks[start];
+			let phoenixRank: number | null = null;
+			let valid = true;
+			for (let i = 0; i < pairCount; i++) {
+				const expectedRank = startRank + i;
+				const count = rankCounts.get(expectedRank) || 0;
+				if (count >= 2) continue;
+				if (count === 1 && phoenixRank === null) {
+					phoenixRank = expectedRank;
+					continue;
+				}
+				valid = false;
+				break;
+			}
+			if (valid && phoenixRank !== null) return phoenixRank;
+		}
+	}
+
+	return null;
+}

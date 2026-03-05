@@ -1,6 +1,7 @@
 <script lang="ts">
-	import type { Combination, SeatIndex } from '$lib/games/tichu/types';
+	import type { Card, Combination, SeatIndex } from '$lib/games/tichu/types';
 	import { getTeam } from '$lib/games/tichu/constants';
+	import { getPhoenixSubstituteRank } from '$lib/games/tichu/combinations';
 	import CardComponent from './CardComponent.svelte';
 
 	let { trick, lastPlay = null, mySeat, playerNames = {}, isMyTurn = false } = $props<{
@@ -18,6 +19,23 @@
 
 	const lastPlayName = $derived(lastPlay ? (lastPlay.seat === mySeat ? '나' : (playerNames[lastPlay.seat] ?? '')) : '');
 	const isSameTeam = $derived(lastPlay ? getTeam(lastPlay.seat) === getTeam(mySeat) : false);
+
+	// 봉황 포함 조합을 랭크 순서로 정렬
+	const sortedTrickCards = $derived.by((): Card[] => {
+		if (!lastPlay) return [];
+		const cards = lastPlay.combination.cards;
+		const hasPhoenix = cards.some((c: Card) => c.type === 'special' && c.special === 'phoenix');
+		if (!hasPhoenix || cards.length <= 1) return cards;
+
+		const phoenixRank = getPhoenixSubstituteRank(cards);
+		const getSortValue = (c: Card): number => {
+			if (c.type === 'normal') return c.rank;
+			if (c.type === 'special' && c.special === 'phoenix') return phoenixRank ?? 14.5;
+			if (c.type === 'special' && c.special === 'mahjong') return 1;
+			return 0;
+		};
+		return [...cards].sort((a, b) => getSortValue(a) - getSortValue(b));
+	});
 
 	// Dynamic overlap for trick cards when many are played
 	const trickCardOverlap = $derived.by(() => {
@@ -75,7 +93,7 @@
 		<div class="trick-display pos-{seatPosition(lastPlay.seat)}">
 			<div class="trick-player" class:team-mine={isSameTeam} class:team-opponent={!isSameTeam}>{lastPlayName}</div>
 			<div class="trick-cards" style="--trick-overlap: -{trickCardOverlap}px">
-				{#each lastPlay.combination.cards as card (card.id)}
+				{#each sortedTrickCards as card (card.id)}
 					<CardComponent {card} />
 				{/each}
 			</div>
