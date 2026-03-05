@@ -2,6 +2,7 @@
 	import type { AiStrategy, AiSpeed } from '$lib/games/tichu/ai/types';
 	import { STRATEGY_PRESETS } from '$lib/games/tichu/ai/presets';
 	import type { createTichuGameState } from '../gameState.svelte';
+	import LessonSelect from './LessonSelect.svelte';
 
 	interface Props {
 		game: ReturnType<typeof createTichuGameState>;
@@ -20,7 +21,7 @@
 
 	let forceSetup = $state(false);
 	let showSetup = $derived(!game.savedGameAvailable || forceSetup);
-	let activeTab = $state<'setup' | 'ranking'>('setup');
+	let activeTab = $state<'setup' | 'ranking' | 'tutorial'>('setup');
 
 	// Ranking state
 	let rankings = $state<any[]>([]);
@@ -67,6 +68,9 @@
 		<div class="tab-nav">
 			<button class="tab-btn" class:active={activeTab === 'setup'} onclick={() => activeTab = 'setup'}>
 				설정
+			</button>
+			<button class="tab-btn" class:active={activeTab === 'tutorial'} onclick={() => activeTab = 'tutorial'}>
+				튜토리얼
 			</button>
 			<button class="tab-btn" class:active={activeTab === 'ranking'} onclick={() => activeTab = 'ranking'}>
 				랭킹
@@ -134,6 +138,9 @@
 					새 게임
 				</button>
 			{/if}
+
+		{:else if activeTab === 'tutorial'}
+			<LessonSelect {game} />
 
 		{:else if activeTab === 'ranking'}
 			<div class="ranking-container">

@@ -3,6 +3,7 @@
 	import { createTichuGameState } from './gameState.svelte';
 	import GameSetup from './components/GameSetup.svelte';
 	import TichuTable from './components/TichuTable.svelte';
+	import TutorialOverlay from './components/TutorialOverlay.svelte';
 	import DragonGiftModal from './components/DragonGiftModal.svelte';
 	import WishModal from './components/WishModal.svelte';
 	import ScoreBoard from './components/ScoreBoard.svelte';
@@ -28,6 +29,9 @@
 		<GameSetup {game} />
 	{:else if game.view === 'game' && game.gameState}
 		<TichuTable {game} />
+	{:else if game.view === 'tutorial' && game.gameState}
+		<TichuTable {game} />
+		<TutorialOverlay {game} />
 	{/if}
 
 	<!-- Modals -->

@@ -157,6 +157,12 @@ export class LocalGameEngine {
 	}
 
 	get paused(): boolean { return this._paused; }
+	get isProcessingAi(): boolean { return this.processingAi; }
+
+	/** 교환 제출 상태 초기화 (튜토리얼용) */
+	resetExchangeSubmissions(): void {
+		this.exchangeSubmissions = [null, null, null, null];
+	}
 
 	pause(): void {
 		this._paused = true;

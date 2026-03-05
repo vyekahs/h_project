@@ -1,9 +1,10 @@
 <script lang="ts">
 	import type { Card } from '$lib/games/tichu/types';
 
-	let { card, selected = false, small = false, onclick = undefined } = $props<{
+	let { card, selected = false, highlighted = false, small = false, onclick = undefined } = $props<{
 		card: Card;
 		selected?: boolean;
+		highlighted?: boolean;
 		small?: boolean;
 		onclick?: () => void;
 	}>();
@@ -98,6 +99,7 @@
 <button
 	class="card"
 	class:selected
+	class:highlighted
 	class:small
 	class:special={isSpecial}
 	style="--card-color: {displayInfo.color}"
@@ -186,6 +188,27 @@
 		border: 2px solid #fbbf24;
 		box-shadow: 0 0 15px rgba(251, 191, 36, 0.5);
 		z-index: 20;
+	}
+
+	.card.highlighted {
+		animation: highlightPulse 1.2s ease-in-out infinite;
+		border: 2.5px solid #34d399;
+		z-index: 15;
+		background: linear-gradient(180deg, #ecfdf5 0%, #fff 40%);
+	}
+	.card.highlighted.selected {
+		border-color: #fbbf24;
+		animation: none;
+	}
+	@keyframes highlightPulse {
+		0%, 100% {
+			box-shadow: 0 0 10px rgba(52, 211, 153, 0.5), 0 0 25px rgba(52, 211, 153, 0.2);
+			transform: translateY(-4px);
+		}
+		50% {
+			box-shadow: 0 0 20px rgba(52, 211, 153, 0.8), 0 0 40px rgba(52, 211, 153, 0.3);
+			transform: translateY(-10px);
+		}
 	}
 
 	/* Special Card Styling */

@@ -36,7 +36,7 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		z-index: 800;
+		z-index: 1100;
 		font-family: 'Inter', sans-serif;
 	}
 

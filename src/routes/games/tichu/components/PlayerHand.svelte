@@ -10,6 +10,7 @@
 	const isPlaying = $derived(game.phase === 'playing');
 	const isDragonGift = $derived(game.phase === 'dragon_gift');
 	const busy = $derived(game.actionInProgress);
+	const highlightIds = $derived(game.highlightCardIds as Set<string>);
 
 	// Detect if selected cards form a bomb (for out-of-turn bomb play)
 	const selectedIsBomb = $derived.by(() => {
@@ -163,6 +164,7 @@
 				<CardComponent
 					{card}
 					selected={game.selectedCards.has(card.id) || isCardUsedInExchange(card.id) || exchangePendingCard === card.id}
+					highlighted={highlightIds.has(card.id)}
 					onclick={() => handleCardClick(card)}
 				/>
 			{/each}
@@ -172,6 +174,7 @@
 				<CardComponent
 					{card}
 					selected={game.selectedCards.has(card.id) || isCardUsedInExchange(card.id) || exchangePendingCard === card.id}
+					highlighted={highlightIds.has(card.id)}
 					onclick={() => handleCardClick(card)}
 				/>
 			{/each}
@@ -182,6 +185,7 @@
 				<CardComponent
 					{card}
 					selected={game.selectedCards.has(card.id) || isCardUsedInExchange(card.id) || exchangePendingCard === card.id}
+					highlighted={highlightIds.has(card.id)}
 					onclick={() => handleCardClick(card)}
 				/>
 			{/each}
