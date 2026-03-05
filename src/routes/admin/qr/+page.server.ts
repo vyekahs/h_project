@@ -18,7 +18,7 @@ export const load: PageServerLoad = async () => {
     // 4. Generate QR Code URL
     // Use ORIGIN from env, fallback to localhost for dev
     const origin = env.ORIGIN || 'http://localhost:3000';
-    const checkinUrl = `${origin}/checkin/${token}`;
+    const checkinUrl = `${origin}/open/${token}`;
 
     const qrCode = await QRCode.toDataURL(checkinUrl, {
         width: 400,
