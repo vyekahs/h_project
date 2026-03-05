@@ -117,6 +117,7 @@
 
     // --- Tab System ---
     let activeTab: 'home' | 'games' = 'home';
+    let isTablet = false;
     let showAllMainGames = false;
 
     // --- Game Management Logic ---
@@ -220,6 +221,14 @@
         showVisitPlanModal = true;
     }
 
+    function openEditVisitPlanModal() {
+        const myPlan = mergedVisitPlans.find((p: any) => p.attendee_id === data.user?.id);
+        if (!myPlan) return;
+        selectedVisitTime = myPlan.planned_time ? myPlan.planned_time.substring(0, 5) : getDefaultVisitTime();
+        isTimeDropdownOpen = false;
+        showVisitPlanModal = true;
+    }
+
     let alertVisible = false;
     let alertMessage = '';
 
@@ -244,10 +253,15 @@
     let isIOS = false;
     let isStandalone = false;
 
+    let tabletMq: MediaQueryList;
     onMount(() => {
         isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
         isStandalone = window.matchMedia('(display-mode: standalone)').matches
             || (navigator as any).standalone === true;
+
+        tabletMq = window.matchMedia('(min-width: 769px)');
+        isTablet = tabletMq.matches;
+        tabletMq.addEventListener('change', (e) => { isTablet = e.matches; });
 
         connectSSE();
     });
@@ -525,20 +539,7 @@
         </button>
     {/if} -->
 
-    <main>
-        <div class="tab-bar">
-            <button class="tab-btn" class:active={activeTab === 'home'} on:click={() => activeTab = 'home'}>
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px; vertical-align:text-bottom;"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-                홈
-            </button>
-            <button class="tab-btn" class:active={activeTab === 'games'} on:click={() => activeTab = 'games'}>
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px; vertical-align:text-bottom;"><line x1="6" y1="12" x2="10" y2="12"/><line x1="8" y1="10" x2="8" y2="14"/><line x1="15" y1="13" x2="15.01" y2="13"/><line x1="18" y1="11" x2="18.01" y2="11"/><rect x="2" y="6" width="20" height="12" rx="2"/></svg>
-                게임
-            </button>
-        </div>
-
-        {#if activeTab === 'home'}
-
+    {#snippet homeContent()}
         {#if data.user && ((data.userPenaltyInfo && data.userPenaltyInfo.penalty_points > 0) || (data.userScheduledGames && data.userScheduledGames.length > 0) || data.userPlayingGame || data.userReservation)}
             <section class="my-status-section">
                 <h2>나의 예약 현황</h2>
@@ -756,7 +757,7 @@
 
         <section class="visit-plan-section">
             <div class="section-header">
-                <h2>오늘 갈예정 ({mergedVisitPlans.length})</h2>
+                <h2>오늘 갈 예정 ({mergedVisitPlans.length})</h2>
                 {#if data.user && !checkedInIds.has(data.user.id)}
                     {@const hasScheduledGame = (data.userScheduledGames || []).some((g: any) => !g.party_id)}
                     {#if data.userHasVisitPlan}
@@ -767,13 +768,22 @@
                             <button type="submit" class="btn-visit-plan active">취소하기</button>
                         </form>
                     {:else if !(hasScheduledGame)}
-                        <button type="button" class="btn-visit-plan" on:click={openVisitPlanModal}>나도 갈예정!</button>
+                        <button type="button" class="btn-visit-plan" on:click={openVisitPlanModal}>나도 갈 예정!</button>
                     {/if}
                 {/if}
             </div>
             <div class="visit-plan-grid">
                 {#each mergedVisitPlans as plan}
-                    <div class="visit-plan-card">
+                    {@const isMyPlan = data.user && plan.attendee_id === data.user.id && !checkedInIds.has(data.user.id)}
+                    <!-- svelte-ignore a11y-no-static-element-interactions -->
+                    <div
+                        class="visit-plan-card"
+                        class:editable={isMyPlan}
+                        on:click={() => isMyPlan && openEditVisitPlanModal()}
+                        on:keydown={(e) => isMyPlan && e.key === 'Enter' && openEditVisitPlanModal()}
+                        role={isMyPlan ? 'button' : undefined}
+                        tabindex={isMyPlan ? 0 : undefined}
+                    >
                         {#if plan.title_name}
                             <span class="mini-title">{plan.title_name}</span>
                         {/if}
@@ -793,9 +803,9 @@
                 {/if}
             </div>
         </section>
+    {/snippet}
 
-        {:else}
-
+    {#snippet gamesContent()}
         <section class="tables-section">
             <div class="section-header">
                 <h2>진행 중인 게임 ({liveGameCount ?? games.length})</h2>
@@ -1087,7 +1097,37 @@
                 </div>
             {/if}
         </section>
+    {/snippet}
 
+    <main>
+        {#if isTablet}
+            <div class="main-panels">
+                <div class="panel">
+                    <h2 class="panel-title">홈</h2>
+                    {@render homeContent()}
+                </div>
+                <div class="panel">
+                    <h2 class="panel-title">게임</h2>
+                    {@render gamesContent()}
+                </div>
+            </div>
+        {:else}
+            <div class="tab-bar">
+                <button class="tab-btn" class:active={activeTab === 'home'} on:click={() => activeTab = 'home'}>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px; vertical-align:text-bottom;"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                    홈
+                </button>
+                <button class="tab-btn" class:active={activeTab === 'games'} on:click={() => activeTab = 'games'}>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px; vertical-align:text-bottom;"><line x1="6" y1="12" x2="10" y2="12"/><line x1="8" y1="10" x2="8" y2="14"/><line x1="15" y1="13" x2="15.01" y2="13"/><line x1="18" y1="11" x2="18.01" y2="11"/><rect x="2" y="6" width="20" height="12" rx="2"/></svg>
+                    게임
+                </button>
+            </div>
+
+            {#if activeTab === 'home'}
+                {@render homeContent()}
+            {:else}
+                {@render gamesContent()}
+            {/if}
         {/if}
     </main>
 </div>
@@ -1782,6 +1822,30 @@
         border-radius: 4px;
         font-weight: 500;
         margin-top: 2px;
+    }
+    .visit-plan-card.editable {
+        cursor: pointer;
+        position: relative;
+        transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+    .visit-plan-card.editable:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(230, 119, 0, 0.2);
+        outline: 1px solid #ffe0b2;
+    }
+    .visit-plan-card.editable:active {
+        transform: translateY(0);
+    }
+    .visit-plan-card.editable::after {
+        content: '\270F';
+        position: absolute;
+        top: 4px;
+        right: 6px;
+        font-size: 0.55rem;
+        opacity: 0.4;
+    }
+    .visit-plan-card.editable:hover::after {
+        opacity: 1;
     }
 
     /* Visit Plan Modal */
@@ -3508,5 +3572,24 @@
         border-color: #888;
         color: #555;
         background: #f8f9fa;
+    }
+
+    /* Tablet: side-by-side panels */
+    .main-panels {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1.5rem;
+        align-items: start;
+    }
+    .panel-title {
+        font-size: 1rem;
+        font-weight: 700;
+        color: #e67700;
+        margin: 0 0 1rem 0;
+    }
+    @media (min-width: 769px) {
+        .container {
+            max-width: 1000px;
+        }
     }
 </style>
