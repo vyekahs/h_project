@@ -101,7 +101,7 @@
     <div class="featured-row">
         {#if popularGames.length > 0}
             <section class="featured-section">
-                <h2 class="section-title"><span class="section-emoji">🔥</span> 인기 게임</h2>
+                <h2 class="section-title"><span class="section-emoji"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg></span> 인기 게임</h2>
                 <div class="featured-list">
                     {#each popularGames as game}
                         <a href={game.url} class="featured-card" style="--accent: {game.accentColor}">
@@ -133,7 +133,7 @@
 
         {#if newGames.length > 0}
             <section class="featured-section">
-                <h2 class="section-title"><span class="section-emoji">🆕</span> 새로운 게임</h2>
+                <h2 class="section-title"><span class="section-emoji"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/><path d="M5 3v4"/><path d="M19 17v4"/><path d="M3 5h4"/><path d="M17 19h4"/></svg></span> 새로운 게임</h2>
                 <div class="featured-list">
                     {#each newGames as game}
                         <a href={game.url} class="featured-card" style="--accent: {game.accentColor}">
@@ -165,7 +165,7 @@
     </div>
 
     <section class="section-title-row">
-        <h2 class="section-title"><span class="section-emoji">🎮</span> 전체 게임</h2>
+        <h2 class="section-title"><span class="section-emoji"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="12" x2="10" y2="12"/><line x1="8" y1="10" x2="8" y2="14"/><line x1="15" y1="13" x2="15.01" y2="13"/><line x1="18" y1="11" x2="18.01" y2="11"/><rect x="2" y="6" width="20" height="12" rx="2"/></svg></span> 전체 게임</h2>
     </section>
 
     <section class="games-grid">

@@ -74,7 +74,9 @@ void setup() {
 void addDevice(String mac, int rssi, String name) {
   for (int i = 0; i < deviceCount; i++) {
     if (deviceMacs[i] == mac) {
-      deviceRssis[i] = rssi; // update RSSI
+      if (rssi > deviceRssis[i]) {
+        deviceRssis[i] = rssi; // keep strongest RSSI
+      }
       return;
     }
   }

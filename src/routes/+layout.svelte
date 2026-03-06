@@ -2,6 +2,7 @@
 	import favicon from '$lib/assets/favicon.svg';
     import { page } from '$app/stores';
     import { onMount, onDestroy } from 'svelte';
+    import { afterNavigate } from '$app/navigation';
     import { version } from '$app/environment';
     import PointDisplay from '$lib/components/gamification/PointDisplay.svelte';
     import AdBanner from '$lib/components/ads/AdBanner.svelte';
@@ -15,6 +16,16 @@
     function isInGame(pathname: string): boolean {
         return GAME_PATHS.some(p => pathname.startsWith(p));
     }
+
+    // iOS PWA 페이지 전환 시 하단 네비게이션 터치 버그 수정
+    afterNavigate(() => {
+        const nav = document.querySelector('.bottom-nav');
+        if (nav instanceof HTMLElement) {
+            nav.style.display = 'none';
+            nav.offsetHeight; // 강제 리플로우로 env(safe-area-inset-bottom) 재계산
+            nav.style.display = '';
+        }
+    });
 
     onMount(() => {
         versionCheckTimer = setInterval(async () => {
@@ -136,6 +147,7 @@
 		z-index: 1000;
         border-left: 1px solid #f1f3f5;
         border-right: 1px solid #f1f3f5;
+		isolation: isolate;
 	}
 	.nav-item {
 		display: flex;

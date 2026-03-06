@@ -164,7 +164,7 @@
 				<StagingArea
 					staging={game.staging}
 					capacity={game.stagingCapacity}
-					matchingTypeId={game.matchingTypeId}
+					matchingSlots={game.matchingSlots}
 					isFull={stagingFull}
 					bind:containerRef={stagingContainerRef}
 				/>

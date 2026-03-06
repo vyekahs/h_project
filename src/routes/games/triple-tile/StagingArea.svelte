@@ -5,23 +5,31 @@
 	let {
 		staging,
 		capacity = 7,
-		matchingTypeId = -1,
+		matchingSlots = [],
 		isFull = false,
 		containerRef = $bindable<HTMLElement | undefined>(undefined),
 	}: {
 		staging: (Tile | null)[];
 		capacity?: number;
-		matchingTypeId?: number;
+		matchingSlots?: { index: number; typeId: number }[];
 		isFull?: boolean;
 		containerRef?: HTMLElement;
 	} = $props();
+
+	function getMatchOverlay(index: number): { typeId: number } | null {
+		const match = matchingSlots.find((m) => m.index === index);
+		return match ?? null;
+	}
 </script>
 
 <div class="staging-area" class:shake={isFull} bind:this={containerRef}>
 	{#each { length: capacity } as _, i}
 		{@const tile = staging[i]}
-		<div class="slot" class:occupied={tile !== null} class:matching={tile && matchingTypeId === tile.typeId}>
-			{#if tile}
+		{@const overlay = getMatchOverlay(i)}
+		<div class="slot" class:occupied={tile !== null || overlay !== null} class:matching={overlay !== null}>
+			{#if overlay}
+				<span class="slot-emoji">{TILE_TYPES[overlay.typeId] ?? '❓'}</span>
+			{:else if tile}
 				<span class="slot-emoji">{TILE_TYPES[tile.typeId] ?? '❓'}</span>
 			{/if}
 		</div>

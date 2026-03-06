@@ -66,6 +66,8 @@ export function createTripleTileGame() {
 
 	// Animation
 	let matchingTypeId = $state(-1); // type currently being matched (for animation)
+	let matchingSlots: { index: number; typeId: number }[] = $state([]); // slots with match animation overlay
+	let matchAnimTimer: ReturnType<typeof setTimeout> | null = null; // track match animation timeout
 	let pendingQueue: { newStaging: (Tile | null)[]; tileId: number }[] = [];
 
 	// Initial state for restart
@@ -189,6 +191,7 @@ export function createTripleTileGame() {
 		hasRestarted = false;
 		isWon = false;
 		matchingTypeId = -1;
+		matchingSlots = [];
 		pendingQueue = [];
 		newTitleName = null;
 
@@ -261,12 +264,24 @@ export function createTripleTileGame() {
 		// Check for match
 		const matchedType = checkStagingMatch(staging);
 		if (matchedType >= 0) {
+			// Cancel previous match animation timer if still pending
+			if (matchAnimTimer !== null) clearTimeout(matchAnimTimer);
+
+			// Record matched slot positions for animation overlay
+			matchingSlots = staging
+				.map((t, i) => (t && t.typeId === matchedType ? { index: i, typeId: t.typeId } : null))
+				.filter((x): x is { index: number; typeId: number } => x !== null);
 			matchingTypeId = matchedType;
 
-			setTimeout(() => {
-				staging = removeMatchedFromStaging(staging, matchedType, config.stagingCapacity);
-				matchCount++;
+			// Update staging immediately (remove matched + compact)
+			staging = removeMatchedFromStaging(staging, matchedType, config.stagingCapacity);
+			matchCount++;
+
+			// Clear animation overlay after CSS animation completes
+			matchAnimTimer = setTimeout(() => {
+				matchAnimTimer = null;
 				matchingTypeId = -1;
+				matchingSlots = [];
 
 				// Check win only when no more pending tiles
 				if (pendingQueue.length === 0 && tiles.every((t) => t.removed)) {
@@ -401,6 +416,7 @@ export function createTripleTileGame() {
 			calculatedScore = 0;
 			isWon = false;
 			matchingTypeId = -1;
+			matchingSlots = [];
 			pendingQueue = [];
 
 			gameState = 'playing';
@@ -437,6 +453,7 @@ export function createTripleTileGame() {
 		get newTitleName() { return newTitleName; },
 		get showVisitPrompt() { return showVisitPrompt; },
 		get matchingTypeId() { return matchingTypeId; },
+		get matchingSlots() { return matchingSlots; },
 		get isAnimating() { return pendingQueue.length > 0 || matchingTypeId >= 0; },
 		// Functions
 		showAlert,
