@@ -31,19 +31,66 @@
 			if (!t.removed) active.push(t);
 		}
 
-		// Build exposed map: a tile is exposed if no higher-layer tile covers it
+		// Step 1: Find exposed tiles (coverDepth 0)
 		const exposedSet = new Set<number>();
+		const coverMap = new Map<number, number>();
+		const hiddenSet = new Set<number>();
+
 		for (const tile of active) {
-			let covered = false;
+			let maxCoverLayer = tile.layer;
 			for (const other of active) {
 				if (other.layer > tile.layer &&
 					Math.abs(other.col - tile.col) < 1 &&
 					Math.abs(other.row - tile.row) < 1) {
-					covered = true;
+					if (other.layer > maxCoverLayer) maxCoverLayer = other.layer;
+				}
+			}
+			const depth = maxCoverLayer - tile.layer;
+			coverMap.set(tile.id, depth);
+			if (depth === 0) exposedSet.add(tile.id);
+		}
+
+		// Step 2: "just below" = directly covered by an exposed tile
+		const justBelowSet = new Set<number>();
+		for (const tile of active) {
+			if (exposedSet.has(tile.id)) continue;
+			for (const other of active) {
+				if (exposedSet.has(other.id) &&
+					other.layer > tile.layer &&
+					Math.abs(other.col - tile.col) < 1 &&
+					Math.abs(other.row - tile.row) < 1) {
+					justBelowSet.add(tile.id);
 					break;
 				}
 			}
-			if (!covered) exposedSet.add(tile.id);
+		}
+
+		// Step 3: fully-hidden check (all 4 corners covered)
+		for (const tile of active) {
+			if (exposedSet.has(tile.id)) continue;
+			const covers: Tile[] = [];
+			for (const other of active) {
+				if (other.layer > tile.layer &&
+					Math.abs(other.col - tile.col) < 1 &&
+					Math.abs(other.row - tile.row) < 1) {
+					covers.push(other);
+				}
+			}
+			if (covers.length > 0) {
+				const corners = [
+					[tile.col - 0.49, tile.row - 0.49],
+					[tile.col + 0.49, tile.row - 0.49],
+					[tile.col - 0.49, tile.row + 0.49],
+					[tile.col + 0.49, tile.row + 0.49],
+				];
+				const allCovered = corners.every(([cx, cy]) =>
+					covers.some(
+						(o) => cx >= o.col - 0.5 && cx <= o.col + 0.5 &&
+							cy >= o.row - 0.5 && cy <= o.row + 0.5
+					)
+				);
+				if (allCovered) hiddenSet.add(tile.id);
+			}
 		}
 
 		// Sort: lower layers first, then row, then col
@@ -53,7 +100,9 @@
 			width: (mCol + 1) * (tileSize + tileGap) + tileGap,
 			height: (mRow + 1) * (tileSize + tileGap) + tileGap,
 			sorted: active,
-			exposed: exposedSet,
+			coverMap,
+			hiddenSet,
+			justBelowSet,
 		};
 	});
 
@@ -74,11 +123,14 @@
 		style="width: {boardData.width}px; height: {boardData.height}px; --tile-size: {tileSize}px; transform: scale({scale});"
 	>
 		{#each boardData.sorted as tile (tile.id)}
-			{@const exposed = boardData.exposed.has(tile.id)}
+			{@const coverDepth = boardData.coverMap.get(tile.id) ?? 0}
+			{@const justBelow = boardData.justBelowSet.has(tile.id)}
+			{@const hidden = boardData.hiddenSet.has(tile.id)}
 			{@const x = tile.col * (tileSize + tileGap)}
 			{@const y = tile.row * (tileSize + tileGap)}
 			<div
 				class="tile-slot"
+				class:tile-hidden={hidden}
 				style="
 					left: {x}px;
 					top: {y}px;
@@ -87,9 +139,10 @@
 			>
 				<TileComponent
 					typeId={tile.typeId}
-					{exposed}
+					exposed={coverDepth === 0}
+					coverDepth={hidden ? 3 : (justBelow ? 1 : (coverDepth === 0 ? 0 : 2))}
 					layer={tile.layer}
-					onclick={(e) => {
+					onclick={(e: MouseEvent) => {
 						const btn = e.currentTarget;
 						if (btn instanceof HTMLElement) {
 							onselect(tile.id, btn.getBoundingClientRect());
@@ -120,5 +173,10 @@
 
 	.tile-slot {
 		position: absolute;
+		transition: visibility 0s, opacity 0.2s ease;
+	}
+
+	.tile-slot.tile-hidden {
+		visibility: hidden;
 	}
 </style>

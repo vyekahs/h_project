@@ -335,14 +335,18 @@ export function createTripleTileGame() {
 		shuffleUsed++;
 	}
 
+	let scoreSubmitted = false;
+
 	function handleWin() {
+		if (gameState === 'finished' || isWon) return;
 		isWon = true;
 		localStorage.removeItem('triple_tile_save');
+		hasSavedGame = false;
 		setTimeout(() => {
 			gameState = 'finished';
 			stopTimer();
-			hasSavedGame = false;
-			if (!hasRestarted) {
+			if (!hasRestarted && !scoreSubmitted) {
+				scoreSubmitted = true;
 				submitScore();
 			}
 		}, 600);
