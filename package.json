@@ -9,7 +9,12 @@
 		"preview": "vite preview",
 		"prepare": "svelte-kit sync || echo ''",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
-		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch"
+		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
+		"color:scan": "node scripts/convert-hardcoded-colors.js --scan",
+		"color:preview": "node scripts/convert-hardcoded-colors.js --preview",
+		"color:convert": "node scripts/convert-hardcoded-colors.js --convert",
+		"color:preview-all": "node scripts/convert-hardcoded-colors.js --preview-all",
+		"color:convert-all": "node scripts/convert-hardcoded-colors.js --convert-all"
 	},
 	"devDependencies": {
 		"@playwright/test": "^1.57.0",
