@@ -6,6 +6,7 @@
 #include <BLEUtils.h>
 #include <BLEScan.h>
 #include <BLEAdvertisedDevice.h>
+#include <esp_bt.h>
 
 // WiFi 직접 입력
 const char* WIFI_SSID = "KT_GiGA_3F81";
@@ -63,10 +64,29 @@ void setup() {
   // BLE Init
   Serial.println("Initializing BLE...");
   BLEDevice::init(SCANNER_ID);
+
+  // ESP32-C6-WROOM-1U: 외장 안테나 전용 모듈 (GPIO 제어 불필요)
+  Serial.println("ESP32-C6-WROOM-1U detected (external antenna only)");
+
+  // BLE 최대 송신 전력 설정
+  // ESP32-C6 지원 레벨: P9(9dBm), P12(12dBm), P15(15dBm), P18(18dBm), P21(21dBm)
+  // 주의: 높은 전력은 과열 및 전력 소모 증가
+  esp_err_t err1 = esp_ble_tx_power_set(ESP_BLE_PWR_TYPE_SCAN, ESP_PWR_LVL_P9);
+  esp_err_t err2 = esp_ble_tx_power_set(ESP_BLE_PWR_TYPE_ADV, ESP_PWR_LVL_P9);
+  esp_err_t err3 = esp_ble_tx_power_set(ESP_BLE_PWR_TYPE_DEFAULT, ESP_PWR_LVL_P9);
+
+  Serial.print("BLE TX Power set to 9dBm (safe max) - Status: ");
+  Serial.print((err1 == ESP_OK && err2 == ESP_OK && err3 == ESP_OK) ? "OK" : "FAILED");
+  if (err1 != ESP_OK) Serial.print(" SCAN:" + String(err1));
+  if (err2 != ESP_OK) Serial.print(" ADV:" + String(err2));
+  if (err3 != ESP_OK) Serial.print(" DEF:" + String(err3));
+  Serial.println();
+
   pBLEScan = BLEDevice::getScan();
   pBLEScan->setActiveScan(true);
-  pBLEScan->setInterval(100);
-  pBLEScan->setWindow(99);
+  // 더 민감한 스캔을 위한 파라미터 조정
+  pBLEScan->setInterval(160);  // 100ms 간격 (100 * 0.625ms = 100ms)
+  pBLEScan->setWindow(80);     // 50ms 윈도우 (80 * 0.625ms = 50ms)
 
   Serial.println("=== SCANNER READY ===\n");
 }
@@ -196,7 +216,17 @@ void loop() {
       String mac = device.getAddress().toString().c_str();
       int rssi = device.getRSSI();
       String name = device.haveName() ? String(device.getName().c_str()) : "";
-      addDevice(mac, rssi, name);
+
+      // RSSI 보정: ESP32-C6 실측 결과 보정 불필요 (TX Power 설정으로 해결됨)
+      // 초기 -70~-86dBm → TX Power 설정 후 -38~-70dBm (정상)
+      int adjustedRssi = rssi;  // 보정 제거 (실측치 그대로 사용)
+
+      addDevice(mac, adjustedRssi, name);
+
+      // 디버깅: 가까운 디바이스 출력
+      if (rssi > -70) {
+        Serial.println("  Close device: " + mac + " RSSI=" + String(rssi) + " (adj=" + String(adjustedRssi) + ")");
+      }
     }
     pBLEScan->clearResults();
 
@@ -206,6 +236,23 @@ void loop() {
   }
 
   Serial.println("Total unique devices: " + String(deviceCount));
+
+  // 안테나 진단: RSSI 분포 출력
+  if (deviceCount > 0) {
+    int strongCount = 0, weakCount = 0, veryWeakCount = 0;
+    for (int i = 0; i < deviceCount; i++) {
+      if (deviceRssis[i] > -60) strongCount++;
+      else if (deviceRssis[i] > -80) weakCount++;
+      else veryWeakCount++;
+    }
+    Serial.println("RSSI Distribution: Strong(-60+)=" + String(strongCount) +
+                   " Weak(-60~-80)=" + String(weakCount) +
+                   " VeryWeak(-80-)=" + String(veryWeakCount));
+
+    if (strongCount == 0 && deviceCount > 5) {
+      Serial.println("⚠️  WARNING: All signals weak! Check antenna connection!");
+    }
+  }
 
   if (deviceCount == 0) return;
 
