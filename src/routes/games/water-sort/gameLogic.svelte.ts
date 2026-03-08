@@ -1,5 +1,5 @@
 import { GAME_CONFIG } from '$lib/config';
-import { generateLevel, canPour, pourWater, checkWin, isStuck } from '$lib/games/water-sort/levels';
+import { generateLevel, canPour, pourWater, checkWin, isStuck, checkSolvable } from '$lib/games/water-sort/levels';
 import { TUBE_CAPACITY, type Tube, type Difficulty } from '$lib/games/water-sort/types';
 import { goto } from '$app/navigation';
 import { formatTime } from '$lib/games/utils';
@@ -60,6 +60,9 @@ export function createWaterSortGame() {
 
 	// Stuck (no valid moves)
 	let isGameStuck = $state(false);
+
+	// Unsolvable (moves exist but no path to win)
+	let isUnsolvable = $state(false);
 
 	// Pour animation state
 	let pouringAnimation: {
@@ -202,6 +205,7 @@ export function createWaterSortGame() {
 		hasRestarted = false;
 		showWinAnimation = false;
 		isGameStuck = false;
+		isUnsolvable = false;
 		newTitleName = null;
 		selectedTubeId = null;
 
@@ -292,12 +296,16 @@ export function createWaterSortGame() {
 							}, 600);
 						}
 
-						// Check win/stuck
+						// Check win/stuck/unsolvable
 						if (checkWin(tubes)) {
 							handleWin();
 						} else if (isStuck(tubes)) {
 							handleStuck();
 						} else {
+							const solvable = checkSolvable(tubes);
+							if (solvable === false) {
+								isUnsolvable = true;
+							}
 							saveGame();
 						}
 
@@ -360,6 +368,7 @@ export function createWaterSortGame() {
 		tubes = tubes.map((t, i) => ({ ...t, layers: [...prev.layers[i]] }));
 		selectedTubeId = null;
 		isGameStuck = false;
+		isUnsolvable = false;
 	}
 
 	function handleWin() {
@@ -437,6 +446,7 @@ export function createWaterSortGame() {
 			calculatedScore = 0;
 			showWinAnimation = false;
 			isGameStuck = false;
+			isUnsolvable = false;
 			selectedTubeId = null;
 
 			gameState = 'playing';
@@ -470,6 +480,7 @@ export function createWaterSortGame() {
 		get showVisitPrompt() { return showVisitPrompt; },
 		get showWinAnimation() { return showWinAnimation; },
 		get isGameStuck() { return isGameStuck; },
+		get isUnsolvable() { return isUnsolvable; },
 		get pouringAnimation() { return pouringAnimation; },
 		get isAnimating() { return isAnimating; },
 		get returningTubeId() { return returningTubeId; },
