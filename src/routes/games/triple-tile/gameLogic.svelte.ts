@@ -169,14 +169,43 @@ export function createTripleTileGame() {
 		}
 	}
 
+	/**
+	 * Calculate dynamic time limit based on actual moves required.
+	 * Adjusts time proportionally to ensure consistent time pressure across shapes.
+	 */
+	function calculateTimeLimit(actualMoves: number): number {
+		const config = DIFFICULTY_CONFIG[difficulty];
+		const targetRange = config.targetMoves;
+		const targetMoves = (targetRange.min + targetRange.max) / 2;
+
+		// Calculate time proportionally to moves
+		const adjustedTime = Math.round(config.timeLimit * (actualMoves / targetMoves));
+
+		// Ensure minimum time
+		const minTime = {
+			easy: 60,
+			medium: 90,
+			hard: 120,
+			expert: 180,
+			master: 240,
+		}[difficulty];
+
+		return Math.max(adjustedTime, minTime);
+	}
+
 	// Game flow
 	function startGame() {
 		localStorage.removeItem('triple_tile_save');
 		const config = DIFFICULTY_CONFIG[difficulty];
 
-		tiles = generatePuzzle(difficulty);
+		// Generate puzzle with move count validation
+		const { tiles: generatedTiles, minimumMoves } = generatePuzzle(difficulty);
+		tiles = generatedTiles;
 		staging = Array(config.stagingCapacity).fill(null);
 		initialTiles = tiles.map((t) => ({ ...t }));
+
+		// Calculate dynamic time limit based on actual moves
+		const adjustedTimeLimit = calculateTimeLimit(minimumMoves);
 
 		moveCount = 0;
 		matchCount = 0;
@@ -199,6 +228,9 @@ export function createTripleTileGame() {
 		hasSavedGame = true;
 		startTimer();
 		saveGame();
+
+		// Log puzzle info for debugging
+		console.log(`🎮 Generated puzzle: ${tiles.length} tiles, ${minimumMoves} moves, ${adjustedTimeLimit}s time limit`);
 	}
 
 	/** Get the virtual staging state including all pending (in-flight) tiles. */

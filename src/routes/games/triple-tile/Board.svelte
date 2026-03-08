@@ -54,14 +54,19 @@
 		const justBelowSet = new Set<number>();
 		for (const tile of active) {
 			if (exposedSet.has(tile.id)) continue;
+			// Find the minimum layer among covering exposed tiles
+			let minExposedLayerAbove = Infinity;
 			for (const other of active) {
 				if (exposedSet.has(other.id) &&
 					other.layer > tile.layer &&
 					Math.abs(other.col - tile.col) < 1 &&
 					Math.abs(other.row - tile.row) < 1) {
-					justBelowSet.add(tile.id);
-					break;
+					minExposedLayerAbove = Math.min(minExposedLayerAbove, other.layer);
 				}
+			}
+			// Only mark as justBelow if the exposed tile is on the immediate next layer
+			if (minExposedLayerAbove === tile.layer + 1) {
+				justBelowSet.add(tile.id);
 			}
 		}
 

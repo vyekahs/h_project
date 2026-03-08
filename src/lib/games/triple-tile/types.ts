@@ -24,8 +24,9 @@ export interface DifficultyConfig {
 	tileTypes: number; // number of unique tile types
 	layers: number;
 	shuffleUses: number;
-	timeLimit: number; // seconds for scoring
+	timeLimit: number; // base time limit in seconds (will be adjusted based on actual moves)
 	stagingCapacity: number; // number of staging slots
+	targetMoves: { min: number; max: number }; // target number of moves (clicks) for this difficulty
 }
 
 export const STAGING_CAPACITY = 7;
@@ -44,9 +45,44 @@ export const TILE_TYPES = [
 ] as const;
 
 export const DIFFICULTY_CONFIG: Record<Difficulty, DifficultyConfig> = {
-	easy: { tileTypes: 8, layers: 5, shuffleUses: 3, timeLimit: 120, stagingCapacity: 7 },
-	medium: { tileTypes: 12, layers: 5, shuffleUses: 2, timeLimit: 180, stagingCapacity: 7 },
-	hard: { tileTypes: 16, layers: 5, shuffleUses: 2, timeLimit: 300, stagingCapacity: 7 },
-	expert: { tileTypes: 20, layers: 5, shuffleUses: 1, timeLimit: 480, stagingCapacity: 7 },
-	master: { tileTypes: 26, layers: 5, shuffleUses: 1, timeLimit: 600, stagingCapacity: 7 },
+	easy: {
+		tileTypes: 8,
+		layers: 5,
+		shuffleUses: 3,
+		timeLimit: 120,
+		stagingCapacity: 7,
+		targetMoves: { min: 5, max: 8 }
+	},
+	medium: {
+		tileTypes: 12,
+		layers: 5,
+		shuffleUses: 2,
+		timeLimit: 180,
+		stagingCapacity: 7,
+		targetMoves: { min: 9, max: 12 }
+	},
+	hard: {
+		tileTypes: 16,
+		layers: 5,
+		shuffleUses: 2,
+		timeLimit: 300,
+		stagingCapacity: 7,
+		targetMoves: { min: 13, max: 16 }
+	},
+	expert: {
+		tileTypes: 20,
+		layers: 5,
+		shuffleUses: 1,
+		timeLimit: 480,
+		stagingCapacity: 7,
+		targetMoves: { min: 17, max: 20 }
+	},
+	master: {
+		tileTypes: 26,
+		layers: 5,
+		shuffleUses: 1,
+		timeLimit: 600,
+		stagingCapacity: 7,
+		targetMoves: { min: 22, max: 26 }
+	},
 };

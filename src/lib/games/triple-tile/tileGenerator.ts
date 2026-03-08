@@ -4,7 +4,21 @@ import { pickTemplate } from './templates';
 import { getExposedTiles } from './tileLogic';
 
 /**
- * Generate a solvable Triple Tile puzzle using reverse-removal algorithm.
+ * Target number of moves (clicks) for each difficulty level.
+ * Each move removes 3 matching tiles.
+ * Based on actual template tile counts (15-78 tiles across difficulties)
+ */
+const TARGET_MOVES = {
+	easy:   { min: 5, max: 8 },     // 15-24 tiles (actual from templates)
+	medium: { min: 9, max: 12 },    // 27-36 tiles
+	hard:   { min: 13, max: 16 },   // 39-48 tiles
+	expert: { min: 17, max: 20 },   // 51-60 tiles
+	master: { min: 22, max: 26 }    // 66-78 tiles
+} as const;
+
+/**
+ * Internal function to generate a solvable puzzle using reverse-removal algorithm.
+ * Does not check move count - use generatePuzzle() for move-count validation.
  *
  * Algorithm:
  * 1. Create all tile positions from the layout template (all tiles placed, no types yet)
@@ -15,7 +29,7 @@ import { getExposedTiles } from './tileLogic';
  * This guarantees solvability: the player can pick tiles in the same order
  * they were assigned types (since they were exposed at assignment time).
  */
-export function generatePuzzle(difficulty: Difficulty): Tile[] {
+function generatePuzzleInternal(difficulty: Difficulty): Tile[] {
 	const config = DIFFICULTY_CONFIG[difficulty];
 
 	// Get positions from template (uses full template, always multiple of 3)
@@ -88,6 +102,7 @@ export function generatePuzzle(difficulty: Difficulty): Tile[] {
 	const maxLayer = Math.max(...tiles.map((t) => t.layer));
 	const originalTypeIds = tiles.map((t) => t.typeId);
 
+	let foundSolvable = false;
 	for (let attempt = 0; attempt < 10; attempt++) {
 		// Restore original types before re-shuffling
 		if (attempt > 0) {
@@ -105,7 +120,17 @@ export function generatePuzzle(difficulty: Difficulty): Tile[] {
 			ids.forEach((id, i) => { tiles[id].typeId = typeIds[i]; });
 		}
 
-		if (isSolvable(tiles)) break;
+		if (isSolvable(tiles)) {
+			foundSolvable = true;
+			break;
+		}
+	}
+
+	// If still not solvable after 10 attempts, restore original (which is guaranteed solvable)
+	if (!foundSolvable) {
+		for (let i = 0; i < tiles.length; i++) {
+			tiles[i].typeId = originalTypeIds[i];
+		}
 	}
 
 	// Reset all tiles to not removed (player starts fresh)
@@ -117,18 +142,108 @@ export function generatePuzzle(difficulty: Difficulty): Tile[] {
 }
 
 /**
- * Simulate greedy play to check if the puzzle is solvable.
- * Repeatedly picks 3 matching exposed tiles until cleared or stuck.
+ * Generate a solvable Triple Tile puzzle with target move count.
+ * Retries up to maxRetries times to generate a puzzle within the target move range.
+ *
+ * @param difficulty - The difficulty level
+ * @param maxRetries - Maximum number of generation attempts (default: 10)
+ * @returns Object containing tiles and minimum moves required
  */
-function isSolvable(tiles: Tile[]): boolean {
+export function generatePuzzle(
+	difficulty: Difficulty,
+	maxRetries = 10
+): { tiles: Tile[]; minimumMoves: number } {
+	const targetRange = TARGET_MOVES[difficulty];
+	let lastResult: { tiles: Tile[]; minimumMoves: number } | null = null;
+
+	for (let attempt = 0; attempt < maxRetries; attempt++) {
+		// Generate puzzle using internal algorithm
+		const tiles = generatePuzzleInternal(difficulty);
+
+		// Calculate minimum moves required
+		const { solvable, moves } = calculateMinimumMoves(tiles);
+
+		// Store last result
+		lastResult = { tiles, minimumMoves: moves };
+
+		// Check if within target range
+		if (solvable && moves >= targetRange.min && moves <= targetRange.max) {
+			if (attempt > 0) {
+				console.log(
+					`✅ Generated puzzle with ${moves} moves on attempt ${attempt + 1} (target: ${targetRange.min}-${targetRange.max})`
+				);
+			}
+			return lastResult;
+		}
+
+		if (attempt < maxRetries - 1) {
+			console.log(
+				`⚠️ Attempt ${attempt + 1}: ${moves} moves (target: ${targetRange.min}-${targetRange.max}), retrying...`
+			);
+		}
+	}
+
+	// Fallback: use last result (at least solvable is guaranteed)
+	console.warn(
+		`⚠️ Could not meet target moves after ${maxRetries} attempts, using last result with ${lastResult?.minimumMoves} moves`
+	);
+
+	return lastResult!;
+}
+
+/**
+ * Get tiles that are visible to the player (coverDepth < 2).
+ * Player can see tile types only if coverDepth is 0 or 1.
+ *
+ * coverDepth = number of layers covering this tile:
+ * - 0: fully exposed
+ * - 1: just below exposed tile
+ * - 2+: hidden (shows "?")
+ */
+function getVisibleTiles(tiles: Tile[]): Tile[] {
+	const active = tiles.filter((t) => !t.removed);
+	const visibleTiles: Tile[] = [];
+
+	for (const tile of active) {
+		// Calculate how many layers are covering this tile
+		let maxCoverLayer = tile.layer;
+		for (const other of active) {
+			if (other.layer > tile.layer &&
+				Math.abs(other.col - tile.col) < 1 &&
+				Math.abs(other.row - tile.row) < 1) {
+				maxCoverLayer = Math.max(maxCoverLayer, other.layer);
+			}
+		}
+		const coverDepth = maxCoverLayer - tile.layer;
+
+		// Only include tiles with coverDepth < 2 (player can see tile type)
+		if (coverDepth < 2) {
+			visibleTiles.push(tile);
+		}
+	}
+
+	return visibleTiles;
+}
+
+/**
+ * Calculate minimum number of moves (clicks) required to solve the puzzle.
+ * Returns both solvability and move count.
+ * A "move" is one click that removes 3 matching tiles.
+ */
+function calculateMinimumMoves(tiles: Tile[]): { solvable: boolean; moves: number } {
 	const sim = tiles.map((t) => ({ ...t, removed: false }));
 	let remaining = sim.length;
+	let moveCount = 0;
 
 	while (remaining > 0) {
+		// Get tiles that are both exposed AND visible (coverDepth < 2)
 		const exposed = getExposedTiles(sim);
-		// Count exposed tiles by type
+		const visible = getVisibleTiles(sim);
+		const visibleExposed = exposed.filter((t) => visible.some((v) => v.id === t.id));
+
+		// Count visible exposed tiles by type
 		const byType = new Map<number, Tile[]>();
-		for (const t of exposed) {
+		for (const t of visibleExposed) {
 			const arr = byType.get(t.typeId) ?? [];
 			arr.push(t);
 			byType.set(t.typeId, arr);
@@ -137,19 +252,29 @@ function isSolvable(tiles: Tile[]): boolean {
 		let matched = false;
 		for (const [, group] of byType) {
 			if (group.length >= 3) {
-				// Remove 3 tiles of this type
+				// Remove 3 tiles of this type (1 click = 1 move)
 				for (let i = 0; i < 3; i++) {
 					sim[group[i].id].removed = true;
 				}
 				remaining -= 3;
+				moveCount++;
 				matched = true;
 				break;
 			}
 		}
 
-		if (!matched) return false;
+		if (!matched) return { solvable: false, moves: 0 };
 	}
-	return true;
+
+	return { solvable: true, moves: moveCount };
+}
+
+/**
+ * Simulate greedy play to check if the puzzle is solvable.
+ * Repeatedly picks 3 matching exposed tiles until cleared or stuck.
+ */
+function isSolvable(tiles: Tile[]): boolean {
+	return calculateMinimumMoves(tiles).solvable;
 }
 
 /**
