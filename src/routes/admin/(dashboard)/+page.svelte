@@ -333,7 +333,7 @@
                             <button type="submit" class="btn-penalty add" title="페널티 +1">+1</button>
                         </form>
                     </div>
-                    <form method="POST" action="?/toggleBlacklist" use:enhance style="display:inline;">
+                    <form method="POST" action="?/toggleblacklist" use:enhance style="display:inline;">
                         <input type="hidden" name="attendeeId" value={a.id} />
                         <button type="submit" class="btn-blacklist" title="블랙리스트 토글">
                             {a.is_blacklisted ? '해제' : '블랙'}
