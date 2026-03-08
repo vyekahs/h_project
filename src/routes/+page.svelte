@@ -3,6 +3,7 @@
     import { onMount, onDestroy } from 'svelte';
     import { enhance, applyAction } from '$app/forms';
     import { invalidateAll } from '$app/navigation';
+    import SettingsPanel from '$lib/components/settings/SettingsPanel.svelte';
 
     let lastUpdated = new Date();
 
@@ -119,6 +120,7 @@
     let activeTab: 'home' | 'games' = 'home';
     let isTablet = false;
     let showAllMainGames = false;
+    let settingsPanelOpen = false;
 
     // --- Game Management Logic ---
     let showModal = false;
@@ -172,6 +174,11 @@
 
     let endGameModalVisible = false;
     let selectedEndGame: GameSession | null = null;
+
+    // Schedule & Settings Change Modals
+    let showScheduleChangeModal = false;
+    let showSettingsChangeModal = false;
+    let selectedScheduledGame: GameSession | null = null;
 
     // Visit Plan Modal
     let showVisitPlanModal = false;
@@ -377,6 +384,16 @@
         scheduledAt = `${year}-${month}-${day}T${hours}:${minutes}`;
     }
 
+    function openScheduleModal(game: GameSession) {
+        selectedScheduledGame = game;
+        showScheduleChangeModal = true;
+    }
+
+    function openSettingsModal(game: GameSession) {
+        selectedScheduledGame = game;
+        showSettingsChangeModal = true;
+    }
+
     const handleJoinRequest: import('@sveltejs/kit').SubmitFunction = () => {
         return async ({ result }) => {
             if (result.type === 'failure') {
@@ -500,7 +517,7 @@
     <header class="app-header">
         <div class="app-bar">
             <div class="brand-section">
-                <h1>혼놀 라운지</h1> 
+                <h1>혼놀 라운지</h1>
                 {#if data.user}
                     <div class="user-greeting">
                         {#if data.user.title}
@@ -511,6 +528,12 @@
                 {/if}
             </div>
             <div class="status-section">
+                <button class="settings-icon" on:click={() => settingsPanelOpen = true} aria-label="설정">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path>
+                        <circle cx="12" cy="12" r="3"></circle>
+                    </svg>
+                </button>
                 {#if data.isAdmin}
                     <a href="/admin" class="status-pill admin-panel">관리자 페이지</a>
                 {:else if data.user && data.user.can_manage_games}
@@ -834,7 +857,7 @@
                         <div class="table-header">
                             <h3>{game.game_name}{#if game.party_id}<span class="party-badge">고정팟</span>{/if}</h3>
                             <div class="header-meta-row">
-                                {#if canManageGame(game)}
+                                {#if isParticipant}
                                     <div class="manage-controls">
                                         <button class="btn-action-text danger" on:click={() => openEndGameModal(game)}>종료</button>
                                         <form method="POST" action="?/extendGame" use:enhance style="display:inline;">
@@ -1005,12 +1028,14 @@
                                 <span class="sub-text">({(game.participants || []).length} / {game.max_players})</span>
                             </h3>
                             <div class="header-meta-row">
-                                {#if canManageGame(game)}
+                                {#if data.user && (game.participants || []).some((p: any) => p.id === data.user!.id)}
                                     <div class="manage-controls">
                                         <form method="POST" action="?/startScheduledGame" use:enhance style="display:inline;">
                                             <input type="hidden" name="sessionId" value={game.id}>
                                             <button class="btn-action-text primary">시작</button>
                                         </form>
+                                        <button class="btn-action-text" on:click={() => openScheduleModal(game)}>일정 변경</button>
+                                        <button class="btn-action-text" on:click={() => openSettingsModal(game)}>설정 변경</button>
                                         <form method="POST" action="?/dissolveScheduledGame" use:enhance style="display:inline;">
                                             <input type="hidden" name="sessionId" value={game.id}>
                                             <button class="btn-action-text danger">삭제</button>
@@ -1302,7 +1327,7 @@
     >
         <div class="modal-content" on:click|stopPropagation role="dialog" tabindex="-1">
             <h2>
-                <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px; vertical-align:bottom; color:#fab005;"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>
+                <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--color-warning)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px; vertical-align:bottom;"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>
                 게임 종료 및 승자 선택
             </h2>
             <p><strong>{selectedEndGame.game_name}</strong> 게임을 종료합니다.</p>
@@ -1355,6 +1380,142 @@
                 <div class="modal-actions">
                     <button type="button" class="btn-cancel" on:click={() => endGameModalVisible = false}>취소</button>
                     <button type="submit" class="btn-primary">게임 종료 및 승점 기록</button>
+                </div>
+            </form>
+        </div>
+    </div>
+{/if}
+
+<!-- Schedule Change Modal -->
+{#if showScheduleChangeModal && selectedScheduledGame}
+    <!-- svelte-ignore a11y-click-events-have-key-events -->
+    <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
+    <div
+        class="modal-backdrop"
+        on:click={() => showScheduleChangeModal = false}
+        on:keydown={(e) => e.key === 'Escape' && (showScheduleChangeModal = false)}
+        role="button"
+        tabindex="-1"
+        aria-label="Close modal"
+    >
+        <div class="modal-content" on:click|stopPropagation role="dialog" tabindex="-1">
+            <h2>
+                <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px; vertical-align:bottom; color:var(--color-info);"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                게임 일정 변경
+            </h2>
+            <p><strong>{selectedScheduledGame.game_name}</strong> 게임의 시작 시간을 변경합니다.</p>
+
+            <form method="POST" action="?/updateScheduledGameTime" use:enhance={() => {
+                return async ({ result, update }) => {
+                    if (result.type === 'failure') {
+                        const data = result.data as any;
+                        showAlert(data?.error || '일정 변경에 실패했습니다.');
+                    } else {
+                        showScheduleChangeModal = false;
+                        showAlert('게임 일정이 변경되었습니다!');
+                    }
+                    await update();
+                };
+            }}>
+                <input type="hidden" name="sessionId" value={selectedScheduledGame.id} />
+
+                <div class="form-group">
+                    <label for="scheduled-time">시작 시간</label>
+                    <input
+                        id="scheduled-time"
+                        type="datetime-local"
+                        name="scheduledAt"
+                        value={selectedScheduledGame.scheduled_at ? new Date(selectedScheduledGame.scheduled_at).toISOString().slice(0, 16) : ''}
+                        required
+                        class="input-field"
+                    />
+                    <p class="hint">현재: {new Date(selectedScheduledGame.scheduled_at).toLocaleString()}</p>
+                </div>
+
+                <div class="modal-actions">
+                    <button type="button" class="btn-cancel" on:click={() => showScheduleChangeModal = false}>취소</button>
+                    <button type="submit" class="btn-primary">일정 변경</button>
+                </div>
+            </form>
+        </div>
+    </div>
+{/if}
+
+<!-- Settings Change Modal -->
+{#if showSettingsChangeModal && selectedScheduledGame}
+    <!-- svelte-ignore a11y-click-events-have-key-events -->
+    <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
+    <div
+        class="modal-backdrop"
+        on:click={() => showSettingsChangeModal = false}
+        on:keydown={(e) => e.key === 'Escape' && (showSettingsChangeModal = false)}
+        role="button"
+        tabindex="-1"
+        aria-label="Close modal"
+    >
+        <div class="modal-content" on:click|stopPropagation role="dialog" tabindex="-1">
+            <h2>
+                <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px; vertical-align:bottom; color:var(--color-warning);"><circle cx="12" cy="12" r="3"/><path d="M12 1v6m0 6v6m-9-9h6m6 0h6"/><path d="m16.24 7.76-4.24 4.24m0 4.24 4.24 4.24M7.76 7.76l4.24 4.24m-4.24 4.24 4.24-4.24"/></svg>
+                게임 설정 변경
+            </h2>
+            <p><strong>{selectedScheduledGame.game_name}</strong> 게임의 설정을 변경합니다.</p>
+
+            <form method="POST" action="?/updateScheduledGameSettings" use:enhance={() => {
+                return async ({ result, update }) => {
+                    if (result.type === 'failure') {
+                        const data = result.data as any;
+                        showAlert(data?.error || '설정 변경에 실패했습니다.');
+                    } else {
+                        showSettingsChangeModal = false;
+                        showAlert('게임 설정이 변경되었습니다!');
+                    }
+                    await update();
+                };
+            }}>
+                <input type="hidden" name="sessionId" value={selectedScheduledGame.id} />
+
+                <div class="form-group">
+                    <label for="game-name-input">게임 이름</label>
+                    <input
+                        id="game-name-input"
+                        type="text"
+                        name="gameName"
+                        value={selectedScheduledGame.game_name}
+                        required
+                        class="input-field"
+                        placeholder="게임 이름을 입력하세요"
+                    />
+                </div>
+
+                <div class="form-group">
+                    <label for="min-players-input">최소 인원</label>
+                    <input
+                        id="min-players-input"
+                        type="number"
+                        name="minPlayers"
+                        value={selectedScheduledGame.min_players}
+                        min="1"
+                        required
+                        class="input-field number-input"
+                    />
+                </div>
+
+                <div class="form-group">
+                    <label for="max-players-input">최대 인원</label>
+                    <input
+                        id="max-players-input"
+                        type="number"
+                        name="maxPlayers"
+                        value={selectedScheduledGame.max_players}
+                        min="1"
+                        required
+                        class="input-field number-input"
+                    />
+                </div>
+
+                <div class="modal-actions">
+                    <button type="button" class="btn-cancel" on:click={() => showSettingsChangeModal = false}>취소</button>
+                    <button type="submit" class="btn-primary">설정 변경</button>
                 </div>
             </form>
         </div>

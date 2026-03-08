@@ -27,6 +27,17 @@ async function canModifyGame(request: Request, gameId: string | number): Promise
     }
 }
 
+async function isParticipant(sessionId: string | number, userId: number): Promise<boolean> {
+    try {
+        const result = await db.execute(
+            sql`SELECT 1 FROM session_participants WHERE session_id = ${sessionId} AND attendee_id = ${userId}`
+        );
+        return result.length > 0;
+    } catch (e) {
+        return false;
+    }
+}
+
 export const load: PageServerLoad = async ({ locals }) => {
     // hooks.server.ts에서 이미 설정된 인증 정보 사용 (중복 DB 호출 제거)
     const user = locals.user || null;
@@ -599,12 +610,31 @@ export const actions: Actions = {
         }
     },
 
-    endGame: async ({ request }) => {
+    endGame: async ({ request, cookies }) => {
         const data = await request.formData();
         const id = data.get('id')?.toString();
 
         if (!id) return fail(400, { missing: true });
-        if (!(await canModifyGame(request, id))) return fail(403, { error: 'Unauthorized' });
+
+        // Authorization: Admin OR participant
+        const sessionToken = request.headers.get('cookie')?.match(/admin_session=([^;]+)/)?.[1];
+        let authorized = false;
+
+        if (sessionToken && await verifyAdminSession(sessionToken)) {
+            authorized = true;
+        } else {
+            const userSessionToken = cookies.get('user_session');
+            if (!userSessionToken) return fail(401, { error: '로그인이 필요합니다.' });
+
+            const user = await verifyAttendeeSession(userSessionToken);
+            if (!user) return fail(401, { error: 'Invalid session' });
+
+            if (await isParticipant(id, user.id)) {
+                authorized = true;
+            }
+        }
+
+        if (!authorized) return fail(403, { error: '게임 참여자만 종료할 수 있습니다.' });
 
         const winnerIds = data.getAll('winnerIds').map(id => id.toString());
         const scores: Record<string, number> = {};
@@ -647,13 +677,32 @@ export const actions: Actions = {
         }
     },
 
-    extendGame: async ({ request }) => {
+    extendGame: async ({ request, cookies }) => {
         const data = await request.formData();
         const id = data.get('id')?.toString();
         const minutes = parseInt(data.get('minutes')?.toString() || '0');
 
         if (!id || minutes <= 0) return fail(400, { missing: true });
-        if (!(await canModifyGame(request, id))) return fail(403, { error: 'Unauthorized' });
+
+        // Authorization: Admin OR participant
+        const sessionToken = request.headers.get('cookie')?.match(/admin_session=([^;]+)/)?.[1];
+        let authorized = false;
+
+        if (sessionToken && await verifyAdminSession(sessionToken)) {
+            authorized = true;
+        } else {
+            const userSessionToken = cookies.get('user_session');
+            if (!userSessionToken) return fail(401, { error: '로그인이 필요합니다.' });
+
+            const user = await verifyAttendeeSession(userSessionToken);
+            if (!user) return fail(401, { error: 'Invalid session' });
+
+            if (await isParticipant(id, user.id)) {
+                authorized = true;
+            }
+        }
+
+        if (!authorized) return fail(403, { error: '게임 참여자만 시간을 연장할 수 있습니다.' });
 
         try {
             await db.execute(sql`
@@ -666,11 +715,30 @@ export const actions: Actions = {
         }
     },
 
-    dissolveScheduledGame: async ({ request }) => {
+    dissolveScheduledGame: async ({ request, cookies }) => {
         const data = await request.formData();
         const sessionId = data.get('sessionId')?.toString();
         if (!sessionId) return fail(400, { error: 'Invalid ID' });
-        if (!(await canModifyGame(request, sessionId))) return fail(403, { error: 'Unauthorized' });
+
+        // Authorization: Admin OR participant
+        const sessionToken = request.headers.get('cookie')?.match(/admin_session=([^;]+)/)?.[1];
+        let authorized = false;
+
+        if (sessionToken && await verifyAdminSession(sessionToken)) {
+            authorized = true;
+        } else {
+            const userSessionToken = cookies.get('user_session');
+            if (!userSessionToken) return fail(401, { error: '로그인이 필요합니다.' });
+
+            const user = await verifyAttendeeSession(userSessionToken);
+            if (!user) return fail(401, { error: 'Invalid session' });
+
+            if (await isParticipant(sessionId, user.id)) {
+                authorized = true;
+            }
+        }
+
+        if (!authorized) return fail(403, { error: '게임 참여자만 해산할 수 있습니다.' });
 
         try {
             await db.transaction(async (tx) => {
@@ -701,13 +769,32 @@ export const actions: Actions = {
         }
     },
 
-    startScheduledGame: async ({ request }) => {
+    startScheduledGame: async ({ request, cookies }) => {
         const data = await request.formData();
         const sessionId = data.get('sessionId')?.toString();
         const duration = parseInt(data.get('duration')?.toString() || '60');
 
         if (!sessionId) return fail(400, { error: 'Invalid ID' });
-        if (!(await canModifyGame(request, sessionId))) return fail(403, { error: 'Unauthorized' });
+
+        // Authorization: Admin OR participant
+        const sessionToken = request.headers.get('cookie')?.match(/admin_session=([^;]+)/)?.[1];
+        let authorized = false;
+
+        if (sessionToken && await verifyAdminSession(sessionToken)) {
+            authorized = true;
+        } else {
+            const userSessionToken = cookies.get('user_session');
+            if (!userSessionToken) return fail(401, { error: '로그인이 필요합니다.' });
+
+            const user = await verifyAttendeeSession(userSessionToken);
+            if (!user) return fail(401, { error: 'Invalid session' });
+
+            if (await isParticipant(sessionId, user.id)) {
+                authorized = true;
+            }
+        }
+
+        if (!authorized) return fail(403, { error: '게임 참여자만 시작할 수 있습니다.' });
 
         try {
             await db.transaction(async (tx) => {
@@ -723,7 +810,109 @@ export const actions: Actions = {
         }
     },
 
+    updateScheduledGameTime: async ({ request, cookies }) => {
+        const data = await request.formData();
+        const sessionId = data.get('sessionId')?.toString();
+        const scheduledAt = data.get('scheduledAt')?.toString();
 
+        if (!sessionId || !scheduledAt) return fail(400, { error: 'Invalid parameters' });
+
+        // Authorization: Admin OR participant
+        const sessionToken = request.headers.get('cookie')?.match(/admin_session=([^;]+)/)?.[1];
+        let authorized = false;
+
+        if (sessionToken && await verifyAdminSession(sessionToken)) {
+            authorized = true;
+        } else {
+            const userSessionToken = cookies.get('user_session');
+            if (!userSessionToken) return fail(401, { error: '로그인이 필요합니다.' });
+
+            const user = await verifyAttendeeSession(userSessionToken);
+            if (!user) return fail(401, { error: 'Invalid session' });
+
+            if (await isParticipant(sessionId, user.id)) {
+                authorized = true;
+            }
+        }
+
+        if (!authorized) return fail(403, { error: '게임 참여자만 일정을 변경할 수 있습니다.' });
+
+        try {
+            // Validate that game is still in scheduled status
+            const gameCheck = await db.execute(sql`SELECT status FROM game_sessions WHERE id = ${sessionId}`);
+            if (gameCheck.length === 0) return fail(404, { error: '게임을 찾을 수 없습니다.' });
+            if ((gameCheck[0] as any).status !== 'scheduled') {
+                return fail(400, { error: '진행 중이거나 종료된 게임의 일정은 변경할 수 없습니다.' });
+            }
+
+            // Validate that new time is not in the past
+            const newTime = new Date(scheduledAt);
+            const now = new Date();
+            if (newTime < now) {
+                return fail(400, { error: '과거 시간으로 일정을 변경할 수 없습니다.' });
+            }
+
+            await db.execute(sql`
+                UPDATE game_sessions SET scheduled_at = ${scheduledAt}::timestamptz WHERE id = ${sessionId}
+            `);
+            emitLiveEvent('games');
+            return { success: true };
+        } catch (e) {
+            return fail(500, { error: 'Failed to update schedule' });
+        }
+    },
+
+    updateScheduledGameSettings: async ({ request, cookies }) => {
+        const data = await request.formData();
+        const sessionId = data.get('sessionId')?.toString();
+        const gameName = data.get('gameName')?.toString();
+        const minPlayers = parseInt(data.get('minPlayers')?.toString() || '0');
+        const maxPlayers = parseInt(data.get('maxPlayers')?.toString() || '0');
+
+        if (!sessionId || !gameName) return fail(400, { error: 'Invalid parameters' });
+        if (minPlayers < 1 || maxPlayers < 1 || minPlayers > maxPlayers) {
+            return fail(400, { error: '인원 설정이 올바르지 않습니다.' });
+        }
+
+        // Authorization: Admin OR participant
+        const sessionToken = request.headers.get('cookie')?.match(/admin_session=([^;]+)/)?.[1];
+        let authorized = false;
+
+        if (sessionToken && await verifyAdminSession(sessionToken)) {
+            authorized = true;
+        } else {
+            const userSessionToken = cookies.get('user_session');
+            if (!userSessionToken) return fail(401, { error: '로그인이 필요합니다.' });
+
+            const user = await verifyAttendeeSession(userSessionToken);
+            if (!user) return fail(401, { error: 'Invalid session' });
+
+            if (await isParticipant(sessionId, user.id)) {
+                authorized = true;
+            }
+        }
+
+        if (!authorized) return fail(403, { error: '게임 참여자만 설정을 변경할 수 있습니다.' });
+
+        try {
+            // Validate that game is still in scheduled status
+            const gameCheck = await db.execute(sql`SELECT status FROM game_sessions WHERE id = ${sessionId}`);
+            if (gameCheck.length === 0) return fail(404, { error: '게임을 찾을 수 없습니다.' });
+            if ((gameCheck[0] as any).status !== 'scheduled') {
+                return fail(400, { error: '진행 중이거나 종료된 게임의 설정은 변경할 수 없습니다.' });
+            }
+
+            await db.execute(sql`
+                UPDATE game_sessions
+                SET game_name = ${gameName}, min_players = ${minPlayers}, max_players = ${maxPlayers}
+                WHERE id = ${sessionId}
+            `);
+            emitLiveEvent('games');
+            return { success: true };
+        } catch (e) {
+            return fail(500, { error: 'Failed to update settings' });
+        }
+    },
 
     approveJoinRequest: async ({ request, cookies }) => {
         const data = await request.formData();
