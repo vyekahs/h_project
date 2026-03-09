@@ -7,10 +7,11 @@
     import PointDisplay from '$lib/components/gamification/PointDisplay.svelte';
     import AdBanner from '$lib/components/ads/AdBanner.svelte';
     import RankUpModal from '$lib/components/gamification/RankUpModal.svelte';
+    import { themeStore } from '$lib/stores/theme.svelte';
 
 	let { children } = $props();
 
-    const GAME_PATHS = ['/games/tichu', '/games/sudoku', '/games/killer-sudoku', '/games/unblock-me', '/games/energy', '/games/water-sort'];
+    const GAME_PATHS = ['/minigames/tichu', '/minigames/sudoku', '/minigames/killer-sudoku', '/minigames/unblock-me', '/minigames/energy', '/minigames/water-sort'];
     let versionCheckTimer: ReturnType<typeof setInterval> | null = null;
 
     function isInGame(pathname: string): boolean {
@@ -28,6 +29,7 @@
     });
 
     onMount(() => {
+        themeStore.init();
         versionCheckTimer = setInterval(async () => {
             try {
                 const res = await fetch(`/_app/version.json`, { cache: 'no-store' });
@@ -62,12 +64,12 @@
 
 	<main class="content">
 		{@render children()}
-        {#if !$page.url.pathname.startsWith('/admin') && !$page.url.pathname.includes('/games/') && !$page.url.pathname.startsWith('/tools/')}
+        {#if !$page.url.pathname.startsWith('/admin') && !$page.url.pathname.includes('/minigames/') && !$page.url.pathname.startsWith('/tools/')}
              <AdBanner adSlot="footer-banner" />
         {/if}
 	</main>
 
-	{#if !$page.url.pathname.startsWith('/admin') && !$page.url.pathname.startsWith('/games/') && !$page.url.pathname.startsWith('/tools/')}
+	{#if !$page.url.pathname.startsWith('/admin') && !$page.url.pathname.startsWith('/minigames/') && !$page.url.pathname.startsWith('/tools/')}
 	<footer class="site-footer">
 		<a href="/about">소개</a>
 		<span class="divider">|</span>
@@ -80,13 +82,13 @@
             </span>
 			<span class="label">홈</span>
 		</a>
-		<a href="/games" class="nav-item games" class:active={$page.url.pathname.startsWith('/games') && !$page.url.pathname.startsWith('/games/sudoku')}>
+		<a href="/games" class="nav-item games" class:active={$page.url.pathname.startsWith('/games')}>
 			<span class="icon">
                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
             </span>
 			<span class="label">보드게임</span>
 		</a>
-		<a href="/minigames" class="nav-item ranking" class:active={$page.url.pathname.startsWith('/minigames') || $page.url.pathname.startsWith('/games/sudoku')}>
+		<a href="/minigames" class="nav-item ranking" class:active={$page.url.pathname.startsWith('/minigames')}>
 			<span class="icon">
                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="12" x2="10" y2="12"/><line x1="8" y1="10" x2="8" y2="14"/><line x1="15" y1="13" x2="15.01" y2="13"/><line x1="18" y1="11" x2="18.01" y2="11"/><rect x="2" y="6" width="20" height="12" rx="2"/></svg>
             </span>
@@ -105,14 +107,162 @@
 </div>
 
 <style>
+    /* ===== CSS Variables (Light Mode - Default) ===== */
+    :global(:root) {
+        /* Text */
+        --text-primary: #333;
+        --text-secondary: #666;
+        --text-tertiary: #888;
+        --text-muted: #999;
+        --text-hint: #adb5bd;
+        --text-dark: #495057;
+        --text-darker: #555;
+
+        /* Backgrounds */
+        --bg-primary: #ffffff;
+        --bg-secondary: #f8f9fa;
+        --bg-tertiary: #f1f3f5;
+        --bg-elevated: #f0f0f0;
+        --bg-hover: #e9ecef;
+        --bg-active: #dee2e6;
+        --bg-surface: #f5f5f5;
+        --bg-dark: #333;
+
+        /* Borders */
+        --border-default: #ddd;
+        --border-light: #eee;
+        --border-medium: #ccc;
+
+        /* Shadows */
+        --shadow-sm: rgba(0,0,0,0.03);
+        --shadow-md: rgba(0,0,0,0.1);
+        --shadow-lg: rgba(0,0,0,0.15);
+        --shadow-heavy: rgba(0,0,0,0.3);
+        --shadow-deep: rgba(0,0,0,0.6);
+
+        /* Overlays */
+        --overlay-light: rgba(0,0,0,0.05);
+        --overlay-medium: rgba(0,0,0,0.2);
+        --overlay-heavy: rgba(0,0,0,0.5);
+
+        /* Slate */
+        --color-slate: #94a3b8;
+        --color-slate-dark: #64748b;
+
+        /* Brand Colors */
+        --color-blue: #339af0;
+        --color-blue-bright: #007bff;
+        --color-amber: #fbbf24;
+        --color-amber-dark: #f59e0b;
+        --color-amber-darker: #d97706;
+        --color-green: #22c55e;
+        --color-green-dark: #2b8a3e;
+        --color-red: #ef4444;
+        --color-red-dark: #d32f2f;
+        --color-orange: #ff9800;
+        --color-orange-dark: #e67700;
+
+        /* State Backgrounds */
+        --color-success-bg: #e8f5e9;
+        --color-error-bg: #fff5f5;
+        --color-warning-bg: #fff3e0;
+        --color-info-bg: #e7f5ff;
+
+        /* Additional Colors */
+        --border-warning: #ffe0b2;
+        --color-purple-bg: #e8d5f5;
+        --color-indigo: #364fc7;
+
+        color-scheme: light;
+    }
+
+    /* ===== Dark Mode ===== */
+    :global([data-theme='dark']) {
+        /* Text */
+        --text-primary: #e5e7eb;
+        --text-secondary: #9ca3af;
+        --text-tertiary: #6b7280;
+        --text-muted: #6b7280;
+        --text-hint: #4b5563;
+        --text-dark: #d1d5db;
+        --text-darker: #d1d5db;
+
+        /* Backgrounds */
+        --bg-primary: #1a1b1e;
+        --bg-secondary: #25262b;
+        --bg-tertiary: #2c2e33;
+        --bg-elevated: #2c2e33;
+        --bg-hover: #343539;
+        --bg-active: #3e4044;
+        --bg-surface: #25262b;
+        --bg-dark: #e5e7eb;
+
+        /* Borders */
+        --border-default: #3e4044;
+        --border-light: #2c2e33;
+        --border-medium: #4b5563;
+
+        /* Shadows */
+        --shadow-sm: rgba(0,0,0,0.2);
+        --shadow-md: rgba(0,0,0,0.3);
+        --shadow-lg: rgba(0,0,0,0.4);
+        --shadow-heavy: rgba(0,0,0,0.5);
+        --shadow-deep: rgba(0,0,0,0.7);
+
+        /* Overlays */
+        --overlay-light: rgba(255,255,255,0.05);
+        --overlay-medium: rgba(0,0,0,0.4);
+        --overlay-heavy: rgba(0,0,0,0.6);
+
+        /* Slate */
+        --color-slate: #94a3b8;
+        --color-slate-dark: #94a3b8;
+
+        /* Brand Colors (slightly brighter for dark bg) */
+        --color-blue: #4dabf7;
+        --color-blue-bright: #4dabf7;
+        --color-amber: #fbbf24;
+        --color-amber-dark: #f59e0b;
+        --color-amber-darker: #f59e0b;
+        --color-green: #34d399;
+        --color-green-dark: #34d399;
+        --color-red: #f87171;
+        --color-red-dark: #f87171;
+        --color-orange: #ffb74d;
+        --color-orange-dark: #ff9800;
+
+        /* State Backgrounds */
+        --color-success-bg: rgba(34,197,94,0.12);
+        --color-error-bg: rgba(239,68,68,0.12);
+        --color-warning-bg: rgba(251,191,36,0.12);
+        --color-info-bg: rgba(59,130,246,0.12);
+
+        /* Additional Colors */
+        --border-warning: rgba(251,191,36,0.25);
+        --color-purple-bg: rgba(147,51,234,0.12);
+        --color-indigo: #5c7cfa;
+
+        color-scheme: dark;
+    }
+
 	:global(body) {
 		margin: 0;
 		padding: 0;
 		font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-		background: #f8f9fa;
+		background: var(--bg-secondary);
+        color: var(--text-primary);
         overscroll-behavior-y: none;
         touch-action: manipulation;
+        transition: background-color 0.2s, color 0.2s;
 	}
+    :global(input), :global(textarea), :global(select) {
+        background-color: var(--bg-primary);
+        color: var(--text-primary);
+        border-color: var(--border-default);
+    }
+    :global(input::placeholder), :global(textarea::placeholder) {
+        color: var(--text-hint);
+    }
     :global(*), :global(*::before), :global(*::after) {
         box-sizing: border-box;
     }
@@ -137,16 +287,16 @@
         max-width: 600px;
 		height: 60px;
         box-sizing: content-box;
-		background: white;
-		border-top: 1px solid #eee;
+		background: var(--bg-primary);
+		border-top: 1px solid var(--border-light);
 		display: flex;
 		justify-content: space-around;
 		align-items: center;
 		padding-bottom: env(safe-area-inset-bottom);
-		box-shadow: 0 -2px 10px rgba(0,0,0,0.03);
+		box-shadow: 0 -2px 10px var(--shadow-sm);
 		z-index: 1000;
-        border-left: 1px solid #f1f3f5;
-        border-right: 1px solid #f1f3f5;
+        border-left: 1px solid var(--bg-tertiary);
+        border-right: 1px solid var(--bg-tertiary);
 		isolation: isolate;
 	}
 	.nav-item {
@@ -154,7 +304,7 @@
 		flex-direction: column;
 		align-items: center;
 		text-decoration: none;
-		color: #999;
+		color: var(--text-muted);
 		font-size: 0.7rem;
 		padding: 0.5rem;
 		flex: 1;
@@ -165,7 +315,7 @@
 		margin-bottom: 3px;
 	}
 	.nav-item.active {
-		color: #333;
+		color: var(--text-primary);
 	}
     .nav-item.active .icon {
         transform: scale(1.1);
@@ -178,15 +328,15 @@
 		font-size: 0.8rem;
 	}
 	.site-footer a {
-		color: #999;
+		color: var(--text-muted);
 		text-decoration: none;
 	}
 	.site-footer a:hover {
-		color: #666;
+		color: var(--text-secondary);
 		text-decoration: underline;
 	}
 	.site-footer .divider {
-		color: #ddd;
+		color: var(--border-default);
 		margin: 0 8px;
 	}
 </style>

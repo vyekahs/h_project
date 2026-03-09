@@ -8,7 +8,7 @@
             id: 'sudoku',
             name: '스도쿠',
             tagline: '논리 퍼즐의 정석',
-            url: '/games/start/sudoku',
+            url: '/minigames/start/sudoku',
             accentColor: '#60a5fa',
             releasedAt: '2024-12-01',
             forceNew: false
@@ -17,7 +17,7 @@
             id: 'killer-sudoku',
             name: '킬러 스도쿠',
             tagline: '스도쿠에 연산 한 스푼',
-            url: '/games/start/killer-sudoku',
+            url: '/minigames/start/killer-sudoku',
             accentColor: '#facc15',
             releasedAt: '2025-01-10',
             forceNew: false
@@ -26,7 +26,7 @@
             id: 'unblock-me',
             name: '언블록미',
             tagline: '슬라이딩 블록 퍼즐',
-            url: '/games/start/unblock-me',
+            url: '/minigames/start/unblock-me',
             accentColor: '#f87171',
             releasedAt: '2025-01-15',
             forceNew: false
@@ -35,7 +35,7 @@
             id: 'tichu',
             name: '티츄',
             tagline: '2:2 트릭테이킹 카드게임',
-            url: '/games/tichu',
+            url: '/minigames/tichu',
             accentColor: '#22c55e',
             releasedAt: '2025-01-20',
             forceNew: false
@@ -44,7 +44,7 @@
             id: 'energy',
             name: '에너지 서킷',
             tagline: '회로를 연결하여 전구를 켜세요',
-            url: '/games/start/energy',
+            url: '/minigames/start/energy',
             accentColor: '#f59e0b',
             releasedAt: '2025-02-01',
             forceNew: false
@@ -53,7 +53,7 @@
             id: 'water-sort',
             name: '워터소트',
             tagline: '색깔 물을 정리하세요',
-            url: '/games/start/water-sort',
+            url: '/minigames/start/water-sort',
             accentColor: '#6366f1',
             releasedAt: '2025-02-10',
             forceNew: false
@@ -62,7 +62,7 @@
             id: 'triple-tile',
             name: '트리플 타일',
             tagline: '3개를 모아 타일을 제거하세요',
-            url: '/games/start/triple-tile',
+            url: '/minigames/start/triple-tile',
             accentColor: '#ec4899',
             releasedAt: '2025-03-01',
             forceNew: true
@@ -239,11 +239,6 @@
 </div>
 
 <style>
-    :global(body) {
-        margin: 0;
-        background-color: #f0f2f5; /* Fallback */
-    }
-
     .page-background {
         position: fixed;
         top: 0;
@@ -288,7 +283,7 @@
         padding: 0.5rem 1.5rem;
         border-radius: 100px;
         text-align: center;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);
+        box-shadow: 0 4px 12px var(--shadow-sm);
         display: flex;
         flex-direction: column;
         align-items: center;
@@ -298,7 +293,7 @@
         font-family: 'Outfit', sans-serif;
         font-size: 1.4rem;
         font-weight: 700;
-        color: #333;
+        color: var(--text-primary);
         margin: 0;
         letter-spacing: -0.02em;
         line-height: 1.1;
@@ -328,7 +323,7 @@
     .section-title {
         font-size: 0.85rem;
         font-weight: 700;
-        color: #374151;
+        color: var(--text-dark);
         margin: 0 0 0.75rem 0;
         display: flex;
         align-items: center;
@@ -356,7 +351,7 @@
         border: 1px solid rgba(255, 255, 255, 0.8);
         border-radius: 14px;
         text-decoration: none;
-        color: #1f2937;
+        color: var(--text-primary);
         transition: transform 0.15s ease, box-shadow 0.15s ease;
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
     }
@@ -375,11 +370,11 @@
         width: 100%;
         height: 100%;
         border-radius: 10px;
-        background: linear-gradient(135deg, var(--accent, #3b82f6) 0%, white 200%);
+        background: linear-gradient(135deg, var(--accent, var(--color-blue)) 0%, white 200%);
         display: flex;
         align-items: center;
         justify-content: center;
-        color: white;
+        color: var(--bg-primary);
     }
 
     .featured-icon-box svg {
@@ -390,7 +385,7 @@
     .featured-name {
         font-size: 0.8rem;
         font-weight: 700;
-        color: #1f2937;
+        color: var(--text-primary);
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -411,8 +406,8 @@
         -webkit-backdrop-filter: blur(16px);
         border: 1px solid rgba(255, 255, 255, 0.8);
         box-shadow:
-            0 4px 6px -1px rgba(0, 0, 0, 0.05),
-            0 2px 4px -1px rgba(0, 0, 0, 0.03),
+            0 4px 6px -1px var(--overlay-light),
+            0 2px 4px -1px var(--shadow-sm),
             inset 0 0 0 1px rgba(255, 255, 255, 0.5);
         border-radius: 24px;
     }
@@ -425,7 +420,7 @@
         align-items: center;
         gap: 0.5rem;
         text-decoration: none;
-        color: #1f2937;
+        color: var(--text-primary);
         width: 100%;
         max-width: 90px;
         transition: transform 0.2s ease;
@@ -456,11 +451,11 @@
         width: 100%;
         height: 100%;
         border-radius: inherit;
-        background: linear-gradient(135deg, var(--accent, #3b82f6) 0%, white 200%);
+        background: linear-gradient(135deg, var(--accent, var(--color-blue)) 0%, white 200%);
         display: flex;
         align-items: center;
         justify-content: center;
-        color: white;
+        color: var(--bg-primary);
     }
 
     .icon-box svg {
@@ -485,15 +480,15 @@
         align-items: center;
         justify-content: center;
         padding: 0 0.25rem;
-        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
-        border: 1.5px solid white;
+        box-shadow: 0 2px 6px var(--shadow-md);
+        border: 1.5px solid var(--bg-primary);
         line-height: 1;
     }
 
     .rank-badge.rank-first {
-        background: linear-gradient(135deg, #fbbf24, #f59e0b);
-        color: white;
-        border-color: #fbbf24;
+        background: linear-gradient(135deg, var(--color-amber), var(--color-amber-dark));
+        color: var(--bg-primary);
+        border-color: var(--color-amber);
         font-size: 0.75rem;
         box-shadow: 0 2px 8px rgba(245, 158, 11, 0.4);
         animation: crownPulse 2s ease-in-out infinite;
@@ -509,7 +504,7 @@
         font-size: 0.7rem;
         font-weight: 600;
         text-align: center;
-        color: #374151;
+        color: var(--text-dark);
         line-height: 1.2;
         letter-spacing: -0.3px;
         word-break: keep-all;
@@ -556,8 +551,8 @@
     }
 
     .icon-box.disabled {
-        background: #e5e7eb;
-        color: #9ca3af;
+        background: var(--border-light);
+        color: var(--text-secondary);
     }
 
     /* Responsive: 3 columns on narrow screens */

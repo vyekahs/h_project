@@ -14,7 +14,7 @@ export const GAME_REGISTRY: Record<string, GameConfig> = {
 		id: 'sudoku',
 		name: '스도쿠',
 		displayTitle: 'Sudoku',
-		gameUrl: '/games/sudoku?mode=standard',
+		gameUrl: '/minigames/sudoku?mode=standard',
 		difficulties: ['easy', 'medium', 'hard', 'expert', 'master'],
 		difficultyLabels: {
 			easy: '쉬움',
@@ -30,7 +30,7 @@ export const GAME_REGISTRY: Record<string, GameConfig> = {
 		id: 'killer-sudoku',
 		name: '킬러 스도쿠',
 		displayTitle: 'Killer Sudoku',
-		gameUrl: '/games/sudoku?mode=killer',
+		gameUrl: '/minigames/sudoku?mode=killer',
 		difficulties: ['easy', 'medium', 'hard', 'expert', 'master'],
 		difficultyLabels: {
 			easy: '쉬움',
@@ -46,7 +46,7 @@ export const GAME_REGISTRY: Record<string, GameConfig> = {
 		id: 'unblock-me',
 		name: '언블록미',
 		displayTitle: 'Unblock Me',
-		gameUrl: '/games/unblock-me',
+		gameUrl: '/minigames/unblock-me',
 		difficulties: ['easy', 'medium', 'hard', 'expert', 'master'],
 		difficultyLabels: {
 			easy: '쉬움',
@@ -62,7 +62,7 @@ export const GAME_REGISTRY: Record<string, GameConfig> = {
 		id: 'energy',
 		name: '에너지 서킷',
 		displayTitle: 'Energy Circuit',
-		gameUrl: '/games/energy',
+		gameUrl: '/minigames/energy',
 		difficulties: ['easy', 'medium', 'hard', 'expert', 'master'],
 		difficultyLabels: {
 			easy: '쉬움',
@@ -78,7 +78,7 @@ export const GAME_REGISTRY: Record<string, GameConfig> = {
 		id: 'water-sort',
 		name: '워터소트',
 		displayTitle: 'Water Sort',
-		gameUrl: '/games/water-sort',
+		gameUrl: '/minigames/water-sort',
 		difficulties: ['easy', 'medium', 'hard', 'expert', 'master'],
 		difficultyLabels: {
 			easy: '쉬움',
@@ -94,7 +94,7 @@ export const GAME_REGISTRY: Record<string, GameConfig> = {
 		id: 'triple-tile',
 		name: '트리플 타일',
 		displayTitle: 'Triple Tile',
-		gameUrl: '/games/triple-tile',
+		gameUrl: '/minigames/triple-tile',
 		difficulties: ['easy', 'medium', 'hard', 'expert', 'master'],
 		difficultyLabels: {
 			easy: '쉬움',
