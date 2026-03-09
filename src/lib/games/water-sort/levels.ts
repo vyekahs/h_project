@@ -137,7 +137,6 @@ function getTopGroupRaw(tube: number[]): { color: number; count: number } | null
 
 function generateSolverMoves(state: number[][]): { src: number; tgt: number }[] {
 	const moves: { src: number; tgt: number }[] = [];
-	let hasEmptyTarget = false;
 
 	for (let s = 0; s < state.length; s++) {
 		const src = state[s];
@@ -146,6 +145,7 @@ function generateSolverMoves(state: number[][]): { src: number; tgt: number }[] 
 
 		const srcGroup = getTopGroupRaw(src)!;
 		const isSingleColor = src.every(l => l === src[0]);
+		let hasEmptyTarget = false;
 
 		for (let t = 0; t < state.length; t++) {
 			if (s === t) continue;
