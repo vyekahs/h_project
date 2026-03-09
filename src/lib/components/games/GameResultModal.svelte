@@ -107,20 +107,20 @@
         justify-content: center;
         z-index: 100;
         backdrop-filter: blur(8px);
-        background: rgba(0, 0, 0, 0.6);
+        background: var(--shadow-deep);
         overflow-y: auto;
         padding: 1rem 0;
         touch-action: manipulation;
     }
 
     .result-card {
-        background: white;
+        background: var(--bg-primary);
         padding: 3.5rem 2rem 2.5rem 2rem;
         border-radius: 32px;
         width: 90%;
         max-width: 420px;
         text-align: center;
-        box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        box-shadow: 0 20px 60px var(--shadow-heavy);
         animation: popIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
         display: flex;
         flex-direction: column;
@@ -148,17 +148,17 @@
         align-items: center;
         justify-content: center;
         margin: 0 auto;
-        color: white;
-        box-shadow: 0 10px 20px rgba(0,0,0,0.2);
+        color: var(--bg-primary);
+        box-shadow: 0 10px 20px var(--overlay-medium);
     }
 
     .win-icon {
-        background: linear-gradient(135deg, #FFD700, #FFA500);
+        background: linear-gradient(135deg, var(--color-amber), #FFA500);
         animation: bounce 2s infinite;
     }
 
     .lose-icon {
-        background: linear-gradient(135deg, #ff6b6b, #ee5253);
+        background: linear-gradient(135deg, var(--color-red), #ee5253);
     }
 
     .result-icon svg {
@@ -171,20 +171,20 @@
         font-weight: 800;
         margin: 0;
         letter-spacing: -1px;
-        background: linear-gradient(45deg, #333, #666);
+        background: linear-gradient(45deg, var(--bg-dark), var(--text-secondary));
         -webkit-background-clip: text;
         background-clip: text;
         -webkit-text-fill-color: transparent;
     }
 
     .result-card.win .result-title {
-        background: linear-gradient(45deg, #FFD700, #FFA500);
+        background: linear-gradient(45deg, var(--color-amber), #FFA500);
         -webkit-background-clip: text;
         background-clip: text;
     }
 
     .result-message {
-        color: #666;
+        color: var(--text-secondary);
         font-size: 1.1rem;
         margin: -0.5rem 0 0.5rem 0;
         line-height: 1.4;
@@ -196,7 +196,7 @@
         grid-template-columns: 1fr 1fr;
         gap: 1rem;
         width: 100%;
-        background: #f8f9fa;
+        background: var(--bg-secondary);
         padding: 1.5rem;
         border-radius: 20px;
     }
@@ -210,7 +210,7 @@
 
     .stat-label {
         font-size: 0.8rem;
-        color: #888;
+        color: var(--text-tertiary);
         font-weight: 600;
         text-transform: uppercase;
     }
@@ -218,11 +218,11 @@
     .stat-value {
         font-size: 1.1rem;
         font-weight: 700;
-        color: #333;
+        color: var(--text-primary);
     }
 
     .stat-item.highlight .stat-value {
-        color: #3b82f6;
+        color: var(--color-blue);
         font-size: 1.3rem;
     }
 
@@ -241,8 +241,8 @@
         font-size: 1.1rem;
         border-radius: 16px;
         box-shadow: 0 8px 20px rgba(59, 130, 246, 0.3);
-        background: #333;
-        color: white;
+        background: var(--bg-dark);
+        color: var(--bg-primary);
         border: none;
         font-weight: 600;
         cursor: pointer;
@@ -254,7 +254,7 @@
     }
 
     .secondary-btn {
-        color: #888;
+        color: var(--text-tertiary);
         font-weight: 500;
         background: none;
         border: none;
@@ -265,7 +265,7 @@
     }
 
     .secondary-btn:hover {
-        color: #333;
+        color: var(--text-primary);
         background: none;
     }
 
@@ -319,7 +319,7 @@
     }
     .sparkle {
         font-size: 0.9rem;
-        color: #f59e0b;
+        color: var(--color-amber-dark);
         animation: sparklePulse 1.5s ease-in-out infinite;
     }
     .sparkle:nth-child(2) { animation-delay: 0.3s; }
@@ -327,7 +327,7 @@
     .title-label {
         font-size: 0.7rem;
         font-weight: 600;
-        color: #92400e;
+        color: var(--color-amber-darker);
         letter-spacing: 0.1em;
         text-transform: uppercase;
         margin-bottom: 4px;
@@ -335,7 +335,7 @@
     .title-name {
         font-size: 1.2rem;
         font-weight: 800;
-        background: linear-gradient(135deg, #f59e0b 0%, #d97706 30%, #fbbf24 60%, #d97706 100%);
+        background: linear-gradient(135deg, var(--color-amber-dark) 0%, var(--color-amber-darker) 30%, var(--color-amber) 60%, var(--color-amber-darker) 100%);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
         background-clip: text;
@@ -355,7 +355,7 @@
     }
     .visit-text {
         font-size: 0.9rem;
-        color: #92400e;
+        color: var(--color-amber-darker);
         font-weight: 500;
         line-height: 1.5;
     }

@@ -66,7 +66,7 @@
 
     .ticker-text {
         font-size: 0.9rem;
-        color: #374151;
+        color: var(--text-dark);
         font-weight: 500;
         letter-spacing: -0.2px;
         white-space: nowrap;
