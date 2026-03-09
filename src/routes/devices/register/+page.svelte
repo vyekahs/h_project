@@ -553,32 +553,32 @@
 
 <style>
     .container { max-width: 400px; margin: 0 auto; padding: 20px; text-align: center; }
-    .card { background: #fff; padding: 30px; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); margin-bottom: 16px; }
-    .card.recommended { border: 2px solid #007bff; position: relative; }
-    .card.alt { border: 1px solid #e0e0e0; padding: 20px; }
-    .card.active { border: 2px solid #007bff; background: #f0f7ff; }
-    .card.success { border: 2px solid #28a745; background: #f8fff9; }
-    .card.verify { border: 2px solid #007bff; background: #f0f7ff; }
-    .badge { position: absolute; top: -12px; left: 50%; transform: translateX(-50%); background: #007bff; color: white; padding: 4px 16px; border-radius: 20px; font-size: 0.8em; font-weight: bold; }
+    .card { background: var(--bg-primary); padding: 30px; border-radius: 16px; box-shadow: 0 4px 20px var(--shadow-sm); margin-bottom: 16px; }
+    .card.recommended { border: 2px solid var(--color-blue-bright); position: relative; }
+    .card.alt { border: 1px solid var(--border-default); padding: 20px; }
+    .card.active { border: 2px solid var(--color-blue-bright); background: var(--color-info-bg); }
+    .card.success { border: 2px solid var(--color-green); background: var(--color-success-bg); }
+    .card.verify { border: 2px solid var(--color-blue-bright); background: var(--color-info-bg); }
+    .badge { position: absolute; top: -12px; left: 50%; transform: translateX(-50%); background: var(--color-blue-bright); color: var(--bg-primary); padding: 4px 16px; border-radius: 20px; font-size: 0.8em; font-weight: bold; }
     .success-icon { font-size: 4em; margin-bottom: 20px; }
-    input { width: 80%; padding: 14px; font-size: 2em; text-align: center; margin: 15px auto; border: 2px solid #007bff; border-radius: 12px; letter-spacing: 8px; font-family: monospace; }
-    button { width: 100%; padding: 12px; background: #007bff; color: white; border: none; border-radius: 8px; font-size: 1.1em; font-weight: bold; cursor: pointer; transition: background 0.2s; }
-    button:hover { background: #0056b3; }
-    .btn-primary { background: #28a745; }
-    .btn-primary:hover { background: #218838; }
-    .btn-alt { background: #6c757d; }
-    .btn-alt:hover { background: #545b62; }
-    .error { color: #dc3545; margin: 10px 0; font-weight: bold; }
-    .desc { color: #666; margin-bottom: 20px; font-size: 0.9em; }
-    .timer { font-size: 1.2em; color: #ff4d4f; font-weight: bold; margin-bottom: 20px; }
-    .instructions { text-align: left; background: #f0f7ff; padding: 15px; border-radius: 8px; margin: 20px 0; }
+    input { width: 80%; padding: 14px; font-size: 2em; text-align: center; margin: 15px auto; border: 2px solid var(--color-blue-bright); border-radius: 12px; letter-spacing: 8px; font-family: monospace; }
+    button { width: 100%; padding: 12px; background: var(--color-blue-bright); color: var(--bg-primary); border: none; border-radius: 8px; font-size: 1.1em; font-weight: bold; cursor: pointer; transition: background 0.2s; }
+    button:hover { background: var(--color-blue-bright); }
+    .btn-primary { background: var(--color-green); }
+    .btn-primary:hover { background: var(--color-green-dark); }
+    .btn-alt { background: var(--text-secondary); }
+    .btn-alt:hover { background: var(--color-slate-dark); }
+    .error { color: var(--color-red); margin: 10px 0; font-weight: bold; }
+    .desc { color: var(--text-secondary); margin-bottom: 20px; font-size: 0.9em; }
+    .timer { font-size: 1.2em; color: var(--color-red); font-weight: bold; margin-bottom: 20px; }
+    .instructions { text-align: left; background: var(--color-info-bg); padding: 15px; border-radius: 8px; margin: 20px 0; }
     .instructions p { margin: 8px 0; font-size: 0.95em; }
     .pin-input-area { margin: 20px 0; }
     .pairing-animation { display: flex; justify-content: center; margin: 30px 0; }
-    .dot-pulse { width: 12px; height: 12px; border-radius: 50%; background: #007bff; animation: pulse 1.5s infinite ease-in-out; }
+    .dot-pulse { width: 12px; height: 12px; border-radius: 50%; background: var(--color-blue-bright); animation: pulse 1.5s infinite ease-in-out; }
     @keyframes pulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(2); opacity: 0.4; } }
-    .status-text { color: #007bff; font-weight: 600; font-size: 1em; margin: 15px 0; }
-    .pin-display { margin: 20px 0; padding: 20px; background: #fff; border-radius: 12px; border: 2px dashed #007bff; }
-    .pin-label { color: #666; font-size: 0.9em; margin-bottom: 10px; }
-    .pin-code { font-size: 2.5em; font-weight: bold; letter-spacing: 12px; color: #007bff; font-family: monospace; }
+    .status-text { color: var(--color-blue-bright); font-weight: 600; font-size: 1em; margin: 15px 0; }
+    .pin-display { margin: 20px 0; padding: 20px; background: var(--bg-primary); border-radius: 12px; border: 2px dashed var(--color-blue-bright); }
+    .pin-label { color: var(--text-secondary); font-size: 0.9em; margin-bottom: 10px; }
+    .pin-code { font-size: 2.5em; font-weight: bold; letter-spacing: 12px; color: var(--color-blue-bright); font-family: monospace; }
 </style>

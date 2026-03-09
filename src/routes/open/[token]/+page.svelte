@@ -66,15 +66,15 @@
         justify-content: center;
         align-items: center;
         min-height: 100vh;
-        background: #f0f2f5;
+        background: var(--bg-elevated);
         padding: 1rem;
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
     }
     .card {
-        background: white;
+        background: var(--bg-primary);
         padding: 3rem 2rem;
         border-radius: 20px;
-        box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+        box-shadow: 0 10px 25px var(--shadow-md);
         text-align: center;
         width: 100%;
         max-width: 360px;
@@ -85,11 +85,11 @@
     }
     h2 {
         margin: 0 0 0.5rem 0;
-        color: #333;
+        color: var(--text-primary);
         font-size: 1.3rem;
     }
     .sub {
-        color: #888;
+        color: var(--text-tertiary);
         font-size: 0.95rem;
         margin-bottom: 1.5rem;
     }
@@ -97,8 +97,8 @@
         display: block;
         width: 100%;
         padding: 0.85rem;
-        background: #4285f4;
-        color: white;
+        background: var(--color-blue);
+        color: var(--bg-primary);
         border: none;
         border-radius: 12px;
         font-size: 1rem;
@@ -108,23 +108,23 @@
         transition: background 0.2s;
     }
     .btn-chrome:hover {
-        background: #3367d6;
+        background: var(--color-indigo);
     }
     .btn-fallback {
         display: block;
-        color: #888;
+        color: var(--text-tertiary);
         text-decoration: none;
         font-size: 0.9rem;
         padding: 0.5rem;
     }
     .btn-fallback:hover {
-        color: #333;
+        color: var(--text-primary);
     }
     .spinner {
         width: 40px;
         height: 40px;
-        border: 4px solid #e9ecef;
-        border-top-color: #4285f4;
+        border: 4px solid var(--bg-hover);
+        border-top-color: var(--color-blue);
         border-radius: 50%;
         animation: spin 0.8s linear infinite;
         margin: 0 auto 1.5rem;

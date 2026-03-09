@@ -57,7 +57,7 @@
 	.privacy-page {
 		min-height: 100vh;
 		background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
-		color: #e2e8f0;
+		color: var(--border-light);
 		padding: 24px 16px 60px;
 	}
 	.container {
@@ -66,22 +66,22 @@
 	}
 	.back-link {
 		display: inline-block;
-		color: #94a3b8;
+		color: var(--color-slate);
 		text-decoration: none;
 		font-size: 0.9rem;
 		margin-bottom: 24px;
 		transition: color 0.2s;
 	}
-	.back-link:hover { color: #e2e8f0; }
+	.back-link:hover { color: var(--border-light); }
 	h1 {
 		font-size: 1.8rem;
 		font-weight: 800;
-		color: #f8fafc;
+		color: var(--bg-secondary);
 		margin: 0 0 8px;
 	}
 	.updated {
 		font-size: 0.85rem;
-		color: #64748b;
+		color: var(--color-slate-dark);
 		margin: 0 0 32px;
 	}
 	section {
@@ -90,13 +90,13 @@
 	h2 {
 		font-size: 1.15rem;
 		font-weight: 700;
-		color: #f1f5f9;
+		color: var(--bg-secondary);
 		margin: 0 0 12px;
 	}
 	p {
 		font-size: 0.95rem;
 		line-height: 1.7;
-		color: #cbd5e1;
+		color: var(--border-default);
 		margin: 0 0 12px;
 	}
 	ul {
@@ -106,11 +106,11 @@
 	li {
 		font-size: 0.95rem;
 		line-height: 1.7;
-		color: #cbd5e1;
+		color: var(--border-default);
 		margin-bottom: 4px;
 	}
 	a {
-		color: #60a5fa;
+		color: var(--color-blue);
 	}
-	a:hover { color: #93bbfd; }
+	a:hover { color: var(--color-blue); }
 </style>

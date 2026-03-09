@@ -53,15 +53,15 @@
         justify-content: center;
         align-items: center;
         min-height: 100vh;
-        background: #f0f2f5;
+        background: var(--bg-elevated);
         font-family: sans-serif;
         padding: 1rem;
     }
     .card {
-        background: white;
+        background: var(--bg-primary);
         padding: 3rem 2rem;
         border-radius: 20px;
-        box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+        box-shadow: 0 10px 25px var(--shadow-md);
         text-align: center;
         width: 100%;
         max-width: 360px;
@@ -72,24 +72,24 @@
     }
     h1 {
         margin: 0 0 1rem 0;
-        color: #333;
+        color: var(--text-primary);
     }
     .message {
         font-size: 1.2rem;
-        color: #555;
+        color: var(--text-darker);
         margin-bottom: 0.5rem;
         line-height: 1.6;
     }
     .sub-message {
-        color: #888;
+        color: var(--text-tertiary);
         margin-bottom: 2rem;
     }
     .btn-checkin {
         display: block;
         width: 100%;
         padding: 0.85rem;
-        background: #22c55e;
-        color: white;
+        background: var(--color-green);
+        color: var(--bg-primary);
         border: none;
         border-radius: 12px;
         font-size: 1.1rem;
@@ -99,34 +99,34 @@
         transition: background 0.2s;
     }
     .btn-checkin:hover {
-        background: #16a34a;
+        background: var(--color-green-dark);
     }
     .btn-checkin:disabled {
-        background: #9ca3af;
+        background: var(--text-secondary);
         cursor: not-allowed;
     }
     .btn-fallback {
         display: block;
-        color: #888;
+        color: var(--text-tertiary);
         text-decoration: none;
         font-size: 0.9rem;
         padding: 0.75rem;
         margin-top: 0.5rem;
     }
     .btn-fallback:hover {
-        color: #333;
+        color: var(--text-primary);
     }
     .btn-home {
         display: inline-block;
         padding: 0.75rem 2rem;
-        background: #007bff;
-        color: white;
+        background: var(--color-blue-bright);
+        color: var(--bg-primary);
         text-decoration: none;
         border-radius: 25px;
         font-weight: bold;
         transition: background 0.2s;
     }
     .btn-home:hover {
-        background: #0056b3;
+        background: var(--color-blue-bright);
     }
 </style>
