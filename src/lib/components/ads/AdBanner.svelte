@@ -60,7 +60,7 @@
     .ad-container {
         margin: 1rem auto;
         text-align: center;
-        background: #f8f9fa;
+        background: var(--bg-secondary);
         min-height: 90px;
         display: flex;
         flex-direction: column;
@@ -71,7 +71,7 @@
     
     .ad-label {
         font-size: 0.7rem;
-        color: #ddd;
+        color: var(--border-default);
         margin-top: 4px;
     }
 </style>

@@ -77,7 +77,7 @@
         align-items: center;
         gap: 0.8rem;
         background: linear-gradient(135deg, #6200ea, #3700b3);
-        color: white;
+        color: var(--bg-primary);
         border: none;
         padding: 0.8rem 1.5rem;
         border-radius: 12px;
@@ -111,13 +111,13 @@
     .text .reward {
         font-size: 1.1rem;
         font-weight: 700;
-        color: #ffd700;
+        color: var(--color-amber);
     }
     
     .ad-overlay {
         position: fixed;
         top: 0; left: 0; right: 0; bottom: 0;
-        background: black;
+        background: var(--bg-dark);
         z-index: 9999;
         display: flex;
         align-items: center;
@@ -132,7 +132,7 @@
         background: #111;
         display: flex;
         flex-direction: column;
-        color: white;
+        color: var(--bg-primary);
     }
     
     .ad-header {
@@ -161,7 +161,7 @@
     .btn-close {
         background: transparent;
         border: 1px solid rgba(255,255,255,0.3);
-        color: white;
+        color: var(--bg-primary);
         padding: 0.5rem 1rem;
         border-radius: 4px;
         cursor: pointer;
