@@ -272,20 +272,14 @@
         eventSource.addEventListener('visitors', (e: MessageEvent) => {
             sseReconnectDelay = 3000;
             const d = JSON.parse(e.data);
-            const prevCount = liveVisitorCount;
             liveVisitorCount = d.count;
-            if (prevCount !== null && prevCount !== d.count) {
-                scheduleRefresh();
-            }
+            scheduleRefresh();
         });
         eventSource.addEventListener('games', (e: MessageEvent) => {
             sseReconnectDelay = 3000;
             const d = JSON.parse(e.data);
-            const prevCount = liveGameCount;
             liveGameCount = d.count;
-            if (prevCount !== null && prevCount !== d.count) {
-                scheduleRefresh();
-            }
+            scheduleRefresh();
         });
         eventSource.onerror = () => {
             if (eventSource) { eventSource.close(); eventSource = null; }
