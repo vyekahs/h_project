@@ -139,13 +139,23 @@ async function checkRecurringGames() {
                     WHERE rs.is_active = true AND rs.day_of_week = ${dayOfWeek}
                       AND rs.scheduled_time > ${currentTime}::time
                       AND NOT EXISTS (SELECT 1 FROM recurring_game_skips rsk WHERE rsk.recurring_schedule_id = rs.id AND rsk.skip_date = ${targetDate}::date)
-                      AND NOT EXISTS (SELECT 1 FROM game_sessions gs WHERE gs.recurring_schedule_id = rs.id AND gs.scheduled_at::date = ${targetDate}::date)
+                      AND NOT EXISTS (
+                          SELECT 1 FROM game_sessions gs
+                          WHERE gs.recurring_schedule_id = rs.id
+                            AND DATE(gs.scheduled_at AT TIME ZONE 'Asia/Seoul') = ${targetDate}::date
+                            AND (gs.scheduled_at AT TIME ZONE 'Asia/Seoul')::time = rs.scheduled_time
+                      )
                 `)
                 : await db.execute(sql`
                     SELECT rs.* FROM recurring_game_schedules rs
                     WHERE rs.is_active = true AND rs.day_of_week = ${dayOfWeek}
                       AND NOT EXISTS (SELECT 1 FROM recurring_game_skips rsk WHERE rsk.recurring_schedule_id = rs.id AND rsk.skip_date = ${targetDate}::date)
-                      AND NOT EXISTS (SELECT 1 FROM game_sessions gs WHERE gs.recurring_schedule_id = rs.id AND gs.scheduled_at::date = ${targetDate}::date)
+                      AND NOT EXISTS (
+                          SELECT 1 FROM game_sessions gs
+                          WHERE gs.recurring_schedule_id = rs.id
+                            AND DATE(gs.scheduled_at AT TIME ZONE 'Asia/Seoul') = ${targetDate}::date
+                            AND (gs.scheduled_at AT TIME ZONE 'Asia/Seoul')::time = rs.scheduled_time
+                      )
                 `);
 
             for (const schedule of schedules) {

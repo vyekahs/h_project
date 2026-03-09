@@ -171,11 +171,6 @@
     let endGameModalVisible = false;
     let selectedEndGame: GameSession | null = null;
 
-    // Schedule & Settings Change Modals
-    let showScheduleChangeModal = false;
-    let showSettingsChangeModal = false;
-    let selectedScheduledGame: GameSession | null = null;
-
     // Visit Plan Modal
     let showVisitPlanModal = false;
     let selectedVisitTime = '';
@@ -378,16 +373,6 @@
         const hours = String(now.getHours()).padStart(2, '0');
         const minutes = String(now.getMinutes()).padStart(2, '0');
         scheduledAt = `${year}-${month}-${day}T${hours}:${minutes}`;
-    }
-
-    function openScheduleModal(game: GameSession) {
-        selectedScheduledGame = game;
-        showScheduleChangeModal = true;
-    }
-
-    function openSettingsModal(game: GameSession) {
-        selectedScheduledGame = game;
-        showSettingsChangeModal = true;
     }
 
     const handleJoinRequest: import('@sveltejs/kit').SubmitFunction = () => {
@@ -1024,8 +1009,6 @@
                                             <input type="hidden" name="sessionId" value={game.id}>
                                             <button class="btn-action-text primary">시작</button>
                                         </form>
-                                        <button class="btn-action-text" on:click={() => openScheduleModal(game)}>일정 변경</button>
-                                        <button class="btn-action-text" on:click={() => openSettingsModal(game)}>설정 변경</button>
                                         <form method="POST" action="?/dissolveScheduledGame" use:enhance style="display:inline;">
                                             <input type="hidden" name="sessionId" value={game.id}>
                                             <button class="btn-action-text danger">삭제</button>
@@ -1376,141 +1359,6 @@
     </div>
 {/if}
 
-<!-- Schedule Change Modal -->
-{#if showScheduleChangeModal && selectedScheduledGame}
-    <!-- svelte-ignore a11y-click-events-have-key-events -->
-    <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-    <div
-        class="modal-backdrop"
-        on:click={() => showScheduleChangeModal = false}
-        on:keydown={(e) => e.key === 'Escape' && (showScheduleChangeModal = false)}
-        role="button"
-        tabindex="-1"
-        aria-label="Close modal"
-    >
-        <div class="modal-content" on:click|stopPropagation role="dialog" tabindex="-1">
-            <h2>
-                <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px; vertical-align:bottom; color:var(--color-info);"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-                게임 일정 변경
-            </h2>
-            <p><strong>{selectedScheduledGame.game_name}</strong> 게임의 시작 시간을 변경합니다.</p>
-
-            <form method="POST" action="?/updateScheduledGameTime" use:enhance={() => {
-                return async ({ result, update }) => {
-                    if (result.type === 'failure') {
-                        const data = result.data as any;
-                        showAlert(data?.error || '일정 변경에 실패했습니다.');
-                    } else {
-                        showScheduleChangeModal = false;
-                        showAlert('게임 일정이 변경되었습니다!');
-                    }
-                    await update();
-                };
-            }}>
-                <input type="hidden" name="sessionId" value={selectedScheduledGame.id} />
-
-                <div class="form-group">
-                    <label for="scheduled-time">시작 시간</label>
-                    <input
-                        id="scheduled-time"
-                        type="datetime-local"
-                        name="scheduledAt"
-                        value={selectedScheduledGame.scheduled_at ? new Date(selectedScheduledGame.scheduled_at).toISOString().slice(0, 16) : ''}
-                        required
-                        class="input-field"
-                    />
-                    <p class="hint">현재: {new Date(selectedScheduledGame.scheduled_at).toLocaleString()}</p>
-                </div>
-
-                <div class="modal-actions">
-                    <button type="button" class="btn-cancel" on:click={() => showScheduleChangeModal = false}>취소</button>
-                    <button type="submit" class="btn-primary">일정 변경</button>
-                </div>
-            </form>
-        </div>
-    </div>
-{/if}
-
-<!-- Settings Change Modal -->
-{#if showSettingsChangeModal && selectedScheduledGame}
-    <!-- svelte-ignore a11y-click-events-have-key-events -->
-    <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-    <div
-        class="modal-backdrop"
-        on:click={() => showSettingsChangeModal = false}
-        on:keydown={(e) => e.key === 'Escape' && (showSettingsChangeModal = false)}
-        role="button"
-        tabindex="-1"
-        aria-label="Close modal"
-    >
-        <div class="modal-content" on:click|stopPropagation role="dialog" tabindex="-1">
-            <h2>
-                <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px; vertical-align:bottom; color:var(--color-warning);"><circle cx="12" cy="12" r="3"/><path d="M12 1v6m0 6v6m-9-9h6m6 0h6"/><path d="m16.24 7.76-4.24 4.24m0 4.24 4.24 4.24M7.76 7.76l4.24 4.24m-4.24 4.24 4.24-4.24"/></svg>
-                게임 설정 변경
-            </h2>
-            <p><strong>{selectedScheduledGame.game_name}</strong> 게임의 설정을 변경합니다.</p>
-
-            <form method="POST" action="?/updateScheduledGameSettings" use:enhance={() => {
-                return async ({ result, update }) => {
-                    if (result.type === 'failure') {
-                        const data = result.data as any;
-                        showAlert(data?.error || '설정 변경에 실패했습니다.');
-                    } else {
-                        showSettingsChangeModal = false;
-                        showAlert('게임 설정이 변경되었습니다!');
-                    }
-                    await update();
-                };
-            }}>
-                <input type="hidden" name="sessionId" value={selectedScheduledGame.id} />
-
-                <div class="form-group">
-                    <label for="game-name-input">게임 이름</label>
-                    <input
-                        id="game-name-input"
-                        type="text"
-                        name="gameName"
-                        value={selectedScheduledGame.game_name}
-                        required
-                        class="input-field"
-                        placeholder="게임 이름을 입력하세요"
-                    />
-                </div>
-
-                <div class="form-group">
-                    <label for="min-players-input">최소 인원</label>
-                    <input
-                        id="min-players-input"
-                        type="number"
-                        name="minPlayers"
-                        value={selectedScheduledGame.min_players}
-                        min="1"
-                        required
-                        class="input-field number-input"
-                    />
-                </div>
-
-                <div class="form-group">
-                    <label for="max-players-input">최대 인원</label>
-                    <input
-                        id="max-players-input"
-                        type="number"
-                        name="maxPlayers"
-                        value={selectedScheduledGame.max_players}
-                        min="1"
-                        required
-                        class="input-field number-input"
-                    />
-                </div>
-
-                <div class="modal-actions">
-                    <button type="button" class="btn-cancel" on:click={() => showSettingsChangeModal = false}>취소</button>
-                    <button type="submit" class="btn-primary">설정 변경</button>
-                </div>
-            </form>
-        </div>
-    </div>
-{/if}
 
 {#if showScheduledGameModal}
     <!-- svelte-ignore a11y-click-events-have-key-events -->
