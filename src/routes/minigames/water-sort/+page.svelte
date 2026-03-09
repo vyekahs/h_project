@@ -33,7 +33,7 @@
 		} else if (localStorage.getItem('watersort_save')) {
 			game.loadGame();
 		} else {
-			goto('/games/start/water-sort', { replaceState: true });
+			goto('/minigames/start/water-sort', { replaceState: true });
 		}
 	});
 
@@ -131,7 +131,7 @@
 				onQuit={() => {
 					game.stopTimer();
 					localStorage.removeItem('watersort_save');
-					goto('/games/start/water-sort');
+					goto('/minigames/start/water-sort');
 				}}
 				onRestart={game.restartGame}
 			/>
@@ -162,7 +162,7 @@
 				primaryAction={{ label: '다시 도전', onclick: game.startGame }}
 				secondaryAction={{
 					label: '나가기',
-					onclick: () => goto('/games/start/water-sort')
+					onclick: () => goto('/minigames/start/water-sort')
 				}}
 			/>
 		{/if}
@@ -194,7 +194,7 @@
 					onclick: () => {
 						game.stopTimer();
 						localStorage.removeItem('watersort_save');
-						goto('/games/start/water-sort');
+						goto('/minigames/start/water-sort');
 					}
 				}}
 			/>
@@ -255,12 +255,12 @@
 		flex-direction: column;
 		overscroll-behavior: none;
 		margin: 0 auto;
-		background: #f8f9fa;
+		background: var(--bg-secondary);
 	}
 
 	.btn-primary {
-		background: #333;
-		color: white;
+		background: var(--bg-dark);
+		color: var(--bg-primary);
 		border: none;
 		padding: 0.85rem 1.5rem;
 		border-radius: 14px;
@@ -282,8 +282,8 @@
 	}
 
 	.btn-secondary {
-		background: #f1f3f5;
-		color: #333;
+		background: var(--bg-tertiary);
+		color: var(--text-primary);
 		border: none;
 		padding: 0.85rem 1.5rem;
 		border-radius: 14px;
@@ -296,7 +296,7 @@
 
 	.btn-secondary:active {
 		transform: scale(0.97);
-		background: #e9ecef;
+		background: var(--bg-hover);
 	}
 
 	header {
@@ -319,7 +319,7 @@
 	.difficulty-badge {
 		font-size: 0.75rem;
 		font-weight: 600;
-		color: #555;
+		color: var(--text-darker);
 		text-transform: uppercase;
 		letter-spacing: 1px;
 	}
@@ -327,7 +327,7 @@
 	.moves {
 		font-size: 0.85rem;
 		font-weight: 600;
-		color: #333;
+		color: var(--text-primary);
 	}
 
 	.timer-controls {
@@ -340,8 +340,8 @@
 		font-size: 1.6rem;
 		font-weight: 400;
 		font-variant-numeric: tabular-nums;
-		color: #333;
-		background: #f5f5f7;
+		color: var(--text-primary);
+		background: var(--bg-surface);
 		padding: 0.4rem 1rem;
 		border-radius: 30px;
 		min-width: 80px;
@@ -361,7 +361,7 @@
 	}
 
 	.icon-btn:active {
-		background: #f0f0f0;
+		background: var(--bg-elevated);
 	}
 
 	.game-play-area {
@@ -394,19 +394,19 @@
 		display: flex;
 		align-items: center;
 		gap: 4px;
-		background: #f0f0f0;
+		background: var(--bg-elevated);
 		border: none;
 		padding: 0.4rem 0.8rem;
 		border-radius: 50px;
 		font-size: 0.8rem;
 		font-weight: 600;
-		color: #555;
+		color: var(--text-darker);
 		cursor: pointer;
 		transition: all 0.2s;
 	}
 
 	.undo-btn:active:not(:disabled) {
-		background: #e0e0e0;
+		background: var(--border-default);
 		transform: scale(0.95);
 	}
 
@@ -418,7 +418,7 @@
 	.overlay {
 		position: fixed;
 		inset: 0;
-		background: rgba(0, 0, 0, 0.3);
+		background: var(--shadow-heavy);
 		display: flex;
 		align-items: center;
 		justify-content: center;
@@ -426,19 +426,19 @@
 	}
 
 	.modal {
-		background: white;
+		background: var(--bg-primary);
 		border-radius: 24px;
 		padding: 2rem;
 		width: 90%;
 		max-width: 340px;
 		text-align: center;
-		box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+		box-shadow: 0 20px 60px var(--shadow-lg);
 		animation: popIn 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
 	}
 
 	.modal p {
 		margin: 0 0 1.5rem 0;
-		color: #555;
+		color: var(--text-darker);
 		font-size: 0.95rem;
 		line-height: 1.5;
 	}

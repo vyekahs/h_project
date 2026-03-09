@@ -517,9 +517,9 @@
 	.board {
 		display: flex;
 		flex-direction: column;
-		border: 2px solid #333;
-        background: #fff;
-        box-shadow: 0 4px 20px rgba(0,0,0,0.05);
+		border: 2px solid var(--text-primary);
+        background: var(--bg-primary);
+        box-shadow: 0 4px 20px var(--overlay-light);
         width: 100%;
         height: 100%;
 	}
@@ -542,7 +542,7 @@
 
 	.cell {
         flex: 1; /* Fill width equally */
-		border: 1px solid #e0e0e0;
+		border: 1px solid var(--border-default);
         position: relative;
         /* No flex here, we use layers */
 		cursor: pointer;
@@ -569,7 +569,7 @@
         /* Dynamic font size based on container width */
         font-size: clamp(1rem, 5vw, 1.6rem);
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-        color: #333;
+        color: var(--text-primary);
     }
     
     /* Responsive sizing tweak if needed */
@@ -601,14 +601,14 @@
     
     /* Colors on Text */
     .note-item.highlight {
-        color: #1a73e8 !important; /* Blue highlight */
+        color: var(--color-blue-bright) !important; /* Blue highlight */
         font-weight: bold !important;
         font-size: 0.45em !important;
     }
     
     /* User input - gray/blue color */
     .cell-content:not(.fixed) {
-        color: #007aff;
+        color: var(--color-blue-bright);
         font-weight: 500;
     }
     
@@ -620,34 +620,34 @@
     
     /* Error Text Color */
     .cell.error .cell-content {
-        color: #d32f2f !important;
+        color: var(--color-red-dark) !important;
     }
 
     /* Standard Borders */
     .cell.border-right {
-        border-right: 2px solid #333;
+        border-right: 2px solid var(--text-primary);
     }
     
     .cell.border-bottom {
-        border-bottom: 2px solid #333;
+        border-bottom: 2px solid var(--text-primary);
     }
 
     /* Killer Sudoku Styles */
     .killer-board .cell {
-        border: 1px solid #f0f0f0; /* Lighter inner borders for killer */
+        border: 1px solid var(--bg-elevated); /* Lighter inner borders for killer */
     }
 
     /* 3x3 Box Borders override for Killer */
     .killer-board .cell.border-right {
-        border-right: 2px solid #333;
+        border-right: 2px solid var(--text-primary);
     }
     .killer-board .cell.border-bottom {
-        border-bottom: 2px solid #333;
+        border-bottom: 2px solid var(--text-primary);
     }
 
     /* Fix outer board borders to be solid */
     .board {
-        border: 2px solid #333;
+        border: 2px solid var(--text-primary);
     }
 
     .svg-cage-sum {
@@ -677,7 +677,7 @@
         height: 100%;
         overflow: hidden;
         visibility: hidden;
-        color: #666;
+        color: var(--text-secondary);
         font-weight: 500;
     }
     

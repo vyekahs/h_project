@@ -226,7 +226,7 @@ export function createUnblockMeGame() {
             stopTimer();
             localStorage.removeItem('unblockme_save');
             hasSavedGame = false;
-            goto('/games/start/unblock-me');
+            goto('/minigames/start/unblock-me');
         });
     }
 
@@ -256,7 +256,7 @@ export function createUnblockMeGame() {
 
     function returnToMenu() {
         stopTimer();
-        goto('/games/start/unblock-me');
+        goto('/minigames/start/unblock-me');
     }
 
     return {

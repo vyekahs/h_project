@@ -179,7 +179,7 @@
     .modal-backdrop {
         position: fixed;
         top: 0; left: 0; width: 100%; height: 100%;
-        background: rgba(0,0,0,0.6);
+        background: var(--shadow-deep);
         display: flex;
         justify-content: center;
         align-items: center;
@@ -187,12 +187,12 @@
         backdrop-filter: blur(4px);
     }
     .modal-content {
-        background: white;
+        background: var(--bg-primary);
         padding: 1.5rem;
         border-radius: 16px;
         width: 90%;
         max-width: 400px;
-        box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+        box-shadow: 0 10px 25px var(--overlay-medium);
         display: flex;
         flex-direction: column;
         gap: 1rem;
@@ -205,12 +205,12 @@
     .modal-header h2 {
         margin: 0.2rem 0 0 0;
         font-size: 1.25rem;
-        color: #333;
+        color: var(--text-primary);
     }
     .difficulty-badge {
         font-size: 0.75rem;
-        background: #e9ecef;
-        color: #495057;
+        background: var(--bg-hover);
+        color: var(--text-dark);
         padding: 0.1rem 0.5rem;
         border-radius: 4px;
         font-weight: 700;
@@ -218,15 +218,15 @@
     }
     .step-indicator {
         font-size: 0.85rem;
-        color: #888;
+        color: var(--text-tertiary);
         font-weight: 600;
-        background: #f1f3f5;
+        background: var(--bg-tertiary);
         padding: 0.2rem 0.6rem;
         border-radius: 12px;
     }
 
     .visual-area {
-        background: #f8f9fa;
+        background: var(--bg-secondary);
         border-radius: 8px;
         padding: 1rem;
         display: flex;
@@ -239,8 +239,8 @@
     .mini-board {
         display: flex;
         flex-direction: column;
-        border: 2px solid #333;
-        background: white;
+        border: 2px solid var(--text-primary);
+        background: var(--bg-primary);
     }
     .row {
         display: flex;
@@ -248,30 +248,30 @@
     .cell {
         width: 25px;
         height: 25px;
-        border: 1px solid #ddd;
+        border: 1px solid var(--border-default);
         display: flex;
         justify-content: center;
         align-items: center;
         font-size: 0.7rem;
         font-weight: bold;
-        color: #333;
+        color: var(--text-primary);
         position: relative;
     }
     /* Thicker borders for 3x3 boxes */
-    .cell:nth-child(3n) { border-right: 2px solid #333; }
-    .cell:nth-child(9) { border-right: 1px solid #ddd; }
-    .row:nth-child(3n) .cell { border-bottom: 2px solid #333; }
-    .row:nth-child(9) .cell { border-bottom: 1px solid #ddd; }
+    .cell:nth-child(3n) { border-right: 2px solid var(--text-primary); }
+    .cell:nth-child(9) { border-right: 1px solid var(--border-default); }
+    .row:nth-child(3n) .cell { border-bottom: 2px solid var(--text-primary); }
+    .row:nth-child(9) .cell { border-bottom: 1px solid var(--border-default); }
 
     /* Cage borders - dashed */
-    .cell.cage-border-top { border-top: 1.5px dashed #777; }
-    .cell.cage-border-bottom { border-bottom: 1.5px dashed #777; }
-    .cell.cage-border-left { border-left: 1.5px dashed #777; }
-    .cell.cage-border-right { border-right: 1.5px dashed #777; }
+    .cell.cage-border-top { border-top: 1.5px dashed var(--text-tertiary); }
+    .cell.cage-border-bottom { border-bottom: 1.5px dashed var(--text-tertiary); }
+    .cell.cage-border-left { border-left: 1.5px dashed var(--text-tertiary); }
+    .cell.cage-border-right { border-right: 1.5px dashed var(--text-tertiary); }
 
     /* Box borders still override */
-    .cell:nth-child(3n).cage-border-right { border-right: 2px solid #333; }
-    .row:nth-child(3n) .cell.cage-border-bottom { border-bottom: 2px solid #333; }
+    .cell:nth-child(3n).cage-border-right { border-right: 2px solid var(--text-primary); }
+    .row:nth-child(3n) .cell.cage-border-bottom { border-bottom: 2px solid var(--text-primary); }
 
     /* Cage sum label */
     .cage-sum {
@@ -280,7 +280,7 @@
         left: 1px;
         font-size: 5px;
         font-weight: 700;
-        color: #888;
+        color: var(--text-tertiary);
         line-height: 1;
         z-index: 2;
         pointer-events: none;
@@ -288,13 +288,13 @@
 
     /* Highlight Styles */
     .cell.active-row, .cell.active-col, .cell.active-box {
-        background: #e7f5ff;
-        border-color: #74c0fc;
+        background: var(--color-info-bg);
+        border-color: var(--color-blue);
     }
 
     .cell.target-cell {
-        background: #fff9db;
-        border: 2px solid #fab005;
+        background: var(--color-warning-bg);
+        border: 2px solid var(--color-amber);
         animation: pulse 1.5s infinite;
     }
 
@@ -312,7 +312,7 @@
         display: flex;
         justify-content: center;
         align-items: center;
-        color: #868e96;
+        color: var(--text-tertiary);
     }
     .note-item.n-1 { grid-area: 1 / 1; }
     .note-item.n-2 { grid-area: 1 / 2; }
@@ -331,7 +331,7 @@
     }
 
     .anim-num {
-        color: #fab005;
+        color: var(--color-amber);
         animation: fadeInDrop 0.5s ease-out forwards;
         font-weight: 800;
         position: absolute;
@@ -347,7 +347,7 @@
 
     .desc-area {
         text-align: center;
-        color: #495057;
+        color: var(--text-dark);
         font-size: 0.95rem;
         line-height: 1.5;
         min-height: 4.5rem;
@@ -361,8 +361,8 @@
     }
 
     .btn-primary {
-        background: #4c6ef5;
-        color: white;
+        background: var(--color-blue);
+        color: var(--bg-primary);
         border: none;
         padding: 0.6rem 1.2rem;
         border-radius: 8px;
@@ -376,12 +376,12 @@
     .btn-text {
         background: none;
         border: none;
-        color: #868e96;
+        color: var(--text-tertiary);
         cursor: pointer;
         font-size: 0.9rem;
     }
     .btn-text:hover {
-        color: #333;
+        color: var(--text-primary);
     }
 
     .action-buttons {
@@ -390,8 +390,8 @@
     }
 
     .btn-secondary {
-        background: #f1f3f5;
-        color: #495057;
+        background: var(--bg-tertiary);
+        color: var(--text-dark);
         border: none;
         padding: 0.6rem 1.2rem;
         border-radius: 8px;
@@ -400,6 +400,6 @@
         transition: background 0.2s;
     }
     .btn-secondary:hover {
-        background: #e9ecef;
+        background: var(--bg-hover);
     }
 </style>

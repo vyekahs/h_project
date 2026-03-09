@@ -328,12 +328,12 @@
 		height: 100%;
 		display: block;
 		border-radius: 12px;
-		background: #f8fafc;
+		background: var(--bg-secondary);
 		box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.04);
 	}
 
 	.cell-bg {
-		fill: #f8fafc;
+		fill: var(--bg-secondary);
 		transition: fill 0.3s ease;
 	}
 
@@ -356,7 +356,7 @@
 
 	/* Source styling */
 	.source-circle {
-		fill: #f59e0b;
+		fill: var(--color-amber-dark);
 		filter: drop-shadow(0 0 2px rgba(245, 158, 11, 0.8));
 		animation: sourcePulse 2s ease-in-out infinite;
 	}
@@ -373,15 +373,15 @@
 
 	/* Bulb styling */
 	.bulb-circle {
-		fill: #e5e7eb;
-		stroke: #9ca3af;
+		fill: var(--border-light);
+		stroke: var(--text-secondary);
 		stroke-width: 0.3;
 		transition: all 0.3s ease;
 	}
 
 	.bulb-circle.bulb-on {
 		fill: #fde047;
-		stroke: #f59e0b;
+		stroke: var(--color-amber-dark);
 		filter: drop-shadow(0 0 2px rgba(253, 224, 71, 0.8));
 	}
 

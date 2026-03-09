@@ -220,7 +220,7 @@ export function createKillerSudokuGame() {
         clearInterval(timerInterval);
         localStorage.removeItem('killer_sudoku_save');
         hasSavedGame = false;
-        goto('/games/start/killer-sudoku');
+        goto('/minigames/start/killer-sudoku');
     }
 
     function restartGame() {

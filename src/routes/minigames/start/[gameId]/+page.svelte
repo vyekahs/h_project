@@ -77,22 +77,22 @@
         }
 
         if (gameConfig.id === 'sudoku') {
-            import('../../../games/sudoku/tutorialData').then(m => {
+            import('../../sudoku/tutorialData').then(m => {
                 tutorialData = m.TUTORIALS;
                 tutorialOrder = m.TUTORIAL_ORDER;
             });
         } else if (gameConfig.id === 'killer-sudoku') {
-            import('../../../games/killer-sudoku/killerTutorialData').then(m => {
+            import('../../killer-sudoku/killerTutorialData').then(m => {
                 tutorialData = m.KILLER_TUTORIALS;
                 tutorialOrder = m.KILLER_TUTORIAL_ORDER;
             });
         } else if (gameConfig.id === 'energy') {
-            import('../../../games/energy/energyTutorialData').then(m => {
+            import('../../energy/energyTutorialData').then(m => {
                 tutorialData = m.ENERGY_TUTORIALS;
                 tutorialOrder = m.ENERGY_TUTORIAL_ORDER;
             });
         } else if (gameConfig.id === 'triple-tile') {
-            import('../../../games/triple-tile/tutorialData').then(m => {
+            import('../../triple-tile/tutorialData').then(m => {
                 tutorialData = m.TUTORIALS;
                 tutorialOrder = m.TUTORIAL_ORDER;
             });
@@ -130,16 +130,16 @@
         activeTutorialId = tid;
         // Load the correct tutorial modal component
         if (gameConfig.id === 'sudoku') {
-            const mod = await import('../../../games/sudoku/TutorialModal.svelte');
+            const mod = await import('../../sudoku/TutorialModal.svelte');
             TutorialModalComponent = mod.default;
         } else if (gameConfig.id === 'killer-sudoku') {
-            const mod = await import('../../../games/killer-sudoku/KillerTutorialModal.svelte');
+            const mod = await import('../../killer-sudoku/KillerTutorialModal.svelte');
             TutorialModalComponent = mod.default;
         } else if (gameConfig.id === 'energy') {
-            const mod = await import('../../../games/energy/EnergyTutorialModal.svelte');
+            const mod = await import('../../energy/EnergyTutorialModal.svelte');
             TutorialModalComponent = mod.default;
         } else if (gameConfig.id === 'triple-tile') {
-            const mod = await import('../../../games/triple-tile/TripleTileTutorialModal.svelte');
+            const mod = await import('../../triple-tile/TripleTileTutorialModal.svelte');
             TutorialModalComponent = mod.default;
         }
         showTutorial = true;
@@ -373,7 +373,7 @@
 <style>
     :global(body) {
         margin: 0;
-        background-color: #f0f2f5;
+        background-color: var(--bg-elevated);
     }
 
     .page-background {
@@ -411,7 +411,7 @@
         margin: 0 auto;
         height: 100dvh;
         overflow: hidden;
-        color: #333;
+        color: var(--text-primary);
         position: relative;
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
         touch-action: manipulation;
@@ -445,7 +445,7 @@
         font-family: 'Outfit', sans-serif;
         font-size: 1.8rem;
         font-weight: 800;
-        color: #333;
+        color: var(--text-primary);
         margin: 0;
         text-align: center;
         letter-spacing: -0.5px;
@@ -462,7 +462,7 @@
         backdrop-filter: blur(8px);
         -webkit-backdrop-filter: blur(8px);
         border: 1px solid rgba(255, 255, 255, 0.6);
-        color: #333;
+        color: var(--text-primary);
         text-decoration: none;
         transition: all 0.2s;
     }
@@ -488,7 +488,7 @@
         -webkit-backdrop-filter: blur(16px);
         border: 1px solid rgba(255, 255, 255, 0.6);
         box-shadow: 
-            0 10px 25px -5px rgba(0, 0, 0, 0.05), 
+            0 10px 25px -5px var(--overlay-light), 
             0 8px 10px -6px rgba(0, 0, 0, 0.01);
         border-radius: 28px;
         padding: 1rem;
@@ -524,7 +524,7 @@
         border: none;
         padding: 0.7rem 0;
         font-size: 0.95rem;
-        color: #666;
+        color: var(--text-secondary);
         font-weight: 500;
         cursor: pointer;
         border-radius: 12px;
@@ -534,13 +534,13 @@
     .tab-divider {
         width: 1px;
         height: 16px;
-        background: rgba(0,0,0,0.1);
+        background: var(--shadow-md);
         margin: 0 2px;
     }
 
     .tab-btn.active {
-        background: #fff;
-        color: #333;
+        background: var(--bg-primary);
+        color: var(--text-primary);
         font-weight: 700;
         box-shadow: 0 2px 8px rgba(0,0,0,0.08);
     }
@@ -611,21 +611,21 @@
     }
 
     .diff-btn.selected {
-        background: linear-gradient(135deg, #333 0%, #111 100%);
-        border-color: #333;
-        color: white;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        background: linear-gradient(135deg, var(--bg-dark) 0%, #111 100%);
+        border-color: var(--text-primary);
+        color: var(--bg-primary);
+        box-shadow: 0 4px 12px var(--shadow-lg);
         transform: scale(1.02);
     }
 
     .diff-name {
         font-size: 1.1rem;
         font-weight: 600;
-        color: #555;
+        color: var(--text-darker);
     }
 
     .diff-btn.selected .diff-name {
-        color: white;
+        color: var(--bg-primary);
         font-weight: 700;
     }
 
@@ -657,7 +657,7 @@
     .prompt-text {
         font-size: 1.1rem;
         font-weight: 600;
-        color: #555;
+        color: var(--text-darker);
         margin-bottom: 1rem;
     }
 
@@ -671,20 +671,20 @@
     .divider::before, .divider::after {
         content: '';
         flex: 1;
-        border-bottom: 1px dashed #ccc;
+        border-bottom: 1px dashed var(--border-medium);
     }
     
     .divider span {
         padding: 0 0.8rem;
         font-size: 0.8rem;
-        color: #999;
+        color: var(--text-muted);
         font-weight: 600;
     }
 
     /* Buttons */
     .btn-primary {
-        background: linear-gradient(135deg, #333 0%, #111 100%);
-        color: white;
+        background: linear-gradient(135deg, var(--bg-dark) 0%, #111 100%);
+        color: var(--bg-primary);
         border: none;
         padding: 1.1rem;
         border-radius: 20px;
@@ -692,19 +692,19 @@
         font-size: 1.1rem;
         cursor: pointer;
         transition: all 0.2s;
-        box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+        box-shadow: 0 8px 20px var(--shadow-lg);
         width: 100%;
     }
 
     .btn-primary:active {
         transform: scale(0.98);
-        box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+        box-shadow: 0 4px 10px var(--shadow-md);
     }
 
     .btn-secondary {
-        background: #fff;
-        color: #333;
-        border: 2px solid #eee;
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        border: 2px solid var(--border-light);
         padding: 1rem;
         border-radius: 20px;
         font-weight: 600;
@@ -715,14 +715,14 @@
     }
 
     .btn-secondary:active, .btn-secondary:hover {
-        background: #f8f9fa;
-        border-color: #ddd;
+        background: var(--bg-secondary);
+        border-color: var(--border-default);
     }
 
     .btn-text {
         background: none;
         border: none;
-        color: #888;
+        color: var(--text-tertiary);
         font-size: 0.9rem;
         padding: 0.5rem;
         cursor: pointer;
@@ -749,18 +749,18 @@
         flex: 1;
         padding: 0.5rem;
         background: transparent;
-        border: 1px solid rgba(0,0,0,0.1);
+        border: 1px solid var(--shadow-md);
         border-radius: 10px;
         font-size: 0.85rem;
-        color: #777;
+        color: var(--text-tertiary);
         font-weight: 500;
         cursor: pointer;
     }
 
     .ranking-tabs-pill .tab.active {
-        background: #333;
-        color: #fff;
-        border-color: #333;
+        background: var(--bg-dark);
+        color: var(--bg-primary);
+        border-color: var(--text-primary);
     }
 
     .hall-of-fame-limit {
@@ -799,7 +799,7 @@
         display: flex;
         gap: 0.8rem;
         font-size: 0.8rem;
-        color: #666;
+        color: var(--text-secondary);
     }
 
     .hof-stat {
@@ -817,16 +817,16 @@
         text-align: center;
     }
     
-    .hof-diff-badge.easy { background: #e8f5e9; color: #2e7d32; }
-    .hof-diff-badge.medium { background: #fff3e0; color: #ef6c00; }
-    .hof-diff-badge.hard { background: #ffebee; color: #c62828; }
-    .hof-diff-badge.expert { background: #e8eaf6; color: #283593; }
-    .hof-diff-badge.master { background: #f3e5f5; color: #6a1b9a; }
+    .hof-diff-badge.easy { background: var(--color-success-bg); color: var(--color-green-dark); }
+    .hof-diff-badge.medium { background: var(--color-warning-bg); color: var(--color-orange-dark); }
+    .hof-diff-badge.hard { background: #ffebee; color: var(--color-red-dark); }
+    .hof-diff-badge.expert { background: var(--color-info-bg); color: var(--color-blue-bright); }
+    .hof-diff-badge.master { background: var(--color-info-bg); color: var(--color-blue-bright); }
 
     .score-desc {
         text-align: center;
         font-size: 0.8rem;
-        color: #888;
+        color: var(--text-tertiary);
         margin-bottom: 1rem;
     }
 
@@ -860,8 +860,8 @@
         font-weight: 700;
         padding: 0.25rem 0.5rem;
         border-radius: 4px;
-        background: #eee;
-        color: #666;
+        background: var(--border-light);
+        color: var(--text-secondary);
     }
     
     .t-title {
@@ -870,19 +870,19 @@
     }
 
     .t-arrow {
-        color: #aaa;
+        color: var(--text-muted);
         font-weight: 600;
     }
 
     .empty-state {
         text-align: center;
         padding: 3rem 1rem;
-        color: #999;
+        color: var(--text-muted);
     }
 
     .hof-loading, .hof-empty {
         text-align: center;
         padding: 2rem;
-        color: #888;
+        color: var(--text-tertiary);
     }
 </style>

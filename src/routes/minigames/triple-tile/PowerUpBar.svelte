@@ -48,13 +48,13 @@
 		display: flex;
 		align-items: center;
 		gap: 4px;
-		background: #f0f0f0;
+		background: var(--bg-elevated);
 		border: none;
 		padding: 0.4rem 0.8rem;
 		border-radius: 50px;
 		font-size: 0.8rem;
 		font-weight: 600;
-		color: #555;
+		color: var(--text-darker);
 		cursor: pointer;
 		transition: all 0.2s;
 		user-select: none;
@@ -63,7 +63,7 @@
 	}
 
 	.powerup-btn:active:not(:disabled) {
-		background: #e0e0e0;
+		background: var(--border-default);
 		transform: scale(0.95);
 	}
 
@@ -76,8 +76,8 @@
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		background: #333;
-		color: white;
+		background: var(--bg-dark);
+		color: var(--bg-primary);
 		font-size: 0.65rem;
 		font-weight: 700;
 		width: 18px;

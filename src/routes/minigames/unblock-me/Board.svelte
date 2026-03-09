@@ -211,9 +211,9 @@
         position: relative;
         width: 100%;
         aspect-ratio: 1/1;
-        background: #f8f9fa;
+        background: var(--bg-secondary);
         border-radius: 16px;
-        border: 3px solid #333;
+        border: 3px solid var(--text-primary);
         overflow: hidden;
         box-shadow: 0 8px 32px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.08);
     }
@@ -240,7 +240,7 @@
         position: absolute;
         right: 0;
         transform: translateY(-50%);
-        color: #ef5350;
+        color: var(--color-red);
         opacity: 0.7;
         animation: nudge 2s infinite ease-in-out;
     }
@@ -279,11 +279,11 @@
         position: relative;
         overflow: hidden;
         background: var(--block-color);
-        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        box-shadow: 0 1px 3px var(--shadow-md);
     }
 
     .block.dragging .block-inner {
-        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        box-shadow: 0 4px 12px var(--shadow-lg);
     }
 
     /* Hero block */
@@ -292,7 +292,7 @@
     }
 
     .block.hero .block-inner {
-        background: #ef5350;
+        background: var(--color-red);
         box-shadow: 0 2px 8px rgba(239,83,80,0.3);
     }
 

@@ -36,7 +36,7 @@
 		} else if (localStorage.getItem('energy_save')) {
 			game.loadGame();
 		} else {
-			goto('/games/start/energy', { replaceState: true });
+			goto('/minigames/start/energy', { replaceState: true });
 		}
 	});
 
@@ -148,7 +148,7 @@
 				onQuit={() => {
 					game.stopTimer();
 					localStorage.removeItem('energy_save');
-					goto('/games/start/energy');
+					goto('/minigames/start/energy');
 				}}
 				onRestart={game.restartGame}
 			/>
@@ -180,7 +180,7 @@
 				primaryAction={{ label: '다시 도전', onclick: game.startGame }}
 				secondaryAction={{
 					label: '나가기',
-					onclick: () => goto('/games/start/energy')
+					onclick: () => goto('/minigames/start/energy')
 				}}
 			/>
 		{/if}
@@ -274,13 +274,13 @@
 		flex-direction: column;
 		overscroll-behavior: none;
 		margin: 0 auto;
-		background: #f8f9fa;
+		background: var(--bg-secondary);
 	}
 
 	/* Buttons */
 	.btn-primary {
-		background: #333;
-		color: white;
+		background: var(--bg-dark);
+		color: var(--bg-primary);
 		border: none;
 		padding: 0.85rem 1.5rem;
 		border-radius: 14px;
@@ -302,8 +302,8 @@
 	}
 
 	.btn-secondary {
-		background: #f1f3f5;
-		color: #333;
+		background: var(--bg-tertiary);
+		color: var(--text-primary);
 		border: none;
 		padding: 0.85rem 1.5rem;
 		border-radius: 14px;
@@ -316,7 +316,7 @@
 
 	.btn-secondary:active {
 		transform: scale(0.97);
-		background: #e9ecef;
+		background: var(--bg-hover);
 	}
 
 	/* Game Header */
@@ -340,7 +340,7 @@
 	.difficulty-badge {
 		font-size: 0.75rem;
 		font-weight: 600;
-		color: #555;
+		color: var(--text-darker);
 		text-transform: uppercase;
 		letter-spacing: 1px;
 	}
@@ -348,7 +348,7 @@
 	.moves {
 		font-size: 0.85rem;
 		font-weight: 600;
-		color: #333;
+		color: var(--text-primary);
 	}
 
 	.timer-controls {
@@ -361,8 +361,8 @@
 		font-size: 1.6rem;
 		font-weight: 400;
 		font-variant-numeric: tabular-nums;
-		color: #333;
-		background: #f5f5f7;
+		color: var(--text-primary);
+		background: var(--bg-surface);
 		padding: 0.4rem 1rem;
 		border-radius: 30px;
 		min-width: 80px;
@@ -382,7 +382,7 @@
 	}
 
 	.icon-btn:active {
-		background: #f0f0f0;
+		background: var(--bg-elevated);
 	}
 
 	.header-items {
@@ -392,7 +392,7 @@
 	}
 
 	.theme-btn {
-		background: #f0f0f0;
+		background: var(--bg-elevated);
 		width: 32px;
 		height: 32px;
 		border-radius: 50%;
@@ -410,7 +410,7 @@
 	.guide-modal h3 {
 		margin: 0 0 1rem 0;
 		font-size: 1.2rem;
-		color: #333;
+		color: var(--text-primary);
 		text-align: center;
 	}
 	.guide-list {
@@ -425,8 +425,8 @@
 		align-items: center;
 		gap: 0.75rem;
 		padding: 0.75rem;
-		background: #f8f9fa;
-		border: 1px solid #e9ecef;
+		background: var(--bg-secondary);
+		border: 1px solid var(--bg-hover);
 		border-radius: 10px;
 		cursor: pointer;
 		transition: background 0.15s;
@@ -434,7 +434,7 @@
 		text-align: left;
 	}
 	.guide-item:hover {
-		background: #e9ecef;
+		background: var(--bg-hover);
 	}
 	.guide-diff-badge {
 		font-size: 0.7rem;
@@ -442,22 +442,22 @@
 		padding: 0.15rem 0.5rem;
 		border-radius: 6px;
 		white-space: nowrap;
-		background: #e9ecef;
-		color: #495057;
+		background: var(--bg-hover);
+		color: var(--text-dark);
 	}
-	.guide-diff-badge.easy { background: #d3f9d8; color: #2b8a3e; }
-	.guide-diff-badge.medium { background: #fff3bf; color: #e67700; }
-	.guide-diff-badge.hard { background: #ffd8a8; color: #d9480f; }
-	.guide-diff-badge.expert { background: #ffc9c9; color: #c92a2a; }
-	.guide-diff-badge.master { background: #eebefa; color: #862e9c; }
+	.guide-diff-badge.easy { background: var(--color-success-bg); color: var(--color-green-dark); }
+	.guide-diff-badge.medium { background: var(--color-warning-bg); color: var(--color-orange-dark); }
+	.guide-diff-badge.hard { background: var(--color-warning-bg); color: var(--color-orange-dark); }
+	.guide-diff-badge.expert { background: var(--color-error-bg); color: var(--color-red-dark); }
+	.guide-diff-badge.master { background: var(--color-info-bg); color: var(--color-blue-bright); }
 	.guide-title {
 		flex: 1;
 		font-size: 0.9rem;
-		color: #333;
+		color: var(--text-primary);
 	}
 	.guide-arrow {
 		font-size: 1.2rem;
-		color: #adb5bd;
+		color: var(--text-hint);
 	}
 	.guide-close-btn {
 		margin-top: 1rem;
@@ -501,19 +501,19 @@
 		display: flex;
 		align-items: center;
 		gap: 6px;
-		background: #f0f0f0;
+		background: var(--bg-elevated);
 		border: none;
 		padding: 0.7rem 1.4rem;
 		border-radius: 50px;
 		font-size: 0.9rem;
 		font-weight: 600;
-		color: #555;
+		color: var(--text-darker);
 		cursor: pointer;
 		transition: all 0.2s;
 	}
 
 	.undo-btn:active:not(:disabled) {
-		background: #e0e0e0;
+		background: var(--border-default);
 		transform: scale(0.95);
 	}
 
@@ -526,7 +526,7 @@
 	.overlay {
 		position: fixed;
 		inset: 0;
-		background: rgba(0, 0, 0, 0.3);
+		background: var(--shadow-heavy);
 		display: flex;
 		align-items: center;
 		justify-content: center;
@@ -534,19 +534,19 @@
 	}
 
 	.modal {
-		background: white;
+		background: var(--bg-primary);
 		border-radius: 24px;
 		padding: 2rem;
 		width: 90%;
 		max-width: 340px;
 		text-align: center;
-		box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+		box-shadow: 0 20px 60px var(--shadow-lg);
 		animation: popIn 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
 	}
 
 	.modal p {
 		margin: 0 0 1.5rem 0;
-		color: #555;
+		color: var(--text-darker);
 		font-size: 0.95rem;
 		line-height: 1.5;
 	}

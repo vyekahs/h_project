@@ -50,7 +50,7 @@
                 }
             }
             // No params - redirect to start page
-            goto('/games/start/killer-sudoku', { replaceState: true });
+            goto('/minigames/start/killer-sudoku', { replaceState: true });
         }
 
         return () => {
@@ -143,7 +143,7 @@
             onAdReward={game.handleAdReward}
             newTitleName={game.newTitleName}
             showVisitPrompt={game.showVisitPrompt}
-            primaryAction={{ label: '다시 도전하기', onclick: () => goto('/games/start/killer-sudoku') }}
+            primaryAction={{ label: '다시 도전하기', onclick: () => goto('/minigames/start/killer-sudoku') }}
             secondaryAction={{ label: '나가기', onclick: game.quitGame }}
         />
     {/if}
@@ -232,11 +232,11 @@
     .alert-modal h3 {
         margin: 0;
         font-size: 1.4rem;
-        color: #333;
+        color: var(--text-primary);
     }
     .alert-modal p {
         font-size: 1.05rem;
-        color: #555;
+        color: var(--text-darker);
         line-height: 1.4;
     }
 
@@ -249,7 +249,7 @@
     .guide-modal h3 {
         margin: 0 0 1rem 0;
         font-size: 1.2rem;
-        color: #333;
+        color: var(--text-primary);
         text-align: center;
     }
     .guide-list {
@@ -264,8 +264,8 @@
         align-items: center;
         gap: 0.75rem;
         padding: 0.75rem;
-        background: #f8f9fa;
-        border: 1px solid #e9ecef;
+        background: var(--bg-secondary);
+        border: 1px solid var(--bg-hover);
         border-radius: 10px;
         cursor: pointer;
         transition: background 0.15s;
@@ -273,7 +273,7 @@
         text-align: left;
     }
     .guide-item:hover {
-        background: #e9ecef;
+        background: var(--bg-hover);
     }
     .guide-diff-badge {
         font-size: 0.7rem;
@@ -281,22 +281,22 @@
         padding: 0.15rem 0.5rem;
         border-radius: 6px;
         white-space: nowrap;
-        background: #e9ecef;
-        color: #495057;
+        background: var(--bg-hover);
+        color: var(--text-dark);
     }
-    .guide-diff-badge.easy { background: #d3f9d8; color: #2b8a3e; }
-    .guide-diff-badge.medium { background: #fff3bf; color: #e67700; }
-    .guide-diff-badge.hard { background: #ffd8a8; color: #d9480f; }
-    .guide-diff-badge.expert { background: #ffc9c9; color: #c92a2a; }
-    .guide-diff-badge.master { background: #eebefa; color: #862e9c; }
+    .guide-diff-badge.easy { background: var(--color-success-bg); color: var(--color-green-dark); }
+    .guide-diff-badge.medium { background: var(--color-warning-bg); color: var(--color-orange-dark); }
+    .guide-diff-badge.hard { background: var(--color-warning-bg); color: var(--color-orange-dark); }
+    .guide-diff-badge.expert { background: var(--color-error-bg); color: var(--color-red-dark); }
+    .guide-diff-badge.master { background: var(--color-info-bg); color: var(--color-blue-bright); }
     .guide-title {
         flex: 1;
         font-size: 0.9rem;
-        color: #333;
+        color: var(--text-primary);
     }
     .guide-arrow {
         font-size: 1.2rem;
-        color: #adb5bd;
+        color: var(--text-hint);
     }
     .guide-close-btn {
         margin-top: 1rem;
@@ -319,11 +319,11 @@
 		margin: 0 auto;
         height: 100dvh;
         overflow: hidden;
-        color: #333;
+        color: var(--text-primary);
         position: relative;
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
         touch-action: manipulation;
-        background: #f8f9fa;
+        background: var(--bg-secondary);
 	}
 
 	header {
@@ -346,7 +346,7 @@
     .difficulty-badge {
         font-size: 0.75rem;
         font-weight: 600;
-        color: #555;
+        color: var(--text-darker);
         text-transform: uppercase;
         letter-spacing: 1px;
     }
@@ -354,7 +354,7 @@
     .mistakes {
         font-size: 0.85rem;
         font-weight: 600;
-        color: #333;
+        color: var(--text-primary);
         display: flex;
         align-items: center;
         gap: 0.3rem;
@@ -373,7 +373,7 @@
     }
 
     .theme-btn {
-        background: #f0f0f0;
+        background: var(--bg-elevated);
         width: 32px; height: 32px;
         border-radius: 50%;
         display: flex;
@@ -386,8 +386,8 @@
         font-size: 1.6rem;
         font-weight: 400;
         font-variant-numeric: tabular-nums;
-        color: #333;
-        background: #f5f5f7;
+        color: var(--text-primary);
+        background: var(--bg-surface);
         padding: 0.4rem 1rem;
         border-radius: 30px;
         min-width: 80px;
@@ -396,7 +396,7 @@
 
     .timer.frozen {
         background: linear-gradient(135deg, #e0f7fa, #b2ebf2);
-        color: #00838f;
+        color: var(--color-green-dark);
     }
 
     .icon-btn {
@@ -412,7 +412,7 @@
     }
 
     .icon-btn:hover {
-        background: #f0f0f0;
+        background: var(--bg-elevated);
     }
 
     .game-play-area {
@@ -453,7 +453,7 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        background: rgba(0,0,0,0.2);
+        background: var(--overlay-medium);
     }
 
     .modal {
@@ -463,17 +463,17 @@
         padding: 3rem;
         border-radius: 24px;
         text-align: center;
-        box-shadow: 0 20px 60px rgba(0,0,0,0.15);
+        box-shadow: 0 20px 60px var(--shadow-lg);
         display: flex;
         flex-direction: column;
         gap: 1.5rem;
         min-width: 300px;
-        border: 1px solid rgba(0,0,0,0.05);
+        border: 1px solid var(--overlay-light);
     }
 
     .btn-primary {
-        background: #333;
-        color: white;
+        background: var(--bg-dark);
+        color: var(--bg-primary);
         border: none;
         padding: 1rem 2.5rem;
         border-radius: 50px;
@@ -481,17 +481,17 @@
         font-size: 1.1rem;
         cursor: pointer;
         transition: all 0.2s;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        box-shadow: 0 4px 12px var(--overlay-medium);
     }
 
     .btn-primary:active {
         transform: scale(0.98);
-        box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+        box-shadow: 0 2px 6px var(--shadow-lg);
     }
 
     .btn-secondary {
-        background: #f0f0f0;
-        color: #333;
+        background: var(--bg-elevated);
+        color: var(--text-primary);
         border: none;
         padding: 0.8rem 2rem;
         border-radius: 50px;
@@ -506,7 +506,7 @@
     }
 
     .btn-secondary:hover {
-        background: #e0e0e0;
+        background: var(--border-default);
     }
 
 </style>

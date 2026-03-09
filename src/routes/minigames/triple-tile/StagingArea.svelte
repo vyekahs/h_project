@@ -58,7 +58,7 @@
 		height: 42px;
 		border-radius: 8px;
 		background: rgba(255, 255, 255, 0.6);
-		border: 1.5px dashed rgba(0, 0, 0, 0.1);
+		border: 1.5px dashed var(--shadow-md);
 		display: flex;
 		align-items: center;
 		justify-content: center;
@@ -66,7 +66,7 @@
 	}
 
 	.slot.occupied {
-		background: white;
+		background: var(--bg-primary);
 		border: 1.5px solid rgba(0, 0, 0, 0.08);
 		box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
 		animation: slideIn 0.2s ease;
@@ -101,7 +101,7 @@
 		40% {
 			transform: scale(1.15);
 			opacity: 1;
-			background: #d4edda;
+			background: var(--color-success-bg);
 		}
 		100% {
 			transform: scale(0);

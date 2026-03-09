@@ -76,7 +76,7 @@
         aspect-ratio: 0.8;
         font-size: 2rem;
         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-        color: #007aff;
+        color: var(--color-blue-bright);
         border: none;
         background: transparent;
         cursor: pointer;
@@ -98,7 +98,7 @@
 
     .num-btn:active {
         transform: scale(0.9);
-        background: rgba(0,0,0,0.05);
+        background: var(--overlay-light);
         border-radius: 8px;
     }
     
@@ -122,7 +122,7 @@
         background: none;
         border: none;
         cursor: pointer;
-        color: #8e8e93; /* IOS Gray */
+        color: var(--text-tertiary); /* IOS Gray */
         transition: color 0.2s;
         position: relative;
         min-width: 60px;
@@ -142,26 +142,26 @@
 
     .toggle-indicator {
         font-size: 0.6rem;
-        background: #e0e0e0;
+        background: var(--border-default);
         padding: 1px 6px;
         border-radius: 10px;
-        color: #666;
+        color: var(--text-secondary);
         position: absolute;
         top: -8px;
         right: 0;
     }
     
     .toggle-indicator.on {
-        background: #007aff;
-        color: white;
+        background: var(--color-blue-bright);
+        color: var(--bg-primary);
     }
     
     .tool-btn:hover {
-        color: #333;
+        color: var(--text-primary);
     }
     
     .tool-btn.active {
-        color: #007aff; /* Active Blue */
+        color: var(--color-blue-bright); /* Active Blue */
     }
     
     .tool-btn.active svg {

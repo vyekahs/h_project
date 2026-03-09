@@ -174,8 +174,8 @@
 	.board {
 		display: flex;
 		flex-direction: column;
-		border: 1px solid #999;
-        background: #fff;
+		border: 1px solid var(--text-muted);
+        background: var(--bg-primary);
         box-shadow: 0 4px 20px rgba(0,0,0,0.08);
         width: 100%;
         max-width: 500px;
@@ -198,7 +198,7 @@
 		cursor: pointer;
 		user-select: none;
         position: relative;
-        color: #1a1a1a;
+        color: var(--text-primary);
         font-weight: 500;
         transition: none;
         touch-action: manipulation;
@@ -217,7 +217,7 @@
     }
 
     .note-item.highlight {
-        color: #1a73e8 !important;
+        color: var(--color-blue-bright) !important;
         font-weight: bold !important;
         font-size: 0.48em !important;
     }
@@ -232,7 +232,7 @@
     }
 
     .cell.error {
-        color: #dc2626 !important;
+        color: var(--color-red-dark) !important;
         background: #fee2e2 !important;
     }
 
@@ -243,11 +243,11 @@
         left: 1px;
         font-size: clamp(0.5rem, 2vw, 0.65rem);
         font-weight: 700;
-        color: #333;
+        color: var(--text-primary);
         line-height: 1;
         z-index: 3;
         pointer-events: none;
-        text-shadow: 0 0 2px #fff, 0 0 2px #fff;
+        text-shadow: 0 0 2px var(--bg-primary), 0 0 2px var(--bg-primary);
     }
 
     /* ── Notes grid ── */
@@ -274,7 +274,7 @@
         height: 100%;
         overflow: hidden;
         visibility: hidden;
-        color: #777;
+        color: var(--text-tertiary);
         font-weight: 500;
     }
 
