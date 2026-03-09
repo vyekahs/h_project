@@ -145,7 +145,7 @@
 		{:else if activeTab === 'ranking'}
 			<div class="ranking-container">
 				<p class="ranking-desc">매월 1일 초기화</p>
-				<p class="ranking-formula">우리 팀 최종 점수가 랭킹에 그대로 반영돼요</p>
+				<p class="ranking-formula">우리팀 점수 - 상대팀 점수 (최소 100점)</p>
 				<div class="ranking-panel">
 					<h3 class="ranking-title">이달의 랭킹</h3>
 					{#if rankingLoading}
