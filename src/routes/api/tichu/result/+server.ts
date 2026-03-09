@@ -30,7 +30,10 @@ export async function POST({ request, cookies }: { request: Request; cookies: an
 
             for (const player of playerData) {
                 const isWinner = player.team === winner;
-                const score = player.team === 'A' ? scoreA : scoreB;
+                const myTeamScore = player.team === 'A' ? scoreA : scoreB;
+                const enemyTeamScore = player.team === 'A' ? scoreB : scoreA;
+                const scoreDiff = myTeamScore - enemyTeamScore;
+                const score = Math.max(scoreDiff, 100); // 최소 100점 보장
 
                 if (player.id > 0) {
                     await tx.execute(
