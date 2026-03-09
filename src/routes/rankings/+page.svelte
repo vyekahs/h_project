@@ -81,7 +81,7 @@
     }
     .header h1 {
         margin: 0 0 0.5rem 0;
-        color: #333;
+        color: var(--text-primary);
         font-size: 2rem;
     }
 
@@ -92,19 +92,19 @@
         margin-bottom: 3rem;
     }
     .ranking-card {
-        background: white;
+        background: var(--bg-primary);
         border-radius: 16px;
         padding: 1.5rem;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.05);
-        border: 1px solid #eee;
+        box-shadow: 0 4px 15px var(--overlay-light);
+        border: 1px solid var(--border-light);
     }
     .ranking-card h2 {
         margin: 0 0 1.5rem 0;
         font-size: 1.25rem;
-        color: #333;
+        color: var(--text-primary);
         text-align: center;
         padding-bottom: 1rem;
-        border-bottom: 2px solid #f0f0f0;
+        border-bottom: 2px solid var(--bg-elevated);
     }
     .ranking-list {
         display: flex;
@@ -115,30 +115,30 @@
         display: flex;
         align-items: center;
         padding: 0.75rem;
-        background: #f9f9f9;
+        background: var(--bg-secondary);
         border-radius: 8px;
     }
-    .ranking-item:nth-child(1) { background: #fff8e1; border: 1px solid #ffecb3; }
-    .ranking-item:nth-child(2) { background: #f5f5f5; border: 1px solid #e0e0e0; }
-    .ranking-item:nth-child(3) { background: #fff3e0; border: 1px solid #ffe0b2; }
+    .ranking-item:nth-child(1) { background: var(--color-warning-bg); border: 1px solid var(--border-warning); }
+    .ranking-item:nth-child(2) { background: var(--bg-surface); border: 1px solid var(--border-default); }
+    .ranking-item:nth-child(3) { background: var(--color-warning-bg); border: 1px solid var(--border-warning); }
 
     .rank {
         font-weight: bold;
         width: 30px;
-        color: #666;
+        color: var(--text-secondary);
     }
-    .ranking-item:nth-child(1) .rank { color: #ffc107; font-size: 1.2rem; }
-    .ranking-item:nth-child(2) .rank { color: #9e9e9e; font-size: 1.1rem; }
-    .ranking-item:nth-child(3) .rank { color: #ff9800; font-size: 1.1rem; }
+    .ranking-item:nth-child(1) .rank { color: var(--color-amber); font-size: 1.2rem; }
+    .ranking-item:nth-child(2) .rank { color: var(--text-muted); font-size: 1.1rem; }
+    .ranking-item:nth-child(3) .rank { color: var(--color-orange); font-size: 1.1rem; }
 
     .name {
         flex: 1;
         font-weight: 500;
-        color: #333;
+        color: var(--text-primary);
     }
     .score {
         font-weight: bold;
-        color: #007bff;
+        color: var(--color-blue-bright);
     }
     .stats {
         text-align: right;
@@ -146,17 +146,17 @@
     .rate {
         display: block;
         font-weight: bold;
-        color: #007bff;
+        color: var(--color-blue-bright);
     }
     .detail {
         font-size: 0.8rem;
-        color: #999;
+        color: var(--text-muted);
     }
 
     .titles-section h2 {
         text-align: center;
         margin-bottom: 2rem;
-        color: #333;
+        color: var(--text-primary);
     }
     .titles-grid {
         display: grid;
@@ -164,12 +164,12 @@
         gap: 1.5rem;
     }
     .title-card {
-        background: white;
+        background: var(--bg-primary);
         padding: 1.5rem;
         border-radius: 12px;
         text-align: center;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
-        border: 1px solid #eee;
+        box-shadow: 0 2px 8px var(--overlay-light);
+        border: 1px solid var(--border-light);
         transition: transform 0.2s;
     }
     .title-card:hover {
@@ -178,7 +178,7 @@
     .title-card h3 {
         margin: 0 0 1rem 0;
         font-size: 1rem;
-        color: #666;
+        color: var(--text-secondary);
     }
     .holder {
         display: flex;
@@ -190,17 +190,17 @@
     .holder .name {
         font-size: 1.1rem;
         font-weight: bold;
-        color: #333;
+        color: var(--text-primary);
         flex: initial;
     }
     .wins {
-        color: #007bff;
+        color: var(--color-blue-bright);
         font-size: 0.9rem;
         margin: 0;
     }
     .empty-state {
         text-align: center;
-        color: #999;
+        color: var(--text-muted);
         padding: 2rem;
     }
 

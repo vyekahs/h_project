@@ -32,15 +32,15 @@
         justify-content: center;
         align-items: center;
         min-height: 100vh;
-        background: #f0f2f5;
+        background: var(--bg-elevated);
         font-family: sans-serif;
         padding: 1rem;
     }
     .login-box {
-        background: white;
+        background: var(--bg-primary);
         padding: 2rem;
         border-radius: 12px;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        box-shadow: 0 4px 12px var(--shadow-md);
         width: 100%;
         max-width: 360px;
         text-align: center;
@@ -48,7 +48,7 @@
     h1 {
         font-size: 1.5rem;
         margin-bottom: 1.5rem;
-        color: #333;
+        color: var(--text-primary);
     }
     .form-group {
         margin-bottom: 1rem;
@@ -56,7 +56,7 @@
     input {
         width: 100%;
         padding: 0.75rem;
-        border: 1px solid #ddd;
+        border: 1px solid var(--border-default);
         border-radius: 6px;
         font-size: 1rem;
         box-sizing: border-box;
@@ -64,7 +64,7 @@
     button[type="submit"] {
         width: 100%;
         padding: 0.75rem;
-        color: white;
+        color: var(--bg-primary);
         border: none;
         border-radius: 6px;
         font-size: 1rem;
@@ -73,20 +73,20 @@
         transition: background 0.2s;
     }
     .btn-primary {
-        background: #007bff;
+        background: var(--color-blue-bright);
     }
     .btn-primary:hover {
-        background: #0056b3;
+        background: var(--color-blue-bright);
     }
     .error {
-        color: #d32f2f;
+        color: var(--color-red-dark);
         margin-bottom: 1rem;
         font-size: 0.9rem;
     }
     .back-link, .signup-link {
         display: block;
         margin-top: 1.5rem;
-        color: #666;
+        color: var(--text-secondary);
         text-decoration: none;
         font-size: 0.9rem;
     }
@@ -94,7 +94,7 @@
         text-decoration: underline;
     }
     .signup-link {
-        color: #007bff;
+        color: var(--color-blue-bright);
         margin-top: 1rem;
     }
 </style>

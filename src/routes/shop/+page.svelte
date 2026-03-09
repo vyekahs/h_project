@@ -159,13 +159,13 @@
     }
     
     .header p {
-        color: #888;
+        color: var(--text-tertiary);
         font-size: 0.95rem;
     }
     
     .tabs {
         display: flex;
-        background: #eee;
+        background: var(--border-light);
         padding: 4px;
         border-radius: 12px;
         margin-bottom: 1.5rem;
@@ -179,14 +179,14 @@
         border-radius: 10px;
         font-weight: 600;
         cursor: pointer;
-        color: #888;
+        color: var(--text-tertiary);
         transition: all 0.2s;
     }
     
     .tab.active {
-        background: white;
-        color: #333;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        box-shadow: 0 2px 8px var(--overlay-light);
     }
     
     .shop-grid {
@@ -195,10 +195,10 @@
     }
     
     .item-card {
-        background: white;
+        background: var(--bg-primary);
         padding: 1.2rem;
         border-radius: 16px;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.03);
+        box-shadow: 0 4px 15px var(--shadow-sm);
         display: flex;
         align-items: center;
         gap: 1rem;
@@ -211,7 +211,7 @@
     
     .icon {
         font-size: 2rem;
-        background: #f5f5f7;
+        background: var(--bg-surface);
         width: 50px;
         height: 50px;
         display: flex;
@@ -232,7 +232,7 @@
     .info p {
         margin: 0;
         font-size: 0.85rem;
-        color: #888;
+        color: var(--text-tertiary);
     }
     
     .meta {
@@ -244,13 +244,13 @@
     
     .price {
         font-weight: 600;
-        color: #007aff;
+        color: var(--color-blue-bright);
         font-size: 0.9rem;
     }
     
     .owned-badge {
-        background: #e3f2fd;
-        color: #1565c0;
+        background: var(--color-info-bg);
+        color: var(--color-blue-bright);
         font-size: 0.7rem;
         padding: 2px 6px;
         border-radius: 4px;
@@ -258,8 +258,8 @@
     }
     
     .btn-buy {
-        background: linear-gradient(135deg, #007aff, #0056b3);
-        color: white;
+        background: linear-gradient(135deg, var(--color-blue-bright), var(--color-blue-bright));
+        color: var(--bg-primary);
         border: none;
         padding: 0.6rem 1.2rem;
         border-radius: 20px;
@@ -269,8 +269,8 @@
     }
     
     .btn-buy:disabled {
-        background: #ddd;
-        color: #999;
+        background: var(--border-default);
+        color: var(--text-muted);
         cursor: not-allowed;
     }
     
@@ -281,13 +281,13 @@
     }
     
     .inv-item {
-        background: white;
+        background: var(--bg-primary);
         padding: 1.2rem;
         border-radius: 16px;
         display: flex;
         align-items: center;
         justify-content: space-between;
-        box-shadow: 0 2px 10px rgba(0,0,0,0.03);
+        box-shadow: 0 2px 10px var(--shadow-sm);
     }
     
     .inv-info h3 {
@@ -296,23 +296,23 @@
     }
     
     .count {
-        color: #888;
+        color: var(--text-tertiary);
         font-size: 0.9rem;
     }
     
     .btn-use {
-        background: #f5f5f7;
+        background: var(--bg-surface);
         border: none;
         padding: 0.5rem 1rem;
         border-radius: 8px;
-        color: #888;
+        color: var(--text-tertiary);
         font-size: 0.85rem;
     }
     
     .empty-state {
         text-align: center;
         padding: 3rem;
-        color: #888;
+        color: var(--text-tertiary);
     }
     
     .empty-icon {
@@ -323,7 +323,7 @@
     .btn-link {
         background: none;
         border: none;
-        color: #007aff;
+        color: var(--color-blue-bright);
         font-weight: 600;
         cursor: pointer;
         padding: 0;
