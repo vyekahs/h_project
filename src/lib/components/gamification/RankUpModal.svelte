@@ -265,7 +265,7 @@
 
     .game-name {
         font-size: 1rem;
-        color: #475569;
+        color: var(--color-slate-dark);
         margin-top: 4px;
         font-weight: 700;
     }
@@ -289,7 +289,7 @@
         justify-content: center;
         align-items: center;
         height: 100%;
-        color: #64748b;
+        color: var(--color-slate-dark);
         font-weight: 700;
     }
     .ranking-list {
@@ -317,7 +317,7 @@
     .list-row.is-user {
         background: rgba(255, 255, 255, 1);
         border: 2px solid var(--theme-color);
-        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1), inset 0 0 0 1px rgba(255,255,255,1);
+        box-shadow: 0 8px 20px var(--shadow-md), inset 0 0 0 1px rgba(255,255,255,1);
         z-index: 10;
         position: relative;
         transform: scale(1.03);
@@ -330,16 +330,16 @@
 
     @keyframes tadaEffect {
         0% { transform: scale(1.03) rotate(0deg); }
-        20% { transform: scale(1.1) rotate(-3deg); box-shadow: 0 12px 30px rgba(0, 0, 0, 0.15); }
+        20% { transform: scale(1.1) rotate(-3deg); box-shadow: 0 12px 30px var(--shadow-lg); }
         40% { transform: scale(1.1) rotate(3deg); }
         60% { transform: scale(1.1) rotate(-3deg); }
         80% { transform: scale(1.1) rotate(3deg); }
-        100% { transform: scale(1.05) rotate(0deg); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1); }
+        100% { transform: scale(1.05) rotate(0deg); box-shadow: 0 8px 24px var(--shadow-md); }
     }
 
     .list-row .rank-num {
         font-weight: 800;
-        color: #64748b;
+        color: var(--color-slate-dark);
         width: 34px;
         display: inline-block;
         font-size: 1.1rem;
@@ -370,14 +370,14 @@
     
     .gap-text {
         font-size: 0.75rem;
-        color: #ef4444; /* red-500 */
+        color: var(--color-red); /* red-500 */
         margin-top: 1px;
         font-weight: 600;
     }
     
     .list-row .nickname {
         font-weight: 600;
-        color: #334155;
+        color: var(--text-dark);
         font-size: 0.95rem;
         white-space: nowrap;
         overflow: hidden;
@@ -390,7 +390,7 @@
     }
     .user-badge {
         background: var(--theme-color);
-        color: white;
+        color: var(--bg-primary);
         font-size: 0.6rem;
         font-weight: 800;
         padding: 2px 6px;
@@ -399,7 +399,7 @@
     }
     .list-row .score {
         font-weight: 700;
-        color: #64748b;
+        color: var(--color-slate-dark);
         font-size: 0.9rem;
     }
     .list-row.is-user .score {
@@ -421,34 +421,34 @@
 
     .score-label {
         font-weight: 800;
-        color: #475569;
+        color: var(--color-slate-dark);
     }
 
     .score-val {
         font-weight: 900;
         color: var(--theme-color);
         font-size: 1.3rem;
-        text-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        text-shadow: 0 2px 8px var(--shadow-md);
     }
 
     .btn-awesome {
         width: 100%;
         padding: 18px;
         background: var(--theme-color);
-        color: white;
+        color: var(--bg-primary);
         border: 1px solid rgba(255,255,255,0.4);
         border-radius: 20px;
         font-size: 1.1rem;
         font-weight: 900;
         text-transform: uppercase;
         cursor: pointer;
-        box-shadow: 0 6px 16px rgba(0, 0, 0, 0.15), inset 0 2px 4px rgba(255,255,255,0.3);
+        box-shadow: 0 6px 16px var(--shadow-lg), inset 0 2px 4px rgba(255,255,255,0.3);
         transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.15s ease;
-        text-shadow: 0 1px 2px rgba(0,0,0,0.1);
+        text-shadow: 0 1px 2px var(--shadow-md);
     }
 
     .btn-awesome:active {
         transform: translateY(4px);
-        box-shadow: 0 0 0 rgba(0, 0, 0, 0.1), inset 0 2px 8px rgba(0,0,0,0.2);
+        box-shadow: 0 0 0 var(--shadow-md), inset 0 2px 8px var(--overlay-medium);
     }
 </style>

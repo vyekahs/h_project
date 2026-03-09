@@ -46,8 +46,8 @@
     }
 
     .profile-badge {
-        background: rgba(0, 0, 0, 0.6);
-        color: white;
+        background: var(--shadow-deep);
+        color: var(--bg-primary);
         font-size: 0.85rem;
         padding: 4px 10px;
         border-radius: 16px;
@@ -63,15 +63,15 @@
     .title-badge {
         font-size: 0.7rem;
         font-weight: 700;
-        color: #1a1a2e;
-        background: linear-gradient(135deg, #fbbf24, #f59e0b);
+        color: var(--text-primary);
+        background: linear-gradient(135deg, var(--color-amber), var(--color-amber-dark));
         padding: 2px 7px;
         border-radius: 8px;
         flex-shrink: 0;
     }
 
     .name-text {
-        color: white;
+        color: var(--bg-primary);
         font-weight: 500;
     }
 
@@ -85,10 +85,10 @@
         padding: 4px 10px;
         border-radius: 16px;
         box-shadow: 0 4px 10px rgba(0,0,0,0.08);
-        border: 1px solid rgba(0,0,0,0.05);
+        border: 1px solid var(--overlay-light);
         font-size: 0.85rem;
         font-weight: 600;
-        color: #333;
+        color: var(--text-primary);
     }
     
     .icon {
@@ -97,6 +97,6 @@
     
     .amount {
         font-variant-numeric: tabular-nums;
-        color: #007aff;
+        color: var(--color-blue-bright);
     }
 </style>

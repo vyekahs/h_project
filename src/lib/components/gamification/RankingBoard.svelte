@@ -120,21 +120,21 @@
     
     .score-cell {
         font-weight: 700;
-        color: #333;
+        color: var(--text-primary);
     }
 
     .ranking-board {
-        background: white;
+        background: var(--bg-primary);
         border-radius: 16px;
         padding: 1.5rem;
-        box-shadow: 0 4px 20px rgba(0,0,0,0.05);
+        box-shadow: 0 4px 20px var(--overlay-light);
         width: 100%;
     }
     
     .header h3 {
         margin: 0 0 1rem 0;
         text-align: center;
-        color: #333;
+        color: var(--text-primary);
         font-size: 1.2rem;
     }
     
@@ -147,16 +147,16 @@
     th {
         text-align: left;
         padding: 0.8rem;
-        color: #888;
+        color: var(--text-tertiary);
         font-weight: 500;
         font-size: 0.85rem;
-        border-bottom: 1px solid #eee;
+        border-bottom: 1px solid var(--border-light);
     }
     
     td {
         padding: 0.8rem;
-        border-bottom: 1px solid #f9f9f9;
-        color: #444;
+        border-bottom: 1px solid var(--bg-secondary);
+        color: var(--text-primary);
     }
     
     .rank-cell {
@@ -174,7 +174,7 @@
     .loading, .empty, .error {
         text-align: center;
         padding: 1rem;
-        color: #888;
+        color: var(--text-tertiary);
         font-size: 0.9rem; /* Smaller for preview */
     }
 </style>
