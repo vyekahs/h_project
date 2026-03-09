@@ -1,0 +1,284 @@
+{
+  "_comment": "하드코딩 색상 → CSS 변수 매핑. 'exact' 매핑만 수행 (유사색 추정 X)",
+  "_strategy": "context-aware: 같은 색상이라도 사용 컨텍스트에 따라 다른 변수로 매핑",
+
+  "variables": {
+    "--text-primary": { "light": "#333", "dark": "#e5e7eb" },
+    "--text-secondary": { "light": "#666", "dark": "#9ca3af" },
+    "--text-tertiary": { "light": "#888", "dark": "#6b7280" },
+    "--text-muted": { "light": "#999", "dark": "#6b7280" },
+    "--text-hint": { "light": "#adb5bd", "dark": "#4b5563" },
+    "--text-dark": { "light": "#495057", "dark": "#d1d5db" },
+    "--text-darker": { "light": "#555", "dark": "#d1d5db" },
+
+    "--bg-primary": { "light": "#ffffff", "dark": "#1a1b1e" },
+    "--bg-secondary": { "light": "#f8f9fa", "dark": "#25262b" },
+    "--bg-tertiary": { "light": "#f1f3f5", "dark": "#2c2e33" },
+    "--bg-elevated": { "light": "#f0f0f0", "dark": "#2c2e33" },
+    "--bg-hover": { "light": "#e9ecef", "dark": "#343539" },
+    "--bg-active": { "light": "#dee2e6", "dark": "#3e4044" },
+    "--bg-surface": { "light": "#f5f5f5", "dark": "#25262b" },
+    "--bg-dark": { "light": "#333", "dark": "#e5e7eb" },
+
+    "--border-default": { "light": "#ddd", "dark": "#3e4044" },
+    "--border-light": { "light": "#eee", "dark": "#2c2e33" },
+    "--border-medium": { "light": "#ccc", "dark": "#4b5563" },
+
+    "--shadow-sm": { "light": "rgba(0,0,0,0.03)", "dark": "rgba(0,0,0,0.2)" },
+    "--shadow-md": { "light": "rgba(0,0,0,0.1)", "dark": "rgba(0,0,0,0.3)" },
+    "--shadow-lg": { "light": "rgba(0,0,0,0.15)", "dark": "rgba(0,0,0,0.4)" },
+    "--shadow-heavy": { "light": "rgba(0,0,0,0.3)", "dark": "rgba(0,0,0,0.5)" },
+    "--shadow-deep": { "light": "rgba(0,0,0,0.6)", "dark": "rgba(0,0,0,0.7)" },
+
+    "--overlay-light": { "light": "rgba(0,0,0,0.05)", "dark": "rgba(255,255,255,0.05)" },
+    "--overlay-medium": { "light": "rgba(0,0,0,0.2)", "dark": "rgba(0,0,0,0.4)" },
+    "--overlay-heavy": { "light": "rgba(0,0,0,0.5)", "dark": "rgba(0,0,0,0.6)" },
+
+    "--color-slate": { "light": "#94a3b8", "dark": "#94a3b8" },
+    "--color-slate-dark": { "light": "#64748b", "dark": "#94a3b8" },
+
+    "--color-blue": { "light": "#339af0", "dark": "#4dabf7" },
+    "--color-blue-bright": { "light": "#007bff", "dark": "#4dabf7" },
+    "--color-amber": { "light": "#fbbf24", "dark": "#fbbf24" },
+    "--color-amber-dark": { "light": "#f59e0b", "dark": "#f59e0b" },
+    "--color-amber-darker": { "light": "#d97706", "dark": "#f59e0b" },
+    "--color-green": { "light": "#22c55e", "dark": "#34d399" },
+    "--color-green-dark": { "light": "#2b8a3e", "dark": "#34d399" },
+    "--color-red": { "light": "#ef4444", "dark": "#f87171" },
+    "--color-red-dark": { "light": "#d32f2f", "dark": "#f87171" },
+    "--color-orange": { "light": "#ff9800", "dark": "#ffb74d" },
+    "--color-orange-dark": { "light": "#e67700", "dark": "#ff9800" },
+
+    "--color-success-bg": { "light": "#e8f5e9", "dark": "rgba(34,197,94,0.12)" },
+    "--color-error-bg": { "light": "#fff5f5", "dark": "rgba(239,68,68,0.12)" },
+    "--color-warning-bg": { "light": "#fff3e0", "dark": "rgba(251,191,36,0.12)" },
+    "--color-info-bg": { "light": "#e7f5ff", "dark": "rgba(59,130,246,0.12)" }
+  },
+
+  "mappings": {
+    "_comment": "하드코딩 값 → CSS 변수 매핑. context-aware 규칙 포함",
+
+    "simple": {
+      "#333": {
+        "color": "--text-primary",
+        "background": "--bg-dark",
+        "background-color": "--bg-dark",
+        "border": "--text-primary",
+        "border-color": "--text-primary",
+        "_default": "--text-primary"
+      },
+      "#444": "--text-primary",
+      "#666": "--text-secondary",
+      "#888": "--text-tertiary",
+      "#999": "--text-muted",
+      "#555": "--text-darker",
+      "#777": "--text-tertiary",
+      "#adb5bd": "--text-hint",
+      "#495057": "--text-dark",
+
+      "#fff": {
+        "color": "--bg-primary",
+        "background": "--bg-primary",
+        "background-color": "--bg-primary",
+        "border": "--border-light",
+        "border-color": "--border-light",
+        "_default": "--bg-primary"
+      },
+
+      "#f8f9fa": "--bg-secondary",
+      "#f1f3f5": "--bg-tertiary",
+      "#f0f0f0": "--bg-elevated",
+      "#e9ecef": "--bg-hover",
+      "#f5f5f5": "--bg-surface",
+      "#f5f5f7": "--bg-surface",
+      "#f0f2f5": "--bg-elevated",
+      "#f3f4f6": "--bg-secondary",
+      "#f9f9f9": "--bg-secondary",
+
+      "#ddd": "--border-default",
+      "#eee": "--border-light",
+      "#ccc": "--border-medium",
+      "#e0e0e0": "--border-default",
+      "#dee2e6": "--border-default",
+      "#e5e7eb": "--border-light",
+      "#e2e8f0": {
+        "border": "--border-light",
+        "border-color": "--border-light",
+        "background": "--bg-hover",
+        "background-color": "--bg-hover",
+        "_default": "--border-light"
+      },
+
+      "#94a3b8": "--color-slate",
+      "#64748b": "--color-slate-dark",
+      "#9ca3af": "--text-secondary",
+      "#d1d5db": "--text-hint",
+      "#6b7280": "--text-tertiary",
+      "#4b5563": "--text-hint",
+      "#1f2937": "--text-primary",
+      "#374151": "--text-dark",
+
+      "#007bff": "--color-blue-bright",
+      "#339af0": "--color-blue",
+      "#228be6": "--color-blue",
+      "#3b82f6": "--color-blue",
+      "#60a5fa": "--color-blue",
+      "#4c6ef5": "--color-blue",
+      "#2563eb": "--color-blue-bright",
+
+      "#fbbf24": "--color-amber",
+      "#f59e0b": "--color-amber-dark",
+      "#d97706": "--color-amber-darker",
+      "#fcd34d": "--color-amber",
+      "#ffd43b": "--color-amber",
+      "#fab005": "--color-amber",
+
+      "#22c55e": "--color-green",
+      "#2b8a3e": "--color-green-dark",
+      "#4caf50": "--color-green",
+      "#2e7d32": "--color-green-dark",
+
+      "#ef4444": "--color-red",
+      "#d32f2f": "--color-red-dark",
+      "#f87171": "--color-red",
+      "#ff6b6b": "--color-red",
+      "#fa5252": "--color-red",
+      "#dc2626": "--color-red-dark",
+      "#e03131": "--color-red-dark",
+      "#c62828": "--color-red-dark",
+      "#c92a2a": "--color-red-dark",
+
+      "#ff9800": "--color-orange",
+      "#e67700": "--color-orange-dark",
+
+      "#475569": "--color-slate-dark",
+      "#334155": "--text-dark",
+      "#007aff": "--color-blue-bright",
+      "#0056b3": "--color-blue-bright",
+      "#1976d2": "--color-blue-bright",
+      "#1565c0": "--color-blue-bright",
+      "#92400e": "--color-amber-darker",
+      "#868e96": "--text-tertiary",
+      "#f44336": "--color-red",
+      "#dc3545": "--color-red",
+      "#cbd5e1": "--border-default",
+      "#f8fafc": "--bg-secondary",
+      "#fca5a5": "--color-red",
+
+      "#1a1a1a": "--text-primary",
+      "#1a1a2e": "--text-primary",
+      "#212529": "--text-primary",
+      "#343a40": "--text-dark",
+      "#546e7a": "--color-slate-dark",
+      "#6c757d": "--text-secondary",
+      "#9e9e9e": "--text-muted",
+      "#b2b2b2": "--text-muted",
+      "#aaa": "--text-muted",
+      "#8e8e93": "--text-tertiary",
+      "#f1f5f9": "--bg-secondary",
+
+      "#1971c2": "--color-blue-bright",
+      "#1864ab": "--color-blue-bright",
+      "#1a73e8": "--color-blue-bright",
+      "#1e40af": "--color-blue-bright",
+      "#4285f4": "--color-blue",
+      "#74c0fc": "--color-blue",
+      "#93bbfd": "--color-blue",
+      "#93bbfc": "--color-blue",
+      "#7c3aed": "--color-blue",
+
+      "#ef6c00": "--color-orange-dark",
+      "#e65100": "--color-orange-dark",
+      "#d9480f": "--color-orange-dark",
+      "#f08c00": "--color-orange-dark",
+      "#ef5350": "--color-red",
+      "#ff4d4f": "--color-red",
+      "#ffc107": "--color-amber",
+      "#ffd700": "--color-amber",
+      "#945206": "--color-amber-darker",
+
+      "#0ca678": "--color-green",
+      "#20c997": "--color-green",
+      "#00838f": "--color-green-dark",
+
+      "#7b1fa2": "--color-blue-bright",
+      "#862e9c": "--color-blue-bright",
+      "#6a1b9a": "--color-blue-bright",
+      "#283593": "--color-blue-bright",
+
+      "#e5dbff": "--border-light",
+      "#ffe3e3": "--color-error-bg",
+      "#ffd8a8": "--color-warning-bg",
+      "#eebefa": "--color-info-bg",
+      "#e8eaf6": "--color-info-bg",
+      "#f3e5f5": "--color-info-bg",
+      "#e6fcf5": "--color-success-bg",
+      "#fff3bf": "--color-warning-bg",
+
+      "#e7f5ff": "--color-info-bg",
+      "#d0ebff": "--color-info-bg",
+      "#e8f5e9": "--color-success-bg",
+      "#fff5f5": "--color-error-bg",
+      "#fff3e0": "--color-warning-bg",
+      "#fff9db": "--color-warning-bg"
+    },
+
+    "named": {
+      "white": {
+        "background": "--bg-primary",
+        "background-color": "--bg-primary",
+        "color": "--bg-primary",
+        "border": "--bg-primary",
+        "_default": "--bg-primary"
+      },
+      "black": {
+        "color": "--text-primary",
+        "background": "--bg-dark",
+        "background-color": "--bg-dark",
+        "border": "--text-primary",
+        "_default": "--text-primary"
+      }
+    },
+
+    "rgba_shadows": {
+      "rgba(0,0,0,0.03)": "--shadow-sm",
+      "rgba(0,0,0,0.05)": "--overlay-light",
+      "rgba(0,0,0,0.1)": "--shadow-md",
+      "rgba(0,0,0,0.15)": "--shadow-lg",
+      "rgba(0,0,0,0.3)": "--shadow-heavy",
+      "rgba(0,0,0,0.6)": "--shadow-deep"
+    },
+
+    "rgba_overlays": {
+      "rgba(0,0,0,0.2)": "--overlay-medium",
+      "rgba(0,0,0,0.5)": "--overlay-heavy"
+    }
+  },
+
+  "exclude_patterns": [
+    "src/routes/minigames/tichu/",
+    "src/routes/admin/",
+    "src/routes/+layout.svelte"
+  ],
+
+  "exclude_colors": [
+    "#111", "#000", "transparent",
+    "#1e293b",
+    "#364fc7"
+  ],
+
+  "_notes": [
+    "2차 확장: exclude_colors에서 고빈도 색상을 매핑으로 이동",
+    "#fff: context-aware (bg→--bg-primary, border→--border-light)",
+    "#444: --text-primary로 통합",
+    "#94a3b8, #64748b: --color-slate 계열",
+    "#9ca3af, #6b7280, #4b5563, #1f2937 등 Tailwind 계열 회색 매핑 추가",
+    "#228be6, #3b82f6, #60a5fa, #4c6ef5: --color-blue 통합",
+    "#fcd34d, #ffd43b, #fab005: --color-amber 통합",
+    "#f87171, #ff6b6b, #fa5252: --color-red 통합",
+    "#dc2626, #e03131, #c62828, #c92a2a: --color-red-dark 통합",
+    "#4caf50: --color-green, #2e7d32: --color-green-dark",
+    "rgba(0,0,0,0.3): --shadow-heavy, rgba(0,0,0,0.6): --shadow-deep",
+    "+layout.svelte는 exclude_patterns에 추가 (CSS 변수 정의 보호)"
+  ]
+}
