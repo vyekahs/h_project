@@ -21,12 +21,12 @@
             </div>
 
             <!-- Haptics Toggle -->
-            <div class="setting-card">
+            <div class="setting-card haptics-card">
                 <div class="setting-info">
                     <div class="setting-title">진동 효과 (Haptic Feedback)</div>
                     <div class="setting-desc">
                         {#if typeof window !== 'undefined' && !window.navigator?.vibrate}
-                            <span style="color: var(--color-error); font-weight: 600;">현재 기기/브라우저는 진동을 지원하지 않습니다. (예: 아이폰)</span>
+                            <span class="no-support">현재 기기/브라우저는 진동을 지원하지 않습니다. (예: 아이폰)</span>
                         {:else}
                             오락실 게임 진행 중 중요한 순간에 진동으로 알려줍니다.
                         {/if}
@@ -55,46 +55,46 @@
                 </div>
 
                 <div class="theme-options">
-                    <label class="theme-option" class:active={themeStore.theme === 'light'}>
+                    <label class="theme-option" class:active={themeStore.mode === 'light'}>
                         <input
                             type="radio"
                             name="theme"
                             value="light"
-                            checked={themeStore.theme === 'light'}
-                            onchange={() => themeStore.setTheme('light')}
+                            checked={themeStore.mode === 'light'}
+                            onchange={() => themeStore.setMode('light')}
                         />
                         <span class="theme-emoji">☀️</span>
                         <span class="theme-label">라이트</span>
                     </label>
 
-                    <label class="theme-option" class:active={themeStore.theme === 'dark'}>
+                    <label class="theme-option" class:active={themeStore.mode === 'dark'}>
                         <input
                             type="radio"
                             name="theme"
                             value="dark"
-                            checked={themeStore.theme === 'dark'}
-                            onchange={() => themeStore.setTheme('dark')}
+                            checked={themeStore.mode === 'dark'}
+                            onchange={() => themeStore.setMode('dark')}
                         />
                         <span class="theme-emoji">🌙</span>
                         <span class="theme-label">다크</span>
                     </label>
 
-                    <label class="theme-option" class:active={themeStore.theme === 'system'}>
+                    <label class="theme-option" class:active={themeStore.mode === 'system'}>
                         <input
                             type="radio"
                             name="theme"
                             value="system"
-                            checked={themeStore.theme === 'system'}
-                            onchange={() => themeStore.setTheme('system')}
+                            checked={themeStore.mode === 'system'}
+                            onchange={() => themeStore.setMode('system')}
                         />
                         <span class="theme-emoji">💻</span>
                         <span class="theme-label">기기 설정</span>
                     </label>
                 </div>
 
-                {#if themeStore.theme === 'system'}
+                {#if themeStore.mode === 'system'}
                     <p class="system-theme-info">
-                        현재: {themeStore.resolvedTheme === 'dark' ? '다크 모드' : '라이트 모드'}
+                        현재: {themeStore.effectiveTheme === 'dark' ? '다크 모드' : '라이트 모드'}
                     </p>
                 {/if}
             </div>
@@ -111,7 +111,7 @@
         left: 0;
         width: 100%;
         height: 100%;
-        background: var(--overlay-bg);
+        background: var(--overlay-heavy);
         z-index: 1000;
         display: flex;
         align-items: center;
@@ -126,7 +126,7 @@
         border-radius: 16px;
         max-width: 450px;
         width: 100%;
-        box-shadow: var(--shadow-lg);
+        box-shadow: 0 4px 20px var(--shadow-lg);
         max-height: 90vh;
         overflow-y: auto;
     }
@@ -163,8 +163,8 @@
         padding: 1.5rem;
         border-radius: 16px;
         margin-bottom: 1rem;
-        box-shadow: var(--shadow-md);
-        border: 1px solid var(--border-color);
+        box-shadow: 0 2px 10px var(--shadow-sm);
+        border: 1px solid var(--border-light);
     }
 
     .setting-card:last-of-type {
@@ -191,6 +191,11 @@
         line-height: 1.4;
     }
 
+    .no-support {
+        color: var(--color-red);
+        font-weight: 600;
+    }
+
     /* Toggle Switch */
     .toggle-switch {
         position: relative;
@@ -213,13 +218,13 @@
         left: 0;
         right: 0;
         bottom: 0;
-        background-color: var(--border-color-hover);
+        background-color: var(--border-medium);
         transition: .4s;
         border-radius: 34px;
     }
 
     .slider.active {
-        background-color: var(--accent-primary);
+        background-color: var(--color-amber);
     }
 
     .slider-button {
@@ -238,13 +243,13 @@
         transform: translateX(22px);
     }
 
-    .setting-card:first-of-type {
+    .haptics-card {
         display: flex;
         justify-content: space-between;
         align-items: center;
     }
 
-    .setting-card:first-of-type .setting-info {
+    .haptics-card .setting-info {
         margin-bottom: 0;
         flex: 1;
     }
@@ -262,7 +267,7 @@
         align-items: center;
         gap: 0.5rem;
         padding: 1rem;
-        border: 2px solid var(--border-color);
+        border: 2px solid var(--border-light);
         border-radius: 12px;
         background: var(--bg-primary);
         cursor: pointer;
@@ -270,8 +275,8 @@
     }
 
     .theme-option.active {
-        border-color: var(--accent-primary);
-        background: var(--accent-light);
+        border-color: var(--color-blue);
+        background: var(--color-info-bg);
     }
 
     .theme-option input {
@@ -290,7 +295,7 @@
 
     .theme-option.active .theme-label {
         font-weight: 600;
-        color: var(--accent-primary);
+        color: var(--color-blue);
     }
 
     .system-theme-info {
@@ -304,7 +309,7 @@
     .btn-close-modal {
         width: 100%;
         padding: 0.8rem;
-        background: var(--accent-primary);
+        background: var(--color-blue);
         color: var(--bg-primary);
         border: none;
         border-radius: 8px;
@@ -315,6 +320,6 @@
     }
 
     .btn-close-modal:hover {
-        background: var(--accent-hover);
+        opacity: 0.9;
     }
 </style>
