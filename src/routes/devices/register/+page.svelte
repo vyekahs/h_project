@@ -226,7 +226,7 @@
             webBtStatus = '서버에 등록 중...';
 
             // 3. 서버에 직접 등록 (PIN 불필요)
-            const attendeeId = data.user?.id || 1;
+            const attendeeId = data.user.id;
             const deviceName = getDeviceName();
             const res = await fetch('/api/devices/register/direct', {
                 method: 'POST',
@@ -277,7 +277,7 @@
     async function startRegistration() {
         error = '';
         try {
-            const attendeeId = data.user?.id || 1;
+            const attendeeId = data.user.id;
             const deviceName = getDeviceName();
             const res = await fetch('/api/devices/register/start', {
                 method: 'POST',
@@ -411,7 +411,7 @@
             const esp32Url = `http://${ipData.ip}`;
 
             // 2. 서버에서 일회용 코드 발급
-            const attendeeId = data.user?.id || 1;
+            const attendeeId = data.user.id;
             const codeRes = await fetch('/api/wifi/code', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
