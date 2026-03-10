@@ -1,5 +1,6 @@
 <script lang="ts">
     import { onMount, onDestroy } from 'svelte';
+    import { browser } from '$app/environment';
 
     let { children } = $props();
     let originalBg = '';
@@ -10,7 +11,9 @@
     });
 
     onDestroy(() => {
-        document.body.style.backgroundColor = originalBg;
+        if (browser) {
+            document.body.style.backgroundColor = originalBg;
+        }
     });
 </script>
 
