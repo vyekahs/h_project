@@ -751,7 +751,6 @@
             <div class="section-header">
                 <h2>오늘 갈 예정 ({mergedVisitPlans.length})</h2>
                 {#if data.user && !checkedInIds.has(data.user.id)}
-                    {@const hasScheduledGame = (data.userScheduledGames || []).some((g: any) => !g.party_id)}
                     {#if data.userHasVisitPlan}
                         <form method="POST" action="?/toggleVisitPlan" use:enhance={() => {
                             return async ({ result, update }) => { await update(); };
@@ -759,7 +758,7 @@
                             <input type="hidden" name="cancel" value="true" />
                             <button type="submit" class="btn-visit-plan active">취소하기</button>
                         </form>
-                    {:else if !(hasScheduledGame)}
+                    {:else}
                         <button type="button" class="btn-visit-plan" on:click={openVisitPlanModal}>나도 갈 예정!</button>
                     {/if}
                 {/if}

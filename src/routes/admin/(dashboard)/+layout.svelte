@@ -1,16 +1,31 @@
 <script lang="ts">
     import { enhance } from '$app/forms';
     import { page } from '$app/stores';
+    import { onMount, onDestroy } from 'svelte';
+    import { browser } from '$app/environment';
     import type { LayoutData } from './$types';
 
-    export let data: LayoutData;
+    let { data, children }: { data: LayoutData; children: any } = $props();
 
-    let closeDayModalVisible = false;
-    let openDayModalVisible = false;
-    
+    let closeDayModalVisible = $state(false);
+    let openDayModalVisible = $state(false);
+
     // Alert Modal State
-    let alertVisible = false;
-    let alertMessage = '';
+    let alertVisible = $state(false);
+    let alertMessage = $state('');
+
+    let originalBg = '';
+
+    onMount(() => {
+        originalBg = document.body.style.backgroundColor;
+        document.body.style.backgroundColor = '#f5f5f5';
+    });
+
+    onDestroy(() => {
+        if (browser) {
+            document.body.style.backgroundColor = originalBg;
+        }
+    });
 
     function showAlert(msg: string) {
         alertMessage = msg;
@@ -18,6 +33,7 @@
     }
 </script>
 
+<div data-theme="light" class="force-light">
 <div class="admin-layout">
     <aside class="sidebar">
         <div class="sidebar-header">
@@ -82,12 +98,12 @@
                     메인으로
                 </a>
                 {#if data.settings.is_open === 'false'}
-                    <button class="btn-primary" on:click={() => openDayModalVisible = true}>
+                    <button class="btn-primary" onclick={() => openDayModalVisible = true}>
                         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:6px;"><circle cx="12" cy="12" r="5"/><path d="M12 1v2"/><path d="M12 21v2"/><path d="M4.22 4.22l1.42 1.42"/><path d="M18.36 18.36l1.42 1.42"/><path d="M1 12h2"/><path d="M21 12h2"/><path d="M4.22 19.78l1.42-1.42"/><path d="M18.36 5.64l1.42-1.42"/></svg>
                         오픈 하기
                     </button>
                 {:else}
-                    <button class="btn-danger" on:click={() => closeDayModalVisible = true}>
+                    <button class="btn-danger" onclick={() => closeDayModalVisible = true}>
                         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:6px;"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
                         마감 하기
                     </button>
@@ -96,7 +112,7 @@
         </div>
         {/if}
 
-        <slot />
+        {@render children()}
     </main>
 
     <nav class="mobile-bottom-nav">
@@ -138,20 +154,18 @@
         </a>
     </nav>
 </div>
-
+</div>
 
 {#if closeDayModalVisible}
-    <!-- svelte-ignore a11y-click-events-have-key-events -->
-    <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-    <div 
-        class="modal-backdrop" 
-        on:click={() => closeDayModalVisible = false}
-        on:keydown={(e) => e.key === 'Escape' && (closeDayModalVisible = false)}
+    <div
+        class="modal-backdrop"
+        onclick={() => closeDayModalVisible = false}
+        onkeydown={(e) => e.key === 'Escape' && (closeDayModalVisible = false)}
         role="button"
         tabindex="-1"
         aria-label="Close modal"
     >
-        <div class="modal-content confirm-modal" on:click|stopPropagation role="dialog" tabindex="-1">
+        <div class="modal-content confirm-modal" onclick={(e) => e.stopPropagation()} role="dialog" tabindex="-1">
             <h3>
                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px; vertical-align:text-bottom;"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
                 마감 하기
@@ -159,7 +173,7 @@
             <p>정말 마감하시겠습니까?</p>
             <p class="warning-text">모든 참가자가 퇴장 처리되고, 진행 중인 게임이 종료됩니다.</p>
             <div class="modal-actions">
-                <button class="btn-secondary" on:click={() => closeDayModalVisible = false}>취소</button>
+                <button class="btn-secondary" onclick={() => closeDayModalVisible = false}>취소</button>
                 <form method="POST" action="/admin?/closeDay" use:enhance={() => {
                     return async ({ result, update }) => {
                         if (result.type === 'failure') {
@@ -180,24 +194,22 @@
 {/if}
 
 {#if openDayModalVisible}
-    <!-- svelte-ignore a11y-click-events-have-key-events -->
-    <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-    <div 
-        class="modal-backdrop" 
-        on:click={() => openDayModalVisible = false}
-        on:keydown={(e) => e.key === 'Escape' && (openDayModalVisible = false)}
+    <div
+        class="modal-backdrop"
+        onclick={() => openDayModalVisible = false}
+        onkeydown={(e) => e.key === 'Escape' && (openDayModalVisible = false)}
         role="button"
         tabindex="-1"
         aria-label="Close modal"
     >
-        <div class="modal-content confirm-modal" on:click|stopPropagation role="dialog" tabindex="-1">
+        <div class="modal-content confirm-modal" onclick={(e) => e.stopPropagation()} role="dialog" tabindex="-1">
             <h3>
                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px; vertical-align:text-bottom;"><circle cx="12" cy="12" r="5"/><path d="M12 1v2"/><path d="M12 21v2"/><path d="M4.22 4.22l1.42 1.42"/><path d="M18.36 18.36l1.42 1.42"/><path d="M1 12h2"/><path d="M21 12h2"/><path d="M4.22 19.78l1.42-1.42"/><path d="M18.36 5.64l1.42-1.42"/></svg>
                 오픈 하기
             </h3>
             <p>새로운 하루를 시작하시겠습니까?</p>
             <div class="modal-actions">
-                <button class="btn-secondary" on:click={() => openDayModalVisible = false}>취소</button>
+                <button class="btn-secondary" onclick={() => openDayModalVisible = false}>취소</button>
                 <form method="POST" action="/admin?/openDay" use:enhance={() => {
                     return async ({ result, update }) => {
                         if (result.type === 'failure') {
@@ -219,27 +231,93 @@
 
 <!-- Alert Modal -->
 {#if alertVisible}
-    <!-- svelte-ignore a11y-click-events-have-key-events -->
-    <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-    <div 
-        class="modal-backdrop" 
-        on:click={() => alertVisible = false}
-        on:keydown={(e) => e.key === 'Escape' && (alertVisible = false)}
+    <div
+        class="modal-backdrop"
+        onclick={() => alertVisible = false}
+        onkeydown={(e) => e.key === 'Escape' && (alertVisible = false)}
         role="button"
         tabindex="-1"
         aria-label="Close alert"
     >
-        <div class="modal-content alert-modal" on:click|stopPropagation role="alertdialog" tabindex="-1">
+        <div class="modal-content alert-modal" onclick={(e) => e.stopPropagation()} role="alertdialog" tabindex="-1">
             <h3>알림</h3>
             <p>{alertMessage}</p>
             <div class="modal-actions">
-                <button class="btn-primary" on:click={() => alertVisible = false}>확인</button>
+                <button class="btn-primary" onclick={() => alertVisible = false}>확인</button>
             </div>
         </div>
     </div>
 {/if}
 
 <style>
+    .force-light {
+        /* Text */
+        --text-primary: #333;
+        --text-secondary: #666;
+        --text-tertiary: #888;
+        --text-muted: #999;
+        --text-hint: #adb5bd;
+        --text-dark: #495057;
+        --text-darker: #555;
+
+        /* Backgrounds */
+        --bg-primary: #ffffff;
+        --bg-secondary: #f8f9fa;
+        --bg-tertiary: #f1f3f5;
+        --bg-elevated: #f0f0f0;
+        --bg-hover: #e9ecef;
+        --bg-active: #dee2e6;
+        --bg-surface: #f5f5f5;
+        --bg-dark: #333;
+
+        /* Borders */
+        --border-default: #ddd;
+        --border-light: #eee;
+        --border-medium: #ccc;
+
+        /* Shadows */
+        --shadow-sm: rgba(0,0,0,0.03);
+        --shadow-md: rgba(0,0,0,0.1);
+        --shadow-lg: rgba(0,0,0,0.15);
+        --shadow-heavy: rgba(0,0,0,0.3);
+        --shadow-deep: rgba(0,0,0,0.6);
+
+        /* Overlays */
+        --overlay-light: rgba(0,0,0,0.05);
+        --overlay-medium: rgba(0,0,0,0.2);
+        --overlay-heavy: rgba(0,0,0,0.5);
+
+        /* Slate */
+        --color-slate: #94a3b8;
+        --color-slate-dark: #64748b;
+
+        /* Brand colors */
+        --color-blue: #339af0;
+        --color-blue-bright: #007bff;
+        --color-amber: #fbbf24;
+        --color-amber-dark: #f59e0b;
+        --color-amber-darker: #d97706;
+        --color-green: #22c55e;
+        --color-green-dark: #2b8a3e;
+        --color-red: #ef4444;
+        --color-red-dark: #d32f2f;
+        --color-orange: #ff9800;
+        --color-orange-dark: #e67700;
+
+        /* State backgrounds */
+        --color-success-bg: #e8f5e9;
+        --color-error-bg: #fff5f5;
+        --color-warning-bg: #fff3e0;
+        --color-info-bg: #e7f5ff;
+
+        /* Additional Colors */
+        --border-warning: #ffe0b2;
+        --color-purple-bg: #e8d5f5;
+        --color-indigo: #364fc7;
+
+        color-scheme: light;
+    }
+
     .admin-layout {
         display: flex;
         min-height: 100vh;
