@@ -229,6 +229,36 @@ async function migrate() {
         await pool.query(`ALTER TABLE reservations ADD CONSTRAINT reservations_status_check
             CHECK (status IN ('pending', 'waitlisted', 'confirmed', 'cancelled', 'pending_approval'));`);
 
+        // 23. Minigame Game Comments (게임별 한줄 댓글)
+        console.log('[23] Checking minigame_game_comments table...');
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS minigame_game_comments (
+                id BIGSERIAL PRIMARY KEY,
+                game_id VARCHAR(50) NOT NULL,
+                user_id INTEGER REFERENCES attendees(id) ON DELETE CASCADE,
+                content VARCHAR(200) NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        `);
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_game_comments_game_created ON minigame_game_comments(game_id, created_at DESC);');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_game_comments_user ON minigame_game_comments(user_id);');
+
+        // 24. Notifications (알림 시스템)
+        console.log('[24] Checking notifications table...');
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS notifications (
+                id BIGSERIAL PRIMARY KEY,
+                user_id INTEGER NOT NULL REFERENCES attendees(id) ON DELETE CASCADE,
+                type VARCHAR(30) NOT NULL,
+                message TEXT NOT NULL,
+                from_user_id INTEGER REFERENCES attendees(id) ON DELETE SET NULL,
+                reference_id VARCHAR(100),
+                is_read BOOLEAN DEFAULT false,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+        `);
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_notifications_user_read ON notifications(user_id, is_read, created_at DESC);');
+
     } catch (err) {
         console.error('Migration failed:', err);
         process.exit(1);

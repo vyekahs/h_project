@@ -7,6 +7,7 @@
     import PointDisplay from '$lib/components/gamification/PointDisplay.svelte';
     import AdBanner from '$lib/components/ads/AdBanner.svelte';
     import RankUpModal from '$lib/components/gamification/RankUpModal.svelte';
+    import NotificationToast from '$lib/components/notifications/NotificationToast.svelte';
     import { themeStore } from '$lib/stores/theme.svelte';
 
 	let { children } = $props();
@@ -104,6 +105,7 @@
 	{/if}
 
 	<RankUpModal />
+	<NotificationToast />
 </div>
 
 <style>

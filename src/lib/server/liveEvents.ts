@@ -12,6 +12,10 @@ export function emitLiveEvent(type: 'visitors' | 'games') {
 	getLiveEmitter().emit('change', type);
 }
 
+export function emitNotification(userId: number, data: { type: string; title: string; body: string; url?: string }) {
+	getLiveEmitter().emit('notification', { userId, ...data });
+}
+
 // SSE connection counter
 if ((globalThis as any).__sseConnectionCount === undefined) {
 	(globalThis as any).__sseConnectionCount = 0;

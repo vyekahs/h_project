@@ -27,6 +27,7 @@ export const GET: RequestHandler = async ({ cookies }) => {
         ]);
 
         return json({
+            id: userId,
             points,
             inventory,
             title,

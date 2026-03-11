@@ -1,4 +1,4 @@
-import { pgTable, serial, integer, varchar, text, boolean, timestamp, json, bigserial, unique } from 'drizzle-orm/pg-core';
+import { pgTable, serial, integer, varchar, text, boolean, timestamp, json, bigserial, unique, index } from 'drizzle-orm/pg-core';
 import { attendees } from './core';
 
 export const minigameUserPoints = pgTable('minigame_user_points', {
@@ -91,3 +91,14 @@ export const pointTransactions = pgTable('point_transactions', {
 	referenceId: varchar('reference_id', { length: 100 }),
 	createdAt: timestamp('created_at').defaultNow(),
 });
+
+export const minigameGameComments = pgTable('minigame_game_comments', {
+	id: bigserial('id', { mode: 'number' }).primaryKey(),
+	gameId: varchar('game_id', { length: 50 }).notNull(),
+	userId: integer('user_id').notNull().references(() => attendees.id, { onDelete: 'cascade' }),
+	content: varchar('content', { length: 200 }).notNull(),
+	createdAt: timestamp('created_at').defaultNow(),
+}, (table) => [
+	index('idx_game_comments_game_created').on(table.gameId, table.createdAt),
+	index('idx_game_comments_user').on(table.userId),
+]);

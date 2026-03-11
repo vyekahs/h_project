@@ -126,3 +126,27 @@ CREATE TABLE IF NOT EXISTS feedback (
 );
 CREATE INDEX IF NOT EXISTS idx_feedback_user ON feedback(user_id);
 CREATE INDEX IF NOT EXISTS idx_feedback_status ON feedback(status);
+
+-- Minigame Game Comments (게임별 한줄 댓글)
+CREATE TABLE IF NOT EXISTS minigame_game_comments (
+    id BIGSERIAL PRIMARY KEY,
+    game_id VARCHAR(50) NOT NULL,
+    user_id INTEGER REFERENCES attendees(id) ON DELETE CASCADE,
+    content VARCHAR(200) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_game_comments_game_created ON minigame_game_comments(game_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_game_comments_user ON minigame_game_comments(user_id);
+
+-- Notifications (알림 시스템)
+CREATE TABLE IF NOT EXISTS notifications (
+    id BIGSERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES attendees(id) ON DELETE CASCADE,
+    type VARCHAR(30) NOT NULL,
+    message TEXT NOT NULL,
+    from_user_id INTEGER REFERENCES attendees(id) ON DELETE SET NULL,
+    reference_id VARCHAR(100),
+    is_read BOOLEAN DEFAULT false,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_notifications_user_read ON notifications(user_id, is_read, created_at DESC);

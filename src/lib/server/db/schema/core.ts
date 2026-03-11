@@ -1,4 +1,4 @@
-import { pgTable, serial, varchar, text, boolean, timestamp, integer, real } from 'drizzle-orm/pg-core';
+import { pgTable, serial, varchar, text, boolean, timestamp, integer, real, bigserial, index } from 'drizzle-orm/pg-core';
 
 export const users = pgTable('users', {
 	id: serial('id').primaryKey(),
@@ -48,3 +48,16 @@ export const qrTokens = pgTable('qr_tokens', {
 	expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
 	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 });
+
+export const notifications = pgTable('notifications', {
+	id: bigserial('id', { mode: 'number' }).primaryKey(),
+	userId: integer('user_id').notNull().references(() => attendees.id, { onDelete: 'cascade' }),
+	type: varchar('type', { length: 30 }).notNull(),
+	message: text('message').notNull(),
+	fromUserId: integer('from_user_id').references(() => attendees.id, { onDelete: 'set null' }),
+	referenceId: varchar('reference_id', { length: 100 }),
+	isRead: boolean('is_read').default(false),
+	createdAt: timestamp('created_at').defaultNow(),
+}, (table) => [
+	index('idx_notifications_user_read').on(table.userId, table.isRead, table.createdAt),
+]);

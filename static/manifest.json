@@ -1,8 +1,8 @@
 {
     "id": "/",
-    "name": "현황판",
-    "short_name": "보드게임 현황",
-    "description": "보드게임 동아리의 실시간 현황과 게임 도감을 확인하세요.",
+    "name": "혼놀 라운지",
+    "short_name": "혼놀 라운지",
+    "description": "혼자놀다가게의 현황판",
     "start_url": "/",
     "scope": "/",
     "display": "standalone",

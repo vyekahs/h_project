@@ -1,6 +1,7 @@
 import { writable } from 'svelte/store';
 
 interface UserState {
+    id: number | null;
     points: {
         total_points: number;
         daily_earned: number;
@@ -15,6 +16,7 @@ interface UserState {
 }
 
 const initialState: UserState = {
+    id: null,
     points: null,
     currentTitle: null,
     inventory: [],
@@ -36,6 +38,7 @@ function createUserStore() {
                 if (res.ok) {
                     const data = await res.json();
                     update(s => ({
+                        id: data.id ?? null,
                         points: data.points,
                         currentTitle: data.title,
                         inventory: data.inventory,
