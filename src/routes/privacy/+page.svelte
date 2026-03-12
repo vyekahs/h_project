@@ -56,8 +56,8 @@
 <style>
 	.privacy-page {
 		min-height: 100vh;
-		background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
-		color: var(--border-light);
+		background: var(--bg-primary);
+		color: var(--text-primary);
 		padding: 24px 16px 60px;
 	}
 	.container {
@@ -66,22 +66,22 @@
 	}
 	.back-link {
 		display: inline-block;
-		color: var(--color-slate);
+		color: var(--text-muted);
 		text-decoration: none;
 		font-size: 0.9rem;
 		margin-bottom: 24px;
 		transition: color 0.2s;
 	}
-	.back-link:hover { color: var(--border-light); }
+	.back-link:hover { color: var(--text-primary); }
 	h1 {
 		font-size: 1.8rem;
 		font-weight: 800;
-		color: var(--bg-secondary);
+		color: var(--text-primary);
 		margin: 0 0 8px;
 	}
 	.updated {
 		font-size: 0.85rem;
-		color: var(--color-slate-dark);
+		color: var(--text-muted);
 		margin: 0 0 32px;
 	}
 	section {
@@ -90,13 +90,13 @@
 	h2 {
 		font-size: 1.15rem;
 		font-weight: 700;
-		color: var(--bg-secondary);
+		color: var(--text-primary);
 		margin: 0 0 12px;
 	}
 	p {
 		font-size: 0.95rem;
 		line-height: 1.7;
-		color: var(--border-default);
+		color: var(--text-secondary);
 		margin: 0 0 12px;
 	}
 	ul {
@@ -106,7 +106,7 @@
 	li {
 		font-size: 0.95rem;
 		line-height: 1.7;
-		color: var(--border-default);
+		color: var(--text-secondary);
 		margin-bottom: 4px;
 	}
 	a {
