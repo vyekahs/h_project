@@ -65,6 +65,15 @@
             url: '/minigames/start/triple-tile',
             accentColor: '#ec4899',
             releasedAt: '2025-03-01',
+            forceNew: false
+        },
+        {
+            id: 'train-tracks',
+            name: '트레인 트랙',
+            tagline: '선로를 연결하여 기차길을 완성하세요',
+            url: '/minigames/start/train-tracks',
+            accentColor: '#78716c',
+            releasedAt: '2026-03-12',
             forceNew: true
         }
     ];
@@ -121,6 +130,8 @@
                                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="18" rx="3.5" stroke-width="1.5"/><rect x="14" y="3" width="7" height="18" rx="3.5" stroke-width="1.5"/></svg>
                                     {:else if game.id === 'triple-tile'}
                                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="10" width="8" height="8" rx="2" fill="rgba(255,255,255,0.3)"/><rect x="8" y="7" width="8" height="8" rx="2" fill="rgba(255,255,255,0.5)"/><rect x="14" y="4" width="8" height="8" rx="2" fill="rgba(255,255,255,0.7)"/></svg>
+                                    {:else if game.id === 'train-tracks'}
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="4" x2="5" y2="20"/><line x1="19" y1="4" x2="19" y2="20"/><line x1="5" y1="7" x2="19" y2="7"/><line x1="5" y1="12" x2="19" y2="12"/><line x1="5" y1="17" x2="19" y2="17"/></svg>
                                     {/if}
                                 </div>
                             </div>
@@ -153,6 +164,8 @@
                                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="18" rx="3.5" stroke-width="1.5"/><rect x="14" y="3" width="7" height="18" rx="3.5" stroke-width="1.5"/></svg>
                                     {:else if game.id === 'triple-tile'}
                                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="10" width="8" height="8" rx="2" fill="rgba(255,255,255,0.3)"/><rect x="8" y="7" width="8" height="8" rx="2" fill="rgba(255,255,255,0.5)"/><rect x="14" y="4" width="8" height="8" rx="2" fill="rgba(255,255,255,0.7)"/></svg>
+                                    {:else if game.id === 'train-tracks'}
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="4" x2="5" y2="20"/><line x1="19" y1="4" x2="19" y2="20"/><line x1="5" y1="7" x2="19" y2="7"/><line x1="5" y1="12" x2="19" y2="12"/><line x1="5" y1="17" x2="19" y2="17"/></svg>
                                     {/if}
                                 </div>
                             </div>
@@ -215,6 +228,14 @@
                                 <rect x="8" y="7" width="8" height="8" rx="2" fill="rgba(255,255,255,0.5)"/>
                                 <rect x="14" y="4" width="8" height="8" rx="2" fill="rgba(255,255,255,0.7)"/>
                                 <text x="5" y="16" font-size="5" fill="currentColor" stroke="none" text-anchor="middle">3</text>
+                            </svg>
+                        {:else if game.id === 'train-tracks'}
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <line x1="5" y1="4" x2="5" y2="20"/>
+                                <line x1="19" y1="4" x2="19" y2="20"/>
+                                <line x1="5" y1="7" x2="19" y2="7"/>
+                                <line x1="5" y1="12" x2="19" y2="12"/>
+                                <line x1="5" y1="17" x2="19" y2="17"/>
                             </svg>
                         {/if}
                     </div>

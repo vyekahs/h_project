@@ -169,15 +169,13 @@
 				<!-- Error flash overlay -->
 				{#if errorCell && errorCell.row === r && errorCell.col === c}
 					<rect
+						class="error-flash"
 						x={cellX(c)}
 						y={cellY(r)}
 						width={cellSize}
 						height={cellSize}
 						fill="#ef4444"
-						opacity="0"
-					>
-						<animate attributeName="opacity" values="0;0.4;0" dur="0.6s" repeatCount="2" />
-					</rect>
+					/>
 				{/if}
 
 				<!-- Click target -->
@@ -220,5 +218,14 @@
 	@keyframes winPulse {
 		0%, 100% { filter: none; }
 		50% { filter: brightness(1.1) drop-shadow(0 0 8px rgba(22, 163, 74, 0.4)); }
+	}
+
+	.error-flash {
+		animation: errorFlash 0.5s ease-in-out 2;
+	}
+
+	@keyframes errorFlash {
+		0%, 100% { opacity: 0; }
+		50% { opacity: 0.4; }
 	}
 </style>

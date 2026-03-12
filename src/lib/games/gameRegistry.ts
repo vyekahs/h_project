@@ -105,5 +105,21 @@ export const GAME_REGISTRY: Record<string, GameConfig> = {
 		},
 		localStorageSaveKey: 'triple_tile_save',
 		hasTutorials: true
+	},
+	'train-tracks': {
+		id: 'train-tracks',
+		name: '트레인 트랙',
+		displayTitle: 'Train Tracks',
+		gameUrl: '/minigames/train-tracks',
+		difficulties: ['easy', 'medium', 'hard', 'expert', 'master'],
+		difficultyLabels: {
+			easy: '쉬움',
+			medium: '보통',
+			hard: '어려움',
+			expert: '전문가',
+			master: '마스터'
+		},
+		localStorageSaveKey: 'train_tracks_save',
+		hasTutorials: false
 	}
 };
