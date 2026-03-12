@@ -19,6 +19,22 @@
 
 	let isAutostart = false;
 
+	function startWithTutorialCheck() {
+		const seen = localStorage.getItem('energy_tutorial_v2');
+		if (!seen) {
+			game.activeTutorialId = 'energy_easy_1';
+			game.showTutorial = true;
+		} else {
+			user.refresh().then(() => game.startGame());
+		}
+	}
+
+	function closeTutorialAndStart() {
+		localStorage.setItem('energy_tutorial_v2', '1');
+		game.showTutorial = false;
+		user.refresh().then(() => game.startGame());
+	}
+
 	// Handle autostart/resume from unified start page
 	onMount(() => {
 		if (!browser) return;
@@ -29,7 +45,7 @@
 			if (diff) game.difficulty = diff as Difficulty;
 			// Remove query params so refresh won't restart
 			replaceState(window.location.pathname, {});
-			user.refresh().then(() => game.startGame());
+			startWithTutorialCheck();
 		} else if (params.get('resume') === 'true') {
 			replaceState(window.location.pathname, {});
 			game.loadGame();
@@ -230,7 +246,13 @@
 	{#if game.showTutorial}
 		<EnergyTutorialModal
 			tutorialId={game.activeTutorialId}
-			onclose={() => { game.showTutorial = false; }}
+			onclose={() => {
+				if (game.gameState === 'start') {
+					closeTutorialAndStart();
+				} else {
+					game.showTutorial = false;
+				}
+			}}
 		/>
 	{/if}
 

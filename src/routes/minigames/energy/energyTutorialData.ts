@@ -61,7 +61,7 @@ export const ENERGY_TUTORIALS: Record<string, EnergyTutorial> = {
 			{
 				// source → straight → bulb, all powered, horizontal left-to-right
 				title: '에너지 서킷이란?',
-				desc: '<b>전원(⚡)</b>에서 <b>전구(💡)</b>까지 파이프를 회전시켜 전기가 흐르도록 연결하는 퍼즐입니다.',
+				desc: '<b>전원(⚡)</b>에서 모든 조각을 회전시켜 연결해 <b>전체 회로를 완성</b>하는 퍼즐입니다.',
 				gridSize: 3,
 				tiles: [
 					// source(1,0): all dirs, connects RIGHT to straight(1,1)
@@ -102,8 +102,8 @@ export const ENERGY_TUTORIALS: Record<string, EnergyTutorial> = {
 			},
 			{
 				// All bulbs powered — complete circuit
-				title: '목표: 모든 전구 켜기!',
-				desc: '모든 전구에 불이 들어오면 <b>클리어</b>! 가능한 적은 회전으로 풀면 더 높은 점수를 받습니다.',
+				title: '목표: 모든 조각 연결하기!',
+				desc: '모든 조각이 전원에 연결되면 <b>클리어</b>! 가능한 적은 회전으로 풀면 더 높은 점수를 받습니다.',
 				gridSize: 3,
 				tiles: [
 					// source(1,1): center, all dirs, powered
@@ -235,7 +235,7 @@ export const ENERGY_TUTORIALS: Record<string, EnergyTutorial> = {
 			},
 			{
 				title: '완성!',
-				desc: '모든 조각이 연결되면 전체 파이프가 <b>노란색</b>으로 빛나며 전구에 불이 켜집니다! 적은 회전으로 풀수록 높은 점수!',
+				desc: '모든 조각이 연결되어 전체가 <b>노란색</b>으로 빛나면 클리어! 적은 회전으로 풀수록 높은 점수!',
 				gridSize: 4,
 				tiles: [
 					// A more interesting complete circuit on 4x4

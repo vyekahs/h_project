@@ -262,7 +262,7 @@ export function computePoweredTiles(tiles: Tile[][]): void {
 export function checkWin(tiles: Tile[][]): boolean {
 	for (const row of tiles) {
 		for (const tile of row) {
-			if (tile.type === 'bulb' && !tile.powered) return false;
+			if (tile.type !== 'empty' && !tile.powered) return false;
 		}
 	}
 	return true;
