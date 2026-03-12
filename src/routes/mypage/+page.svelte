@@ -3,6 +3,7 @@
     import { onMount } from 'svelte';
     import { fade } from 'svelte/transition';
     import SettingsPanel from '$lib/components/settings/SettingsPanel.svelte';
+    import NotificationBell from '$lib/components/notifications/NotificationBell.svelte';
     import type { PageData } from './$types';
     export let data: PageData;
 
@@ -286,24 +287,26 @@
     <header class="page-header">
         <h1>마이페이지</h1>
         <div class="header-right">
-            <button class="header-settings-btn" on:click={() => showSettings = true} aria-label="설정">
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
-            </button>
             {#if data.user}
                 <div class="user-simple">
+                 <form method="POST" action="/logout">
+                        <button type="submit" class="btn-logout-text">로그아웃</button>
+                    </form>
                     <span class="user-name">
                         {#if data.user.title}
                             <span class="user-title">{data.user.title.title_name}</span>
                         {/if}
                         <strong>{data.user.name}</strong> 님
                     </span>
-                    <form method="POST" action="/logout">
-                        <button type="submit" class="btn-logout-text">로그아웃</button>
-                    </form>
+                   
                 </div>
             {:else}
                  <a href="/login" class="btn-login-text">로그인</a>
             {/if}
+            <NotificationBell />
+            <button class="header-settings-btn" on:click={() => showSettings = true} aria-label="설정">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
         </div>
     </header>
     <SettingsPanel bind:open={showSettings} />
@@ -965,6 +968,8 @@
         margin-bottom: 2rem;
         padding-bottom: 1rem;
         border-bottom: 1px solid var(--border-light);
+        position: relative;
+        z-index: 10;
     }
     .page-header h1 {
         font-size: 1.5rem;

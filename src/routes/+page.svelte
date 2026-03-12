@@ -3,6 +3,7 @@
     import { onMount, onDestroy } from 'svelte';
     import { enhance, applyAction } from '$app/forms';
     import { invalidateAll } from '$app/navigation';
+    import NotificationBell from '$lib/components/notifications/NotificationBell.svelte';
     let lastUpdated = new Date();
 
     // SSE 실시간 카운트
@@ -504,15 +505,16 @@
             </div>
             <div class="status-section">
                 {#if data.isAdmin}
-                    <a href="/admin" class="status-pill admin-panel">관리자 페이지</a>
+                <a href="/admin" class="status-pill admin-panel">관리자 페이지</a>
                 {:else if data.user && data.user.can_manage_games}
-                    <a href="/admin" class="status-pill admin-panel">관리자 로그인</a>
+                <a href="/admin" class="status-pill admin-panel">관리자 로그인</a>
                 {/if}
                 {#if data.isOpen}
-                    <span class="status-pill open">오픈</span>
+                <span class="status-pill open">오픈</span>
                 {:else}
-                    <span class="status-pill closed">마감</span>
+                <span class="status-pill closed">마감</span>
                 {/if}
+                <NotificationBell />
             </div>
         </div>
     </header>

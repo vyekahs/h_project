@@ -259,6 +259,19 @@ async function migrate() {
         `);
         await pool.query('CREATE INDEX IF NOT EXISTS idx_notifications_user_read ON notifications(user_id, is_read, created_at DESC);');
 
+        // 25. Notification Preferences (알림 설정)
+        console.log('[25] Checking notification_preferences table...');
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS notification_preferences (
+                id SERIAL PRIMARY KEY,
+                attendee_id INTEGER NOT NULL REFERENCES attendees(id) ON DELETE CASCADE,
+                notification_type VARCHAR(30) NOT NULL,
+                enabled BOOLEAN NOT NULL DEFAULT false,
+                UNIQUE(attendee_id, notification_type)
+            );
+        `);
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_notif_prefs_attendee ON notification_preferences(attendee_id);');
+
     } catch (err) {
         console.error('Migration failed:', err);
         process.exit(1);

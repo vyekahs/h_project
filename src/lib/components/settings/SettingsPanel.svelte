@@ -1,8 +1,54 @@
 <script lang="ts">
+    import { onMount } from 'svelte';
     import { hapticsEnabled } from '$lib/stores/haptics';
     import { themeStore } from '$lib/stores/theme.svelte';
+    import { user } from '$lib/stores/user';
 
     let { open = $bindable(false) } = $props();
+
+    const NOTIF_TYPES = [
+        { key: 'mention', label: '멘션 알림', desc: '댓글에서 @멘션될 때 알림을 받습니다' },
+        { key: 'visit_plan', label: '방문 예정 알림', desc: '다른 사람이 오늘 방문 예정에 추가할 때 알림을 받습니다' },
+        { key: 'game_join', label: '게임 참가 알림', desc: '내가 참여 중인 게임에 다른 사람이 참가할 때 알림을 받습니다' },
+        { key: 'rank_change', label: '랭킹 변동 알림', desc: '미니게임 랭킹이 변동될 때 알림을 받습니다' },
+    ] as const;
+
+    let notifPrefs = $state<Record<string, boolean>>({
+        mention: true,
+        visit_plan: false,
+        game_join: false,
+        rank_change: false,
+    });
+    let prefsLoaded = $state(false);
+
+    onMount(async () => {
+        if ($user.id) {
+            try {
+                const res = await fetch('/api/notifications/preferences');
+                if (res.ok) {
+                    notifPrefs = await res.json();
+                    prefsLoaded = true;
+                }
+            } catch {}
+        }
+    });
+
+    async function toggleNotifPref(type: string) {
+        const newValue = !notifPrefs[type];
+        notifPrefs[type] = newValue;
+        try {
+            const res = await fetch('/api/notifications/preferences', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ type, enabled: newValue }),
+            });
+            if (!res.ok) {
+                notifPrefs[type] = !newValue;
+            }
+        } catch {
+            notifPrefs[type] = !newValue;
+        }
+    }
 </script>
 
 {#if open}
@@ -98,6 +144,41 @@
                     </p>
                 {/if}
             </div>
+
+            <!-- Notification Settings -->
+            {#if $user.id}
+            <div class="setting-card">
+                <div class="setting-info">
+                    <div class="setting-title">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M6 8a6 6 0 0 1 12 0c0 7 3 8 3 8H3s3-1 3-8"/>
+                            <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>
+                        </svg>
+                        알림 설정
+                    </div>
+                    <div class="setting-desc">
+                        받고 싶은 알림을 선택할 수 있습니다.
+                    </div>
+                </div>
+
+                <div class="notif-toggles">
+                    {#each NOTIF_TYPES as nt (nt.key)}
+                        <div class="notif-toggle-row">
+                            <div class="notif-toggle-info">
+                                <span class="notif-toggle-label">{nt.label}</span>
+                                <span class="notif-toggle-desc">{nt.desc}</span>
+                            </div>
+                            <label class="toggle-switch">
+                                <input type="checkbox" checked={notifPrefs[nt.key]} onchange={() => toggleNotifPref(nt.key)}>
+                                <span class="slider" class:active={notifPrefs[nt.key]}>
+                                    <span class="slider-button"></span>
+                                </span>
+                            </label>
+                        </div>
+                    {/each}
+                </div>
+            </div>
+            {/if}
 
             <button class="btn-close-modal" onclick={() => open = false}>닫기</button>
         </div>
@@ -304,6 +385,46 @@
         font-size: 0.85rem;
         color: var(--text-secondary);
         text-align: center;
+    }
+
+    /* Notification Toggles */
+    .notif-toggles {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+
+    .notif-toggle-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.5rem 0;
+        border-bottom: 1px solid var(--border-light);
+    }
+
+    .notif-toggle-row:last-child {
+        border-bottom: none;
+        padding-bottom: 0;
+    }
+
+    .notif-toggle-info {
+        flex: 1;
+        margin-right: 0.75rem;
+    }
+
+    .notif-toggle-label {
+        display: block;
+        font-size: 0.9rem;
+        font-weight: 600;
+        color: var(--text-primary);
+        margin-bottom: 0.15rem;
+    }
+
+    .notif-toggle-desc {
+        display: block;
+        font-size: 0.75rem;
+        color: var(--text-muted);
+        line-height: 1.3;
     }
 
     .btn-close-modal {

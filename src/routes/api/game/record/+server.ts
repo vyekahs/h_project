@@ -4,7 +4,8 @@ import { TitleService } from '$lib/server/services/titleService';
 import { verifyAttendeeSession } from '$lib/server/auth';
 import { db } from '$lib/server/db/index';
 import { sql } from 'drizzle-orm';
-
+import { NotificationService } from '$lib/server/services/notificationService';
+import { GAME_REGISTRY } from '$lib/games/gameRegistry';
 
 import type { RequestHandler } from './$types';
 
@@ -60,6 +61,50 @@ export const POST: RequestHandler = async ({ request, locals, cookies }) => {
             }
         } catch (e) {
             console.error('[API] Title check failed:', e);
+        }
+
+        // Rank change notification for displaced users
+        try {
+            if (result.currentRank !== null) {
+                const oldRank = result.previousRank;
+                const newRank = result.currentRank;
+
+                if (oldRank === null || newRank < oldRank) {
+                    const now = new Date();
+                    const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+                    const rangeStart = newRank;
+                    const rangeEnd = oldRank ? oldRank : newRank + 5;
+
+                    const displacedUsers = await db.execute(sql`
+                        SELECT ranked.user_id, a.name as nickname FROM (
+                            SELECT user_id, RANK() OVER (ORDER BY total_score DESC, score_updated_at ASC) as rank
+                            FROM minigame_monthly_rankings
+                            WHERE game_id = ${gameId} AND month_key = ${monthKey}
+                        ) ranked
+                        JOIN attendees a ON ranked.user_id = a.id
+                        WHERE ranked.rank > ${rangeStart} AND ranked.rank <= ${rangeEnd + 1}
+                        AND ranked.user_id != ${userId}
+                    `);
+
+                    const displayName = GAME_REGISTRY[gameId]?.name ?? gameId;
+
+                    for (const du of displacedUsers as any[]) {
+                        await NotificationService.notify(
+                            du.user_id,
+                            {
+                                type: 'rank_change',
+                                title: '랭킹 변동 알림',
+                                body: `${displayName} 랭킹이 떨어졌어요! ${user.name}님이 ${du.nickname}님을 앞질렀어요!`,
+                                url: `/minigames/start/${gameId}?tab=ranking`,
+                            },
+                            userId,
+                            `ranking:${gameId}:${monthKey}`
+                        );
+                    }
+                }
+            }
+        } catch (e) {
+            console.error('[API] Rank change notification failed:', e);
         }
 
         return json({ ...result, newTitles });

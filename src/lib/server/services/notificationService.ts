@@ -16,8 +16,23 @@ class SSENotificationChannel implements NotificationChannel {
 
 const channels: NotificationChannel[] = [new SSENotificationChannel()];
 
+// mention은 기존 호환: 행 없으면 ON. 나머지 새 알림은 행 없으면 OFF.
+const DEFAULT_ON_TYPES = ['mention'];
+
 export const NotificationService = {
 	async notify(userId: number, payload: NotificationPayload, fromUserId?: number, referenceId?: string) {
+		// 0. Check notification preference
+		const prefResult = await db.execute(sql`
+			SELECT enabled FROM notification_preferences
+			WHERE attendee_id = ${userId} AND notification_type = ${payload.type}
+		`);
+		if (prefResult.length > 0) {
+			if ((prefResult[0] as any).enabled === false) return;
+		} else {
+			// 행 없음: mention은 ON, 나머지는 OFF
+			if (!DEFAULT_ON_TYPES.includes(payload.type)) return;
+		}
+
 		// 1. Save to DB
 		await db.execute(sql`
 			INSERT INTO notifications (user_id, type, message, from_user_id, reference_id)
@@ -73,6 +88,39 @@ export const NotificationService = {
 			WHERE user_id = ${userId} AND is_read = false
 		`);
 		return Number((res as any[])[0]?.count ?? 0);
+	},
+
+	async getPreferences(userId: number): Promise<Record<string, boolean>> {
+		const res = await db.execute(sql`
+			SELECT notification_type, enabled FROM notification_preferences
+			WHERE attendee_id = ${userId}
+		`);
+		// mention 기본 ON, 나머지 기본 OFF
+		const prefs: Record<string, boolean> = {
+			mention: true,
+			visit_plan: false,
+			game_join: false,
+			rank_change: false,
+		};
+		for (const row of res as any[]) {
+			prefs[row.notification_type] = row.enabled;
+		}
+		return prefs;
+	},
+
+	async deleteNotification(userId: number, notificationId: number) {
+		await db.execute(sql`
+			DELETE FROM notifications
+			WHERE user_id = ${userId} AND id = ${notificationId}
+		`);
+	},
+
+	async setPreference(userId: number, notificationType: string, enabled: boolean) {
+		await db.execute(sql`
+			INSERT INTO notification_preferences (attendee_id, notification_type, enabled)
+			VALUES (${userId}, ${notificationType}, ${enabled})
+			ON CONFLICT (attendee_id, notification_type) DO UPDATE SET enabled = ${enabled}
+		`);
 	},
 };
 

@@ -150,3 +150,13 @@ CREATE TABLE IF NOT EXISTS notifications (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_notifications_user_read ON notifications(user_id, is_read, created_at DESC);
+
+-- Notification Preferences (알림 설정)
+CREATE TABLE IF NOT EXISTS notification_preferences (
+    id SERIAL PRIMARY KEY,
+    attendee_id INTEGER NOT NULL REFERENCES attendees(id) ON DELETE CASCADE,
+    notification_type VARCHAR(30) NOT NULL,
+    enabled BOOLEAN NOT NULL DEFAULT false,
+    UNIQUE(attendee_id, notification_type)
+);
+CREATE INDEX IF NOT EXISTS idx_notif_prefs_attendee ON notification_preferences(attendee_id);

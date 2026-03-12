@@ -8,7 +8,9 @@
     import AdBanner from '$lib/components/ads/AdBanner.svelte';
     import RankUpModal from '$lib/components/gamification/RankUpModal.svelte';
     import NotificationToast from '$lib/components/notifications/NotificationToast.svelte';
+    import NotificationBell from '$lib/components/notifications/NotificationBell.svelte';
     import { themeStore } from '$lib/stores/theme.svelte';
+    import { user } from '$lib/stores/user';
 
 	let { children } = $props();
 
@@ -31,6 +33,7 @@
 
     onMount(() => {
         themeStore.init();
+        user.refresh();
         versionCheckTimer = setInterval(async () => {
             try {
                 const res = await fetch(`/_app/version.json`, { cache: 'no-store' });
@@ -102,6 +105,12 @@
 			<span class="label">마이페이지</span>
 		</a>
 	</nav>
+	{/if}
+
+	{#if !$page.url.pathname.startsWith('/admin') && !isInGame($page.url.pathname) && !$page.url.pathname.startsWith('/minigames/') && $page.url.pathname !== '/' && !$page.url.pathname.startsWith('/mypage')}
+		<div class="global-notification-bell">
+			<NotificationBell />
+		</div>
 	{/if}
 
 	<RankUpModal />
@@ -340,5 +349,12 @@
 	.site-footer .divider {
 		color: var(--border-default);
 		margin: 0 8px;
+	}
+
+	.global-notification-bell {
+		position: fixed;
+		top: 12px;
+		right: 12px;
+		z-index: 1050;
 	}
 </style>
