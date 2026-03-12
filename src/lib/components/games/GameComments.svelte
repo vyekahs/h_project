@@ -5,10 +5,12 @@
 		gameId,
 		userId,
 		isAdmin = false,
+		dark = false,
 	}: {
 		gameId: string;
 		userId: number;
 		isAdmin?: boolean;
+		dark?: boolean;
 	} = $props();
 
 	interface Comment {
@@ -171,8 +173,9 @@
 	}
 </script>
 
-<div class="comments-container">
+<div class="comments-container" class:dark>
 	<!-- Scrollable comment list -->
+	<p style="text-align: center; font-size: 0.8rem; color: var(--text-muted, #999); margin-bottom: 0.5rem;">아직 테스트 중인 기능입니다. 언제든지 없어질 수 있습니다.</p>
 	<div class="comments-scroll" bind:this={scrollContainer}>
 		{#if loading}
 			<div class="empty-state">불러오는 중...</div>
@@ -222,6 +225,7 @@
 			bind:value={inputValue}
 			onsubmit={handleSubmit}
 			disabled={submitting}
+			{dark}
 		/>
 	</div>
 </div>
@@ -489,5 +493,47 @@
 	@keyframes modalIn {
 		from { opacity: 0; transform: scale(0.92); }
 		to { opacity: 1; transform: scale(1); }
+	}
+
+	/* Dark theme overrides */
+	.dark .empty-state { color: rgba(255,255,255,0.4); }
+	.dark .empty-sub { color: rgba(255,255,255,0.3); }
+	.dark .load-more-btn {
+		background: rgba(255,255,255,0.08);
+		border-color: rgba(255,255,255,0.15);
+		color: rgba(255,255,255,0.6);
+	}
+	.dark .load-more-btn:hover { background: rgba(255,255,255,0.15); }
+	.dark .comment-item {
+		background: rgba(255,255,255,0.06);
+		border-color: rgba(255,255,255,0.1);
+	}
+	.dark .user-name { color: #f1f5f9; }
+	.dark .user-title {
+		background: rgba(59,130,246,0.2);
+		color: #93c5fd;
+	}
+	.dark .comment-time { color: rgba(255,255,255,0.35); }
+	.dark .delete-btn { color: rgba(255,255,255,0.35); }
+	.dark .delete-btn:hover {
+		color: #fca5a5;
+		background: rgba(239,68,68,0.15);
+	}
+	.dark .comment-content { color: #e2e8f0; }
+	.dark .comment-content :global(.mention) { color: #93c5fd; }
+	.dark .input-area { border-top-color: rgba(255,255,255,0.1); }
+	.dark .input-hint { color: rgba(255,255,255,0.35); }
+	.dark .modal {
+		background: #1e293b;
+		box-shadow: 0 16px 48px rgba(0,0,0,0.5);
+	}
+	.dark .modal-message { color: #e2e8f0; }
+	.dark .modal-btn {
+		background: linear-gradient(135deg, #fbbf24, #d97706);
+		color: #fff;
+	}
+	.dark .modal-btn-secondary {
+		background: rgba(255,255,255,0.1);
+		color: #e2e8f0;
 	}
 </style>

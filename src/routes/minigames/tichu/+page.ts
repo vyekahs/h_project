@@ -1,1 +1,11 @@
+import type { PageLoad } from './$types';
+
 export const ssr = false;
+
+export const load: PageLoad = async ({ parent }) => {
+	const parentData = await parent();
+	return {
+		user: parentData.user,
+		isAdmin: parentData.isAdmin ?? false,
+	};
+};

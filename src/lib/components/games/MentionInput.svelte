@@ -5,12 +5,14 @@
 		maxLength = 200,
 		onsubmit,
 		disabled = false,
+		dark = false,
 	}: {
 		value?: string;
 		placeholder?: string;
 		maxLength?: number;
 		onsubmit?: (content: string) => void;
 		disabled?: boolean;
+		dark?: boolean;
 	} = $props();
 
 	let textareaEl: HTMLTextAreaElement | undefined = $state();
@@ -113,7 +115,7 @@
 	}
 </script>
 
-<div class="mention-input-wrapper">
+<div class="mention-input-wrapper" class:dark>
 	{#if showDropdown && suggestions.length > 0}
 		<div class="mention-dropdown">
 			{#each suggestions as user, i}
@@ -257,5 +259,27 @@
 
 	.submit-btn:not(:disabled):active {
 		transform: scale(0.96);
+	}
+
+	/* Dark theme overrides */
+	.dark .mention-dropdown {
+		background: rgba(30,41,59,0.95);
+		border-color: rgba(255,255,255,0.15);
+		box-shadow: 0 -4px 12px rgba(0,0,0,0.3);
+	}
+	.dark .mention-option { color: #e2e8f0; }
+	.dark .mention-option:hover,
+	.dark .mention-option.selected { background: rgba(255,255,255,0.1); }
+	.dark .input-row {
+		background: rgba(255,255,255,0.08);
+		border-color: rgba(255,255,255,0.15);
+	}
+	.dark .comment-textarea { color: #f1f5f9; }
+	.dark .comment-textarea::placeholder { color: rgba(255,255,255,0.3); }
+	.dark .char-count { color: rgba(255,255,255,0.3); }
+	.dark .char-count.near-limit { color: #fca5a5; }
+	.dark .submit-btn {
+		background: linear-gradient(135deg, #fbbf24, #d97706);
+		color: #fff;
 	}
 </style>

@@ -9,6 +9,7 @@
 	import ScoreBoard from './components/ScoreBoard.svelte';
 	import GameOverModal from './components/GameOverModal.svelte';
 
+	let { data } = $props();
 	const game = createTichuGameState();
 
 	onDestroy(() => {
@@ -26,7 +27,7 @@
 
 <div class="tichu-page">
 	{#if game.view === 'setup'}
-		<GameSetup {game} />
+		<GameSetup {game} user={data.user} isAdmin={data.isAdmin} />
 	{:else if game.view === 'game' && game.gameState}
 		<TichuTable {game} />
 	{:else if game.view === 'tutorial' && game.gameState}

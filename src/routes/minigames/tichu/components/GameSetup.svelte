@@ -3,12 +3,15 @@
 	import { STRATEGY_PRESETS } from '$lib/games/tichu/ai/presets';
 	import type { createTichuGameState } from '../gameState.svelte';
 	import LessonSelect from './LessonSelect.svelte';
+	import GameComments from '$lib/components/games/GameComments.svelte';
 
 	interface Props {
 		game: ReturnType<typeof createTichuGameState>;
+		user: App.Locals['user'] | null;
+		isAdmin: boolean;
 	}
 
-	const { game }: Props = $props();
+	const { game, user, isAdmin }: Props = $props();
 
 	const speedOptions: { id: AiSpeed; label: string }[] = [
 		{ id: 'instant', label: '즉시' },
@@ -21,7 +24,7 @@
 
 	let forceSetup = $state(false);
 	let showSetup = $derived(!game.savedGameAvailable || forceSetup);
-	let activeTab = $state<'setup' | 'ranking' | 'tutorial'>('setup');
+	let activeTab = $state<'setup' | 'ranking' | 'tutorial' | 'comments'>('setup');
 
 	// Ranking state
 	let rankings = $state<any[]>([]);
@@ -74,6 +77,9 @@
 			</button>
 			<button class="tab-btn" class:active={activeTab === 'ranking'} onclick={() => activeTab = 'ranking'}>
 				랭킹
+			</button>
+			<button class="tab-btn" class:active={activeTab === 'comments'} onclick={() => activeTab = 'comments'}>
+				댓글
 			</button>
 		</div>
 
@@ -180,6 +186,19 @@
 						</table>
 					{/if}
 				</div>
+			</div>
+		{:else if activeTab === 'comments'}
+			<div class="comments-wrapper">
+				{#if user}
+					<GameComments
+						gameId="tichu"
+						userId={user.id}
+						{isAdmin}
+						dark
+					/>
+				{:else}
+					<div class="comments-empty">로그인이 필요합니다</div>
+				{/if}
 			</div>
 		{/if}
 	</div>
@@ -622,6 +641,22 @@
 	}
 
 	.ranking-empty {
+		text-align: center;
+		padding: 24px;
+		color: #94a3b8;
+		font-size: 0.9rem;
+	}
+
+	/* Comments Tab */
+	.comments-wrapper {
+		height: calc(100dvh - 240px);
+		min-height: 300px;
+		display: flex;
+		flex-direction: column;
+		overflow: hidden;
+	}
+
+	.comments-empty {
 		text-align: center;
 		padding: 24px;
 		color: #94a3b8;
