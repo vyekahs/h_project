@@ -59,6 +59,18 @@ export const ENERGY_TUTORIALS: Record<string, EnergyTutorial> = {
 		title: '기본 규칙',
 		steps: [
 			{
+				title: '게임 규칙이 변경되었습니다!',
+				desc: '이제 전구만 켜는 것이 아니라, <b>모든 조각을 빠짐없이 연결</b>해야 클리어됩니다. 회색 조각이 하나라도 남아있으면 클리어되지 않습니다!',
+				gridSize: 3,
+				tiles: [
+					{ row: 1, col: 1, type: 'source', rotation: 0, powered: true, fixed: true },
+					{ row: 0, col: 1, type: 'bulb', rotation: 0, powered: true },
+					{ row: 1, col: 2, type: 'bulb', rotation: 1, powered: true },
+					{ row: 2, col: 1, type: 'straight', rotation: 1, powered: false },
+					{ row: 1, col: 0, type: 'corner', rotation: 1, powered: false }
+				]
+			},
+			{
 				// source → straight → bulb, all powered, horizontal left-to-right
 				title: '에너지 서킷이란?',
 				desc: '<b>전원(⚡)</b>에서 모든 조각을 회전시켜 연결해 <b>전체 회로를 완성</b>하는 퍼즐입니다.',
@@ -84,7 +96,7 @@ export const ENERGY_TUTORIALS: Record<string, EnergyTutorial> = {
 				// source at top, vertical pipe, then corner going right but disconnected parts
 				// Shows: connected=yellow, disconnected=grey
 				title: '전기의 흐름',
-				desc: '전원에서 <b>연결된 파이프</b>를 따라 전기가 흐릅니다. 연결된 조각은 <b>노란색</b>, 안 된 조각은 <b>회색</b>으로 표시됩니다.',
+				desc: '전원에서 <b>연결된 파이프</b>를 따라 전기가 흐릅니다. 연결된 조각은 <b>노란색</b>, 안 된 조각은 <b>회색</b>으로 표시됩니다. <b>모든 조각이 노란색</b>이 되어야 클리어!',
 				gridSize: 3,
 				tiles: [
 					// source(0,1): all dirs, powered
@@ -179,8 +191,8 @@ export const ENERGY_TUTORIALS: Record<string, EnergyTutorial> = {
 		title: '풀이 전략',
 		steps: [
 			{
-				title: '전구부터 시작하세요',
-				desc: '전구는 연결이 <b>1개</b>뿐입니다. 옆에 어떤 조각이 있는지 보면 전구의 회전 방향이 바로 확정됩니다!',
+				title: '끝 조각부터 시작하세요',
+				desc: '전구(끝 조각)는 연결이 <b>1개</b>뿐입니다. 옆에 어떤 조각이 있는지 보면 회전 방향이 바로 확정됩니다!',
 				gridSize: 4,
 				tiles: [
 					// source(1,1) → straight(1,2) → bulb(1,3) horizontal
