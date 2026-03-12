@@ -6,6 +6,7 @@ import { verifyAdminSession, verifyAttendeeSession } from '$lib/server/auth';
 import { PartyService } from '$lib/server/services/partyService';
 import { emitLiveEvent } from '$lib/server/liveEvents';
 import { getSharedData } from '$lib/server/dataCache';
+import { NotificationService } from '$lib/server/services/notificationService';
 
 async function canModifyGame(request: Request, gameId: string | number): Promise<boolean> {
     const sessionToken = request.headers.get('cookie')?.match(/admin_session=([^;]+)/)?.[1];
@@ -365,7 +366,7 @@ export const actions: Actions = {
 
         // 1. Check if busy
         // 0.5. Get target session info to check date
-        const targetSession = await db.execute(sql`SELECT scheduled_at, party_id FROM game_sessions WHERE id = ${sessionId}`);
+        const targetSession = await db.execute(sql`SELECT scheduled_at, party_id, game_name FROM game_sessions WHERE id = ${sessionId}`);
         if (targetSession.length === 0) {
             return fail(404, { error: '세션을 찾을 수 없습니다.' });
         }
@@ -441,7 +442,34 @@ export const actions: Actions = {
             await tx.execute(sql`UPDATE reservations SET status = 'confirmed' WHERE session_id = ${sessionId} AND attendee_id = ${finalAttendeeId} AND status != 'cancelled'`);
         });
 
-        // 4. Auto-register daily visit plan (고정팟 제외, 오늘 날짜만)
+        // 4. Notify existing participants (game_join)
+        try {
+            const joinerInfo = await db.execute(sql`SELECT name FROM attendees WHERE id = ${finalAttendeeId}`);
+            const joinerName = (joinerInfo[0] as any)?.name ?? '누군가';
+            const gameName = (targetSession[0] as any).game_name ?? '게임';
+
+            const existingParticipants = await db.execute(sql`
+                SELECT sp.attendee_id FROM session_participants sp
+                WHERE sp.session_id = ${sessionId} AND sp.attendee_id != ${finalAttendeeId} AND sp.attendee_id IS NOT NULL
+            `);
+            for (const p of existingParticipants as any[]) {
+                await NotificationService.notify(
+                    p.attendee_id,
+                    {
+                        type: 'game_join',
+                        title: '게임 참가 알림',
+                        body: `${joinerName}님이 ${gameName}에 참가했습니다`,
+                        url: '/',
+                    },
+                    finalAttendeeId,
+                    `game_session:${sessionId}`
+                );
+            }
+        } catch (e) {
+            console.error('[joinScheduledGame] game_join notification failed:', e);
+        }
+
+        // 5. Auto-register daily visit plan (고정팟 제외, 오늘 날짜만)
         const isPartyGame = !!(targetSession[0] as any).party_id;
         const isToday = new Date((targetSession[0] as any).scheduled_at).toDateString() === new Date().toDateString();
         if (!isPartyGame && isToday) {
@@ -454,6 +482,29 @@ export const actions: Actions = {
                     ON CONFLICT (attendee_id, plan_date) DO UPDATE SET
                         planned_time = COALESCE(daily_visit_plans.planned_time, EXCLUDED.planned_time)
                 `);
+
+                // Visit plan notification to all users
+                try {
+                    const joinerInfo2 = await db.execute(sql`SELECT name FROM attendees WHERE id = ${finalAttendeeId}`);
+                    const joinerName2 = (joinerInfo2[0] as any)?.name ?? '누군가';
+                    const allUsers = await db.execute(sql`SELECT id FROM attendees WHERE id != ${finalAttendeeId}`);
+                    const today = new Date().toISOString().slice(0, 10);
+                    for (const u of allUsers as any[]) {
+                        await NotificationService.notify(
+                            u.id,
+                            {
+                                type: 'visit_plan',
+                                title: '방문 예정 알림',
+                                body: `${joinerName2}님이 오늘 방문 예정에 추가했습니다`,
+                                url: '/',
+                            },
+                            finalAttendeeId,
+                            `visit_plan:${today}`
+                        );
+                    }
+                } catch (e) {
+                    console.error('[joinScheduledGame] visit_plan notification failed:', e);
+                }
             }
         }
 
@@ -1048,6 +1099,27 @@ export const actions: Actions = {
                     VALUES (${user.id}, CURRENT_DATE, ${plannedTime})
                     ON CONFLICT (attendee_id, plan_date) DO UPDATE SET planned_time = ${plannedTime}
                 `);
+
+                // Visit plan notification to all users
+                try {
+                    const allUsers = await db.execute(sql`SELECT id FROM attendees WHERE id != ${user.id}`);
+                    const today = new Date().toISOString().slice(0, 10);
+                    for (const u of allUsers as any[]) {
+                        await NotificationService.notify(
+                            u.id,
+                            {
+                                type: 'visit_plan',
+                                title: '방문 예정 알림',
+                                body: `${user.name}님이 오늘 방문 예정에 추가했습니다`,
+                                url: '/',
+                            },
+                            user.id,
+                            `visit_plan:${today}`
+                        );
+                    }
+                } catch (e) {
+                    console.error('[toggleVisitPlan] visit_plan notification failed:', e);
+                }
             }
 
             emitLiveEvent('visitors');

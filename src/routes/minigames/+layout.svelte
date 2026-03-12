@@ -1,15 +1,10 @@
 <script lang="ts">
     import { onMount, onDestroy } from 'svelte';
     import { browser } from '$app/environment';
-    import { page } from '$app/stores';
     import { user } from '$lib/stores/user';
-    import NotificationBell from '$lib/components/notifications/NotificationBell.svelte';
 
     let { children } = $props();
     let originalBg = '';
-
-    const GAME_PLAY_PATHS = ['/minigames/tichu', '/minigames/sudoku', '/minigames/killer-sudoku', '/minigames/unblock-me', '/minigames/energy', '/minigames/water-sort', '/minigames/flow-free'];
-    const isPlaying = $derived(GAME_PLAY_PATHS.some(p => $page.url.pathname.startsWith(p)));
 
     onMount(() => {
         originalBg = document.body.style.backgroundColor;
@@ -25,22 +20,10 @@
 </script>
 
 <div data-theme="light" class="force-light">
-    {#if !isPlaying}
-        <div class="notification-area">
-            <NotificationBell />
-        </div>
-    {/if}
     {@render children()}
 </div>
 
 <style>
-    .notification-area {
-        position: fixed;
-        top: 12px;
-        right: 12px;
-        z-index: 100;
-    }
-
     .force-light {
         /* Text */
         --text-primary: #333;
