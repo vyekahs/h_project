@@ -72,118 +72,34 @@ export function isStuck(tubes: Tube[]): boolean {
 	return true;
 }
 
-/**
- * BFS solver: check if the current tube state is solvable.
- * Returns true (solvable), false (proven unsolvable), or null (search limit exceeded).
- */
-export function checkSolvable(tubes: Tube[], maxStates = 500_000): boolean | null {
-	const initial = tubes.map(t => [...t.layers]);
-
-	// Quick check: already won
-	if (checkWinRaw(initial)) return true;
-
-	const visited = new Set<string>();
-	visited.add(normalizeState(initial));
-	let frontier: number[][][] = [initial];
-
-	while (frontier.length > 0) {
-		const next: number[][][] = [];
-		for (const state of frontier) {
-			const moves = generateSolverMoves(state);
-			for (const move of moves) {
-				const ns = applySolverMove(state, move);
-				const key = normalizeState(ns);
-				if (visited.has(key)) continue;
-				visited.add(key);
-				if (checkWinRaw(ns)) return true;
-				next.push(ns);
-				if (visited.size > maxStates) return null;
-			}
-		}
-		frontier = next;
-	}
-
-	// BFS exhausted all reachable states without finding a win
-	return false;
+function isCompleteTube(tube: Tube): boolean {
+	return tube.layers.length === TUBE_CAPACITY && tube.layers.every(l => l === tube.layers[0]);
 }
 
-function checkWinRaw(state: number[][]): boolean {
-	for (const tube of state) {
-		if (tube.length === 0) continue;
-		if (tube.length !== TUBE_CAPACITY) return false;
-		if (!tube.every(l => l === tube[0])) return false;
+/**
+ * Shallow search: check if ALL paths within `depth` moves lead to a dead end.
+ * Much lighter than full BFS solver — runs in microseconds even on master difficulty.
+ */
+export function isEffectivelyStuck(tubes: Tube[], depth = 3): boolean {
+	if (depth === 0) return isStuck(tubes);
+
+	for (let i = 0; i < tubes.length; i++) {
+		if (tubes[i].layers.length === 0) continue;
+		if (isCompleteTube(tubes[i])) continue;
+
+		for (let j = 0; j < tubes.length; j++) {
+			if (i === j) continue;
+			if (!canPour(tubes[i], tubes[j])) continue;
+
+			// Simulate pour on a copy
+			const copy = tubes.map(t => ({ ...t, layers: [...t.layers] }));
+			pourWater(copy[i], copy[j]);
+
+			if (checkWin(copy)) return false;
+			if (!isEffectivelyStuck(copy, depth - 1)) return false;
+		}
 	}
 	return true;
-}
-
-function normalizeState(state: number[][]): string {
-	return state.map(t => t.join(',')).sort().join('|');
-}
-
-function isCompleteTube(tube: number[]): boolean {
-	return tube.length === TUBE_CAPACITY && tube.every(l => l === tube[0]);
-}
-
-function getTopGroupRaw(tube: number[]): { color: number; count: number } | null {
-	if (tube.length === 0) return null;
-	const color = tube[tube.length - 1];
-	let count = 1;
-	for (let i = tube.length - 2; i >= 0; i--) {
-		if (tube[i] === color) count++;
-		else break;
-	}
-	return { color, count };
-}
-
-function generateSolverMoves(state: number[][]): { src: number; tgt: number }[] {
-	const moves: { src: number; tgt: number }[] = [];
-
-	for (let s = 0; s < state.length; s++) {
-		const src = state[s];
-		if (src.length === 0) continue;
-		if (isCompleteTube(src)) continue;
-
-		const srcGroup = getTopGroupRaw(src)!;
-		const isSingleColor = src.every(l => l === src[0]);
-		let hasEmptyTarget = false;
-
-		for (let t = 0; t < state.length; t++) {
-			if (s === t) continue;
-			const tgt = state[t];
-
-			if (tgt.length === 0) {
-				// Skip moving single-color tube to empty (pointless)
-				if (isSingleColor) continue;
-				// Only allow one empty tube target (they're interchangeable)
-				if (hasEmptyTarget) continue;
-				hasEmptyTarget = true;
-				moves.push({ src: s, tgt: t });
-				continue;
-			}
-
-			if (tgt.length >= TUBE_CAPACITY) continue;
-			if (isCompleteTube(tgt)) continue;
-
-			const tgtTop = tgt[tgt.length - 1];
-			if (srcGroup.color === tgtTop) {
-				moves.push({ src: s, tgt: t });
-			}
-		}
-	}
-	return moves;
-}
-
-function applySolverMove(state: number[][], move: { src: number; tgt: number }): number[][] {
-	const newState = state.map(t => [...t]);
-	const src = newState[move.src];
-	const tgt = newState[move.tgt];
-	const group = getTopGroupRaw(src)!;
-	const space = TUBE_CAPACITY - tgt.length;
-	const count = Math.min(group.count, space);
-	for (let i = 0; i < count; i++) {
-		tgt.push(src.pop()!);
-	}
-	return newState;
 }
 
 export interface WaterSortLevel {

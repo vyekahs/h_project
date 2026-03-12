@@ -64,8 +64,7 @@
 				game.confirmMessage ||
 				game.gameState === 'paused' ||
 				game.gameState === 'finished' ||
-				game.isGameStuck ||
-				game.isUnsolvable}
+				game.isGameStuck}
 		>
 			<header>
 				<div class="header-info">
@@ -167,13 +166,11 @@
 			/>
 		{/if}
 
-		{#if game.isGameStuck || game.isUnsolvable}
+		{#if game.isGameStuck}
 			<GameResultModal
 				isWon={false}
-				title={game.isGameStuck ? '막힘!' : '풀 수 없음'}
-				message={game.isGameStuck
-					? '더 이상 옮길 수 있는 물이 없습니다'
-					: '현재 상태에서는 퍼즐을 완성할 수 없습니다'}
+				title="막힘!"
+				message="더 이상 진행이 어렵습니다"
 				stats={[
 					{ label: '난이도', value: difficultyLabels[game.difficulty] },
 					{ label: '시간', value: formatTime(game.timerValue) },
