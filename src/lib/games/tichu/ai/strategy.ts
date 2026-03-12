@@ -407,10 +407,11 @@ export function decidePlay(
 			return 'pass';
 		}
 
-		// passThreshold 통과: 파트너 트릭을 뺏되, A/K 포함 콤보는 사용 금지 (선먹기용 보존)
+		// passThreshold 통과: 파트너 트릭을 뺏되, A/K 포함 콤보 및 봉황 포함 콤보는 사용 금지
 		const beatableForPartner = findBeatablePlays(hand, lastCombo)
 			.filter(c => !isBomb(c))
-			.filter(c => !c.cards.some(card => card.type === 'normal' && (card as NormalCard).rank >= 13));
+			.filter(c => !c.cards.some(card => card.type === 'normal' && (card as NormalCard).rank >= 13))
+			.filter(c => !c.cards.some(card => card.type === 'special' && card.special === 'phoenix'));
 
 		if (beatableForPartner.length === 0) {
 			return 'pass';
@@ -495,15 +496,20 @@ export function decidePlay(
 		let phoenixAllowed = hand.length === 1; // 마지막 카드면 무조건 허용
 
 		if (!phoenixAllowed) {
-			// 봉황이 탑인지 확인: 봉황 rank 이상의 카드가 다른 손에 없고 드래곤도 없어야 함
-			const tracker = buildCardTracker(context);
-			const phoenixRank = Math.ceil(lastCombo.rank + 0.5);
-			let higherCardsOut = 0;
-			for (let r = phoenixRank; r <= 14; r++) {
-				higherCardsOut += tracker.remainingByRank.get(r) || 0;
+			if (partnerWinning) {
+				// 파트너가 이기고 있으면 봉황 싱글 금지 (파트너 트릭 보호)
+				phoenixAllowed = false;
+			} else {
+				// 봉황이 탑인지 확인: 봉황 rank 이상의 카드가 다른 손에 없고 드래곤도 없어야 함
+				const tracker = buildCardTracker(context);
+				const phoenixRank = Math.ceil(lastCombo.rank + 0.5);
+				let higherCardsOut = 0;
+				for (let r = phoenixRank; r <= 14; r++) {
+					higherCardsOut += tracker.remainingByRank.get(r) || 0;
+				}
+				if (!tracker.dragonPlayed && !tracker.dragonInMyHand) higherCardsOut++;
+				phoenixAllowed = higherCardsOut === 0;
 			}
-			if (!tracker.dragonPlayed && !tracker.dragonInMyHand) higherCardsOut++;
-			phoenixAllowed = higherCardsOut === 0;
 		}
 
 		if (!phoenixAllowed) {

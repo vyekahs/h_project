@@ -106,7 +106,7 @@ export function searchBestPlay(
 
 			// 나갈 수 있으면 대폭 보너스 (파트너 티츄면 억제)
 			if (remainingHand.length === 0) {
-				totalScore = (partnerTichuActive ? 0.8 : 2.0) + contextMod;
+				totalScore = (partnerTichuActive ? -0.5 : 2.0) + contextMod;
 			}
 		} else {
 			// 팔로우: winProb과 exitRate 균형
@@ -114,7 +114,7 @@ export function searchBestPlay(
 
 			// 나갈 수 있으면 대폭 보너스 (파트너 티츄면 억제)
 			if (remainingHand.length === 0) {
-				totalScore = (partnerTichuActive ? 0.8 : 2.0) + contextMod;
+				totalScore = (partnerTichuActive ? -0.5 : 2.0) + contextMod;
 			}
 		}
 
@@ -478,10 +478,17 @@ function calcContextModifier(
 		// 엔드게임: 이 트릭 이기면 나갈 수 있나?
 		if (hand.length <= 5 && remainingHand.length > 0) {
 			const afterCombo = detectCombination(remainingHand);
-			if (afterCombo) {
-				mod += 0.25; // 1턴에 나갈 수 있음
-			} else if (remainingHand.length === 1) {
-				mod += 0.2; // 1장만 남음
+			if (partnerDeclaredTichu && !partnerFinished) {
+				// 파트너 티츄: 나가기 보너스 대신 패널티 (파트너보다 먼저 나가면 안 됨)
+				if (afterCombo || remainingHand.length === 1) {
+					mod -= 0.15;
+				}
+			} else {
+				if (afterCombo) {
+					mod += 0.25; // 1턴에 나갈 수 있음
+				} else if (remainingHand.length === 1) {
+					mod += 0.2; // 1장만 남음
+				}
 			}
 		}
 
