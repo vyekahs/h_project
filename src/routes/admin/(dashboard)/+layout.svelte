@@ -316,6 +316,7 @@
         --color-indigo: #364fc7;
 
         color-scheme: light;
+        color: #333;
     }
 
     .admin-layout {
