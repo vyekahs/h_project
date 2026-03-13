@@ -108,12 +108,14 @@ function countCorners(path: [number, number][]): number {
 	return corners;
 }
 
+type PathResult = { path: [number, number][]; start: { row: number; col: number }; finish: { row: number; col: number } };
+
 // Generate path from start to finish using backtracking DFS
 function generatePath(
 	size: number,
 	minPathRatio: number,
 	minCornerRatio: number
-): { path: [number, number][]; start: { row: number; col: number }; finish: { row: number; col: number } } | null {
+): PathResult | null {
 	const startCell = pickEdgeCell(size);
 	const finishCell = pickEdgeCell(size, startCell);
 
@@ -186,7 +188,7 @@ function generatePath(
 
 // Convert path to grid of cells
 function pathToGrid(
-	pathData: { path: [number, number][]; start: { row: number; col: number }; finish: { row: number; col: number } },
+	pathData: PathResult,
 	size: number
 ): Cell[][] {
 	const { path } = pathData;
@@ -202,8 +204,6 @@ function pathToGrid(
 			playerMarkedEmpty: false
 		}))
 	);
-
-	const pathSet = new Set(path.map(([r, c]) => `${r},${c}`));
 
 	for (let i = 0; i < path.length; i++) {
 		const [r, c] = path[i];
@@ -273,65 +273,275 @@ function selectSpreadClues(
 	return selected;
 }
 
-export function generateLevel(difficulty: Difficulty): TrainTracksLevel {
-	const config = DIFFICULTY_CONFIG[difficulty];
-	const size = config.gridSize;
+// ── Difficulty Scoring ──────────────────────────────────────────
 
-	// Try generating path up to 50 times
-	let pathData: ReturnType<typeof generatePath> = null;
-	for (let attempt = 0; attempt < 50; attempt++) {
-		pathData = generatePath(size, config.minPathRatio, config.minCornerRatio);
-		if (pathData) break;
+// 행/열 카운트 균일성 (균일할수록 어려움, 0이나 max가 많으면 쉬움)
+function computeRowColUniformity(rowCounts: number[], colCounts: number[], size: number): number {
+	const allCounts = [...rowCounts, ...colCounts];
+	const extremeCount = allCounts.filter((c) => c === 0 || c === size).length;
+	const extremePenalty = extremeCount / allCounts.length;
+
+	const mean = allCounts.reduce((a, b) => a + b, 0) / allCounts.length;
+	if (mean === 0) return 0;
+	const variance = allCounts.reduce((a, c) => a + (c - mean) ** 2, 0) / allCounts.length;
+	const cv = Math.sqrt(variance) / mean;
+	const uniformityScore = Math.max(0, 1 - cv);
+
+	return uniformityScore * (1 - extremePenalty);
+}
+
+// 즉시 풀리는 행/열 비율 (낮을수록 어려움)
+function computeTrivialLineRatio(
+	grid: Cell[][],
+	rowCounts: number[],
+	colCounts: number[],
+	size: number
+): number {
+	let trivialLines = 0;
+	const totalLines = size * 2;
+
+	for (let r = 0; r < size; r++) {
+		const fixedTrackCount = grid[r].filter((c) => c.isFixed && c.trackType !== 'empty').length;
+		if (rowCounts[r] === 0 || rowCounts[r] === size || fixedTrackCount === rowCounts[r]) {
+			trivialLines++;
+		} else if (rowCounts[r] - fixedTrackCount <= 1) {
+			trivialLines += 0.5;
+		}
 	}
 
-	if (!pathData) {
-		throw new Error('Failed to generate path after 50 attempts');
+	for (let c = 0; c < size; c++) {
+		let fixedTrackCount = 0;
+		for (let r = 0; r < size; r++) {
+			if (grid[r][c].isFixed && grid[r][c].trackType !== 'empty') fixedTrackCount++;
+		}
+		if (colCounts[c] === 0 || colCounts[c] === size || fixedTrackCount === colCounts[c]) {
+			trivialLines++;
+		} else if (colCounts[c] - fixedTrackCount <= 1) {
+			trivialLines += 0.5;
+		}
 	}
 
-	// Build solution grid
-	const solution = pathToGrid(pathData, size);
+	return 1 - trivialLines / totalLines;
+}
 
-	// Compute row/column counts
+// 커브가 그리드 전체에 분산되었는지 (분산=어려움)
+function computeCornerDistribution(path: [number, number][], size: number): number {
+	const cornerIndices: number[] = [];
+	for (let i = 1; i < path.length - 1; i++) {
+		const prevDir = getDirection(path[i][0], path[i][1], path[i - 1][0], path[i - 1][1]);
+		const nextDir = getDirection(path[i][0], path[i][1], path[i + 1][0], path[i + 1][1]);
+		if (Math.abs(prevDir - nextDir) !== 2) {
+			cornerIndices.push(i);
+		}
+	}
+
+	if (cornerIndices.length <= 1) return 0;
+
+	// 사분면 분산
+	const quadrantCounts = [0, 0, 0, 0];
+	const half = size / 2;
+	for (const idx of cornerIndices) {
+		const [r, c] = path[idx];
+		const qi = (r < half ? 0 : 2) + (c < half ? 0 : 1);
+		quadrantCounts[qi]++;
+	}
+	const occupiedQuadrants = quadrantCounts.filter((q) => q > 0).length;
+	const quadrantScore = (occupiedQuadrants - 1) / 3;
+
+	// 경로 상 간격 균일성
+	const gaps: number[] = [];
+	for (let i = 1; i < cornerIndices.length; i++) {
+		gaps.push(cornerIndices[i] - cornerIndices[i - 1]);
+	}
+	if (gaps.length > 0) {
+		const meanGap = gaps.reduce((a, b) => a + b, 0) / gaps.length;
+		if (meanGap > 0) {
+			const gapVariance = gaps.reduce((a, g) => a + (g - meanGap) ** 2, 0) / gaps.length;
+			const gapCV = Math.sqrt(gapVariance) / meanGap;
+			const spacingScore = Math.max(0, 1 - gapCV);
+			return (quadrantScore + spacingScore) / 2;
+		}
+	}
+
+	return quadrantScore;
+}
+
+// 빈 셀 중 인접 단서만으로 결정 불가능한 비율 (높을수록 어려움)
+function computeAmbiguityScore(
+	solution: Cell[][],
+	grid: Cell[][],
+	size: number
+): number {
+	let ambiguousCells = 0;
+	let totalEmptyCells = 0;
+
+	const dirOffsets: { dr: number; dc: number; from: Direction }[] = [
+		{ dr: -1, dc: 0, from: Direction.BOTTOM },
+		{ dr: 1, dc: 0, from: Direction.TOP },
+		{ dr: 0, dc: -1, from: Direction.RIGHT },
+		{ dr: 0, dc: 1, from: Direction.LEFT }
+	];
+
+	for (let r = 0; r < size; r++) {
+		for (let c = 0; c < size; c++) {
+			if (grid[r][c].isFixed || solution[r][c].trackType === 'empty') continue;
+
+			totalEmptyCells++;
+
+			let constrainedDirections = 0;
+			for (const { dr, dc, from } of dirOffsets) {
+				const nr = r + dr;
+				const nc = c + dc;
+				if (nr < 0 || nr >= size || nc < 0 || nc >= size) continue;
+				const neighbor = grid[nr][nc];
+				if (neighbor.isFixed && neighbor.trackType !== 'empty') {
+					const openDirs = getOpenDirections(neighbor.trackType, neighbor.rotation);
+					if (openDirs.includes(from)) {
+						constrainedDirections++;
+					}
+				}
+			}
+
+			if (constrainedDirections < 2) {
+				ambiguousCells++;
+			}
+		}
+	}
+
+	if (totalEmptyCells === 0) return 0;
+	return ambiguousCells / totalEmptyCells;
+}
+
+// 퍼즐 난이도 종합 평가 (0.0~1.0)
+function scorePuzzleDifficulty(
+	solution: Cell[][],
+	grid: Cell[][],
+	rowCounts: number[],
+	colCounts: number[],
+	path: [number, number][]
+): number {
+	const size = solution.length;
+	const rowColUniformity = computeRowColUniformity(rowCounts, colCounts, size);
+	const trivialLineRatio = computeTrivialLineRatio(grid, rowCounts, colCounts, size);
+	const cornerDistribution = computeCornerDistribution(path, size);
+	const ambiguityScore = computeAmbiguityScore(solution, grid, size);
+
+	return (
+		rowColUniformity * 0.20 +
+		trivialLineRatio * 0.25 +
+		cornerDistribution * 0.20 +
+		ambiguityScore * 0.35
+	);
+}
+
+// ── Path Quality Scoring ────────────────────────────────────────
+
+// 경로 품질 점수 (여러 후보 중 최적 선택용)
+function scorePathShape(path: [number, number][], size: number): number {
+	// 길이
+	const lengthScore = Math.min(1, path.length / (size * size * 0.6));
+
+	// 그리드 커버리지
+	const rowsUsed = new Set(path.map(([r]) => r)).size;
+	const colsUsed = new Set(path.map(([, c]) => c)).size;
+	const coverageScore = (rowsUsed / size + colsUsed / size) / 2;
+
+	// 행/열 카운트 균일성
+	const rowCounts = new Array(size).fill(0);
+	const colCounts = new Array(size).fill(0);
+	for (const [r, c] of path) {
+		rowCounts[r]++;
+		colCounts[c]++;
+	}
+	const allCounts = [...rowCounts, ...colCounts].filter((c) => c > 0);
+	const mean = allCounts.reduce((a, b) => a + b, 0) / allCounts.length;
+	const cv =
+		mean > 0
+			? Math.sqrt(allCounts.reduce((a, c) => a + (c - mean) ** 2, 0) / allCounts.length) / mean
+			: 0;
+	const uniformityScore = Math.max(0, 1 - cv);
+
+	// 커브 분산
+	const cornerDist = computeCornerDistribution(path, size);
+
+	return lengthScore * 0.2 + coverageScore * 0.3 + uniformityScore * 0.3 + cornerDist * 0.2;
+}
+
+// 여러 경로 후보 중 최적 경로 선택
+function generateBestPath(
+	size: number,
+	minPathRatio: number,
+	minCornerRatio: number,
+	candidates: number
+): PathResult | null {
+	let bestPath: PathResult | null = null;
+	let bestScore = -1;
+
+	for (let i = 0; i < candidates; i++) {
+		let result: PathResult | null = null;
+		for (let attempt = 0; attempt < 50; attempt++) {
+			result = generatePath(size, minPathRatio, minCornerRatio);
+			if (result) break;
+		}
+		if (!result) continue;
+
+		const pathScore = scorePathShape(result.path, size);
+		if (pathScore > bestScore) {
+			bestScore = pathScore;
+			bestPath = result;
+		}
+	}
+
+	return bestPath;
+}
+
+// ── Helpers ─────────────────────────────────────────────────────
+
+function computeRowCounts(solution: Cell[][], size: number): number[] {
 	const rowCounts: number[] = [];
-	const colCounts: number[] = Array(size).fill(0);
-
 	for (let r = 0; r < size; r++) {
 		let count = 0;
 		for (let c = 0; c < size; c++) {
-			if (solution[r][c].trackType !== 'empty') {
-				count++;
-				colCounts[c]++;
-			}
+			if (solution[r][c].trackType !== 'empty') count++;
 		}
 		rowCounts.push(count);
 	}
+	return rowCounts;
+}
 
-	// Select clue cells
+function computeColCounts(solution: Cell[][], size: number): number[] {
+	const colCounts: number[] = Array(size).fill(0);
+	for (let r = 0; r < size; r++) {
+		for (let c = 0; c < size; c++) {
+			if (solution[r][c].trackType !== 'empty') colCounts[c]++;
+		}
+	}
+	return colCounts;
+}
+
+function selectClues(
+	pathData: PathResult,
+	solution: Cell[][],
+	config: { cluePercentage: number; clueStraightOnly: boolean; clueSpread: number },
+	minExtraClues: number
+): Set<string> {
 	const pathCells = pathData.path.map(([r, c], idx) => ({ r, c, pathIdx: idx }));
-	const totalClues = Math.max(2, Math.floor(pathCells.length * config.cluePercentage));
+	const totalClues = Math.max(2 + minExtraClues, Math.floor(pathCells.length * config.cluePercentage));
 
-	// Always include start and finish
 	const clueSet = new Set<string>();
 	clueSet.add(`${pathData.start.row},${pathData.start.col}`);
 	clueSet.add(`${pathData.finish.row},${pathData.finish.col}`);
 
-	// Filter candidates by clue type strategy
-	const candidates = pathCells.filter(
-		({ r, c }) => !clueSet.has(`${r},${c}`)
-	);
-
+	const candidates = pathCells.filter(({ r, c }) => !clueSet.has(`${r},${c}`));
 	let prioritized: { r: number; c: number; pathIdx: number }[];
 
 	if (config.clueStraightOnly) {
-		// Hard+: 단서에 직선만 제공, 커브는 플레이어가 추론
 		const straights = candidates.filter(({ r, c }) => solution[r][c].trackType === 'straight');
 		const corners = candidates.filter(({ r, c }) => solution[r][c].trackType === 'corner');
 		shuffle(straights);
 		shuffle(corners);
-		// 직선 우선, 부족하면 커브도 사용
 		prioritized = [...straights, ...corners];
 	} else {
-		// Easy/Medium: 커브 우선 제공 (커브가 더 많은 정보를 줌)
 		const corners = candidates.filter(({ r, c }) => solution[r][c].trackType === 'corner');
 		const straights = candidates.filter(({ r, c }) => solution[r][c].trackType === 'straight');
 		shuffle(corners);
@@ -339,24 +549,23 @@ export function generateLevel(difficulty: Difficulty): TrainTracksLevel {
 		prioritized = [...corners, ...straights];
 	}
 
-	// Apply spread strategy for clue distribution
 	const neededClues = totalClues - clueSet.size;
 	const spreadSelected = selectSpreadClues(prioritized, neededClues, config.clueSpread);
 	for (const { r, c } of spreadSelected) {
 		clueSet.add(`${r},${c}`);
 	}
 
-	// Build player grid: clue cells are fixed, others are empty
-	const grid: Cell[][] = Array.from({ length: size }, (_, r) =>
+	return clueSet;
+}
+
+function buildPlayerGrid(solution: Cell[][], clueSet: Set<string>, size: number): Cell[][] {
+	return Array.from({ length: size }, (_, r) =>
 		Array.from({ length: size }, (_, c) => {
 			const sol = solution[r][c];
 			const isClue = clueSet.has(`${r},${c}`);
 
 			if (isClue && sol.trackType !== 'empty') {
-				return {
-					...sol,
-					isFixed: true
-				};
+				return { ...sol, isFixed: true };
 			}
 
 			return {
@@ -371,14 +580,61 @@ export function generateLevel(difficulty: Difficulty): TrainTracksLevel {
 			};
 		})
 	);
+}
 
-	return {
-		grid,
-		solution,
-		rowCounts,
-		colCounts,
-		pathLength: pathData.path.length
-	};
+// ── Level Generation ────────────────────────────────────────────
+
+export function generateLevel(difficulty: Difficulty): TrainTracksLevel {
+	const config = DIFFICULTY_CONFIG[difficulty];
+	const size = config.gridSize;
+
+	// 난이도별 경로 후보 수 (높을수록 더 좋은 경로 선택)
+	const candidateCount =
+		difficulty === 'easy' ? 1 : difficulty === 'medium' ? 2 : difficulty === 'hard' ? 3 : 5;
+
+	// hard 이상은 START/FINISH 외 최소 1개 추가 단서 보장
+	const minExtraClues = difficulty === 'easy' || difficulty === 'medium' ? 0 : 1;
+
+	const maxLevelAttempts = 30;
+	let lastResult: TrainTracksLevel | null = null;
+
+	for (let levelAttempt = 0; levelAttempt < maxLevelAttempts; levelAttempt++) {
+		const pathData = generateBestPath(size, config.minPathRatio, config.minCornerRatio, candidateCount);
+		if (!pathData) continue;
+
+		const solution = pathToGrid(pathData, size);
+		const rowCounts = computeRowCounts(solution, size);
+		const colCounts = computeColCounts(solution, size);
+		const clueSet = selectClues(pathData, solution, config, minExtraClues);
+		const grid = buildPlayerGrid(solution, clueSet, size);
+
+		lastResult = { grid, solution, rowCounts, colCounts, pathLength: pathData.path.length };
+
+		// 난이도 점수 검증
+		if (config.minDifficultyScore <= 0) {
+			return lastResult;
+		}
+
+		const score = scorePuzzleDifficulty(solution, grid, rowCounts, colCounts, pathData.path);
+		if (score >= config.minDifficultyScore) {
+			return lastResult;
+		}
+	}
+
+	// 폴백: 재시도 초과 시 마지막 결과 반환
+	if (lastResult) return lastResult;
+
+	// 최후의 폴백
+	const pathData = generateBestPath(size, config.minPathRatio, config.minCornerRatio, 1);
+	if (!pathData) throw new Error('Failed to generate path after all attempts');
+
+	const solution = pathToGrid(pathData, size);
+	const rowCounts = computeRowCounts(solution, size);
+	const colCounts = computeColCounts(solution, size);
+	const clueSet = selectClues(pathData, solution, config, minExtraClues);
+	const grid = buildPlayerGrid(solution, clueSet, size);
+
+	return { grid, solution, rowCounts, colCounts, pathLength: pathData.path.length };
 }
 
 export function validateRowColCounts(

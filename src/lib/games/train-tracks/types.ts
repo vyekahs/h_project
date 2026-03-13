@@ -28,14 +28,15 @@ export interface TrainTracksDifficultyConfig {
 	clueStraightOnly: boolean;  // true면 단서에 직선만 제공 (커브 제외)
 	clueSpread: number;         // 단서 분산도 (0=연속, 1=최대 분산)
 	maxMistakes: number;        // 최대 허용 실수 횟수
+	minDifficultyScore: number; // 퍼즐 난이도 점수 최소값 (0.0~1.0, 미달 시 재생성)
 }
 
 export const DIFFICULTY_CONFIG: Record<Difficulty, TrainTracksDifficultyConfig> = {
-	easy:   { gridSize: 5, cluePercentage: 0.40, minPathRatio: 1.4, minCornerRatio: 0.10, clueStraightOnly: false, clueSpread: 0.2, maxMistakes: 5 },
-	medium: { gridSize: 6, cluePercentage: 0.28, minPathRatio: 1.7, minCornerRatio: 0.25, clueStraightOnly: false, clueSpread: 0.5, maxMistakes: 4 },
-	hard:   { gridSize: 7, cluePercentage: 0.20, minPathRatio: 2.0, minCornerRatio: 0.35, clueStraightOnly: true,  clueSpread: 0.7, maxMistakes: 3 },
-	expert: { gridSize: 8, cluePercentage: 0.14, minPathRatio: 2.2, minCornerRatio: 0.40, clueStraightOnly: true,  clueSpread: 0.85, maxMistakes: 2 },
-	master: { gridSize: 9, cluePercentage: 0.08, minPathRatio: 2.5, minCornerRatio: 0.45, clueStraightOnly: true,  clueSpread: 1.0, maxMistakes: 1 }
+	easy:   { gridSize: 5, cluePercentage: 0.40, minPathRatio: 1.4, minCornerRatio: 0.10, clueStraightOnly: false, clueSpread: 0.2, maxMistakes: 5, minDifficultyScore: 0.0 },
+	medium: { gridSize: 6, cluePercentage: 0.28, minPathRatio: 1.7, minCornerRatio: 0.25, clueStraightOnly: false, clueSpread: 0.5, maxMistakes: 4, minDifficultyScore: 0.15 },
+	hard:   { gridSize: 7, cluePercentage: 0.18, minPathRatio: 2.0, minCornerRatio: 0.35, clueStraightOnly: true,  clueSpread: 0.7, maxMistakes: 3, minDifficultyScore: 0.30 },
+	expert: { gridSize: 8, cluePercentage: 0.12, minPathRatio: 2.3, minCornerRatio: 0.42, clueStraightOnly: true,  clueSpread: 0.85, maxMistakes: 2, minDifficultyScore: 0.45 },
+	master: { gridSize: 9, cluePercentage: 0.10, minPathRatio: 2.6, minCornerRatio: 0.48, clueStraightOnly: true,  clueSpread: 1.0, maxMistakes: 1, minDifficultyScore: 0.55 }
 };
 
 // Base connections at rotation=0 for each track type
