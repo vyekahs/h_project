@@ -443,4 +443,107 @@
     .btn-close-modal:hover {
         opacity: 0.9;
     }
+
+    /* Mobile Responsive - Fullscreen Modal */
+    @media (max-width: 480px) {
+        .modal-backdrop {
+            padding: 0;
+        }
+
+        .modal-content {
+            max-width: 100%;
+            max-height: 100%;
+            height: 100%;
+            border-radius: 0;
+            padding: 1.25rem 1rem;
+            padding-top: calc(1.25rem + env(safe-area-inset-top, 0px));
+            padding-bottom: calc(1rem + 60px + env(safe-area-inset-bottom, 0px));
+        }
+
+        .modal-header {
+            margin-bottom: 1rem;
+        }
+
+        .btn-close {
+            padding: 8px;
+            margin: -8px;
+            min-width: 44px;
+            min-height: 44px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .setting-card {
+            padding: 1rem;
+            border-radius: 12px;
+            margin-bottom: 0.75rem;
+        }
+
+        .setting-card:last-of-type {
+            margin-bottom: 1rem;
+        }
+
+        .setting-info {
+            margin-bottom: 0.75rem;
+        }
+
+        .setting-title {
+            font-size: 1rem;
+        }
+
+        .setting-desc {
+            font-size: 0.8rem;
+        }
+
+        .theme-options {
+            gap: 0.5rem;
+        }
+
+        .theme-option {
+            padding: 0.75rem 0.5rem;
+            border-radius: 10px;
+            min-height: 44px;
+        }
+
+        .theme-emoji {
+            font-size: 1.5rem;
+        }
+
+        .theme-label {
+            font-size: 0.8rem;
+        }
+
+        .toggle-switch {
+            flex-shrink: 0;
+            padding: 8px 0;
+        }
+
+        .haptics-card .setting-info {
+            margin-right: 0.75rem;
+        }
+
+        .notif-toggle-row {
+            padding: 0.625rem 0;
+        }
+
+        .notif-toggle-info {
+            margin-right: 0.5rem;
+        }
+
+        .notif-toggle-label {
+            font-size: 0.85rem;
+        }
+
+        .notif-toggle-desc {
+            font-size: 0.7rem;
+            line-height: 1.25;
+        }
+
+        .btn-close-modal {
+            padding: 0.875rem;
+            font-size: 0.95rem;
+            min-height: 48px;
+        }
+    }
 </style>
