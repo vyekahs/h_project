@@ -135,6 +135,32 @@ export const RankingService = {
              const shufflePenalty = Math.max(0, mistakes) * shufflePenaltyPerUse;
 
              calculatedScore = Math.max(baseScore, baseScore + timeBonus - shufflePenalty);
+        } else if (gameId === 'train-tracks') {
+             const timeLimit = difficulty === 'easy' ? 120 :
+                              difficulty === 'medium' ? 180 :
+                              difficulty === 'hard' ? 300 :
+                              difficulty === 'expert' ? 480 : 600;
+
+             const baseScore = difficulty === 'easy' ? 10 :
+                               difficulty === 'medium' ? 50 :
+                               difficulty === 'hard' ? 120 :
+                               difficulty === 'expert' ? 250 : 400;
+
+             const timeMultiplier = difficulty === 'easy' ? 1 :
+                                    difficulty === 'medium' ? 2 :
+                                    difficulty === 'hard' ? 3 :
+                                    difficulty === 'expert' ? 4 : 5;
+
+             const timeBonus = Math.max(0, (timeLimit - clearTime) * timeMultiplier);
+
+             const extraMoves = Math.max(0, mistakes);
+             const movePenaltyPerMove = difficulty === 'easy' ? 1 :
+                                        difficulty === 'medium' ? 3 :
+                                        difficulty === 'hard' ? 5 :
+                                        difficulty === 'expert' ? 8 : 12;
+             const movePenalty = extraMoves * movePenaltyPerMove;
+
+             calculatedScore = Math.max(baseScore, baseScore + timeBonus - movePenalty);
         } else {
              calculatedScore = score || 0;
         }
