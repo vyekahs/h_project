@@ -69,7 +69,7 @@ export function canPlayWishedCombo(
 				const combo = detectCombination([card]);
 				if (combo && canBeat(currentCombo, combo)) return true;
 			}
-			return false;
+			return canPlayWishedBomb(hand, wishedRank, currentCombo);
 		}
 
 		case 'pair': {
@@ -82,7 +82,7 @@ export function canPlayWishedCombo(
 				const combo = detectCombination([wishedCards[0], phoenix!]);
 				if (combo && canBeat(currentCombo, combo)) return true;
 			}
-			return false;
+			return canPlayWishedBomb(hand, wishedRank, currentCombo);
 		}
 
 		case 'triple': {
@@ -95,7 +95,7 @@ export function canPlayWishedCombo(
 				const combo = detectCombination([wishedCards[0], wishedCards[1], phoenix!]);
 				if (combo && canBeat(currentCombo, combo)) return true;
 			}
-			return false;
+			return canPlayWishedBomb(hand, wishedRank, currentCombo);
 		}
 
 		case 'full_house': {
@@ -161,77 +161,82 @@ export function canPlayWishedCombo(
 					}
 				}
 			}
-			return false;
+			return canPlayWishedBomb(hand, wishedRank, currentCombo);
 		}
 
 		case 'straight': {
 			// Try to form straights of same length that include the wished rank
-			return canFormSequenceWithRank(hand, wishedRank, currentCombo.length, 'straight', currentCombo);
+			if (canFormSequenceWithRank(hand, wishedRank, currentCombo.length, 'straight', currentCombo)) return true;
+			return canPlayWishedBomb(hand, wishedRank, currentCombo);
 		}
 
 		case 'stairs': {
 			// Try to form stairs of same length that include the wished rank
-			return canFormSequenceWithRank(hand, wishedRank, currentCombo.length, 'stairs', currentCombo);
+			if (canFormSequenceWithRank(hand, wishedRank, currentCombo.length, 'stairs', currentCombo)) return true;
+			return canPlayWishedBomb(hand, wishedRank, currentCombo);
 		}
 
 		default: {
-			// Bombs: 소원 카드를 포함한 폭탄이 있으면 낼 수 있음
-			// 1. 4폭탄 체크 (소원 랭크 4장)
-			if (wishedCards.length === 4) {
-				const bombCombo = detectCombination(wishedCards);
-				if (bombCombo && bombCombo.type === 'four_bomb') {
-					// 폭탄은 항상 현재 트릭을 이김
-					return true;
+			// Bombs: 소원 카드를 포함한 폭탄이 현재 트릭을 이길 수 있는지 체크
+			return canPlayWishedBomb(hand, wishedRank, currentCombo);
+		}
+	}
+}
+
+/**
+ * Check if a bomb containing the wished rank can beat the current combo.
+ * Used as fallback in each switch case of canPlayWishedCombo.
+ */
+function canPlayWishedBomb(hand: Card[], wishedRank: number, currentCombo: Combination): boolean {
+	const wishedCards = hand.filter(
+		c => c.type === 'normal' && c.rank === wishedRank
+	) as NormalCard[];
+
+	// 4폭탄 체크
+	if (wishedCards.length === 4) {
+		const bombCombo = detectCombination(wishedCards);
+		if (bombCombo && bombCombo.type === 'four_bomb' && canBeat(currentCombo, bombCombo)) {
+			return true;
+		}
+	}
+
+	// Straight flush 폭탄 체크 (소원 카드를 포함한 연속된 같은 무늬 5장+)
+	const normalCards = hand.filter((c): c is NormalCard => c.type === 'normal');
+	const suitGroups = new Map<string, NormalCard[]>();
+	for (const c of normalCards) {
+		const group = suitGroups.get(c.suit) || [];
+		group.push(c);
+		suitGroups.set(c.suit, group);
+	}
+
+	for (const [, cards] of suitGroups) {
+		const wishedInSuit = cards.filter(c => c.rank === wishedRank);
+		if (wishedInSuit.length === 0) continue;
+
+		const sorted = [...cards].sort((a, b) => a.rank - b.rank);
+		for (let len = 5; len <= sorted.length; len++) {
+			for (let start = 0; start <= sorted.length - len; start++) {
+				const segment = sorted.slice(start, start + len);
+				let consecutive = true;
+				let hasWished = false;
+				for (let i = 0; i < segment.length; i++) {
+					if (i > 0 && segment[i].rank - segment[i-1].rank !== 1) {
+						consecutive = false;
+						break;
+					}
+					if (segment[i].rank === wishedRank) hasWished = true;
 				}
-			}
-
-			// 2. Straight flush 폭탄 체크 (소원 카드를 포함한 연속된 같은 무늬 5장+)
-			// 모든 normal 카드를 무늬별로 그룹화
-			const normalCards = hand.filter((c): c is NormalCard => c.type === 'normal');
-			const suitGroups = new Map<string, NormalCard[]>();
-			for (const c of normalCards) {
-				const group = suitGroups.get(c.suit) || [];
-				group.push(c);
-				suitGroups.set(c.suit, group);
-			}
-
-			// 각 무늬별로 소원 카드를 포함한 straight flush 가능한지 체크
-			for (const [suit, cards] of suitGroups) {
-				const wishedInSuit = cards.filter(c => c.rank === wishedRank);
-				if (wishedInSuit.length === 0) continue;
-
-				// 이 무늬에서 5장 이상의 연속된 카드 찾기 (소원 카드 포함)
-				const sorted = [...cards].sort((a, b) => a.rank - b.rank);
-
-				// 최소 5장부터 체크
-				for (let len = 5; len <= sorted.length; len++) {
-					for (let start = 0; start <= sorted.length - len; start++) {
-						const segment = sorted.slice(start, start + len);
-
-						// 연속되어 있고 소원 카드 포함하는지 체크
-						let consecutive = true;
-						let hasWished = false;
-						for (let i = 0; i < segment.length; i++) {
-							if (i > 0 && segment[i].rank - segment[i-1].rank !== 1) {
-								consecutive = false;
-								break;
-							}
-							if (segment[i].rank === wishedRank) hasWished = true;
-						}
-
-						if (consecutive && hasWished) {
-							const bombCombo = detectCombination(segment);
-							if (bombCombo && bombCombo.type === 'straight_flush_bomb') {
-								return true;
-							}
-						}
+				if (consecutive && hasWished) {
+					const bombCombo = detectCombination(segment);
+					if (bombCombo && bombCombo.type === 'straight_flush_bomb' && canBeat(currentCombo, bombCombo)) {
+						return true;
 					}
 				}
 			}
-
-			return false;
 		}
 	}
+
+	return false;
 }
 
 /**
