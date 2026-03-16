@@ -121,5 +121,17 @@ export const GAME_REGISTRY: Record<string, GameConfig> = {
 		},
 		localStorageSaveKey: 'train_tracks_save',
 		hasTutorials: false
+	},
+	'2048': {
+		id: '2048',
+		name: '2048',
+		displayTitle: '2048',
+		gameUrl: '/minigames/2048',
+		difficulties: ['classic'],
+		difficultyLabels: {
+			classic: '클래식'
+		},
+		localStorageSaveKey: '2048_save',
+		hasTutorials: false
 	}
 };

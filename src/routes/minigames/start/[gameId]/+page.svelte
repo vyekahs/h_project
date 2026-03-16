@@ -230,16 +230,18 @@
                             </div>
                         {:else}
                             <div class="difficulty-selection-container">
-                                <div class="difficulty-select">
-                                    <div class="options">
-                                        {#each gameConfig.difficulties as diff}
-                                            <label class:selected={difficulty === diff} class="diff-btn">
-                                                <input type="radio" name="difficulty" value={diff} bind:group={difficulty}>
-                                                <span class="diff-name">{gameConfig.difficultyLabels[diff]}</span>
-                                            </label>
-                                        {/each}
+                                {#if gameConfig.difficulties.length > 1}
+                                    <div class="difficulty-select">
+                                        <div class="options">
+                                            {#each gameConfig.difficulties as diff}
+                                                <label class:selected={difficulty === diff} class="diff-btn">
+                                                    <input type="radio" name="difficulty" value={diff} bind:group={difficulty}>
+                                                    <span class="diff-name">{gameConfig.difficultyLabels[diff]}</span>
+                                                </label>
+                                            {/each}
+                                        </div>
                                     </div>
-                                </div>
+                                {/if}
 
                                 <div class="start-actions">
                                     <button class="btn-primary huge" onclick={startGame}>게임 시작</button>
@@ -271,6 +273,8 @@
                                     <p class="score-desc">점수 = 기본점수 + 시간보너스 - 셔플사용 x 감점</p>
                                 {:else if gameConfig.id === 'train-tracks'}
                                     <p class="score-desc">점수 = 기본점수 + 시간보너스 - 초과조작 x 감점</p>
+                                {:else if gameConfig.id === '2048'}
+                                    <p class="score-desc">점수 = 타일 병합 점수 합계</p>
                                 {:else}
                                     <p class="score-desc">점수 = 기본점수 + 시간보너스 - 실수페널티(15%/회)</p>
                                 {/if}
@@ -338,6 +342,13 @@
                                                                         <polyline points="15 19 12 22 9 19" />
                                                                         <line x1="2" y1="12" x2="22" y2="12" />
                                                                         <line x1="12" y1="2" x2="12" y2="22" />
+                                                                    </svg>
+                                                                {:else if gameConfig.id === '2048'}
+                                                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                                                        <rect x="4" y="4" width="6" height="6" rx="1" />
+                                                                        <rect x="14" y="4" width="6" height="6" rx="1" fill="currentColor" stroke="none" />
+                                                                        <rect x="4" y="14" width="6" height="6" rx="1" fill="currentColor" stroke="none" />
+                                                                        <rect x="14" y="14" width="6" height="6" rx="1" />
                                                                     </svg>
                                                                 {:else}
                                                                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 4H8l-7 8 7 8h13a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z"/><line x1="18" y1="9" x2="12" y2="15"/><line x1="12" y1="9" x2="18" y2="15"/></svg>
