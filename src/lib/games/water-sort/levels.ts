@@ -58,25 +58,14 @@ export function checkWin(tubes: Tube[]): boolean {
 	return true;
 }
 
-/** Check if no *meaningful* moves remain (stuck/deadlock) */
+/** Check if no valid moves remain (stuck/deadlock) */
 export function isStuck(tubes: Tube[]): boolean {
 	for (let i = 0; i < tubes.length; i++) {
 		if (tubes[i].layers.length === 0) continue;
 		if (isCompleteTube(tubes[i])) continue;
-
-		const srcGroup = getTopGroup(tubes[i])!;
-
 		for (let j = 0; j < tubes.length; j++) {
 			if (i === j) continue;
-			if (!canPour(tubes[i], tubes[j])) continue;
-
-			// A pour is meaningful only if it exposes a different color underneath
-			const exposesNewColor = srcGroup.count < tubes[i].layers.length;
-
-			// Or if target already has same color (consolidation toward completion)
-			const consolidates = tubes[j].layers.length > 0;
-
-			if (exposesNewColor || consolidates) return false;
+			if (canPour(tubes[i], tubes[j])) return false;
 		}
 	}
 	return true;
@@ -86,35 +75,123 @@ function isCompleteTube(tube: Tube): boolean {
 	return tube.layers.length === TUBE_CAPACITY && tube.layers.every(l => l === tube.layers[0]);
 }
 
+/** Serialize tube state (order-independent) for repeat detection */
+export function serializeTubes(tubes: Tube[]): string {
+	return tubes.map(t => t.layers.join(',')).sort().join('|');
+}
+
 /**
- * Shallow search: check if ALL paths within `depth` moves lead to a dead end.
+ * Check if game is effectively stuck:
+ * moves exist (isStuck=false) but no sequence of moves leads to a win.
+ * Uses BFS over reachable states with visited set for cycle detection.
+ * For performance: only searches incomplete tubes (ignores completed ones)
+ * and limits exploration to MAX_STATES to prevent lag on large boards.
  */
-export function isEffectivelyStuck(tubes: Tube[], depth = 3): boolean {
-	if (depth === 0) return isStuck(tubes);
+export function isEffectivelyStuck(tubes: Tube[]): boolean {
+	// Already won → not stuck
+	if (checkWin(tubes)) return false;
 
-	for (let i = 0; i < tubes.length; i++) {
-		if (tubes[i].layers.length === 0) continue;
-		if (isCompleteTube(tubes[i])) continue;
+	// No moves at all → stuck
+	if (isStuck(tubes)) return true;
 
-		for (let j = 0; j < tubes.length; j++) {
-			if (i === j) continue;
-			if (!canPour(tubes[i], tubes[j])) continue;
+	// Optimize: only consider incomplete tubes (complete ones are irrelevant)
+	const activeTubes = tubes.filter(t =>
+		t.layers.length === 0 || !isCompleteTube(t)
+	);
 
-			// Prune: moving a single-color tube to an empty tube is pointless (just relocation)
-			if (tubes[j].layers.length === 0) {
-				const srcGroup = getTopGroup(tubes[i])!;
-				if (srcGroup.count === tubes[i].layers.length) continue;
+	// If all remaining tubes are empty → nothing to do (edge case)
+	if (activeTubes.every(t => t.layers.length === 0)) return false;
+
+	// BFS: explore all reachable states of active tubes only
+	const MAX_STATES = 5000;
+	const visited = new Set<string>();
+	const initialLayers = activeTubes.map(t => [...t.layers]);
+	visited.add(serializeLayers(initialLayers));
+
+	const queue: number[][][] = [initialLayers];
+
+	while (queue.length > 0) {
+		if (visited.size >= MAX_STATES) return false; // Too complex → assume not stuck
+		const state = queue.shift()!;
+		const n = state.length;
+
+		for (let i = 0; i < n; i++) {
+			if (state[i].length === 0) continue;
+			if (state[i].length === TUBE_CAPACITY && state[i].every(l => l === state[i][0])) continue; // skip complete
+
+			for (let j = 0; j < n; j++) {
+				if (i === j) continue;
+
+				// Check canPour inline (avoid creating Tube objects)
+				const srcLayers = state[i];
+				const tgtLayers = state[j];
+				if (srcLayers.length === 0) continue;
+				const tgtSpace = TUBE_CAPACITY - tgtLayers.length;
+				if (tgtSpace === 0) continue;
+				const srcTop = srcLayers[srcLayers.length - 1];
+				if (tgtLayers.length > 0 && tgtLayers[tgtLayers.length - 1] !== srcTop) continue;
+
+				// Pruning: skip moving to empty tube if source is single-color
+				// (just shuffles same color to empty tube pointlessly)
+				if (tgtLayers.length === 0 && srcLayers.every(l => l === srcLayers[0])) continue;
+
+				// Pruning: skip moving to empty tube if another empty tube already exists
+				// (moving to any empty tube is equivalent, only try the first one)
+				if (tgtLayers.length === 0) {
+					let firstEmpty = -1;
+					for (let k = 0; k < n; k++) {
+						if (state[k].length === 0) { firstEmpty = k; break; }
+					}
+					if (j !== firstEmpty) continue;
+				}
+
+				// Compute pour: top group count
+				let groupCount = 1;
+				for (let k = srcLayers.length - 2; k >= 0; k--) {
+					if (srcLayers[k] === srcTop) groupCount++;
+					else break;
+				}
+				const moveCount = Math.min(groupCount, tgtSpace);
+
+				// Apply move to create new state
+				const newState = state.map(l => [...l]);
+				for (let m = 0; m < moveCount; m++) {
+					newState[j].push(newState[i].pop()!);
+				}
+
+				// Check win
+				if (checkWinLayers(newState)) return false;
+
+				// Check visited
+				const key = serializeLayers(newState);
+				if (!visited.has(key)) {
+					visited.add(key);
+					queue.push(newState);
+				}
 			}
+		}
+	}
 
-			// Simulate pour on a copy
-			const copy = tubes.map(t => ({ ...t, layers: [...t.layers] }));
-			pourWater(copy[i], copy[j]);
+	// Exhausted all reachable states without finding a win
+	return true;
+}
 
-			if (checkWin(copy)) return false;
-			if (!isEffectivelyStuck(copy, depth - 1)) return false;
+/** Fast checkWin on raw layers (no Tube wrapper) */
+function checkWinLayers(state: number[][]): boolean {
+	for (const layers of state) {
+		if (layers.length === 0) continue;
+		if (layers.length !== TUBE_CAPACITY) return false;
+		const c = layers[0];
+		for (let i = 1; i < layers.length; i++) {
+			if (layers[i] !== c) return false;
 		}
 	}
 	return true;
+}
+
+/** Fast serialize on raw layers */
+function serializeLayers(state: number[][]): string {
+	return state.map(l => l.join(',')).sort().join('|');
 }
 
 export interface WaterSortLevel {

@@ -58,7 +58,7 @@ export function createWaterSortGame() {
 	let initialTubes: number[][] = [];
 	let initialMoveLimit = 0;
 
-	// Stuck (no valid moves)
+	// Stuck detection
 	let isGameStuck = $state(false);
 
 	// Pour animation state
@@ -296,8 +296,7 @@ export function createWaterSortGame() {
 						if (checkWin(tubes)) {
 							handleWin();
 						} else if (pendingTubeIds.length === 0) {
-							// Only check when no queued inputs remain
-							if (isEffectivelyStuck(tubes, 3)) {
+							if (isEffectivelyStuck(tubes)) {
 								handleStuck();
 							}
 							saveGame();
