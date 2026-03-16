@@ -58,15 +58,25 @@ export function checkWin(tubes: Tube[]): boolean {
 	return true;
 }
 
-/** Check if no valid moves remain (stuck/deadlock) */
+/** Check if no *meaningful* moves remain (stuck/deadlock) */
 export function isStuck(tubes: Tube[]): boolean {
 	for (let i = 0; i < tubes.length; i++) {
 		if (tubes[i].layers.length === 0) continue;
-		// Skip already-complete tubes
-		if (tubes[i].layers.length === TUBE_CAPACITY && tubes[i].layers.every(l => l === tubes[i].layers[0])) continue;
+		if (isCompleteTube(tubes[i])) continue;
+
+		const srcGroup = getTopGroup(tubes[i])!;
+
 		for (let j = 0; j < tubes.length; j++) {
 			if (i === j) continue;
-			if (canPour(tubes[i], tubes[j])) return false;
+			if (!canPour(tubes[i], tubes[j])) continue;
+
+			// A pour is meaningful only if it exposes a different color underneath
+			const exposesNewColor = srcGroup.count < tubes[i].layers.length;
+
+			// Or if target already has same color (consolidation toward completion)
+			const consolidates = tubes[j].layers.length > 0;
+
+			if (exposesNewColor || consolidates) return false;
 		}
 	}
 	return true;
@@ -78,7 +88,6 @@ function isCompleteTube(tube: Tube): boolean {
 
 /**
  * Shallow search: check if ALL paths within `depth` moves lead to a dead end.
- * Much lighter than full BFS solver — runs in microseconds even on master difficulty.
  */
 export function isEffectivelyStuck(tubes: Tube[], depth = 3): boolean {
 	if (depth === 0) return isStuck(tubes);
@@ -90,6 +99,12 @@ export function isEffectivelyStuck(tubes: Tube[], depth = 3): boolean {
 		for (let j = 0; j < tubes.length; j++) {
 			if (i === j) continue;
 			if (!canPour(tubes[i], tubes[j])) continue;
+
+			// Prune: moving a single-color tube to an empty tube is pointless (just relocation)
+			if (tubes[j].layers.length === 0) {
+				const srcGroup = getTopGroup(tubes[i])!;
+				if (srcGroup.count === tubes[i].layers.length) continue;
+			}
 
 			// Simulate pour on a copy
 			const copy = tubes.map(t => ({ ...t, layers: [...t.layers] }));
