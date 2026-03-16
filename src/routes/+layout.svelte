@@ -77,6 +77,10 @@
 	<footer class="site-footer">
 		<a href="/about">소개</a>
 		<span class="divider">|</span>
+		<a href="/guides">게임 가이드</a>
+		<span class="divider">|</span>
+		<a href="/faq">FAQ</a>
+		<span class="divider">|</span>
 		<a href="/privacy">개인정보처리방침</a>
 	</footer>
 	<nav class="bottom-nav">
