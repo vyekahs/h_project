@@ -29,88 +29,90 @@
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div class="modal-content" onclick={(e: Event) => e.stopPropagation()}>
-		<h2>라운드 {result?.roundNumber} 결과</h2>
+		<div class="modal-body">
+			<h2>라운드 {result?.roundNumber} 결과</h2>
 
-		{#if lastPlay}
-			<div class="last-play">
-				<span class="last-play-label">{lastPlayName}의 마지막 패</span>
-				<div class="last-play-cards">
-					{#each lastPlay.combination.cards as card (card.id)}
-						<CardComponent {card} />
-					{/each}
-				</div>
-			</div>
-		{/if}
-
-		{#if result}
-			<!-- Round Score -->
-			<div class="round-score">
-				<div class="team-score team-a">
-					<span class="team-label">우리 팀</span>
-					<span class="score" class:positive={result.teamAScore > 0} class:negative={result.teamAScore < 0}>
-						{result.teamAScore > 0 ? '+' : ''}{result.teamAScore}
-					</span>
-				</div>
-				<div class="team-score team-b">
-					<span class="team-label">상대 팀</span>
-					<span class="score" class:positive={result.teamBScore > 0} class:negative={result.teamBScore < 0}>
-						{result.teamBScore > 0 ? '+' : ''}{result.teamBScore}
-					</span>
-				</div>
-			</div>
-
-			<!-- Special events -->
-			{#if result.oneTwo}
-				<div class="event one-two">원투! {result.oneTwo === 'A' ? '우리 팀' : '상대 팀'} (+200)</div>
-			{/if}
-			{#each result.grandTichuDeclarations as gt}
-				<div class="event" class:success={gt.success} class:fail={!gt.success}>
-					{gs()?.players[gt.seat]?.name ?? `P${gt.seat + 1}`} 그랜드 티츄 {gt.success ? '성공! (+200)' : '실패 (-200)'}
-				</div>
-			{/each}
-			{#each result.smallTichuDeclarations as st}
-				<div class="event" class:success={st.success} class:fail={!st.success}>
-					{gs()?.players[st.seat]?.name ?? `P${st.seat + 1}`} 스몰 티츄 {st.success ? '성공! (+100)' : '실패 (-100)'}
-				</div>
-			{/each}
-		{/if}
-
-		<!-- Cumulative -->
-		<div class="cumulative">
-			<h3>누적 점수</h3>
-			<div class="cumulative-scores">
-				<div class="cum-team">
-					<span class="team-label">우리 팀</span>
-					<span class="cum-score">{gs()?.cumulativeScoreA ?? 0}</span>
-				</div>
-				<div class="cum-divider">:</div>
-				<div class="cum-team">
-					<span class="team-label">상대 팀</span>
-					<span class="cum-score">{gs()?.cumulativeScoreB ?? 0}</span>
-				</div>
-			</div>
-		</div>
-
-		<!-- History -->
-		{#if completedRounds.length > 1}
-			<div class="history">
-				<h4>라운드 히스토리</h4>
-				<table>
-					<thead>
-						<tr><th>R</th><th>우리</th><th>상대</th></tr>
-					</thead>
-					<tbody>
-						{#each completedRounds as round}
-							<tr>
-								<td>{round.roundNumber}</td>
-								<td class:positive={round.teamAScore > 0} class:negative={round.teamAScore < 0}>{round.teamAScore}</td>
-								<td class:positive={round.teamBScore > 0} class:negative={round.teamBScore < 0}>{round.teamBScore}</td>
-							</tr>
+			{#if lastPlay}
+				<div class="last-play">
+					<span class="last-play-label">{lastPlayName}의 마지막 패</span>
+					<div class="last-play-cards">
+						{#each lastPlay.combination.cards as card (card.id)}
+							<CardComponent {card} />
 						{/each}
-					</tbody>
-				</table>
+					</div>
+				</div>
+			{/if}
+
+			{#if result}
+				<!-- Round Score -->
+				<div class="round-score">
+					<div class="team-score team-a">
+						<span class="team-label">우리 팀</span>
+						<span class="score" class:positive={result.teamAScore > 0} class:negative={result.teamAScore < 0}>
+							{result.teamAScore > 0 ? '+' : ''}{result.teamAScore}
+						</span>
+					</div>
+					<div class="team-score team-b">
+						<span class="team-label">상대 팀</span>
+						<span class="score" class:positive={result.teamBScore > 0} class:negative={result.teamBScore < 0}>
+							{result.teamBScore > 0 ? '+' : ''}{result.teamBScore}
+						</span>
+					</div>
+				</div>
+
+				<!-- Special events -->
+				{#if result.oneTwo}
+					<div class="event one-two">원투! {result.oneTwo === 'A' ? '우리 팀' : '상대 팀'} (+200)</div>
+				{/if}
+				{#each result.grandTichuDeclarations as gt}
+					<div class="event" class:success={gt.success} class:fail={!gt.success}>
+						{gs()?.players[gt.seat]?.name ?? `P${gt.seat + 1}`} 그랜드 티츄 {gt.success ? '성공! (+200)' : '실패 (-200)'}
+					</div>
+				{/each}
+				{#each result.smallTichuDeclarations as st}
+					<div class="event" class:success={st.success} class:fail={!st.success}>
+						{gs()?.players[st.seat]?.name ?? `P${st.seat + 1}`} 스몰 티츄 {st.success ? '성공! (+100)' : '실패 (-100)'}
+					</div>
+				{/each}
+			{/if}
+
+			<!-- Cumulative -->
+			<div class="cumulative">
+				<h3>누적 점수</h3>
+				<div class="cumulative-scores">
+					<div class="cum-team">
+						<span class="team-label">우리 팀</span>
+						<span class="cum-score">{gs()?.cumulativeScoreA ?? 0}</span>
+					</div>
+					<div class="cum-divider">:</div>
+					<div class="cum-team">
+						<span class="team-label">상대 팀</span>
+						<span class="cum-score">{gs()?.cumulativeScoreB ?? 0}</span>
+					</div>
+				</div>
 			</div>
-		{/if}
+
+			<!-- History -->
+			{#if completedRounds.length > 1}
+				<div class="history">
+					<h4>라운드 히스토리</h4>
+					<table>
+						<thead>
+							<tr><th>R</th><th>우리</th><th>상대</th></tr>
+						</thead>
+						<tbody>
+							{#each completedRounds as round}
+								<tr>
+									<td>{round.roundNumber}</td>
+									<td class:positive={round.teamAScore > 0} class:negative={round.teamAScore < 0}>{round.teamAScore}</td>
+									<td class:positive={round.teamBScore > 0} class:negative={round.teamBScore < 0}>{round.teamBScore}</td>
+								</tr>
+							{/each}
+						</tbody>
+					</table>
+				</div>
+			{/if}
+		</div>
 
 		<button class="btn-ok" onclick={close}>확인</button>
 	</div>
@@ -141,10 +143,19 @@
 		padding: 28px;
 		max-width: 400px;
 		width: 90%;
+		max-height: 85vh;
+		display: flex;
+		flex-direction: column;
 		text-align: center;
 		color: #f3f4f6;
 		box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.1);
 		animation: modalPop 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+	}
+
+	.modal-body {
+		flex: 1;
+		overflow-y: auto;
+		min-height: 0;
 	}
 
 	h2 {
@@ -281,6 +292,7 @@
 	td:last-child { border-top-right-radius: 6px; border-bottom-right-radius: 6px; }
 
 	.btn-ok {
+		flex-shrink: 0;
 		margin-top: 24px;
 		padding: 12px 48px;
 		border-radius: 16px;

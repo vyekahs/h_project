@@ -12,6 +12,10 @@
 	const busy = $derived(game.actionInProgress);
 	const highlightIds = $derived(game.highlightCardIds as Set<string>);
 
+	// My tichu declaration status
+	const myGrandTichu = $derived.by(() => { void game.stateVersion; return game.gameState?.players[0]?.grandTichu === true; });
+	const mySmallTichu = $derived.by(() => { void game.stateVersion; return !!game.gameState?.players[0]?.smallTichu; });
+
 	// Detect if selected cards form a bomb (for out-of-turn bomb play)
 	const selectedIsBomb = $derived.by(() => {
 		if (game.selectedCards.size < 4) return false;
@@ -115,6 +119,11 @@
 </script>
 
 <div class="hand-area" class:is-my-turn={game.isMyTurn}>
+	{#if myGrandTichu}
+		<div class="my-declaration grand">그랜드 티츄</div>
+	{:else if mySmallTichu}
+		<div class="my-declaration small-tichu">스몰 티츄</div>
+	{/if}
 	{#if isExchangePhase}
 		<div class="exchange-controls">
 			<div class="exchange-slots">
@@ -227,6 +236,26 @@
 <style>
 	/* Fonts */
 	@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+
+	.my-declaration {
+		text-align: center;
+		font-size: 0.75rem;
+		font-weight: 800;
+		padding: 3px 14px;
+		border-radius: 8px;
+		color: #fff;
+		animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+		align-self: center;
+	}
+	.my-declaration.grand {
+		background: linear-gradient(135deg, #dc2626, #b91c1c);
+		border: 1px solid rgba(252, 165, 165, 0.4);
+	}
+	.my-declaration.small-tichu {
+		background: linear-gradient(135deg, #059669, #047857);
+		border: 1px solid rgba(110, 231, 183, 0.4);
+	}
+	@keyframes popIn { from { transform: scale(0); opacity: 0; } to { transform: scale(1); opacity: 1; } }
 
 	.hand-area {
 		display: flex;

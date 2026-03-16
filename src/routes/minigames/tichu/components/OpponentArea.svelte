@@ -19,16 +19,6 @@
 </script>
 
 <div class="opponent {position}" class:current-turn={isCurrentTurn}>
-	<!-- Declarations -->
-	<div class="declarations">
-		{#if isGrandTichu}
-			<div class="declaration grand">GT</div>
-		{/if}
-		{#if isSmallTichu}
-			<div class="declaration small-tichu">ST</div>
-		{/if}
-	</div>
-
 	<div class="opponent-card">
 		<div class="avatar-container">
 			<div class="avatar team-{player.team}" class:finished={finishOrder !== null}>
@@ -42,12 +32,17 @@
 				<div class="thinking-ring"></div>
 			{/if}
 		</div>
-		
+
 		<div class="info-area">
 			<div class="name-row">
 				<span class="name">{player.name}</span>
 				{#if isPartner}<span class="partner-badge">P</span>{/if}
 			</div>
+			{#if isGrandTichu}
+				<div class="declaration grand">그랜드 티츄</div>
+			{:else if isSmallTichu}
+				<div class="declaration small-tichu">스몰 티츄</div>
+			{/if}
 			{#if finishOrder !== null}
 				<div class="finish-banner badge-{finishOrder}">{finishLabel[finishOrder]} 마감</div>
 			{:else if cardCount > 0}
@@ -223,19 +218,13 @@
 		animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 	}
 
-	.declarations {
-		position: absolute;
-		display: flex;
-		gap: 4px;
-		z-index: 30;
-	}
 	.declaration {
-		font-size: 0.7rem;
+		font-size: 0.65rem;
 		font-weight: 800;
-		padding: 3px 8px;
-		border-radius: 8px;
+		padding: 2px 8px;
+		border-radius: 6px;
 		color: #fff;
-		box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+		text-align: center;
 		animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 	}
 	.declaration.grand {
@@ -254,34 +243,16 @@
 		top: 50%;
 		transform: translateY(-50%);
 	}
-	.left .declarations {
-		bottom: 100%;
-		left: 50%;
-		transform: translateX(-50%);
-		margin-bottom: 8px;
-	}
 
 	.top {
 		top: 8px;
 		left: 50%;
 		transform: translateX(-50%);
 	}
-	.top .declarations {
-		top: 100%;
-		left: 50%;
-		transform: translateX(-50%);
-		margin-top: 8px;
-	}
 
 	.right {
 		right: 16px;
 		top: 50%;
 		transform: translateY(-50%);
-	}
-	.right .declarations {
-		bottom: 100%;
-		left: 50%;
-		transform: translateX(-50%);
-		margin-bottom: 8px;
 	}
 </style>

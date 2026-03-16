@@ -240,17 +240,8 @@ export function selectExchangeCards(
 		protectedIds.delete(mahjongCard.id); // 마작을 주기로 했으므로 보호 해제
 	}
 
-	// 파트너가 티츄를 선언했으면 무조건 최고 카드를 줌 (behavior hook 스킵)
-	// Behavior hook: 프리셋별 파트너 교환 카드 선택
-	if (!toPartner && !partnerDeclaredTichu) {
-		const behaviorCard = behavior.selectPartnerExchangeCard?.(hand, singletons, rankGroups, protectedIds);
-		if (behaviorCard) {
-			toPartner = behaviorCard;
-		}
-	}
-
-	// Default: 용 > 봉 > A > K 순서로 가장 좋은 카드를 파트너에게 줌
-	// (protectedIds 무시 — 파트너에게는 최고의 카드를 줘야 함)
+	// 파트너에게는 무조건 최고 카드를 줌 (페어/트리플이든 상관없이)
+	// 용 > 봉 > A > K 순서 (protectedIds 무시)
 	if (!toPartner) {
 		const dragon = hand.find(c => c.type === 'special' && c.special === 'dragon');
 		if (dragon) toPartner = dragon;

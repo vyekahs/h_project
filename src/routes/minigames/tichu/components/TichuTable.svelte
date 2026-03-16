@@ -205,17 +205,6 @@
 		<div class="phase-indicator">{phaseLabel}</div>
 	{/if}
 
-	<!-- Tichu declarations banner -->
-	{#if tichuDeclarations.length > 0}
-		<div class="tichu-declarations">
-			{#each tichuDeclarations as decl (decl.seat)}
-				<div class="tichu-badge" class:grand={decl.type === 'grand'} class:small={decl.type === 'small'} class:is-me={decl.seat === mySeat}>
-					{decl.name}: {decl.type === 'grand' ? '그랜드 티츄' : '스몰 티츄'}
-				</div>
-			{/each}
-		</div>
-	{/if}
-
 	<!-- Table Area -->
 	<div class="table-field">
 		<!-- Small Tichu button (inside table-field so it stays above hand area) -->
@@ -426,46 +415,6 @@
 		box-shadow: 0 8px 24px rgba(0,0,0,0.6);
 		text-shadow: 0 2px 4px rgba(0,0,0,0.8);
 		white-space: nowrap;
-	}
-
-	/* Tichu declarations */
-	.tichu-declarations {
-		display: flex;
-		justify-content: center;
-		gap: 10px;
-		padding: 8px 12px;
-		flex-wrap: wrap;
-	}
-	.tichu-badge {
-		padding: 5px 14px;
-		border-radius: 12px;
-		font-size: 0.8rem;
-		font-weight: 700;
-		backdrop-filter: blur(12px);
-		-webkit-backdrop-filter: blur(12px);
-		animation: tichuPop 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-		box-shadow: 0 4px 10px rgba(0,0,0,0.2);
-		text-shadow: 0 1px 1px rgba(0,0,0,0.3);
-	}
-	/* Grand Tichu: Imperial Gold/Red */
-	.tichu-badge.grand {
-		background: linear-gradient(135deg, rgba(220, 38, 38, 0.8), rgba(153, 27, 27, 0.9));
-		border: 1px solid rgba(252, 165, 165, 0.5);
-		color: #fef2f2;
-	}
-	/* Small Tichu: Jade/Blue */
-	.tichu-badge.small {
-		background: linear-gradient(135deg, rgba(5, 150, 105, 0.8), rgba(4, 120, 87, 0.9));
-		border: 1px solid rgba(110, 231, 183, 0.5);
-		color: #ecfdf5;
-	}
-	.tichu-badge.is-me {
-		border: 2px solid #fbbf24; /* Gold border for me */
-		box-shadow: 0 0 15px rgba(251, 191, 36, 0.4);
-	}
-	@keyframes tichuPop {
-		0% { opacity: 0; transform: scale(0.5); }
-		100% { opacity: 1; transform: scale(1); }
 	}
 
 	.wish-indicator {
