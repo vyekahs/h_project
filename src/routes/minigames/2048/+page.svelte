@@ -40,6 +40,12 @@
 			ArrowRight: 'right'
 		};
 
+		if ((e.metaKey || e.ctrlKey) && e.key === 'z') {
+			e.preventDefault();
+			game.undo();
+			return;
+		}
+
 		const dir = dirMap[e.key];
 		if (dir) {
 			e.preventDefault();
@@ -87,6 +93,24 @@
 					<div class="timer">
 						{formatTime(game.displayTimer)}
 					</div>
+					<button
+						class="icon-btn"
+						onclick={game.undo}
+						disabled={!game.canUndo}
+						aria-label="되돌리기"
+					>
+						<svg
+							xmlns="http://www.w3.org/2000/svg"
+							width="22"
+							height="22"
+							viewBox="0 0 24 24"
+							fill="none"
+							stroke="currentColor"
+							stroke-width="2"
+							stroke-linecap="round"
+							stroke-linejoin="round"
+						><polyline points="1 4 1 10 7 10" /><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" /></svg>
+					</button>
 					<button class="icon-btn" onclick={game.pauseGame} aria-label="Pause">
 						<svg
 							xmlns="http://www.w3.org/2000/svg"
@@ -290,6 +314,12 @@
 
 	.icon-btn:active {
 		background: var(--bg-elevated);
+	}
+
+	.icon-btn:disabled {
+		opacity: 0.25;
+		cursor: default;
+		pointer-events: none;
 	}
 
 	.game-play-area {
