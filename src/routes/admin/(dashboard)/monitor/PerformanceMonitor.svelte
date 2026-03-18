@@ -571,16 +571,134 @@
 		font-size: 0.95rem;
 	}
 
+	/* Overflow handling */
+	:global(.overflow-x-auto) {
+		overflow-x: auto;
+		-webkit-overflow-scrolling: touch;
+		margin: -0.5rem;
+		padding: 0.5rem;
+		position: relative;
+	}
+
+	:global(.overflow-x-auto::after) {
+		content: '';
+		position: absolute;
+		right: 0;
+		top: 0;
+		bottom: 0;
+		width: 40px;
+		background: linear-gradient(to left, var(--bg-primary), transparent);
+		pointer-events: none;
+		opacity: 0;
+		transition: opacity 0.3s;
+	}
+
+	@media (max-width: 768px) {
+		:global(.overflow-x-auto::after) {
+			opacity: 1;
+		}
+	}
+
 	/* Mobile Responsive */
 	@media (max-width: 768px) {
+		.card {
+			padding: 1rem;
+			border-radius: 10px;
+		}
+
+		.card h2 {
+			font-size: 1rem;
+			margin-bottom: 1rem;
+		}
+
 		.view-toggle {
 			gap: 0.25rem;
 			padding: 0.25rem;
+			flex-direction: column;
 		}
 
 		.toggle-btn {
-			padding: 0.5rem 0.875rem;
+			padding: 0.625rem 1rem;
 			font-size: 0.8125rem;
+			width: 100%;
+		}
+
+		/* Stat cards stack on mobile */
+		:global(.grid-cols-4),
+		:global(.grid-cols-3) {
+			grid-template-columns: repeat(2, 1fr);
+			gap: 1rem;
+		}
+
+		.stat-card {
+			padding: 1rem;
+		}
+
+		.stat-label {
+			font-size: 0.75rem;
+		}
+
+		.stat-value {
+			font-size: 1.5rem;
+		}
+
+		/* Table responsive */
+		:global(th),
+		:global(td) {
+			padding: 0.625rem 0.75rem;
+			font-size: 0.8125rem;
+		}
+
+		:global(th) {
+			font-size: 0.6875rem;
+		}
+
+		:global(.font-mono) {
+			font-size: 0.75rem;
+		}
+
+		/* Compact table on mobile */
+		:global(table) {
+			min-width: 600px;
+		}
+
+		/* Info box */
+		.info-box {
+			padding: 1rem;
+		}
+
+		.info-box h3 {
+			font-size: 0.9375rem;
+		}
+
+		.info-box li {
+			font-size: 0.8125rem;
+			padding: 0.25rem 0;
+		}
+
+		.history-stats {
+			padding: 0.875rem;
+			font-size: 0.8125rem;
+		}
+	}
+
+	/* Very small screens */
+	@media (max-width: 480px) {
+		:global(.grid-cols-4),
+		:global(.grid-cols-3) {
+			grid-template-columns: 1fr;
+		}
+
+		.stat-value {
+			font-size: 1.375rem;
+		}
+
+		.view-toggle {
+			font-size: 0.75rem;
+		}
+
+		.toggle-btn {
+			padding: 0.5rem 0.75rem;
 		}
 	}
 </style>
