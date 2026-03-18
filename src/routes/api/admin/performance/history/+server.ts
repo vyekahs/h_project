@@ -4,7 +4,9 @@ import { verifyAdminSession } from '$lib/server/auth';
 import {
 	getSlowRequestsFromDB,
 	getSlowRequestStats,
-	getSlowestEndpointsFromDB
+	getSlowestEndpointsFromDB,
+	getDbPoolStatsFromDB,
+	getDbPoolStatsAggregated
 } from '$lib/server/performance';
 
 export const GET: RequestHandler = async ({ cookies, url }) => {
@@ -23,16 +25,20 @@ export const GET: RequestHandler = async ({ cookies, url }) => {
 	const sinceDate = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
 	// Fetch data in parallel
-	const [slowRequests, stats, slowestEndpoints] = await Promise.all([
+	const [slowRequests, stats, slowestEndpoints, dbPoolHistory, dbPoolStats] = await Promise.all([
 		getSlowRequestsFromDB(limit, sinceDate),
 		getSlowRequestStats(sinceDate),
-		getSlowestEndpointsFromDB(20)
+		getSlowestEndpointsFromDB(20),
+		getDbPoolStatsFromDB(limit, sinceDate),
+		getDbPoolStatsAggregated(sinceDate)
 	]);
 
 	return json({
 		slowRequests,
 		stats,
 		slowestEndpoints,
+		dbPoolHistory,
+		dbPoolStats,
 		period: {
 			days,
 			since: sinceDate.toISOString()

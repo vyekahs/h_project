@@ -121,20 +121,35 @@
 	<!-- Real-time Metrics -->
 	<div class="card mb-6">
 		<h2 class="text-lg font-semibold mb-4">실시간 메트릭 (최근 1분)</h2>
-		<div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-			<div>
-				<div class="text-sm text-gray-500">분당 요청 수</div>
-				<div class="text-xl font-bold">{perfData.realtime.requestsPerMinute}</div>
+		<div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+			<div class="stat-card">
+				<div class="stat-label">분당 요청 수</div>
+				<div class="stat-value">{perfData.realtime.requestsPerMinute}</div>
 			</div>
-			<div>
-				<div class="text-sm text-gray-500">평균 응답 시간</div>
-				<div class="text-xl font-bold">{perfData.realtime.avgResponseTime}ms</div>
+			<div class="stat-card">
+				<div class="stat-label">평균 응답 시간</div>
+				<div class="stat-value">{perfData.realtime.avgResponseTime}ms</div>
 			</div>
-			<div>
-				<div class="text-sm text-gray-500">느린 요청 수</div>
-				<div class="text-xl font-bold">{perfData.realtime.slowRequestsPerMinute}</div>
+			<div class="stat-card">
+				<div class="stat-label">느린 요청 수</div>
+				<div class="stat-value">{perfData.realtime.slowRequestsPerMinute}</div>
 			</div>
+			{#if perfData.dbPool}
+				<div class="stat-card {perfData.dbPool.utilizationPercent >= 80 ? 'warning-card' : ''}">
+					<div class="stat-label">DB 연결 사용률</div>
+					<div class="stat-value {getStatusColor(perfData.dbPool.utilizationPercent, { warning: 70, danger: 85 })}">
+						{perfData.dbPool.activeConnections}/{perfData.dbPool.maxConnections}
+					</div>
+					<div class="stat-sublabel">{perfData.dbPool.utilizationPercent}% 사용 중</div>
+				</div>
+			{/if}
 		</div>
+		{#if perfData.dbPool && perfData.dbPool.utilizationPercent >= 80}
+			<div class="db-warning">
+				⚠️ DB 연결 풀이 {perfData.dbPool.utilizationPercent}% 사용 중입니다.
+				연결 수 증설을 고려하세요. (현재: 최대 {perfData.dbPool.maxConnections}개)
+			</div>
+		{/if}
 	</div>
 
 	<!-- Endpoint Statistics -->
@@ -291,6 +306,57 @@
 			{/if}
 		{/if}
 	</div>
+
+	<!-- DB Pool History (Historical View Only) -->
+	{#if viewMode === 'historical' && historicalData?.dbPoolHistory && historicalData.dbPoolHistory.length > 0}
+		<div class="card mb-6">
+			<h2 class="text-lg font-semibold mb-4">DB 연결 풀 통계 이력 (사용률 ≥70%)</h2>
+
+			<div class="mb-4 p-3 history-stats">
+				<div class="text-sm text-gray-700">
+					<strong>최근 7일 통계:</strong>
+					{#if historicalData.dbPoolStats}
+						총 {historicalData.dbPoolStats.total}건 기록 |
+						평균 사용률 {historicalData.dbPoolStats.avgUtilization}% |
+						최대 사용률 {historicalData.dbPoolStats.maxUtilization}% |
+						피크 연결 수 {historicalData.dbPoolStats.peakConnections}개
+					{/if}
+				</div>
+			</div>
+
+			<div class="overflow-x-auto">
+				<table class="w-full">
+					<thead class="table-header">
+						<tr>
+							<th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">시간</th>
+							<th class="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">활성 연결</th>
+							<th class="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">최대 연결</th>
+							<th class="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">사용률</th>
+						</tr>
+					</thead>
+					<tbody class="divide-y divide-gray-200">
+						{#each historicalData.dbPoolHistory as poolStat}
+							<tr class="hover:bg-gray-50">
+								<td class="px-4 py-2 text-sm text-gray-600">
+									{formatTime(new Date(poolStat.timestamp).getTime())}
+								</td>
+								<td class="px-4 py-2 text-sm text-right">{poolStat.activeConnections}</td>
+								<td class="px-4 py-2 text-sm text-right text-gray-500">{poolStat.maxConnections}</td>
+								<td
+									class="px-4 py-2 text-sm text-right font-semibold {getStatusColor(poolStat.utilizationPercent, {
+										warning: 70,
+										danger: 85
+									})}"
+								>
+									{poolStat.utilizationPercent}%
+								</td>
+							</tr>
+						{/each}
+					</tbody>
+				</table>
+			</div>
+		</div>
+	{/if}
 
 	<!-- Slow Queries -->
 	{#if perfData.slowQueries.length > 0}

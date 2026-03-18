@@ -5,7 +5,9 @@ import {
 	getEndpointStats,
 	getSlowRequests,
 	getSlowQueries,
-	getRealtimeMetrics
+	getRealtimeMetrics,
+	getDbPoolStats,
+	getActiveDbConnections
 } from '$lib/server/performance';
 
 export const load: PageServerLoad = async ({ locals, url }) => {
@@ -16,12 +18,20 @@ export const load: PageServerLoad = async ({ locals, url }) => {
 	const tab = url.searchParams.get('tab') || 'hardware';
 
 	// Pre-load performance data for instant tab switching
+	const activeConnections = await getActiveDbConnections();
+	const dbPoolStats = getDbPoolStats();
+
 	const performanceData = {
 		health: getSystemHealth(),
 		endpoints: getEndpointStats(),
 		slowRequests: getSlowRequests(20),
 		slowQueries: getSlowQueries(20),
-		realtime: getRealtimeMetrics()
+		realtime: getRealtimeMetrics(),
+		dbPool: {
+			...dbPoolStats,
+			activeConnections,
+			utilizationPercent: Math.round((activeConnections / dbPoolStats.maxConnections) * 100)
+		}
 	};
 
 	return {

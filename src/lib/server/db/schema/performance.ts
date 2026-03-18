@@ -21,3 +21,21 @@ export const slowRequestLogs = pgTable(
 
 export type SlowRequestLog = typeof slowRequestLogs.$inferSelect;
 export type NewSlowRequestLog = typeof slowRequestLogs.$inferInsert;
+
+export const dbPoolStats = pgTable(
+	'db_pool_stats',
+	{
+		id: serial('id').primaryKey(),
+		activeConnections: integer('active_connections').notNull(),
+		maxConnections: integer('max_connections').notNull(),
+		utilizationPercent: integer('utilization_percent').notNull(),
+		timestamp: timestamp('timestamp', { withTimezone: true }).notNull().defaultNow(),
+		createdAt: timestamp('created_at', { withTimezone: true }).defaultNow()
+	},
+	(table) => ({
+		timestampIdx: index('idx_db_pool_stats_timestamp').on(table.timestamp.desc())
+	})
+);
+
+export type DbPoolStat = typeof dbPoolStats.$inferSelect;
+export type NewDbPoolStat = typeof dbPoolStats.$inferInsert;

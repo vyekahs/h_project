@@ -1,9 +1,31 @@
 import { startAutoCloseScheduler } from '$lib/server/autoClose';
 import { verifyAdminSession, verifyAttendeeSession } from '$lib/server/auth';
-import { recordRequest } from '$lib/server/performance';
+import {
+	recordRequest,
+	recordDbPoolStats,
+	getActiveDbConnections,
+	getDbPoolStats
+} from '$lib/server/performance';
 
 // Start the scheduler when the server starts
 startAutoCloseScheduler();
+
+// DB pool monitoring interval (every 30 seconds)
+let dbPoolMonitorInterval: NodeJS.Timeout | null = null;
+if (!dbPoolMonitorInterval) {
+	dbPoolMonitorInterval = setInterval(
+		async () => {
+			try {
+				const activeConnections = await getActiveDbConnections();
+				const poolStats = getDbPoolStats();
+				await recordDbPoolStats(activeConnections, poolStats.maxConnections);
+			} catch (error) {
+				console.error('[PERF] DB pool monitoring error:', error);
+			}
+		},
+		30 * 1000
+	);
+}
 
 import type { Handle } from '@sveltejs/kit';
 

@@ -4,9 +4,9 @@
  * 서버 응답 시간, DB 쿼리, 느린 요청을 추적합니다.
  */
 
-import { db } from '$lib/server/db';
-import { slowRequestLogs } from '$lib/server/db/schema/performance';
-import type { SlowRequestLog } from '$lib/server/db/schema/performance';
+import { db, pgClient } from '$lib/server/db';
+import { slowRequestLogs, dbPoolStats } from '$lib/server/db/schema/performance';
+import type { SlowRequestLog, DbPoolStat } from '$lib/server/db/schema/performance';
 import { desc, gte, sql } from 'drizzle-orm';
 
 interface RequestMetrics {
@@ -213,6 +213,45 @@ export function getRealtimeMetrics() {
 }
 
 /**
+ * DB 연결 풀 상태
+ */
+export function getDbPoolStats() {
+	try {
+		// postgres.js의 연결 풀 상태
+		const options = (pgClient as any).options;
+
+		return {
+			maxConnections: options?.max || 20,
+			// postgres.js는 내부 통계를 직접 노출하지 않으므로 설정값만 반환
+			// 실제 사용 중인 연결은 DB 쿼리로 확인해야 함
+		};
+	} catch (error) {
+		console.error('[PERF] Failed to get DB pool stats:', error);
+		return {
+			maxConnections: 20,
+		};
+	}
+}
+
+/**
+ * DB 연결 수 조회 (PostgreSQL)
+ */
+export async function getActiveDbConnections(): Promise<number> {
+	try {
+		const result = await db.execute(sql`
+			SELECT count(*) as count
+			FROM pg_stat_activity
+			WHERE datname = current_database()
+			AND state = 'active'
+		`);
+		return Number(result.rows[0]?.count || 0);
+	} catch (error) {
+		console.error('[PERF] Failed to get active DB connections:', error);
+		return 0;
+	}
+}
+
+/**
  * 모니터링 데이터 초기화
  */
 export function clearMonitoringData() {
@@ -305,4 +344,75 @@ export async function getSlowestEndpointsFromDB(limit = 20) {
 		avgDuration: Math.round(Number(r.avgDuration)),
 		maxDuration: Number(r.maxDuration)
 	}));
+}
+
+/**
+ * Record DB pool stats to database (high utilization only)
+ * Records when utilization >= 70% to track potential connection issues
+ */
+export async function recordDbPoolStats(
+	activeConnections: number,
+	maxConnections: number
+): Promise<void> {
+	const utilizationPercent = Math.round((activeConnections / maxConnections) * 100);
+
+	// Only record when utilization is concerning (≥70%)
+	if (utilizationPercent >= 70) {
+		try {
+			await db.insert(dbPoolStats).values({
+				activeConnections,
+				maxConnections,
+				utilizationPercent,
+				timestamp: new Date()
+			});
+			console.warn(
+				`[PERF] High DB pool utilization: ${utilizationPercent}% (${activeConnections}/${maxConnections})`
+			);
+		} catch (error) {
+			console.error('[PERF] Failed to record DB pool stats:', error);
+		}
+	}
+}
+
+/**
+ * Get DB pool statistics from database (historical data)
+ * @param limit Number of records to retrieve (default: 100)
+ * @param sinceDate Optional timestamp to filter from (default: last 7 days)
+ */
+export async function getDbPoolStatsFromDB(
+	limit = 100,
+	sinceDate?: Date
+): Promise<DbPoolStat[]> {
+	const since = sinceDate || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+
+	return await db
+		.select()
+		.from(dbPoolStats)
+		.where(gte(dbPoolStats.timestamp, since))
+		.orderBy(desc(dbPoolStats.timestamp))
+		.limit(limit);
+}
+
+/**
+ * Get aggregated DB pool statistics
+ */
+export async function getDbPoolStatsAggregated(sinceDate?: Date) {
+	const since = sinceDate || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+
+	const [stats] = await db
+		.select({
+			total: sql<number>`count(*)`,
+			avgUtilization: sql<number>`avg(utilization_percent)`,
+			maxUtilization: sql<number>`max(utilization_percent)`,
+			peakConnections: sql<number>`max(active_connections)`
+		})
+		.from(dbPoolStats)
+		.where(gte(dbPoolStats.timestamp, since));
+
+	return {
+		total: Number(stats?.total || 0),
+		avgUtilization: Math.round(Number(stats?.avgUtilization || 0)),
+		maxUtilization: Number(stats?.maxUtilization || 0),
+		peakConnections: Number(stats?.peakConnections || 0)
+	};
 }
