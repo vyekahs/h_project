@@ -1,5 +1,5 @@
 import { GAME_CONFIG } from '$lib/config';
-import { generateLevel, canPour, pourWater, checkWin, isEffectivelyStuck } from '$lib/games/water-sort/levels';
+import { generateLevel, canPour, pourWater, checkWin, isStuck, isEffectivelyStuck } from '$lib/games/water-sort/levels';
 import { TUBE_CAPACITY, type Tube, type Difficulty } from '$lib/games/water-sort/types';
 import { goto } from '$app/navigation';
 import { formatTime } from '$lib/games/utils';
@@ -60,6 +60,7 @@ export function createWaterSortGame() {
 
 	// Stuck detection
 	let isGameStuck = $state(false);
+	let isWarnedUnsolvable = $state(false);
 
 	// Pour animation state
 	let pouringAnimation: {
@@ -126,7 +127,8 @@ export function createWaterSortGame() {
 				history: history.map(h => ({ layers: h.layers.map(l => [...l]), moveCount: h.moveCount })),
 				hasRestarted,
 				initialTubes: initialTubes.map(l => [...l]),
-				initialMoveLimit
+				initialMoveLimit,
+				isWarnedUnsolvable
 			};
 			localStorage.setItem('watersort_save', JSON.stringify(data));
 		} catch {}
@@ -163,6 +165,7 @@ export function createWaterSortGame() {
 				moveCount: h.moveCount ?? 0
 			}));
 			hasRestarted = data.hasRestarted || false;
+			isWarnedUnsolvable = data.isWarnedUnsolvable || false;
 			// Restore initial state for restart
 			if (data.initialTubes) {
 				initialTubes = data.initialTubes.map((l: number[]) => [...l]);
@@ -202,6 +205,7 @@ export function createWaterSortGame() {
 		hasRestarted = false;
 		showWinAnimation = false;
 		isGameStuck = false;
+		isWarnedUnsolvable = false;
 		newTitleName = null;
 		selectedTubeId = null;
 
@@ -296,8 +300,12 @@ export function createWaterSortGame() {
 						if (checkWin(tubes)) {
 							handleWin();
 						} else if (pendingTubeIds.length === 0) {
-							if (isEffectivelyStuck(tubes)) {
+							if (isStuck(tubes)) {
+								// Physical deadlock: no valid moves at all
 								handleStuck();
+							} else if (!isWarnedUnsolvable && isEffectivelyStuck(tubes)) {
+								// BFS: moves exist but no winning sequence
+								isWarnedUnsolvable = true;
 							}
 							saveGame();
 						} else {
@@ -363,6 +371,7 @@ export function createWaterSortGame() {
 		tubes = tubes.map((t, i) => ({ ...t, layers: [...prev.layers[i]] }));
 		selectedTubeId = null;
 		isGameStuck = false;
+		isWarnedUnsolvable = false;
 	}
 
 	function handleWin() {
@@ -440,6 +449,7 @@ export function createWaterSortGame() {
 			calculatedScore = 0;
 			showWinAnimation = false;
 			isGameStuck = false;
+			isWarnedUnsolvable = false;
 			selectedTubeId = null;
 
 			gameState = 'playing';
@@ -473,6 +483,7 @@ export function createWaterSortGame() {
 		get showVisitPrompt() { return showVisitPrompt; },
 		get showWinAnimation() { return showWinAnimation; },
 		get isGameStuck() { return isGameStuck; },
+		get isWarnedUnsolvable() { return isWarnedUnsolvable; },
 		get pouringAnimation() { return pouringAnimation; },
 		get isAnimating() { return isAnimating; },
 		get returningTubeId() { return returningTubeId; },

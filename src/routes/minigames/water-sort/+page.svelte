@@ -16,6 +16,14 @@
 	const game = createWaterSortGame();
 
 	let isAutostart = false;
+	let dismissedWarning = $state(false);
+
+	// Auto-reset dismissedWarning when unsolvable state clears (e.g. after undo)
+	$effect(() => {
+		if (!game.isWarnedUnsolvable) {
+			dismissedWarning = false;
+		}
+	});
 
 	onMount(() => {
 		if (!browser) return;
@@ -120,6 +128,26 @@
 
 		</div>
 
+		{#if game.isWarnedUnsolvable && !dismissedWarning && !game.isGameStuck && game.gameState === 'playing'}
+			<div class="unsolvable-banner">
+				<div class="banner-content">
+					<span class="banner-icon">
+						<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+					</span>
+					<span class="banner-text">더 이상 풀 수 없습니다</span>
+				</div>
+				<div class="banner-actions">
+					{#if game.history.length > 0}
+						<button class="banner-btn" onclick={game.undo}>되돌리기</button>
+					{/if}
+					<button class="banner-btn" onclick={game.startGame}>다시 도전</button>
+					<button class="banner-close" onclick={() => dismissedWarning = true} aria-label="닫기">
+						<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+					</button>
+				</div>
+			</div>
+		{/if}
+
 		{#if game.gameState === 'paused'}
 			<GamePauseModal
 				stats={[
@@ -170,7 +198,7 @@
 			<GameResultModal
 				isWon={false}
 				title="막힘!"
-				message="더 이상 진행이 어렵습니다"
+				message="가능한 이동이 없습니다"
 				stats={[
 					{ label: '난이도', value: difficultyLabels[game.difficulty] },
 					{ label: '시간', value: formatTime(game.timerValue) },
@@ -453,6 +481,98 @@
 		to {
 			opacity: 1;
 			transform: scale(1);
+		}
+	}
+
+	/* Unsolvable warning banner */
+	.unsolvable-banner {
+		position: fixed;
+		bottom: 1.5rem;
+		left: 50%;
+		transform: translateX(-50%);
+		width: calc(100% - 2rem);
+		max-width: 460px;
+		background: var(--bg-primary);
+		border: 1.5px solid var(--color-amber-dark);
+		border-radius: 16px;
+		padding: 0.8rem 1rem;
+		display: flex;
+		flex-direction: column;
+		gap: 0.6rem;
+		z-index: 50;
+		box-shadow: 0 8px 24px var(--shadow-heavy);
+		animation: slideUp 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+	}
+
+	.banner-content {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+	}
+
+	.banner-icon {
+		display: flex;
+		align-items: center;
+		color: var(--color-amber-dark);
+		flex-shrink: 0;
+	}
+
+	.banner-text {
+		font-size: 0.9rem;
+		font-weight: 600;
+		color: var(--text-primary);
+	}
+
+	.banner-actions {
+		display: flex;
+		gap: 0.5rem;
+		align-items: center;
+	}
+
+	.banner-btn {
+		flex: 1;
+		background: var(--bg-tertiary);
+		color: var(--text-primary);
+		border: none;
+		padding: 0.55rem 0.8rem;
+		border-radius: 10px;
+		font-size: 0.8rem;
+		font-weight: 600;
+		cursor: pointer;
+		transition: all 0.15s;
+	}
+
+	.banner-btn:active {
+		transform: scale(0.96);
+		background: var(--bg-hover);
+	}
+
+	.banner-close {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		background: none;
+		border: none;
+		padding: 0.4rem;
+		border-radius: 8px;
+		color: var(--text-tertiary);
+		cursor: pointer;
+		flex-shrink: 0;
+		transition: all 0.15s;
+	}
+
+	.banner-close:active {
+		background: var(--bg-tertiary);
+	}
+
+	@keyframes slideUp {
+		from {
+			opacity: 0;
+			transform: translateX(-50%) translateY(1rem);
+		}
+		to {
+			opacity: 1;
+			transform: translateX(-50%) translateY(0);
 		}
 	}
 </style>
