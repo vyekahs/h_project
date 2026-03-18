@@ -771,12 +771,20 @@ export const actions: Actions = {
         const sessionId = data.get('sessionId')?.toString();
         if (!sessionId) return fail(400, { error: 'Invalid ID' });
 
-        // Authorization: Admin OR participant
+        // Check if this is a recurring game - only admins can dissolve recurring games
+        const sessionInfo = await db.execute(sql`
+            SELECT recurring_schedule_id FROM game_sessions WHERE id = ${sessionId}
+        `);
+        const isRecurringGame = !!(sessionInfo[0] as any)?.recurring_schedule_id;
+
+        // Authorization: Admin (always) OR participant (only for non-recurring games)
         const sessionToken = request.headers.get('cookie')?.match(/admin_session=([^;]+)/)?.[1];
         let authorized = false;
+        let isAdmin = false;
 
         if (sessionToken && await verifyAdminSession(sessionToken)) {
             authorized = true;
+            isAdmin = true;
         } else {
             const userSessionToken = cookies.get('user_session');
             if (!userSessionToken) return fail(401, { error: '로그인이 필요합니다.' });
@@ -784,21 +792,27 @@ export const actions: Actions = {
             const user = await verifyAttendeeSession(userSessionToken);
             if (!user) return fail(401, { error: 'Invalid session' });
 
-            if (await isParticipant(sessionId, user.id)) {
+            // Participants can only dissolve non-recurring games
+            if (!isRecurringGame && await isParticipant(sessionId, user.id)) {
                 authorized = true;
             }
         }
 
-        if (!authorized) return fail(403, { error: '게임 참여자만 해산할 수 있습니다.' });
+        if (!authorized) {
+            if (isRecurringGame) {
+                return fail(403, { error: '반복 일정 게임은 관리자만 해산할 수 있습니다.' });
+            }
+            return fail(403, { error: '게임 참여자만 해산할 수 있습니다.' });
+        }
 
         try {
             await db.transaction(async (tx) => {
-                // 반복 게임이면 오늘 skip 기록을 추가하여 재생성 방지
-                const session = await tx.execute(sql`
-                    SELECT recurring_schedule_id, scheduled_at FROM game_sessions WHERE id = ${sessionId}
-                `);
-                const sess = (session as any[])[0];
-                if (sess?.recurring_schedule_id) {
+                // 반복 게임이면 skip 기록을 추가하여 재생성 방지 (관리자만 가능)
+                if (isRecurringGame && isAdmin) {
+                    const session = await tx.execute(sql`
+                        SELECT recurring_schedule_id, scheduled_at FROM game_sessions WHERE id = ${sessionId}
+                    `);
+                    const sess = (session as any[])[0];
                     const skipDate = sess.scheduled_at
                         ? new Date(sess.scheduled_at).toISOString().split('T')[0]
                         : new Date(new Date().getTime() + 9 * 60 * 60 * 1000).toISOString().split('T')[0];

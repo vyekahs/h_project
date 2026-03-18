@@ -56,7 +56,7 @@ async function fetchSharedData(): Promise<SharedData> {
             ORDER BY gs.end_time ASC
         `),
         db.execute(sql`
-            SELECT gs.id, gs.game_name, gs.game_id, gs.min_players, gs.max_players, gs.scheduled_at, gs.created_by, gs.party_id, gs.show_on_main, g.image_url,
+            SELECT gs.id, gs.game_name, gs.game_id, gs.min_players, gs.max_players, gs.scheduled_at, gs.created_by, gs.party_id, gs.show_on_main, gs.recurring_schedule_id, g.image_url,
                    COALESCE(json_agg(json_build_object(
                        'id', COALESCE(a.id, -sp.id),
                        'name', COALESCE(a.name, sp.guest_name),
@@ -70,7 +70,7 @@ async function fetchSharedData(): Promise<SharedData> {
             LEFT JOIN minigame_user_points up ON a.id = up.user_id
             LEFT JOIN minigame_titles t ON up.equipped_title_id = t.id
             WHERE gs.status = 'scheduled'
-            GROUP BY gs.id, gs.game_name, gs.game_id, gs.min_players, gs.max_players, gs.scheduled_at, gs.created_by, gs.party_id, gs.show_on_main, g.image_url
+            GROUP BY gs.id, gs.game_name, gs.game_id, gs.min_players, gs.max_players, gs.scheduled_at, gs.created_by, gs.party_id, gs.show_on_main, gs.recurring_schedule_id, g.image_url
             ORDER BY gs.scheduled_at ASC
         `),
         db.execute(sql`SELECT id, name, min_players, max_players, playtime_min, image_url FROM games ORDER BY name ASC`),

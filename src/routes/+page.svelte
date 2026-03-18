@@ -1004,10 +1004,12 @@
                                             <input type="hidden" name="sessionId" value={game.id}>
                                             <button class="btn-action-text primary">시작</button>
                                         </form>
-                                        <form method="POST" action="?/dissolveScheduledGame" use:enhance style="display:inline;">
-                                            <input type="hidden" name="sessionId" value={game.id}>
-                                            <button class="btn-action-text danger">삭제</button>
-                                        </form>
+                                        {#if !game.recurring_schedule_id || data.isAdmin}
+                                            <form method="POST" action="?/dissolveScheduledGame" use:enhance style="display:inline;">
+                                                <input type="hidden" name="sessionId" value={game.id}>
+                                                <button class="btn-action-text danger">삭제</button>
+                                            </form>
+                                        {/if}
                                     </div>
                                 {/if}
                                 {#if data.user && !(game.participants || []).some((p: any) => p.id === data.user!.id)}
