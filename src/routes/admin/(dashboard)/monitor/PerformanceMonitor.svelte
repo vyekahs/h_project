@@ -4,6 +4,9 @@
 
 	let { data } = $props();
 
+	// Extract performance data from props
+	const perfData = $derived(data.performance || data);
+
 	// View toggle: realtime vs historical
 	let viewMode = $state<'realtime' | 'historical'>('realtime');
 	let historicalData = $state<any>(null);
@@ -75,42 +78,42 @@
 	<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
 		<div class="bg-white p-4 rounded-lg shadow">
 			<div class="text-sm text-gray-500 mb-1">서버 가동 시간</div>
-			<div class="text-2xl font-bold">{formatUptime(data.health.uptime)}</div>
+			<div class="text-2xl font-bold">{formatUptime(perfData.health.uptime)}</div>
 		</div>
 
 		<div class="bg-white p-4 rounded-lg shadow">
 			<div class="text-sm text-gray-500 mb-1">평균 응답 시간</div>
 			<div
-				class="text-2xl font-bold {getStatusColor(data.health.avgResponseTime, {
+				class="text-2xl font-bold {getStatusColor(perfData.health.avgResponseTime, {
 					warning: 200,
 					danger: 500
 				})}"
 			>
-				{data.health.avgResponseTime}ms
+				{perfData.health.avgResponseTime}ms
 			</div>
 		</div>
 
 		<div class="bg-white p-4 rounded-lg shadow">
 			<div class="text-sm text-gray-500 mb-1">P95 응답 시간</div>
 			<div
-				class="text-2xl font-bold {getStatusColor(data.health.p95ResponseTime, {
+				class="text-2xl font-bold {getStatusColor(perfData.health.p95ResponseTime, {
 					warning: 300,
 					danger: 1000
 				})}"
 			>
-				{data.health.p95ResponseTime}ms
+				{perfData.health.p95ResponseTime}ms
 			</div>
 		</div>
 
 		<div class="bg-white p-4 rounded-lg shadow">
 			<div class="text-sm text-gray-500 mb-1">느린 요청 비율</div>
 			<div
-				class="text-2xl font-bold {getStatusColor(data.health.slowRequestRate, {
+				class="text-2xl font-bold {getStatusColor(perfData.health.slowRequestRate, {
 					warning: 10,
 					danger: 30
 				})}"
 			>
-				{data.health.slowRequestRate}%
+				{perfData.health.slowRequestRate}%
 			</div>
 		</div>
 	</div>
@@ -121,15 +124,15 @@
 		<div class="grid grid-cols-1 md:grid-cols-3 gap-4">
 			<div>
 				<div class="text-sm text-gray-500">분당 요청 수</div>
-				<div class="text-xl font-bold">{data.realtime.requestsPerMinute}</div>
+				<div class="text-xl font-bold">{perfData.realtime.requestsPerMinute}</div>
 			</div>
 			<div>
 				<div class="text-sm text-gray-500">평균 응답 시간</div>
-				<div class="text-xl font-bold">{data.realtime.avgResponseTime}ms</div>
+				<div class="text-xl font-bold">{perfData.realtime.avgResponseTime}ms</div>
 			</div>
 			<div>
 				<div class="text-sm text-gray-500">느린 요청 수</div>
-				<div class="text-xl font-bold">{data.realtime.slowRequestsPerMinute}</div>
+				<div class="text-xl font-bold">{perfData.realtime.slowRequestsPerMinute}</div>
 			</div>
 		</div>
 	</div>
@@ -150,7 +153,7 @@
 					</tr>
 				</thead>
 				<tbody class="divide-y divide-gray-200">
-					{#each data.endpoints as endpoint}
+					{#each perfData.endpoints as endpoint}
 						<tr class="hover:bg-gray-50">
 							<td class="px-4 py-2 text-sm font-mono">{endpoint.path}</td>
 							<td class="px-4 py-2 text-sm text-right">{endpoint.count}</td>
@@ -212,7 +215,7 @@
 						</tr>
 					</thead>
 					<tbody class="divide-y divide-gray-200">
-						{#each data.slowRequests as request}
+						{#each perfData.slowRequests as request}
 							<tr class="hover:bg-gray-50">
 								<td class="px-4 py-2 text-sm text-gray-600">{formatTime(request.timestamp)}</td>
 								<td class="px-4 py-2 text-sm font-mono">{request.path}</td>
@@ -290,7 +293,7 @@
 	</div>
 
 	<!-- Slow Queries -->
-	{#if data.slowQueries.length > 0}
+	{#if perfData.slowQueries.length > 0}
 		<div class="bg-white p-4 rounded-lg shadow">
 			<h2 class="text-lg font-semibold mb-4">최근 느린 DB 쿼리 (≥50ms)</h2>
 			<div class="overflow-x-auto">
@@ -305,7 +308,7 @@
 						</tr>
 					</thead>
 					<tbody class="divide-y divide-gray-200">
-						{#each data.slowQueries as query}
+						{#each perfData.slowQueries as query}
 							<tr class="hover:bg-gray-50">
 								<td class="px-4 py-2 text-sm text-gray-600">{formatTime(query.timestamp)}</td>
 								<td class="px-4 py-2 text-sm font-mono text-gray-800">{query.query}</td>
