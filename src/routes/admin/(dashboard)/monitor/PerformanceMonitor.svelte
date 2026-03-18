@@ -76,12 +76,12 @@
 
 	<!-- System Health Overview -->
 	<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-		<div class="bg-white p-4 rounded-lg shadow">
+		<div class="card">
 			<div class="text-sm text-gray-500 mb-1">서버 가동 시간</div>
 			<div class="text-2xl font-bold">{formatUptime(perfData.health.uptime)}</div>
 		</div>
 
-		<div class="bg-white p-4 rounded-lg shadow">
+		<div class="card">
 			<div class="text-sm text-gray-500 mb-1">평균 응답 시간</div>
 			<div
 				class="text-2xl font-bold {getStatusColor(perfData.health.avgResponseTime, {
@@ -93,7 +93,7 @@
 			</div>
 		</div>
 
-		<div class="bg-white p-4 rounded-lg shadow">
+		<div class="card">
 			<div class="text-sm text-gray-500 mb-1">P95 응답 시간</div>
 			<div
 				class="text-2xl font-bold {getStatusColor(perfData.health.p95ResponseTime, {
@@ -105,7 +105,7 @@
 			</div>
 		</div>
 
-		<div class="bg-white p-4 rounded-lg shadow">
+		<div class="card">
 			<div class="text-sm text-gray-500 mb-1">느린 요청 비율</div>
 			<div
 				class="text-2xl font-bold {getStatusColor(perfData.health.slowRequestRate, {
@@ -119,7 +119,7 @@
 	</div>
 
 	<!-- Real-time Metrics -->
-	<div class="bg-white p-4 rounded-lg shadow mb-6">
+	<div class="card mb-6">
 		<h2 class="text-lg font-semibold mb-4">실시간 메트릭 (최근 1분)</h2>
 		<div class="grid grid-cols-1 md:grid-cols-3 gap-4">
 			<div>
@@ -138,11 +138,11 @@
 	</div>
 
 	<!-- Endpoint Statistics -->
-	<div class="bg-white p-4 rounded-lg shadow mb-6">
+	<div class="card mb-6">
 		<h2 class="text-lg font-semibold mb-4">엔드포인트별 통계 (느린 순)</h2>
 		<div class="overflow-x-auto">
 			<table class="w-full">
-				<thead class="bg-gray-50">
+				<thead class="table-header">
 					<tr>
 						<th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">엔드포인트</th>
 						<th class="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase">요청 수</th>
@@ -180,7 +180,7 @@
 	</div>
 
 	<!-- Slow Requests with Toggle -->
-	<div class="bg-white p-4 rounded-lg shadow mb-6">
+	<div class="card mb-6">
 		<div class="flex justify-between items-center mb-4">
 			<h2 class="text-lg font-semibold">느린 요청 (≥200ms)</h2>
 
@@ -205,7 +205,7 @@
 			<!-- Memory-based slow requests -->
 			<div class="overflow-x-auto">
 				<table class="w-full">
-					<thead class="bg-gray-50">
+					<thead class="table-header">
 						<tr>
 							<th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">시간</th>
 							<th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">경로</th>
@@ -242,7 +242,7 @@
 					<p>데이터 로딩 중...</p>
 				</div>
 			{:else if historicalData}
-				<div class="mb-4 p-3 bg-blue-50 rounded">
+				<div class="mb-4 p-3 history-stats">
 					<div class="text-sm text-gray-700">
 						<strong>최근 7일 통계:</strong>
 						총 {historicalData.stats.total}건 |
@@ -253,7 +253,7 @@
 
 				<div class="overflow-x-auto">
 					<table class="w-full">
-						<thead class="bg-gray-50">
+						<thead class="table-header">
 							<tr>
 								<th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">시간</th>
 								<th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">경로</th>
@@ -294,11 +294,11 @@
 
 	<!-- Slow Queries -->
 	{#if perfData.slowQueries.length > 0}
-		<div class="bg-white p-4 rounded-lg shadow">
+		<div class="card">
 			<h2 class="text-lg font-semibold mb-4">최근 느린 DB 쿼리 (≥50ms)</h2>
 			<div class="overflow-x-auto">
 				<table class="w-full">
-					<thead class="bg-gray-50">
+					<thead class="table-header">
 						<tr>
 							<th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">시간</th>
 							<th class="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">쿼리</th>
@@ -328,7 +328,7 @@
 		</div>
 	{/if}
 
-	<div class="mt-6 p-4 bg-blue-50 rounded-lg">
+	<div class="info-box">
 		<h3 class="font-semibold mb-2">성능 임계값 기준</h3>
 		<ul class="text-sm space-y-1 text-gray-700">
 			<li><span class="text-green-600">●</span> 정상: 응답 &lt;200ms, 느린 요청 &lt;10%</li>
@@ -341,52 +341,217 @@
 </div>
 
 <style>
+	/* Card Styles */
+	.card {
+		background: var(--bg-primary);
+		border: 1px solid var(--border-default);
+		border-radius: 12px;
+		padding: 1.5rem;
+		box-shadow: 0 2px 8px var(--shadow-sm);
+		margin-bottom: 1.5rem;
+		transition: box-shadow 0.2s;
+	}
+
+	.card:hover {
+		box-shadow: 0 4px 12px var(--shadow-md);
+	}
+
+	.card h2 {
+		color: var(--text-primary);
+		font-size: 1.125rem;
+		font-weight: 700;
+		margin: 0 0 1.25rem 0;
+	}
+
+	/* Grid Stats */
+	:global(.grid) {
+		display: grid;
+		gap: 1.5rem;
+	}
+
+	:global(.grid-cols-4) {
+		grid-template-columns: repeat(4, 1fr);
+	}
+
+	:global(.grid-cols-3) {
+		grid-template-columns: repeat(3, 1fr);
+	}
+
+	.stat-card {
+		background: var(--bg-secondary);
+		padding: 1.25rem;
+		border-radius: 10px;
+		border: 1px solid var(--border-light);
+	}
+
+	.stat-label {
+		font-size: 0.8125rem;
+		color: var(--text-secondary);
+		margin-bottom: 0.5rem;
+		font-weight: 500;
+	}
+
+	.stat-value {
+		font-size: 1.875rem;
+		font-weight: 700;
+		color: var(--text-primary);
+	}
+
+	.stat-value.success {
+		color: var(--color-green);
+	}
+
+	.stat-value.warning {
+		color: var(--color-amber);
+	}
+
+	.stat-value.danger {
+		color: var(--color-red);
+	}
+
+	/* Tables */
+	:global(table) {
+		width: 100%;
+		border-collapse: collapse;
+	}
+
+	:global(thead) {
+		background: var(--bg-tertiary);
+		border-bottom: 2px solid var(--border-default);
+	}
+
+	:global(th) {
+		padding: 0.875rem 1rem;
+		text-align: left;
+		font-size: 0.75rem;
+		font-weight: 700;
+		color: var(--text-secondary);
+		text-transform: uppercase;
+		letter-spacing: 0.05em;
+	}
+
+	:global(td) {
+		padding: 0.875rem 1rem;
+		color: var(--text-primary);
+		font-size: 0.875rem;
+		border-bottom: 1px solid var(--border-light);
+	}
+
+	:global(tbody tr) {
+		transition: background-color 0.15s;
+	}
+
+	:global(tbody tr:hover) {
+		background: var(--bg-hover);
+	}
+
+	:global(.font-mono) {
+		font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+		font-size: 0.8125rem;
+	}
+
+	/* Info Box */
+	.info-box {
+		margin-top: 1.5rem;
+		padding: 1.25rem;
+		background: var(--color-info-bg);
+		border: 1px solid var(--color-blue);
+		border-radius: 10px;
+	}
+
+	.info-box h3 {
+		margin: 0 0 0.75rem 0;
+		font-size: 1rem;
+		font-weight: 700;
+		color: var(--text-primary);
+	}
+
+	.info-box ul {
+		list-style: none;
+		padding: 0;
+		margin: 0;
+	}
+
+	.info-box li {
+		padding: 0.375rem 0;
+		font-size: 0.875rem;
+		color: var(--text-secondary);
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+	}
+
+	.info-box li span {
+		font-size: 1.25rem;
+		line-height: 1;
+	}
+
+	/* Historical Data */
+	.history-stats {
+		padding: 1rem;
+		background: var(--color-info-bg);
+		border: 1px solid var(--color-blue);
+		border-radius: 8px;
+		margin-bottom: 1.25rem;
+	}
+
+	.history-stats strong {
+		color: var(--text-primary);
+	}
+
 	/* View Toggle */
 	.view-toggle {
 		display: flex;
-		gap: 0.5rem;
-		background: #f5f5f5;
-		padding: 0.25rem;
-		border-radius: 8px;
+		gap: 0.375rem;
+		background: var(--bg-secondary);
+		padding: 0.375rem;
+		border-radius: 10px;
+		border: 1px solid var(--border-light);
 	}
 
 	.toggle-btn {
 		background: transparent;
 		border: none;
-		padding: 0.5rem 1rem;
-		border-radius: 6px;
-		font-size: 0.85rem;
-		font-weight: 500;
-		color: #666;
+		padding: 0.625rem 1.25rem;
+		border-radius: 7px;
+		font-size: 0.875rem;
+		font-weight: 600;
+		color: var(--text-secondary);
 		cursor: pointer;
-		transition: all 0.2s;
+		transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 		font-family: inherit;
 	}
 
 	.toggle-btn:hover {
-		color: #333;
+		color: var(--text-primary);
+		background: var(--bg-hover);
 	}
 
 	.toggle-btn.active {
-		background: white;
-		color: #007bff;
-		box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+		background: var(--bg-primary);
+		color: var(--color-blue-bright);
+		box-shadow: 0 2px 6px var(--shadow-md);
 	}
 
 	/* Loading State */
 	.loading-state {
 		text-align: center;
 		padding: 3rem;
-		color: #666;
+		color: var(--text-secondary);
+	}
+
+	.loading-state p {
+		margin-top: 1rem;
+		font-size: 0.95rem;
 	}
 
 	.spinner {
-		border: 3px solid #f3f3f3;
-		border-top: 3px solid #007bff;
+		border: 3px solid var(--bg-tertiary);
+		border-top: 3px solid var(--color-blue-bright);
 		border-radius: 50%;
-		width: 40px;
-		height: 40px;
-		animation: spin 1s linear infinite;
+		width: 48px;
+		height: 48px;
+		animation: spin 1s cubic-bezier(0.68, -0.55, 0.265, 1.55) infinite;
 		margin: 0 auto 1rem;
 	}
 
@@ -401,7 +566,21 @@
 
 	.empty-state {
 		text-align: center;
-		padding: 2rem;
-		color: #999;
+		padding: 3rem;
+		color: var(--text-tertiary);
+		font-size: 0.95rem;
+	}
+
+	/* Mobile Responsive */
+	@media (max-width: 768px) {
+		.view-toggle {
+			gap: 0.25rem;
+			padding: 0.25rem;
+		}
+
+		.toggle-btn {
+			padding: 0.5rem 0.875rem;
+			font-size: 0.8125rem;
+		}
 	}
 </style>
