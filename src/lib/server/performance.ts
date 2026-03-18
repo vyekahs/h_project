@@ -1,0 +1,308 @@
+/**
+ * Server Performance Monitoring
+ *
+ * 서버 응답 시간, DB 쿼리, 느린 요청을 추적합니다.
+ */
+
+import { db } from '$lib/server/db';
+import { slowRequestLogs } from '$lib/server/db/schema/performance';
+import type { SlowRequestLog } from '$lib/server/db/schema/performance';
+import { desc, gte, sql } from 'drizzle-orm';
+
+interface RequestMetrics {
+	path: string;
+	method: string;
+	duration: number;
+	timestamp: number;
+	statusCode: number;
+	userAgent?: string;
+}
+
+interface SlowQueryLog {
+	query: string;
+	duration: number;
+	timestamp: number;
+	stack?: string;
+}
+
+// 최근 요청 메트릭 (링 버퍼)
+const recentRequests: RequestMetrics[] = [];
+const MAX_RECENT_REQUESTS = 1000;
+
+// 느린 요청 로그 (200ms 이상)
+const slowRequests: RequestMetrics[] = [];
+const MAX_SLOW_REQUESTS = 100;
+const SLOW_REQUEST_THRESHOLD = 200; // ms
+
+// 느린 DB 쿼리 로그 (50ms 이상)
+const slowQueries: SlowQueryLog[] = [];
+const MAX_SLOW_QUERIES = 100;
+export const SLOW_QUERY_THRESHOLD = 50; // ms
+
+// 엔드포인트별 통계
+interface EndpointStats {
+	path: string;
+	count: number;
+	totalDuration: number;
+	avgDuration: number;
+	maxDuration: number;
+	minDuration: number;
+	slowCount: number;
+}
+
+const endpointStats = new Map<string, EndpointStats>();
+
+// 시스템 상태 요약
+interface SystemHealth {
+	uptime: number;
+	requestCount: number;
+	avgResponseTime: number;
+	slowRequestRate: number;
+	slowQueryCount: number;
+	p95ResponseTime: number;
+	p99ResponseTime: number;
+}
+
+const serverStartTime = Date.now();
+
+/**
+ * 요청 메트릭 기록
+ */
+export function recordRequest(metrics: RequestMetrics) {
+	// 최근 요청에 추가
+	recentRequests.push(metrics);
+	if (recentRequests.length > MAX_RECENT_REQUESTS) {
+		recentRequests.shift();
+	}
+
+	// 느린 요청 기록
+	if (metrics.duration >= SLOW_REQUEST_THRESHOLD) {
+		slowRequests.push(metrics);
+		if (slowRequests.length > MAX_SLOW_REQUESTS) {
+			slowRequests.shift();
+		}
+		console.warn(
+			`[PERF] Slow request: ${metrics.method} ${metrics.path} took ${metrics.duration}ms`
+		);
+
+		// Async DB persistence (non-blocking)
+		persistSlowRequestToDB(metrics).catch((err) => {
+			console.error('[PERF] Failed to persist slow request to DB:', err);
+		});
+	}
+
+	// 엔드포인트 통계 업데이트
+	const key = `${metrics.method} ${metrics.path}`;
+	let stats = endpointStats.get(key);
+
+	if (!stats) {
+		stats = {
+			path: key,
+			count: 0,
+			totalDuration: 0,
+			avgDuration: 0,
+			maxDuration: 0,
+			minDuration: Infinity,
+			slowCount: 0
+		};
+		endpointStats.set(key, stats);
+	}
+
+	stats.count++;
+	stats.totalDuration += metrics.duration;
+	stats.avgDuration = stats.totalDuration / stats.count;
+	stats.maxDuration = Math.max(stats.maxDuration, metrics.duration);
+	stats.minDuration = Math.min(stats.minDuration, metrics.duration);
+	if (metrics.duration >= SLOW_REQUEST_THRESHOLD) {
+		stats.slowCount++;
+	}
+}
+
+/**
+ * 느린 DB 쿼리 기록
+ */
+export function recordSlowQuery(query: string, duration: number, stack?: string) {
+	slowQueries.push({
+		query: query.slice(0, 200), // 쿼리 길이 제한
+		duration,
+		timestamp: Date.now(),
+		stack
+	});
+
+	if (slowQueries.length > MAX_SLOW_QUERIES) {
+		slowQueries.shift();
+	}
+
+	console.warn(`[PERF] Slow query (${duration}ms): ${query.slice(0, 100)}...`);
+}
+
+/**
+ * 시스템 상태 요약
+ */
+export function getSystemHealth(): SystemHealth {
+	const now = Date.now();
+	const uptime = now - serverStartTime;
+
+	// 최근 1시간 데이터만 사용
+	const oneHourAgo = now - 60 * 60 * 1000;
+	const recentMetrics = recentRequests.filter((r) => r.timestamp > oneHourAgo);
+
+	const totalRequests = recentMetrics.length;
+	const avgResponseTime =
+		totalRequests > 0
+			? recentMetrics.reduce((sum, r) => sum + r.duration, 0) / totalRequests
+			: 0;
+
+	const slowCount = recentMetrics.filter((r) => r.duration >= SLOW_REQUEST_THRESHOLD).length;
+	const slowRequestRate = totalRequests > 0 ? slowCount / totalRequests : 0;
+
+	// P95, P99 계산
+	const sortedDurations = recentMetrics.map((r) => r.duration).sort((a, b) => a - b);
+	const p95Index = Math.floor(sortedDurations.length * 0.95);
+	const p99Index = Math.floor(sortedDurations.length * 0.99);
+	const p95ResponseTime = sortedDurations[p95Index] || 0;
+	const p99ResponseTime = sortedDurations[p99Index] || 0;
+
+	return {
+		uptime,
+		requestCount: totalRequests,
+		avgResponseTime: Math.round(avgResponseTime),
+		slowRequestRate: Math.round(slowRequestRate * 100),
+		slowQueryCount: slowQueries.length,
+		p95ResponseTime: Math.round(p95ResponseTime),
+		p99ResponseTime: Math.round(p99ResponseTime)
+	};
+}
+
+/**
+ * 엔드포인트별 통계 (느린 순서)
+ */
+export function getEndpointStats(): EndpointStats[] {
+	return Array.from(endpointStats.values())
+		.sort((a, b) => b.avgDuration - a.avgDuration)
+		.slice(0, 20); // 상위 20개
+}
+
+/**
+ * 최근 느린 요청
+ */
+export function getSlowRequests(limit = 20): RequestMetrics[] {
+	return slowRequests.slice(-limit).reverse();
+}
+
+/**
+ * 최근 느린 쿼리
+ */
+export function getSlowQueries(limit = 20): SlowQueryLog[] {
+	return slowQueries.slice(-limit).reverse();
+}
+
+/**
+ * 실시간 메트릭 (최근 1분)
+ */
+export function getRealtimeMetrics() {
+	const oneMinuteAgo = Date.now() - 60 * 1000;
+	const recent = recentRequests.filter((r) => r.timestamp > oneMinuteAgo);
+
+	return {
+		requestsPerMinute: recent.length,
+		avgResponseTime:
+			recent.length > 0 ? Math.round(recent.reduce((sum, r) => sum + r.duration, 0) / recent.length) : 0,
+		slowRequestsPerMinute: recent.filter((r) => r.duration >= SLOW_REQUEST_THRESHOLD).length
+	};
+}
+
+/**
+ * 모니터링 데이터 초기화
+ */
+export function clearMonitoringData() {
+	recentRequests.length = 0;
+	slowRequests.length = 0;
+	slowQueries.length = 0;
+	endpointStats.clear();
+}
+
+/**
+ * Persist slow request to database (async, non-blocking)
+ */
+async function persistSlowRequestToDB(metrics: RequestMetrics): Promise<void> {
+	await db.insert(slowRequestLogs).values({
+		path: metrics.path,
+		method: metrics.method,
+		duration: metrics.duration,
+		timestamp: new Date(metrics.timestamp),
+		statusCode: metrics.statusCode,
+		userAgent: metrics.userAgent || null
+	});
+}
+
+/**
+ * Get slow requests from database (historical data)
+ * @param limit Number of records to retrieve (default: 100)
+ * @param sinceDate Optional timestamp to filter from (default: last 7 days)
+ */
+export async function getSlowRequestsFromDB(
+	limit = 100,
+	sinceDate?: Date
+): Promise<SlowRequestLog[]> {
+	const since = sinceDate || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+
+	return await db
+		.select()
+		.from(slowRequestLogs)
+		.where(gte(slowRequestLogs.timestamp, since))
+		.orderBy(desc(slowRequestLogs.timestamp))
+		.limit(limit);
+}
+
+/**
+ * Get aggregated statistics from slow request logs
+ */
+export async function getSlowRequestStats(sinceDate?: Date) {
+	const since = sinceDate || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+
+	const [stats] = await db
+		.select({
+			total: sql<number>`count(*)`,
+			avgDuration: sql<number>`avg(duration)`,
+			maxDuration: sql<number>`max(duration)`,
+			minDuration: sql<number>`min(duration)`
+		})
+		.from(slowRequestLogs)
+		.where(gte(slowRequestLogs.timestamp, since));
+
+	return {
+		total: Number(stats?.total || 0),
+		avgDuration: Math.round(Number(stats?.avgDuration || 0)),
+		maxDuration: Number(stats?.maxDuration || 0),
+		minDuration: Number(stats?.minDuration || 0)
+	};
+}
+
+/**
+ * Get slowest endpoints from database
+ */
+export async function getSlowestEndpointsFromDB(limit = 20) {
+	const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+
+	const results = await db
+		.select({
+			path: slowRequestLogs.path,
+			method: slowRequestLogs.method,
+			count: sql<number>`count(*)`,
+			avgDuration: sql<number>`avg(${slowRequestLogs.duration})`,
+			maxDuration: sql<number>`max(${slowRequestLogs.duration})`
+		})
+		.from(slowRequestLogs)
+		.where(gte(slowRequestLogs.timestamp, sevenDaysAgo))
+		.groupBy(slowRequestLogs.path, slowRequestLogs.method)
+		.orderBy(desc(sql<number>`avg(${slowRequestLogs.duration})`))
+		.limit(limit);
+
+	return results.map((r) => ({
+		path: `${r.method} ${r.path}`,
+		count: Number(r.count),
+		avgDuration: Math.round(Number(r.avgDuration)),
+		maxDuration: Number(r.maxDuration)
+	}));
+}
