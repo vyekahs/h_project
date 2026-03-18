@@ -44,13 +44,23 @@ export const POST: RequestHandler = async ({ request }) => {
             console.error('Failed to update scanner heartbeat', e);
         }
 
-        // 3. Process in background (async) to not block scanner
-        // Or await if we want to ensure processing. Await is safer for consistency.
-        await processScanResults(actualScannerId, timestamp, devices, isLastBatch);
+        // 3. Quick Response Strategy: Respond immediately, process in background
+        // This prevents ECONNRESET errors when processScanResults takes too long
+        const responsePromise = json({ success: true, count: devices.length });
 
-        return json({ success: true, count: devices.length });
+        // Process in background without blocking response
+        processScanResults(actualScannerId, timestamp, devices, isLastBatch).catch(e => {
+            console.error('[BLE] Background processing error:', e);
+        });
+
+        return responsePromise;
     } catch (e) {
-        console.error('[API] Scanner Report Error', e);
+        // Only log non-connection errors (avoid logging ECONNRESET spam)
+        if (e && typeof e === 'object' && 'code' in e && e.code === 'ECONNRESET') {
+            console.log('[API] Scanner disconnected early (ECONNRESET)');
+        } else {
+            console.error('[API] Scanner Report Error', e);
+        }
         return json({ error: 'Internal Server Error' }, { status: 500 });
     }
 };
