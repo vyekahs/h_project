@@ -28,7 +28,8 @@ services:
       - TZ=Asia/Seoul
     volumes:
       - db-data:/var/lib/postgresql/data
-      - ./database/schema.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/00_init.sql
+      - ./database/migrations:/docker-entrypoint-initdb.d/migrations
     ports:
       - "5432:5432"
     restart: always
