@@ -287,7 +287,7 @@
 	/* Overlap cards dynamically based on hand size */
 	.hand-cards :global(.card) {
 		margin-left: var(--card-overlap, 0px);
-		transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), margin-left 0.2s;
+		transition: transform 0.2s ease-out, margin-left 0.2s ease-out;
 	}
 	.hand-cards :global(.card:first-child) {
 		margin-left: 0;
