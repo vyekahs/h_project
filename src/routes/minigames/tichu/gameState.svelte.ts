@@ -73,6 +73,10 @@ export function createTichuGameState() {
 	let lastEvent = $state<GameEvent | null>(null);
 	let lastEventTimer: ReturnType<typeof setTimeout> | null = null;
 
+	// AI tichu declaration modal
+	let aiTichuDeclareInfo = $state<{ playerName: string; tichuType: 'grand' | 'small' } | null>(null);
+	let aiTichuDeclareTimer: ReturnType<typeof setTimeout> | null = null;
+
 	// Tutorial state
 	let tutorialEngine = $state<TutorialEngine | null>(null);
 	let tutorialStep = $state<TutorialStep | null>(null);
@@ -264,12 +268,26 @@ export function createTichuGameState() {
 	}
 
 	function handleEvent(event: GameEvent) {
+		// AI tichu declaration → show modal
+		if (event.type === 'tichu_declare') {
+			const playerName = engine?.state.players[event.seat]?.name ?? `Player ${event.seat}`;
+			aiTichuDeclareInfo = { playerName, tichuType: event.tichuType };
+			if (aiTichuDeclareTimer) clearTimeout(aiTichuDeclareTimer);
+			aiTichuDeclareTimer = setTimeout(() => { aiTichuDeclareInfo = null; }, 2000);
+			return;
+		}
+
 		const priorityTypes = ['trick_won', 'dog', 'dragon_gift'];
 		if (lastEvent && priorityTypes.includes(lastEvent.type) && !priorityTypes.includes(event.type)) return;
 		lastEvent = event;
 		if (lastEventTimer) clearTimeout(lastEventTimer);
 		const duration = priorityTypes.includes(event.type) ? 1200 : 800;
 		lastEventTimer = setTimeout(() => { lastEvent = null; }, duration);
+	}
+
+	function dismissAiTichuDeclare() {
+		aiTichuDeclareInfo = null;
+		if (aiTichuDeclareTimer) clearTimeout(aiTichuDeclareTimer);
 	}
 
 	// ===== Game Lifecycle =====
@@ -416,6 +434,7 @@ export function createTichuGameState() {
 
 	function cleanup() {
 		if (lastEventTimer) clearTimeout(lastEventTimer);
+		if (aiTichuDeclareTimer) clearTimeout(aiTichuDeclareTimer);
 		saveNow();
 		if (engine) {
 			engine.destroy();
@@ -765,6 +784,8 @@ export function createTichuGameState() {
 		set showVisitPrompt(v: boolean) { showVisitPrompt = v; },
 		get toasts() { return toasts; },
 		get lastEvent() { return lastEvent; },
+		get aiTichuDeclareInfo() { return aiTichuDeclareInfo; },
+		dismissAiTichuDeclare,
 		get exchangeResultData() { return exchangeResultData; },
 
 		// Derived

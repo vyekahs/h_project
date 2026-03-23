@@ -27,7 +27,7 @@ async function canModifyGame(request: Request, gameId: string | number): Promise
 }
 
 export const load: PageServerLoad = async () => {
-    const [attendeesResult, historyResult, gamesResult, scheduledGamesResult, reservationsResult, gameNamesResult, noticeResult, allGamesResult, settingsResult, recurringSchedulesResult] = await Promise.all([
+    const [attendeesResult, historyResult, gamesResult, scheduledGamesResult, reservationsResult, gameNamesResult, noticeResult, allGamesResult, settingsResult, recurringSchedulesResult, dailyVisitPlansResult, todayScheduledParticipantsResult] = await Promise.all([
         db.execute(sql`
             SELECT a.id, a.name, a.arrival_time, a.status, a.penalty_points, a.is_blacklisted, a.can_manage_games,
                    MAX(g.id) as game_id,
@@ -106,6 +106,30 @@ export const load: PageServerLoad = async () => {
             FROM recurring_game_schedules rs
             ORDER BY rs.is_active DESC, rs.day_of_week ASC, rs.scheduled_time ASC
         `),
+        db.execute(sql`
+            SELECT dvp.id, dvp.attendee_id, a.name, dvp.planned_time,
+                   t.title_name
+            FROM daily_visit_plans dvp
+            JOIN attendees a ON dvp.attendee_id = a.id
+            LEFT JOIN minigame_user_points up ON a.id = up.user_id
+            LEFT JOIN minigame_titles t ON up.equipped_title_id = t.id
+            WHERE dvp.plan_date = CURRENT_DATE
+            ORDER BY dvp.created_at ASC
+        `),
+        db.execute(sql`
+            SELECT DISTINCT ON (sp.attendee_id) sp.attendee_id, a.name, t.title_name,
+                   gs.party_id IS NOT NULL as is_party,
+                   TO_CHAR(gs.scheduled_at AT TIME ZONE 'Asia/Seoul', 'HH24:MI') as planned_time
+            FROM session_participants sp
+            JOIN game_sessions gs ON sp.session_id = gs.id
+            JOIN attendees a ON sp.attendee_id = a.id
+            LEFT JOIN minigame_user_points up ON a.id = up.user_id
+            LEFT JOIN minigame_titles t ON up.equipped_title_id = t.id
+            WHERE gs.status = 'scheduled'
+              AND gs.scheduled_at::date = (NOW() AT TIME ZONE 'Asia/Seoul')::date
+              AND sp.attendee_id IS NOT NULL
+            ORDER BY sp.attendee_id, gs.scheduled_at ASC
+        `),
     ]);
 
     const presentNames = new Set((attendeesResult as any[]).map((a: any) => a.name));
@@ -137,7 +161,9 @@ export const load: PageServerLoad = async () => {
         allGames: allGamesResult as any[],
         notice: (noticeResult[0] as any)?.content || null,
         settings,
-        recurringSchedules: recurringSchedulesResult as any[]
+        recurringSchedules: recurringSchedulesResult as any[],
+        dailyVisitPlans: dailyVisitPlansResult as any[],
+        todayScheduledParticipants: todayScheduledParticipantsResult as any[]
     };
 };
 

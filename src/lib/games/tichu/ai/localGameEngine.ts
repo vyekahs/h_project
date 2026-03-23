@@ -21,7 +21,8 @@ export type GameEvent =
 	| { type: 'trick_won'; seat: SeatIndex }
 	| { type: 'bomb'; seat: SeatIndex; combo: Combination }
 	| { type: 'dog'; seat: SeatIndex; targetSeat: SeatIndex }
-	| { type: 'dragon_gift'; seat: SeatIndex; targetSeat: SeatIndex };
+	| { type: 'dragon_gift'; seat: SeatIndex; targetSeat: SeatIndex }
+	| { type: 'tichu_declare'; seat: SeatIndex; tichuType: 'grand' | 'small' };
 
 export interface LocalGameConfig {
 	partnerStrategy: AiStrategy;
@@ -336,6 +337,9 @@ export class LocalGameEngine {
 			const decide = ai.makeGrandTichuDecision(this.state.players[seat].hand);
 			this.state.players[seat].grandTichu = decide;
 			this.grandTichuDecisions[seat] = decide;
+			if (decide) {
+				this.emitEvent({ type: 'tichu_declare', seat, tichuType: 'grand' });
+			}
 			this.notifyStateChange();
 		}
 
@@ -418,6 +422,7 @@ export class LocalGameEngine {
 			const context = this.createAiContext(seat);
 			if (!this.state.players[seat].grandTichu && ai.makeSmallTichuDecision(this.state.players[seat].hand, context)) {
 				this.state.players[seat].smallTichu = true;
+				this.emitEvent({ type: 'tichu_declare', seat, tichuType: 'small' });
 			}
 
 			// AI exchange — 파트너가 티츄 선언했으면 최고 카드를 줘야 함

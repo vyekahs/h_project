@@ -437,8 +437,24 @@ async function checkAutoCheckout() {
     const timeoutThreshold = now - CHECKOUT_TIMEOUT_MS;
 
     const presentUsers = [...attendeeCache.values()].filter(a => a.status === 'present');
+    if (presentUsers.length === 0) return;
+
+    // 현재 게임중인 유저는 체크아웃에서 제외
+    let playingUserIds = new Set<number>();
+    try {
+        const playingUsersResult = await db.execute(sql`
+            SELECT DISTINCT sp.attendee_id
+            FROM session_participants sp
+            JOIN game_sessions gs ON sp.session_id = gs.id
+            WHERE gs.status = 'playing' AND sp.attendee_id IS NOT NULL
+        `);
+        playingUserIds = new Set((playingUsersResult as any[]).map(r => r.attendee_id));
+    } catch (e) {
+        console.error('[AUTO] Failed to fetch playing users, proceeding without game check', e);
+    }
 
     for (const attendee of presentUsers) {
+        if (playingUserIds.has(attendee.id)) continue;
         const bleSeen = lastSeenBleMap.get(attendee.id) ?? 0;
         const wifiSeen = lastSeenWifiMap.get(attendee.id) ?? 0;
         const lastSeen = Math.max(bleSeen, wifiSeen);

@@ -6,6 +6,7 @@
 	import TrickArea from './TrickArea.svelte';
 	import PlayerHand from './PlayerHand.svelte';
 	import TichuDeclareModal from './TichuDeclareModal.svelte';
+	import AiTichuDeclareModal from './AiTichuDeclareModal.svelte';
 	import CardComponent from './CardComponent.svelte';
 	import { triggerHaptic } from '$lib/stores/haptics';
 
@@ -284,6 +285,15 @@
 	<!-- Grand Tichu Phase -->
 	{#if isGrandTichuPhase}
 		<TichuDeclareModal {game} />
+	{/if}
+
+	<!-- AI Tichu Declaration Modal -->
+	{#if game.aiTichuDeclareInfo}
+		<AiTichuDeclareModal
+			playerName={game.aiTichuDeclareInfo.playerName}
+			tichuType={game.aiTichuDeclareInfo.tichuType}
+			onDismiss={game.dismissAiTichuDeclare}
+		/>
 	{/if}
 
 	<!-- Exchange Result Overlay -->

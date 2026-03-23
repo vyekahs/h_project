@@ -126,7 +126,6 @@ async function fetchSharedData(): Promise<SharedData> {
             LEFT JOIN minigame_titles t ON up.equipped_title_id = t.id
             WHERE gs.status = 'playing'
               AND gs.show_on_main = true
-              AND gs.start_time::date = (NOW() AT TIME ZONE 'Asia/Seoul')::date
             GROUP BY gs.id, gs.game_name, gs.game_id, gs.start_time, gs.end_time, gs.created_by, gs.party_id, gs.show_on_main, g.image_url, gs.min_players, gs.max_players, gs.status
         `),
     ]);

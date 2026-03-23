@@ -87,6 +87,36 @@
         endGameModalVisible = true;
     }
 
+    // Saved members toggle
+    let savedMembersOpen = false;
+
+    // Game list + detail modal state
+    let showAllScheduled = false;
+    let showAllPlaying = false;
+    let selectedScheduledGame: GameSession | null = null;
+    let selectedPlayingGame: GameSession | null = null;
+
+    // Participant search state (for game detail modals)
+    let participantSearch = '';
+    let participantSearchOpen = false;
+    let selectedParticipantId = '';
+
+    $: filteredParticipants = (allUsers || []).filter((u: any) =>
+        participantSearch.length > 0 && u.name.toLowerCase().includes(participantSearch.toLowerCase())
+    );
+
+    function resetParticipantSearch() {
+        participantSearch = '';
+        participantSearchOpen = false;
+        selectedParticipantId = '';
+    }
+
+    function selectParticipant(user: any) {
+        selectedParticipantId = String(user.id);
+        participantSearch = user.name;
+        participantSearchOpen = false;
+    }
+
     // Scheduled Game Modal State
     let showScheduledGameModal = false;
     let scheduledGameName = '';
@@ -269,6 +299,27 @@
     $: reservations = data.reservations as Reservation[];
     $: savedMembers = data.savedMembers as SavedMember[];
     $: recurringSchedules = (data as any).recurringSchedules || [];
+
+    // 오늘 갈 예정 merge
+    $: checkedInIds = new Set((attendees || []).map((a: Attendee) => a.id));
+    $: visitPlanIds = new Set(((data as any).dailyVisitPlans || []).map((p: any) => p.attendee_id));
+    $: scheduledVisitors = ((data as any).todayScheduledParticipants || []).filter((p: any) =>
+        !checkedInIds.has(p.attendee_id) && !visitPlanIds.has(p.attendee_id)
+    );
+    $: mergedVisitPlans = [
+        ...((data as any).dailyVisitPlans || []),
+        ...scheduledVisitors.map((p: any) => ({
+            attendee_id: p.attendee_id, name: p.name,
+            planned_time: p.planned_time, title_name: p.title_name,
+            is_party: p.is_party
+        }))
+    ].filter((p: any) => !checkedInIds.has(p.attendee_id));
+
+    function formatVisitTime(time: string): string {
+        if (!time) return '';
+        const [h, m] = time.split(':');
+        return m === '00' ? `${parseInt(h)}시` : `${parseInt(h)}시${parseInt(m)}분`;
+    }
 </script>
 
 
@@ -295,6 +346,32 @@
         </form>
     </div>
 </section>
+
+{#if mergedVisitPlans.length > 0}
+<section class="visit-plan-section">
+    <h2>
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        오늘 갈 예정 ({mergedVisitPlans.length})
+    </h2>
+    <div class="visit-plan-grid">
+        {#each mergedVisitPlans as plan}
+            <div class="visit-plan-chip">
+                <span class="vp-name">{plan.name}</span>
+                {#if (plan as any).is_party}
+                    <span class="vp-party">팟</span>
+                {/if}
+                <span class="vp-time">
+                    {#if plan.planned_time}
+                        {formatVisitTime(plan.planned_time)}~
+                    {:else}
+                        상황봐서
+                    {/if}
+                </span>
+            </div>
+        {/each}
+    </div>
+</section>
+{/if}
 
 <section>
     <h2>현재 참여 인원</h2>
@@ -370,7 +447,13 @@
 
     {#if (data.savedMembers || []).length > 0}
         <div class="quick-add">
-            <h3>저장된 멤버 (클릭하여 추가)</h3>
+            <!-- svelte-ignore a11y-click-events-have-key-events -->
+            <!-- svelte-ignore a11y-no-static-element-interactions -->
+            <h3 class="toggle-header" on:click={() => savedMembersOpen = !savedMembersOpen}>
+                <span class="toggle-icon">{savedMembersOpen ? '▾' : '▸'}</span>
+                저장된 멤버 ({(savedMembers || []).length})
+            </h3>
+            {#if savedMembersOpen}
             <div class="member-chips">
                 {#each (savedMembers || []) as member (member.id)}
                     <div class="chip-container {member.is_blacklisted ? 'blacklisted' : ''}">
@@ -387,6 +470,7 @@
                     </div>
                 {/each}
             </div>
+            {/if}
         </div>
     {/if}
 </section>
@@ -399,67 +483,32 @@
         </h2>
         <button class="btn-primary" on:click={openScheduledGameModal}>+ 게임 일정 등록</button>
     </div>
-    <div class="scheduled-grid">
-        {#each (scheduledGames || []) as game (game.id)}
+    <ul class="game-list">
+        {#each (showAllScheduled ? (scheduledGames || []) : (scheduledGames || []).slice(0, 5)) as game (game.id)}
             {@const g = game as GameSession}
-            <div class="scheduled-card">
-                <div class="game-header-row">
-                    {#if g.image_url}
-                        <img src={g.image_url} alt={g.game_name} class="game-thumb" />
-                    {:else}
-                        <div class="game-thumb placeholder">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:#adb5bd;"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
-                        </div>
-                    {/if}
-                    <div class="game-details">
-                        <h3>{g.game_name}</h3>
-                        <p class="start-time">예정: <strong>{formatScheduledTime(g.scheduled_at)}</strong></p>
-                        <p class="participants-list">인원: (최소 {g.min_players} / 최대 {g.max_players})</p>
-                        <p class="participants-list">참여자 ({(g.participants || []).length}): {(g.participants || []).map((p: any) => p.is_guest ? `${p.name}(G)` : p.name).join(', ')}</p>
-                    </div>
-                </div>
-                <div class="game-actions-container">
-                    <form method="POST" action="?/joinGame" use:enhance={() => {
-                        return async ({ result, update }) => {
-                            if (result.type === 'failure') {
-                                // @ts-ignore
-                                showAlert(result.data?.error || '참가 처리 중 오류가 발생했습니다.');
-                            }
-                            await update();
-                        };
-                    }} class="inline-add-form">
-                        <input type="hidden" name="sessionId" value={g.id} />
-                        <select name="attendeeId" required class="attendee-select-mini">
-                            <option value="">참여자 추가</option>
-                            {#each (allUsers || []) as user}
-                                <option value={user.id}>{user.name}</option>
-                            {/each}
-                        </select>
-                        <button type="submit" class="btn-mini">추가</button>
-                    </form>
-                    <form method="POST" action="?/addGuestToGame" use:enhance class="inline-add-form">
-                        <input type="hidden" name="sessionId" value={g.id} />
-                        <button type="submit" class="btn-mini btn-guest">게스트+</button>
-                    </form>
-                    <div class="action-group">
-                        <form method="POST" action="?/startScheduledGame" use:enhance>
-                            <input type="hidden" name="sessionId" value={g.id} />
-                            <span class="input-label">예상(분):</span>
-                            <input type="number" name="duration" value="60" class="duration-input" title="예상 시간(분)"/>
-                            <button type="submit" class="btn-primary">시작</button>
-                        </form>
-                        <form method="POST" action="?/dissolveScheduledGame" use:enhance>
-                            <input type="hidden" name="sessionId" value={g.id} />
-                            <button type="submit" class="btn-delete btn-unified">폭파</button>
-                        </form>
-                    </div>
-                </div>
-            </div>
+            <!-- svelte-ignore a11y-click-events-have-key-events -->
+            <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
+            <li class="game-list-item" on:click={() => { selectedScheduledGame = g; resetParticipantSearch(); }}>
+                {#if g.image_url}
+                    <img src={g.image_url} alt={g.game_name} class="list-thumb" />
+                {:else}
+                    <div class="list-thumb placeholder">🎲</div>
+                {/if}
+                <span class="list-name">{g.game_name}</span>
+                <span class="list-meta">{formatScheduledTime(g.scheduled_at)}</span>
+                <span class="list-meta">{(g.participants || []).length}/{g.max_players}</span>
+                <span class="list-arrow">›</span>
+            </li>
         {/each}
-        {#if (data.scheduledGames || []).length === 0}
+        {#if (scheduledGames || []).length === 0}
             <p class="empty-state">예정된 게임이 없습니다.</p>
         {/if}
-    </div>
+    </ul>
+    {#if (scheduledGames || []).length > 5}
+        <button class="show-more-btn" on:click={() => showAllScheduled = !showAllScheduled}>
+            {showAllScheduled ? '접기' : `+${(scheduledGames || []).length - 5}개 더보기`}
+        </button>
+    {/if}
 </section>
 
 <section>
@@ -583,7 +632,7 @@
 
 <section>
     <div class="section-header">
-        <h2>진행 중인 게임</h2>
+        <h2>진행 중인 게임 ({(games || []).length})</h2>
         <button class="btn-primary" on:click={() => {
             showModal = true;
             selectedGameName = '';
@@ -593,66 +642,31 @@
             dropdownOpen = false;
         }}>+ 새 게임 시작</button>
     </div>
-    <div class="games-grid">
-        {#each (games || []) as game (game.id)}
-            <div class="game-card">
-                <div class="game-header-row">
-                    {#if game.image_url}
-                        <img src={game.image_url} alt={game.game_name} class="game-thumb" />
-                    {:else}
-                        <div class="game-thumb placeholder">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:#adb5bd;"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
-                        </div>
-                    {/if}
-                    <div class="game-details">
-                        <h3>{game.game_name}</h3>
-                        <p class="players-list">참여자: {game.players.map((p: any) => p.is_guest ? `${p.name}(G)` : p.name).join(', ')}</p>
-                        <p class="end-time">종료 예정: {new Date(game.end_time).toLocaleTimeString()} <span class="time-remaining">({getTimeRemaining(game.end_time)})</span></p>
-                    </div>
-                </div>
-                <div class="game-actions-container">
-                    <form method="POST" action="?/joinGame" use:enhance={() => {
-                        return async ({ result, update }) => {
-                            if (result.type === 'failure') {
-                                // @ts-ignore
-                                showAlert(result.data?.error || '참가 처리 중 오류가 발생했습니다.');
-                            }
-                            await update();
-                        };
-                    }} class="inline-add-form">
-                        <input type="hidden" name="sessionId" value={game.id} />
-                        <select name="attendeeId" required class="attendee-select-mini">
-                            <option value="">참여자 추가</option>
-                            {#each (attendees || []) as attendee}
-                                <option value={attendee.id}>{attendee.name}</option>
-                            {/each}
-                        </select>
-                        <button type="submit" class="btn-mini">추가</button>
-                    </form>
-                    <form method="POST" action="?/addGuestToGame" use:enhance class="inline-add-form">
-                        <input type="hidden" name="sessionId" value={game.id} />
-                        <button type="submit" class="btn-mini btn-guest">게스트+</button>
-                    </form>
-                    <div class="action-group">
-                        <form method="POST" action="?/extendGame" use:enhance>
-                            <input type="hidden" name="id" value={game.id} />
-                            <input type="hidden" name="minutes" value="10" />
-                            <button type="submit" class="btn-extend">+10분</button>
-                        </form>
-                        <form method="POST" action="?/extendGame" use:enhance>
-                            <input type="hidden" name="id" value={game.id} />
-                            <input type="hidden" name="minutes" value="30" />
-                            <button type="submit" class="btn-extend">+30분</button>
-                        </form>
-                        <button class="btn-delete btn-unified" on:click={() => openEndGameModal(game)}>종료</button>
-                    </div>
-                </div>
-            </div>
+    <ul class="game-list">
+        {#each (showAllPlaying ? (games || []) : (games || []).slice(0, 5)) as game (game.id)}
+            <!-- svelte-ignore a11y-click-events-have-key-events -->
+            <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
+            <li class="game-list-item" on:click={() => { selectedPlayingGame = game; resetParticipantSearch(); }}>
+                {#if game.image_url}
+                    <img src={game.image_url} alt={game.game_name} class="list-thumb" />
+                {:else}
+                    <div class="list-thumb placeholder">🎲</div>
+                {/if}
+                <span class="list-name">{game.game_name}</span>
+                <span class="list-meta">{game.players.length}명</span>
+                <span class="list-meta time-remaining">{getTimeRemaining(game.end_time)}</span>
+                <span class="list-arrow">›</span>
+            </li>
         {/each}
-        {#if (data.games || []).length === 0}
+        {#if (games || []).length === 0}
             <p class="empty-state">진행 중인 게임이 없습니다.</p>
         {/if}
-    </div>
+    </ul>
+    {#if (games || []).length > 5}
+        <button class="show-more-btn" on:click={() => showAllPlaying = !showAllPlaying}>
+            {showAllPlaying ? '접기' : `+${(games || []).length - 5}개 더보기`}
+        </button>
+    {/if}
 </section>
 
 {#if showModal}
@@ -1014,6 +1028,149 @@
     </div>
 {/if}
 
+<!-- Scheduled Game Detail Modal -->
+{#if selectedScheduledGame}
+    {@const g = selectedScheduledGame}
+    <!-- svelte-ignore a11y-click-events-have-key-events -->
+    <!-- svelte-ignore a11y-no-static-element-interactions -->
+    <div class="modal-backdrop" on:click={() => selectedScheduledGame = null}>
+        <div class="modal-content game-detail-modal" on:click|stopPropagation role="dialog" tabindex="-1">
+            <div class="detail-header">
+                {#if g.image_url}
+                    <img src={g.image_url} alt={g.game_name} class="detail-thumb" />
+                {/if}
+                <div>
+                    <h3>{g.game_name}</h3>
+                    <p class="detail-sub">예정: <strong>{formatScheduledTime(g.scheduled_at)}</strong></p>
+                    <p class="detail-sub">인원: 최소 {g.min_players} / 최대 {g.max_players}</p>
+                </div>
+            </div>
+            <div class="detail-section">
+                <strong>참여자 ({(g.participants || []).length})</strong>
+                <p class="detail-participants">{(g.participants || []).map((p: any) => p.is_guest ? `${p.name}(G)` : p.name).join(', ') || '없음'}</p>
+            </div>
+            <div class="detail-actions">
+                <form method="POST" action="?/joinGame" use:enhance={() => {
+                    return async ({ result, update }) => {
+                        if (result.type === 'failure') showAlert((result as any).data?.error || '오류');
+                        resetParticipantSearch();
+                        await update();
+                    };
+                }} class="detail-form-row">
+                    <input type="hidden" name="sessionId" value={g.id} />
+                    <!-- svelte-ignore a11y-click-events-have-key-events -->
+                    <!-- svelte-ignore a11y-no-static-element-interactions -->
+                    <div class="search-select" on:click|stopPropagation>
+                        <input type="hidden" name="attendeeId" value={selectedParticipantId} />
+                        <input type="text" placeholder="이름 검색..." autocomplete="off"
+                               bind:value={participantSearch}
+                               on:focus={() => participantSearchOpen = true} />
+                        {#if participantSearchOpen && participantSearch.length > 0 && filteredParticipants.length > 0}
+                            <ul class="search-dropdown">
+                                {#each filteredParticipants.slice(0, 8) as user}
+                                    <!-- svelte-ignore a11y-click-events-have-key-events -->
+                                    <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
+                                    <li on:click={() => selectParticipant(user)}>{user.name}</li>
+                                {/each}
+                            </ul>
+                        {/if}
+                    </div>
+                    <button type="submit" class="btn-mini">추가</button>
+                </form>
+                <form method="POST" action="?/addGuestToGame" use:enhance class="detail-form-row">
+                    <input type="hidden" name="sessionId" value={g.id} />
+                    <button type="submit" class="btn-mini btn-guest" style="width:100%;">게스트 추가</button>
+                </form>
+                <hr style="border:none; border-top:1px solid #eee; margin:0.5rem 0;" />
+                <form method="POST" action="?/startScheduledGame" use:enhance class="detail-form-row">
+                    <input type="hidden" name="sessionId" value={g.id} />
+                    <span class="input-label">예상(분):</span>
+                    <input type="number" name="duration" value="60" class="duration-input" />
+                    <button type="submit" class="btn-primary">게임 시작</button>
+                </form>
+                <form method="POST" action="?/dissolveScheduledGame" use:enhance class="detail-form-row">
+                    <input type="hidden" name="sessionId" value={g.id} />
+                    <button type="submit" class="btn-delete" style="width:100%;">게임 폭파</button>
+                </form>
+            </div>
+            <button class="btn-cancel" style="width:100%; margin-top:0.75rem;" on:click={() => selectedScheduledGame = null}>닫기</button>
+        </div>
+    </div>
+{/if}
+
+<!-- Playing Game Detail Modal -->
+{#if selectedPlayingGame}
+    {@const g = selectedPlayingGame}
+    <!-- svelte-ignore a11y-click-events-have-key-events -->
+    <!-- svelte-ignore a11y-no-static-element-interactions -->
+    <div class="modal-backdrop" on:click={() => selectedPlayingGame = null}>
+        <div class="modal-content game-detail-modal" on:click|stopPropagation role="dialog" tabindex="-1">
+            <div class="detail-header">
+                {#if g.image_url}
+                    <img src={g.image_url} alt={g.game_name} class="detail-thumb" />
+                {/if}
+                <div>
+                    <h3>{g.game_name}</h3>
+                    <p class="detail-sub">종료 예정: {new Date(g.end_time).toLocaleTimeString()}</p>
+                    <p class="detail-sub time-remaining">{getTimeRemaining(g.end_time)}</p>
+                </div>
+            </div>
+            <div class="detail-section">
+                <strong>참여자 ({g.players.length})</strong>
+                <p class="detail-participants">{g.players.map((p: any) => p.is_guest ? `${p.name}(G)` : p.name).join(', ') || '없음'}</p>
+            </div>
+            <div class="detail-actions">
+                <form method="POST" action="?/joinGame" use:enhance={() => {
+                    return async ({ result, update }) => {
+                        if (result.type === 'failure') showAlert((result as any).data?.error || '오류');
+                        resetParticipantSearch();
+                        await update();
+                    };
+                }} class="detail-form-row">
+                    <input type="hidden" name="sessionId" value={g.id} />
+                    <!-- svelte-ignore a11y-click-events-have-key-events -->
+                    <!-- svelte-ignore a11y-no-static-element-interactions -->
+                    <div class="search-select" on:click|stopPropagation>
+                        <input type="hidden" name="attendeeId" value={selectedParticipantId} />
+                        <input type="text" placeholder="이름 검색..." autocomplete="off"
+                               bind:value={participantSearch}
+                               on:focus={() => participantSearchOpen = true} />
+                        {#if participantSearchOpen && participantSearch.length > 0 && filteredParticipants.length > 0}
+                            <ul class="search-dropdown">
+                                {#each filteredParticipants.slice(0, 8) as user}
+                                    <!-- svelte-ignore a11y-click-events-have-key-events -->
+                                    <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
+                                    <li on:click={() => selectParticipant(user)}>{user.name}</li>
+                                {/each}
+                            </ul>
+                        {/if}
+                    </div>
+                    <button type="submit" class="btn-mini">추가</button>
+                </form>
+                <form method="POST" action="?/addGuestToGame" use:enhance class="detail-form-row">
+                    <input type="hidden" name="sessionId" value={g.id} />
+                    <button type="submit" class="btn-mini btn-guest" style="width:100%;">게스트 추가</button>
+                </form>
+                <hr style="border:none; border-top:1px solid #eee; margin:0.5rem 0;" />
+                <div class="detail-form-row" style="gap:0.5rem;">
+                    <form method="POST" action="?/extendGame" use:enhance style="flex:1;">
+                        <input type="hidden" name="id" value={g.id} />
+                        <input type="hidden" name="minutes" value="10" />
+                        <button type="submit" class="btn-extend" style="width:100%;">+10분</button>
+                    </form>
+                    <form method="POST" action="?/extendGame" use:enhance style="flex:1;">
+                        <input type="hidden" name="id" value={g.id} />
+                        <input type="hidden" name="minutes" value="30" />
+                        <button type="submit" class="btn-extend" style="width:100%;">+30분</button>
+                    </form>
+                </div>
+                <button class="btn-delete" style="width:100%;" on:click={() => { openEndGameModal(g); selectedPlayingGame = null; }}>게임 종료</button>
+            </div>
+            <button class="btn-cancel" style="width:100%; margin-top:0.75rem;" on:click={() => selectedPlayingGame = null}>닫기</button>
+        </div>
+    </div>
+{/if}
+
 <style>
     section {
         margin-bottom: 3rem;
@@ -1070,6 +1227,21 @@
         margin-top: 1.5rem;
         padding-top: 1rem;
         border-top: 1px dashed #ddd;
+    }
+    .toggle-header {
+        cursor: pointer;
+        user-select: none;
+        display: flex;
+        align-items: center;
+        gap: 0.25rem;
+    }
+    .toggle-header:hover {
+        color: #007bff;
+    }
+    .toggle-icon {
+        font-size: 0.85rem;
+        width: 1rem;
+        display: inline-block;
     }
     .quick-add h3 {
         font-size: 0.9rem;
@@ -1792,6 +1964,259 @@
         width: 16px;
         height: 16px;
         accent-color: #4a90d9;
+    }
+
+    /* 오늘 갈 예정 */
+    .visit-plan-section {
+        margin-bottom: 1.5rem;
+    }
+    .visit-plan-grid {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+    .visit-plan-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        background: #fff;
+        border: 1px solid #e0e0e0;
+        border-radius: 20px;
+        padding: 0.35rem 0.75rem;
+        font-size: 0.85rem;
+    }
+    .vp-name {
+        font-weight: 600;
+        color: #333;
+    }
+    .vp-party {
+        font-size: 0.65rem;
+        background: #e3f2fd;
+        color: #1565c0;
+        padding: 0.1rem 0.35rem;
+        border-radius: 4px;
+        font-weight: 700;
+    }
+    .vp-time {
+        font-size: 0.75rem;
+        color: #ef6c00;
+        font-weight: 500;
+    }
+
+    /* 게임 리스트 */
+    .game-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+    }
+    .game-list-item {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 0.6rem 0.5rem;
+        border-bottom: 1px solid #eee;
+        cursor: pointer;
+        transition: background 0.15s;
+    }
+    .game-list-item:hover {
+        background: #f5f5f5;
+    }
+    .game-list-item:last-child {
+        border-bottom: none;
+    }
+    .list-thumb {
+        width: 32px;
+        height: 32px;
+        border-radius: 6px;
+        object-fit: cover;
+        flex-shrink: 0;
+    }
+    .list-thumb.placeholder {
+        background: #f0f0f0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1rem;
+    }
+    .list-name {
+        flex: 1;
+        font-weight: 600;
+        font-size: 0.9rem;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    .list-meta {
+        font-size: 0.8rem;
+        color: #666;
+        white-space: nowrap;
+    }
+    .list-arrow {
+        color: #ccc;
+        font-size: 1.2rem;
+        font-weight: bold;
+    }
+    .show-more-btn {
+        display: block;
+        width: 100%;
+        padding: 0.5rem;
+        margin-top: 0.5rem;
+        background: none;
+        border: 1px dashed #ccc;
+        border-radius: 6px;
+        color: #666;
+        font-size: 0.85rem;
+        cursor: pointer;
+        text-align: center;
+    }
+    .show-more-btn:hover {
+        background: #f9f9f9;
+        border-color: #999;
+    }
+
+    /* 게임 상세 모달 */
+    .game-detail-modal {
+        max-width: 500px;
+    }
+    .detail-header {
+        display: flex;
+        gap: 1rem;
+        align-items: flex-start;
+        margin-bottom: 1rem;
+    }
+    .detail-header h3 {
+        margin: 0 0 0.25rem 0;
+        font-size: 1.1rem;
+    }
+    .detail-thumb {
+        width: 56px;
+        height: 56px;
+        border-radius: 8px;
+        object-fit: cover;
+        flex-shrink: 0;
+    }
+    .detail-sub {
+        margin: 0.15rem 0;
+        font-size: 0.85rem;
+        color: #666;
+    }
+    .detail-section {
+        margin-bottom: 1rem;
+        padding: 0.75rem;
+        background: #f9f9f9;
+        border-radius: 8px;
+    }
+    .detail-section strong {
+        font-size: 0.85rem;
+        color: #555;
+    }
+    .detail-participants {
+        margin: 0.25rem 0 0;
+        font-size: 0.9rem;
+        color: #333;
+    }
+    .detail-actions {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+    .detail-form-row {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    .detail-form-row .attendee-select-mini {
+        flex: 1;
+    }
+
+    /* 참여자 검색 셀렉트 */
+    .search-select {
+        position: relative;
+        flex: 1;
+    }
+    .search-select input[type="text"] {
+        width: 100%;
+        padding: 0.4rem 0.5rem;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        font-size: 0.9rem;
+        box-sizing: border-box;
+    }
+    .search-dropdown {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        background: white;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        max-height: 200px;
+        overflow-y: auto;
+        z-index: 100;
+        list-style: none;
+        padding: 0;
+        margin: 2px 0 0;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+    .search-dropdown li {
+        padding: 0.5rem 0.75rem;
+        cursor: pointer;
+        font-size: 0.9rem;
+        border-bottom: 1px solid #f0f0f0;
+    }
+    .search-dropdown li:last-child {
+        border-bottom: none;
+    }
+    .search-dropdown li:hover {
+        background: #f5f5f5;
+    }
+
+    /* 모바일 최적화 */
+    @media (max-width: 768px) {
+        section {
+            margin-bottom: 1.5rem;
+            padding: 1rem;
+        }
+        section h2 {
+            font-size: 1rem;
+            gap: 0.5rem;
+        }
+        .section-header {
+            flex-direction: column;
+            align-items: stretch;
+            gap: 0.5rem;
+        }
+        button, .btn-primary, .btn-delete, .btn-mini {
+            padding: 0.4rem 0.75rem;
+            font-size: 0.85rem;
+        }
+        .attendee-list li {
+            padding: 0.4rem 0.25rem;
+            font-size: 0.85rem;
+        }
+        .attendee-info { gap: 0.25rem; }
+        .attendee-actions { gap: 0.15rem; }
+        .btn-penalty { padding: 0.2rem 0.4rem; font-size: 0.75rem; }
+        .badge { font-size: 0.65rem; padding: 0.05rem 0.3rem; }
+        .arrival-time { font-size: 0.7rem; }
+        .game-header-row { gap: 0.5rem; }
+        .game-thumb { width: 44px; height: 44px; border-radius: 6px; }
+        .game-details h3 { font-size: 0.95rem; margin: 0 0 0.15rem 0; }
+        .game-details p { font-size: 0.8rem; margin: 0.1rem 0; }
+        .scheduled-card { padding: 0.75rem; }
+        .game-actions-container { gap: 0.5rem; }
+        .inline-add-form { flex-wrap: wrap; }
+        .attendee-select-mini { flex: 1; min-width: 0; font-size: 0.85rem; }
+        .duration-input { width: 50px; }
+        .input-label { font-size: 0.8rem; }
+        .chip-container { font-size: 0.8rem; }
+        .chip-link { font-size: 0.8rem; }
+        .chip-add { font-size: 0.8rem; padding: 0.2rem 0.5rem; }
+        .recurring-item { font-size: 0.85rem; }
+        .modal-content { width: 95%; padding: 1.25rem; }
+        .player-select { gap: 0.5rem; }
+        .empty-state { font-size: 0.85rem; }
+        .visit-plan-chip { font-size: 0.8rem; padding: 0.3rem 0.6rem; }
     }
 
 </style>
