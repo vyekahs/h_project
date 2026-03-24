@@ -32,3 +32,6 @@ pgdata/
 # Rust
 scripts/unblock-gen/*
 scripts/killer-sudoku-gen/*
+
+
+.tts

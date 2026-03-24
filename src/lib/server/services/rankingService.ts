@@ -161,6 +161,32 @@ export const RankingService = {
              const movePenalty = extraMoves * movePenaltyPerMove;
 
              calculatedScore = Math.max(baseScore, baseScore + timeBonus - movePenalty);
+        } else if (gameId === 'freecell') {
+             const timeLimit = difficulty === 'easy' ? 300 :
+                              difficulty === 'medium' ? 480 :
+                              difficulty === 'hard' ? 600 :
+                              difficulty === 'expert' ? 900 : 1200;
+
+             const baseScore = difficulty === 'easy' ? 10 :
+                               difficulty === 'medium' ? 50 :
+                               difficulty === 'hard' ? 120 :
+                               difficulty === 'expert' ? 250 : 400;
+
+             const timeMultiplier = difficulty === 'easy' ? 1 :
+                                    difficulty === 'medium' ? 2 :
+                                    difficulty === 'hard' ? 3 :
+                                    difficulty === 'expert' ? 4 : 5;
+
+             const timeBonus = Math.max(0, (timeLimit - clearTime) * timeMultiplier);
+
+             // mistakes = undoCount
+             const undoPenaltyPerUse = difficulty === 'easy' ? 1 :
+                                       difficulty === 'medium' ? 2 :
+                                       difficulty === 'hard' ? 4 :
+                                       difficulty === 'expert' ? 6 : 10;
+             const undoPenalty = Math.max(0, mistakes) * undoPenaltyPerUse;
+
+             calculatedScore = Math.max(baseScore, baseScore + timeBonus - undoPenalty);
         } else {
              calculatedScore = score || 0;
         }

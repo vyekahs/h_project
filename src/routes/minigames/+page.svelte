@@ -84,6 +84,15 @@
             accentColor: '#edc22e',
             releasedAt: '2026-03-16',
             forceNew: true
+        },
+        {
+            id: 'freecell',
+            name: '프리셀',
+            tagline: '전략적 카드 퍼즐',
+            url: '/minigames/start/freecell',
+            accentColor: '#059669',
+            releasedAt: '2026-03-23',
+            forceNew: true
         }
     ];
 
