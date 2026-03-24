@@ -171,6 +171,7 @@ export function create2048Game() {
 		// Apply the new board
 		board = result.board;
 		moveCount++;
+		saveGame(); // 즉시 저장 (PWA 백그라운드 전환/새로고침 대비)
 
 		if (result.spawnedTile) {
 			lastSpawnedId = result.spawnedTile.id;
@@ -182,8 +183,6 @@ export function create2048Game() {
 
 			if (!canMove(board)) {
 				handleGameOver();
-			} else {
-				saveGame();
 			}
 		}, 200);
 	}
@@ -270,6 +269,7 @@ export function create2048Game() {
 		undoCount++;
 		lastSpawnedId = null;
 		lastMergedIds = [];
+		saveGame();
 	}
 
 	function undo() {

@@ -26,6 +26,18 @@
 		} else {
 			goto('/minigames/start/2048', { replaceState: true });
 		}
+
+		// PWA 백그라운드 전환 / 새로고침 시 즉시 저장
+		const onVisibilityChange = () => {
+			if (document.visibilityState === 'hidden') game.saveGame();
+		};
+		const onBeforeUnload = () => game.saveGame();
+		document.addEventListener('visibilitychange', onVisibilityChange);
+		window.addEventListener('beforeunload', onBeforeUnload);
+		return () => {
+			document.removeEventListener('visibilitychange', onVisibilityChange);
+			window.removeEventListener('beforeunload', onBeforeUnload);
+		};
 	});
 
 	// Keyboard controls
