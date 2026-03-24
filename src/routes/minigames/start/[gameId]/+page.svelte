@@ -102,6 +102,11 @@
                 tutorialData = m.TUTORIALS;
                 tutorialOrder = m.TUTORIAL_ORDER;
             });
+        } else if (gameConfig.id === 'freecell') {
+            import('../../freecell/tutorialData').then(m => {
+                tutorialData = m.TUTORIALS;
+                tutorialOrder = m.TUTORIAL_ORDER;
+            });
         } else {
             tutorialData = null;
             tutorialOrder = [];
@@ -146,6 +151,9 @@
             TutorialModalComponent = mod.default;
         } else if (gameConfig.id === 'triple-tile') {
             const mod = await import('../../triple-tile/TripleTileTutorialModal.svelte');
+            TutorialModalComponent = mod.default;
+        } else if (gameConfig.id === 'freecell') {
+            const mod = await import('../../freecell/FreecellTutorialModal.svelte');
             TutorialModalComponent = mod.default;
         }
         showTutorial = true;

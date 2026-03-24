@@ -133,5 +133,21 @@ export const GAME_REGISTRY: Record<string, GameConfig> = {
 		},
 		localStorageSaveKey: '2048_save',
 		hasTutorials: false
+	},
+	freecell: {
+		id: 'freecell',
+		name: '프리셀',
+		displayTitle: 'Freecell',
+		gameUrl: '/minigames/freecell',
+		difficulties: ['easy', 'medium', 'hard', 'expert', 'master'],
+		difficultyLabels: {
+			easy: '쉬움',
+			medium: '보통',
+			hard: '어려움',
+			expert: '전문가',
+			master: '마스터'
+		},
+		localStorageSaveKey: 'freecell_save',
+		hasTutorials: true
 	}
 };
