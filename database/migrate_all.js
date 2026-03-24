@@ -272,6 +272,45 @@ async function migrate() {
         `);
         await pool.query('CREATE INDEX IF NOT EXISTS idx_notif_prefs_attendee ON notification_preferences(attendee_id);');
 
+        // 26. Slow Request Logs (성능 모니터링)
+        console.log('[26] Checking slow_request_logs table...');
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS slow_request_logs (
+                id SERIAL PRIMARY KEY,
+                path VARCHAR(500) NOT NULL,
+                method VARCHAR(10) NOT NULL,
+                duration INTEGER NOT NULL,
+                timestamp TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                status_code INTEGER NOT NULL,
+                user_agent TEXT,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            );
+        `);
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_slow_request_logs_timestamp ON slow_request_logs(timestamp DESC);');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_slow_request_logs_path ON slow_request_logs(path);');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_slow_request_logs_duration ON slow_request_logs(duration DESC);');
+
+        // 27. DB Pool Stats (커넥션 풀 모니터링)
+        console.log('[27] Checking db_pool_stats table...');
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS db_pool_stats (
+                id SERIAL PRIMARY KEY,
+                active_connections INTEGER NOT NULL,
+                max_connections INTEGER NOT NULL,
+                utilization_percent INTEGER NOT NULL,
+                timestamp TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            );
+        `);
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_db_pool_stats_timestamp ON db_pool_stats(timestamp DESC);');
+
+        // 28. BLE Report 성능 최적화 인덱스
+        console.log('[26] Adding BLE performance indexes...');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_visits_attendee_open ON visits(attendee_id) WHERE departure_time IS NULL;');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_game_sessions_status ON game_sessions(status) WHERE status = \'playing\';');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_session_participants_session_attendee ON session_participants(session_id, attendee_id);');
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_user_devices_attendee ON user_devices(attendee_id);');
+
     } catch (err) {
         console.error('Migration failed:', err);
         process.exit(1);

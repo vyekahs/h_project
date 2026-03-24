@@ -32,17 +32,15 @@ export const POST: RequestHandler = async ({ request }) => {
             return json({ error: 'Invalid Format' }, { status: 400 });
         }
 
-        // 2. Log Scanner Heartbeat
-        try {
-            await db.execute(sql`
-                INSERT INTO scanners (id, last_seen_at, status)
-                VALUES (${actualScannerId}, NOW(), 'active')
-                ON CONFLICT (id) DO UPDATE
-                SET last_seen_at = NOW(), status = 'active'
-            `);
-        } catch (e) {
+        // 2. Log Scanner Heartbeat (fire-and-forget, 응답 차단 방지)
+        db.execute(sql`
+            INSERT INTO scanners (id, last_seen_at, status)
+            VALUES (${actualScannerId}, NOW(), 'active')
+            ON CONFLICT (id) DO UPDATE
+            SET last_seen_at = NOW(), status = 'active'
+        `).catch(e => {
             console.error('Failed to update scanner heartbeat', e);
-        }
+        });
 
         // 3. Quick Response Strategy: Respond immediately, process in background
         // This prevents ECONNRESET errors when processScanResults takes too long

@@ -244,7 +244,7 @@ export async function getActiveDbConnections(): Promise<number> {
 			WHERE datname = current_database()
 			AND state = 'active'
 		`);
-		return Number(result.rows[0]?.count || 0);
+		return Number((result as any[])[0]?.count || 0);
 	} catch (error) {
 		console.error('[PERF] Failed to get active DB connections:', error);
 		return 0;
