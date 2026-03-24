@@ -405,7 +405,7 @@
 		color: var(--text-secondary);
 		margin: 0 0 12px;
 	}
-	article ul, article ol {
+	article ul {
 		margin: 0 0 16px;
 		padding-left: 20px;
 	}

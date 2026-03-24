@@ -441,17 +441,5 @@
 		gap: 0.5rem;
 	}
 
-	.btn-secondary {
-		background: var(--bg-tertiary);
-		color: var(--text-dark);
-		border: none;
-		padding: 0.6rem 1.2rem;
-		border-radius: 8px;
-		font-weight: 600;
-		cursor: pointer;
-		transition: background 0.2s;
-	}
-	.btn-secondary:hover {
-		background: var(--bg-hover);
-	}
+
 </style>

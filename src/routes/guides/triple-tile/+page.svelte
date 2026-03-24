@@ -147,7 +147,7 @@
 	article section:first-child h2 { border-top: none; padding-top: 0; }
 	article h3 { font-size: 1.1rem; font-weight: 600; color: var(--text-primary); margin: 20px 0 10px; }
 	article p { font-size: 0.95rem; line-height: 1.8; color: var(--text-secondary); margin: 0 0 12px; }
-	article ul, article ol { margin: 0 0 16px; padding-left: 20px; }
+	article ol { margin: 0 0 16px; padding-left: 20px; }
 	article li { font-size: 0.95rem; line-height: 1.7; color: var(--text-secondary); margin-bottom: 4px; }
 	.info-box { background: var(--color-info-bg); border-left: 4px solid var(--color-blue); border-radius: 8px; padding: 14px 16px; margin: 16px 0; font-size: 0.9rem; line-height: 1.6; color: var(--text-secondary); }
 	.cta-box { text-align: center; margin-top: 24px; }

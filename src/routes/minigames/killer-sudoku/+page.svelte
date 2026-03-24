@@ -186,7 +186,7 @@
     {/if}
 
     {#if game.showGuide && !game.showTutorial}
-        <div class="overlay" onclick={() => game.showGuide = false} role="button" tabindex="-1" aria-label="공략집 닫기">
+        <div class="overlay" onclick={() => game.showGuide = false} onkeydown={(e) => e.key === 'Escape' && (game.showGuide = false)} role="button" tabindex="-1" aria-label="공략집 닫기">
             <div class="modal guide-modal" onclick={(e) => e.stopPropagation()} role="presentation">
                 <h3>공략집</h3>
                 <div class="guide-list">

@@ -211,9 +211,7 @@
 			role="button"
 			tabindex="-1"
 		>
-			<!-- svelte-ignore a11y_click_events_have_key_events -->
-			<!-- svelte-ignore a11y_no_static_element_interactions -->
-			<div class="modal alert-modal" onclick={(e) => e.stopPropagation()}>
+			<div class="modal alert-modal" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="presentation">
 				<p>{game.alertMessage}</p>
 				<button class="btn-primary" onclick={() => (game.alertMessage = null)}>확인</button>
 			</div>
@@ -221,10 +219,8 @@
 	{/if}
 
 	{#if game.showGuide && !game.showTutorial}
-		<div class="overlay" onclick={() => game.showGuide = false} role="button" tabindex="-1" aria-label="공략집 닫기">
-			<!-- svelte-ignore a11y_click_events_have_key_events -->
-			<!-- svelte-ignore a11y_no_static_element_interactions -->
-			<div class="modal guide-modal" onclick={(e) => e.stopPropagation()}>
+		<div class="overlay" onclick={() => game.showGuide = false} onkeydown={(e) => e.key === 'Escape' && (game.showGuide = false)} role="button" tabindex="-1" aria-label="공략집 닫기">
+			<div class="modal guide-modal" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="presentation">
 				<h3>공략집</h3>
 				<div class="guide-list">
 					{#each ENERGY_TUTORIAL_ORDER as tid}
@@ -264,9 +260,7 @@
 			role="button"
 			tabindex="-1"
 		>
-			<!-- svelte-ignore a11y_click_events_have_key_events -->
-			<!-- svelte-ignore a11y_no_static_element_interactions -->
-			<div class="modal alert-modal" onclick={(e) => e.stopPropagation()}>
+			<div class="modal alert-modal" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="presentation">
 				<p>{game.confirmMessage}</p>
 				<div class="modal-actions">
 					<button class="btn-secondary" onclick={() => game.handleConfirm(false)}

@@ -29,7 +29,7 @@
 	let swipeOffset = $state(0);
 	let touchStartX = 0;
 	let touchStartY = 0;
-	let isSwiping = false;
+	let isSwiping = $state(false);
 
 	onMount(() => {
 		fetchUnreadCount();
@@ -277,6 +277,7 @@
 								ontouchstart={(e) => handleTouchStart(e, n.id)}
 								ontouchmove={handleTouchMove}
 								ontouchend={handleTouchEnd}
+								role="group"
 							>
 								<button
 									class="notification-item"

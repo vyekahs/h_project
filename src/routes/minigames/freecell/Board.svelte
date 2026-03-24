@@ -283,6 +283,7 @@
 					data-drop-zone={JSON.stringify(loc)}
 					data-loc={`fc-${i}`}
 					onclick={() => cell ? onCardClick(loc) : onSlotClick(loc)}
+					onkeydown={(e) => { if (e.key === 'Enter') { cell ? onCardClick(loc) : onSlotClick(loc); } }}
 					role="button"
 					tabindex="-1"
 				>
@@ -293,6 +294,8 @@
 							class="slot-card"
 							class:hidden={inDrag}
 							onpointerdown={(e) => handlePointerDown(e, loc, [cell])}
+							role="button"
+							tabindex="-1"
 						>
 							<Card
 								card={cell}
@@ -320,6 +323,7 @@
 					data-drop-zone={JSON.stringify(loc)}
 					data-loc={`fn-${i}`}
 					onclick={() => onSlotClick(loc)}
+					onkeydown={(e) => { if (e.key === 'Enter') onSlotClick(loc); }}
 					role="button"
 					tabindex="-1"
 				>
@@ -338,12 +342,14 @@
 		{#each state.tableau as column, col}
 			{@const colLoc = { type: 'tableau' as const, col, cardIndex: 0 }}
 			{@const highlighted = column.length === 0 && isSlotHighlighted(colLoc)}
+			<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 			<div
 				class="tableau-column"
 				class:highlighted
 				data-drop-zone={JSON.stringify(colLoc)}
 				data-loc={`tab-${col}`}
 				onclick={() => { if (column.length === 0) onSlotClick(colLoc); }}
+				onkeydown={(e) => { if (e.key === 'Enter' && column.length === 0) onSlotClick(colLoc); }}
 				role="list"
 			>
 				{#if column.length === 0}
@@ -366,6 +372,8 @@
 									handlePointerDown(e, cardLoc, getMovableCards(col, idx));
 								}
 							}}
+							role="button"
+							tabindex="-1"
 						>
 							<Card
 								{card}

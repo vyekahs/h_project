@@ -151,8 +151,8 @@
 </script>
 
 {#if showModal}
-    <div class="rankup-overlay" class:active={startAnimation} on:click={close} style="--theme-color: {themeColor};">
-        <div class="rankup-modal focus-zone" on:click|stopPropagation>
+    <div class="rankup-overlay" class:active={startAnimation} onclick={close} onkeydown={(e) => e.key === 'Escape' && close()} role="button" tabindex="-1" style="--theme-color: {themeColor};">
+        <div class="rankup-modal focus-zone" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="dialog" tabindex="-1">
             <div class="header">
                 <h2>RANK UP!</h2>
                 <div class="game-name">{gameTitle}</div>
@@ -198,7 +198,7 @@
                 <span class="score-val">+{calculatedScore}점</span>
             </div>
 
-            <button class="btn-awesome" on:click={close}>계속하기</button>
+            <button class="btn-awesome" onclick={close}>계속하기</button>
         </div>
     </div>
 {/if}

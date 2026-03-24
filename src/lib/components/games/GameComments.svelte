@@ -232,11 +232,8 @@
 
 <!-- Alert modal -->
 {#if showModal}
-	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div class="modal-overlay" onclick={() => showModal = false} onkeydown={(e) => e.key === 'Escape' && (showModal = false)} role="button" tabindex="-1">
-		<!-- svelte-ignore a11y_click_events_have_key_events -->
-		<!-- svelte-ignore a11y_no_static_element_interactions -->
-		<div class="modal" onclick={(e) => e.stopPropagation()}>
+		<div class="modal" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="presentation">
 			<p class="modal-message">{modalMessage}</p>
 			<button class="modal-btn" onclick={() => showModal = false}>확인</button>
 		</div>
@@ -245,11 +242,8 @@
 
 <!-- Delete confirm modal -->
 {#if showDeleteConfirm}
-	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div class="modal-overlay" onclick={() => showDeleteConfirm = false} onkeydown={(e) => e.key === 'Escape' && (showDeleteConfirm = false)} role="button" tabindex="-1">
-		<!-- svelte-ignore a11y_click_events_have_key_events -->
-		<!-- svelte-ignore a11y_no_static_element_interactions -->
-		<div class="modal" onclick={(e) => e.stopPropagation()}>
+		<div class="modal" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="presentation">
 			<p class="modal-message">댓글을 삭제하시겠습니까?</p>
 			<div class="modal-actions">
 				<button class="modal-btn-secondary" onclick={() => showDeleteConfirm = false}>취소</button>
@@ -523,17 +517,4 @@
 	.dark .comment-content :global(.mention) { color: #93c5fd; }
 	.dark .input-area { border-top-color: rgba(255,255,255,0.1); }
 	.dark .input-hint { color: rgba(255,255,255,0.35); }
-	.dark .modal {
-		background: #1e293b;
-		box-shadow: 0 16px 48px rgba(0,0,0,0.5);
-	}
-	.dark .modal-message { color: #e2e8f0; }
-	.dark .modal-btn {
-		background: linear-gradient(135deg, #fbbf24, #d97706);
-		color: #fff;
-	}
-	.dark .modal-btn-secondary {
-		background: rgba(255,255,255,0.1);
-		color: #e2e8f0;
-	}
 </style>

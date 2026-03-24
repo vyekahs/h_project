@@ -165,7 +165,7 @@
         tabindex="-1"
         aria-label="Close modal"
     >
-        <div class="modal-content confirm-modal" onclick={(e) => e.stopPropagation()} role="dialog" tabindex="-1">
+        <div class="modal-content confirm-modal" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="dialog" tabindex="-1">
             <h3>
                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px; vertical-align:text-bottom;"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
                 마감 하기
@@ -202,7 +202,7 @@
         tabindex="-1"
         aria-label="Close modal"
     >
-        <div class="modal-content confirm-modal" onclick={(e) => e.stopPropagation()} role="dialog" tabindex="-1">
+        <div class="modal-content confirm-modal" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="dialog" tabindex="-1">
             <h3>
                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px; vertical-align:text-bottom;"><circle cx="12" cy="12" r="5"/><path d="M12 1v2"/><path d="M12 21v2"/><path d="M4.22 4.22l1.42 1.42"/><path d="M18.36 18.36l1.42 1.42"/><path d="M1 12h2"/><path d="M21 12h2"/><path d="M4.22 19.78l1.42-1.42"/><path d="M18.36 5.64l1.42-1.42"/></svg>
                 오픈 하기
@@ -239,7 +239,7 @@
         tabindex="-1"
         aria-label="Close alert"
     >
-        <div class="modal-content alert-modal" onclick={(e) => e.stopPropagation()} role="alertdialog" tabindex="-1">
+        <div class="modal-content alert-modal" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="alertdialog" tabindex="-1">
             <h3>알림</h3>
             <p>{alertMessage}</p>
             <div class="modal-actions">

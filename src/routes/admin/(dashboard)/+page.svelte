@@ -447,12 +447,10 @@
 
     {#if (data.savedMembers || []).length > 0}
         <div class="quick-add">
-            <!-- svelte-ignore a11y-click-events-have-key-events -->
-            <!-- svelte-ignore a11y-no-static-element-interactions -->
-            <h3 class="toggle-header" on:click={() => savedMembersOpen = !savedMembersOpen}>
+            <button type="button" class="toggle-header" onclick={() => savedMembersOpen = !savedMembersOpen}>
                 <span class="toggle-icon">{savedMembersOpen ? '▾' : '▸'}</span>
                 저장된 멤버 ({(savedMembers || []).length})
-            </h3>
+            </button>
             {#if savedMembersOpen}
             <div class="member-chips">
                 {#each (savedMembers || []) as member (member.id)}
@@ -481,14 +479,13 @@
             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
             시작 예정 게임 ({(scheduledGames || []).length})
         </h2>
-        <button class="btn-primary" on:click={openScheduledGameModal}>+ 게임 일정 등록</button>
+        <button class="btn-primary" onclick={openScheduledGameModal}>+ 게임 일정 등록</button>
     </div>
     <ul class="game-list">
         {#each (showAllScheduled ? (scheduledGames || []) : (scheduledGames || []).slice(0, 5)) as game (game.id)}
             {@const g = game as GameSession}
-            <!-- svelte-ignore a11y-click-events-have-key-events -->
-            <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-            <li class="game-list-item" on:click={() => { selectedScheduledGame = g; resetParticipantSearch(); }}>
+            <!-- svelte-ignore a11y_no_noninteractive_element_interactions a11y_no_noninteractive_tabindex -->
+            <li class="game-list-item" onclick={() => { selectedScheduledGame = g; resetParticipantSearch(); }} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { selectedScheduledGame = g; resetParticipantSearch(); }}} tabindex="0">
                 {#if g.image_url}
                     <img src={g.image_url} alt={g.game_name} class="list-thumb" />
                 {:else}
@@ -505,7 +502,7 @@
         {/if}
     </ul>
     {#if (scheduledGames || []).length > 5}
-        <button class="show-more-btn" on:click={() => showAllScheduled = !showAllScheduled}>
+        <button class="show-more-btn" onclick={() => showAllScheduled = !showAllScheduled}>
             {showAllScheduled ? '접기' : `+${(scheduledGames || []).length - 5}개 더보기`}
         </button>
     {/if}
@@ -633,7 +630,7 @@
 <section>
     <div class="section-header">
         <h2>진행 중인 게임 ({(games || []).length})</h2>
-        <button class="btn-primary" on:click={() => {
+        <button class="btn-primary" onclick={() => {
             showModal = true;
             selectedGameName = '';
             selectedDuration = '';
@@ -644,9 +641,8 @@
     </div>
     <ul class="game-list">
         {#each (showAllPlaying ? (games || []) : (games || []).slice(0, 5)) as game (game.id)}
-            <!-- svelte-ignore a11y-click-events-have-key-events -->
-            <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-            <li class="game-list-item" on:click={() => { selectedPlayingGame = game; resetParticipantSearch(); }}>
+            <!-- svelte-ignore a11y_no_noninteractive_element_interactions a11y_no_noninteractive_tabindex -->
+            <li class="game-list-item" onclick={() => { selectedPlayingGame = game; resetParticipantSearch(); }} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { selectedPlayingGame = game; resetParticipantSearch(); }}} tabindex="0">
                 {#if game.image_url}
                     <img src={game.image_url} alt={game.game_name} class="list-thumb" />
                 {:else}
@@ -663,24 +659,22 @@
         {/if}
     </ul>
     {#if (games || []).length > 5}
-        <button class="show-more-btn" on:click={() => showAllPlaying = !showAllPlaying}>
+        <button class="show-more-btn" onclick={() => showAllPlaying = !showAllPlaying}>
             {showAllPlaying ? '접기' : `+${(games || []).length - 5}개 더보기`}
         </button>
     {/if}
 </section>
 
 {#if showModal}
-    <!-- svelte-ignore a11y-click-events-have-key-events -->
-    <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-    <div 
-        class="modal-backdrop" 
-        on:click={() => showModal = false} 
-        on:keydown={(e) => e.key === 'Escape' && (showModal = false)}
+    <div
+        class="modal-backdrop"
+        onclick={() => showModal = false} 
+        onkeydown={(e) => e.key === 'Escape' && (showModal = false)}
         role="button" 
         tabindex="-1"
         aria-label="Close modal"
     >
-        <div class="modal-content" on:click={handleModalClick} role="dialog" tabindex="-1">
+        <div class="modal-content" onclick={handleModalClick} onkeydown={() => {}} role="dialog" tabindex="-1">
             <h2>새 게임 시작</h2>
             <form method="POST" action="?/createGame" use:enhance={() => {
                 return async ({ result, update }: { result: any, update: (options?: { reset?: boolean }) => Promise<void> }) => {
@@ -705,8 +699,8 @@
                         placeholder="게임 이름 (직접 입력 또는 선택)" 
                         bind:value={selectedGameName} 
                         bind:this={searchInput}
-                        on:click={handleInputClick}
-                        on:focus={handleInputClick}
+                        onclick={handleInputClick}
+                        onfocus={handleInputClick}
                         required 
                         autocomplete="off" 
                     />
@@ -715,7 +709,7 @@
                         <ul class="dropdown-menu">
                             {#each filteredGames as game}
                                 <li>
-                                    <button type="button" on:click={() => selectGame(game)}>
+                                    <button type="button" onclick={() => selectGame(game)}>
                                         {#if game.image_url}
                                             <img src={game.image_url} alt="" class="mini-thumb" />
                                         {/if}
@@ -769,7 +763,7 @@
                 </div>
 
                 <div class="modal-actions">
-                    <button type="button" on:click={() => showModal = false} class="btn-cancel">취소</button>
+                    <button type="button" onclick={() => showModal = false} class="btn-cancel">취소</button>
                     <button type="submit" class="btn-primary">게임 시작</button>
                 </div>
             </form>
@@ -779,17 +773,15 @@
 
 <!-- End Game Modal -->
 {#if endGameModalVisible && selectedEndGame}
-    <!-- svelte-ignore a11y-click-events-have-key-events -->
-    <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-    <div 
-        class="modal-backdrop" 
-        on:click={() => endGameModalVisible = false} 
-        on:keydown={(e) => e.key === 'Escape' && (endGameModalVisible = false)}
+    <div
+        class="modal-backdrop"
+        onclick={() => endGameModalVisible = false} 
+        onkeydown={(e) => e.key === 'Escape' && (endGameModalVisible = false)}
         role="button" 
         tabindex="-1"
         aria-label="Close modal"
     >
-        <div class="modal-content" on:click|stopPropagation role="dialog" tabindex="-1">
+        <div class="modal-content" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="dialog" tabindex="-1">
 
             <h2>
                 <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:#fab005;"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>
@@ -837,7 +829,7 @@
                 </div>
 
                 <div class="modal-actions">
-                    <button type="button" on:click={() => endGameModalVisible = false} class="btn-cancel">취소</button>
+                    <button type="button" onclick={() => endGameModalVisible = false} class="btn-cancel">취소</button>
                     <button type="submit" class="btn-primary">종료 및 저장</button>
                 </div>
             </form>
@@ -847,21 +839,19 @@
 
 <!-- Alert Modal -->
 {#if alertVisible}
-    <!-- svelte-ignore a11y-click-events-have-key-events -->
-    <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-    <div 
-        class="modal-backdrop" 
-        on:click={() => alertVisible = false} 
-        on:keydown={(e) => e.key === 'Escape' && (alertVisible = false)}
+    <div
+        class="modal-backdrop"
+        onclick={() => alertVisible = false} 
+        onkeydown={(e) => e.key === 'Escape' && (alertVisible = false)}
         role="button" 
         tabindex="-1"
         aria-label="Close alert"
     >
-        <div class="modal-content alert-modal" on:click|stopPropagation role="alertdialog" tabindex="-1">
+        <div class="modal-content alert-modal" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="alertdialog" tabindex="-1">
             <h3>알림</h3>
             <p>{alertMessage}</p>
             <div class="modal-actions">
-                <button class="btn-primary" on:click={() => alertVisible = false}>확인</button>
+                <button class="btn-primary" onclick={() => alertVisible = false}>확인</button>
             </div>
         </div>
     </div>
@@ -869,19 +859,15 @@
 
 <!-- Remove Confirm Modal -->
 {#if removeModalVisible && removeTarget}
-    <!-- svelte-ignore a11y-click-events-have-key-events -->
-    <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-    <!-- svelte-ignore a11y-click-events-have-key-events -->
-    <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-    <div 
-        class="modal-backdrop" 
-        on:click={() => removeModalVisible = false} 
-        on:keydown={(e) => e.key === 'Escape' && (removeModalVisible = false)}
+    <div
+        class="modal-backdrop"
+        onclick={() => removeModalVisible = false} 
+        onkeydown={(e) => e.key === 'Escape' && (removeModalVisible = false)}
         role="button" 
         tabindex="-1"
         aria-label="Close confirm"
     >
-        <div class="modal-content confirm-modal" on:click|stopPropagation role="dialog" tabindex="-1">
+        <div class="modal-content confirm-modal" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="dialog" tabindex="-1">
             <h3>참가자 퇴장 확인</h3>
             <p><strong>{removeTarget.name}</strong>님은 현재 <strong>{removeTarget.game_name}</strong> 게임에 참여 중입니다.</p>
             <p>어떻게 처리하시겠습니까?</p>
@@ -909,24 +895,22 @@
                     <button type="submit" class="btn-warning full-width">참가자만 퇴장</button>
                 </form>
 
-                <button class="btn-cancel full-width" on:click={() => removeModalVisible = false}>취소</button>
+                <button class="btn-cancel full-width" onclick={() => removeModalVisible = false}>취소</button>
             </div>
         </div>
     </div>
 {/if}
 
 {#if showScheduledGameModal}
-    <!-- svelte-ignore a11y-click-events-have-key-events -->
-    <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-    <div 
-        class="modal-backdrop" 
-        on:click={() => showScheduledGameModal = false} 
-        on:keydown={(e) => e.key === 'Escape' && (showScheduledGameModal = false)}
+    <div
+        class="modal-backdrop"
+        onclick={() => showScheduledGameModal = false} 
+        onkeydown={(e) => e.key === 'Escape' && (showScheduledGameModal = false)}
         role="button" 
         tabindex="-1"
         aria-label="Close modal"
     >
-        <div class="modal-content" on:click={handleModalClick} role="dialog" tabindex="-1">
+        <div class="modal-content" onclick={handleModalClick} onkeydown={() => {}} role="dialog" tabindex="-1">
 
             <h2>
                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
@@ -954,8 +938,8 @@
                         placeholder="게임 이름 (직접 입력 또는 선택)" 
                         bind:value={scheduledGameName} 
                         bind:this={searchInput}
-                        on:click={handleInputClick}
-                        on:focus={handleInputClick}
+                        onclick={handleInputClick}
+                        onfocus={handleInputClick}
                         required 
                         autocomplete="off" 
                     />
@@ -964,7 +948,7 @@
                         <ul class="dropdown-menu">
                             {#each filteredScheduledGames as game}
                                 <li>
-                                    <button type="button" on:click={() => selectScheduledGame(game)}>
+                                    <button type="button" onclick={() => selectScheduledGame(game)}>
                                         {#if game.image_url}
                                             <img src={game.image_url} alt="" class="mini-thumb" />
                                         {/if}
@@ -1003,7 +987,7 @@
                 <div class="input-group guest-input-group">
                     <label for="scheduledGuestCount">게스트 수</label>
                     <input type="number" id="scheduledGuestCount" name="guestCount" bind:value={guestCount} min="0" max={maxPlayers} class="number-input"
-                        on:input={() => { if (guestCount > maxPlayers) guestCount = maxPlayers; }} />
+                        oninput={() => { if (guestCount > maxPlayers) guestCount = maxPlayers; }} />
                     <p class="hint">* 미등록 참가자 수 (최대 {maxPlayers}명, 게스트1, 게스트2... 자동 생성)</p>
                 </div>
 
@@ -1020,7 +1004,7 @@
                 </div>
 
                 <div class="modal-actions">
-                    <button type="button" on:click={() => showScheduledGameModal = false} class="btn-cancel">취소</button>
+                    <button type="button" onclick={() => showScheduledGameModal = false} class="btn-cancel">취소</button>
                     <button type="submit" class="btn-primary">예약 생성</button>
                 </div>
             </form>
@@ -1031,10 +1015,8 @@
 <!-- Scheduled Game Detail Modal -->
 {#if selectedScheduledGame}
     {@const g = selectedScheduledGame}
-    <!-- svelte-ignore a11y-click-events-have-key-events -->
-    <!-- svelte-ignore a11y-no-static-element-interactions -->
-    <div class="modal-backdrop" on:click={() => selectedScheduledGame = null}>
-        <div class="modal-content game-detail-modal" on:click|stopPropagation role="dialog" tabindex="-1">
+    <div class="modal-backdrop" onclick={() => selectedScheduledGame = null} onkeydown={(e) => e.key === 'Escape' && (selectedScheduledGame = null)} role="button" tabindex="-1" aria-label="Close modal">
+        <div class="modal-content game-detail-modal" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="dialog" tabindex="-1">
             <div class="detail-header">
                 {#if g.image_url}
                     <img src={g.image_url} alt={g.game_name} class="detail-thumb" />
@@ -1058,19 +1040,17 @@
                     };
                 }} class="detail-form-row">
                     <input type="hidden" name="sessionId" value={g.id} />
-                    <!-- svelte-ignore a11y-click-events-have-key-events -->
-                    <!-- svelte-ignore a11y-no-static-element-interactions -->
-                    <div class="search-select" on:click|stopPropagation>
+                    <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+                    <div class="search-select" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="search">
                         <input type="hidden" name="attendeeId" value={selectedParticipantId} />
                         <input type="text" placeholder="이름 검색..." autocomplete="off"
                                bind:value={participantSearch}
-                               on:focus={() => participantSearchOpen = true} />
+                               onfocus={() => participantSearchOpen = true} />
                         {#if participantSearchOpen && participantSearch.length > 0 && filteredParticipants.length > 0}
                             <ul class="search-dropdown">
                                 {#each filteredParticipants.slice(0, 8) as user}
-                                    <!-- svelte-ignore a11y-click-events-have-key-events -->
-                                    <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-                                    <li on:click={() => selectParticipant(user)}>{user.name}</li>
+                                    <!-- svelte-ignore a11y_no_noninteractive_element_interactions a11y_no_noninteractive_tabindex -->
+                                    <li onclick={() => selectParticipant(user)} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') selectParticipant(user); }} tabindex="0">{user.name}</li>
                                 {/each}
                             </ul>
                         {/if}
@@ -1093,7 +1073,7 @@
                     <button type="submit" class="btn-delete" style="width:100%;">게임 폭파</button>
                 </form>
             </div>
-            <button class="btn-cancel" style="width:100%; margin-top:0.75rem;" on:click={() => selectedScheduledGame = null}>닫기</button>
+            <button class="btn-cancel" style="width:100%; margin-top:0.75rem;" onclick={() => selectedScheduledGame = null}>닫기</button>
         </div>
     </div>
 {/if}
@@ -1101,10 +1081,8 @@
 <!-- Playing Game Detail Modal -->
 {#if selectedPlayingGame}
     {@const g = selectedPlayingGame}
-    <!-- svelte-ignore a11y-click-events-have-key-events -->
-    <!-- svelte-ignore a11y-no-static-element-interactions -->
-    <div class="modal-backdrop" on:click={() => selectedPlayingGame = null}>
-        <div class="modal-content game-detail-modal" on:click|stopPropagation role="dialog" tabindex="-1">
+    <div class="modal-backdrop" onclick={() => selectedPlayingGame = null} onkeydown={(e) => e.key === 'Escape' && (selectedPlayingGame = null)} role="button" tabindex="-1" aria-label="Close modal">
+        <div class="modal-content game-detail-modal" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="dialog" tabindex="-1">
             <div class="detail-header">
                 {#if g.image_url}
                     <img src={g.image_url} alt={g.game_name} class="detail-thumb" />
@@ -1128,19 +1106,17 @@
                     };
                 }} class="detail-form-row">
                     <input type="hidden" name="sessionId" value={g.id} />
-                    <!-- svelte-ignore a11y-click-events-have-key-events -->
-                    <!-- svelte-ignore a11y-no-static-element-interactions -->
-                    <div class="search-select" on:click|stopPropagation>
+                    <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+                    <div class="search-select" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="search">
                         <input type="hidden" name="attendeeId" value={selectedParticipantId} />
                         <input type="text" placeholder="이름 검색..." autocomplete="off"
                                bind:value={participantSearch}
-                               on:focus={() => participantSearchOpen = true} />
+                               onfocus={() => participantSearchOpen = true} />
                         {#if participantSearchOpen && participantSearch.length > 0 && filteredParticipants.length > 0}
                             <ul class="search-dropdown">
                                 {#each filteredParticipants.slice(0, 8) as user}
-                                    <!-- svelte-ignore a11y-click-events-have-key-events -->
-                                    <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
-                                    <li on:click={() => selectParticipant(user)}>{user.name}</li>
+                                    <!-- svelte-ignore a11y_no_noninteractive_element_interactions a11y_no_noninteractive_tabindex -->
+                                    <li onclick={() => selectParticipant(user)} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') selectParticipant(user); }} tabindex="0">{user.name}</li>
                                 {/each}
                             </ul>
                         {/if}
@@ -1164,9 +1140,9 @@
                         <button type="submit" class="btn-extend" style="width:100%;">+30분</button>
                     </form>
                 </div>
-                <button class="btn-delete" style="width:100%;" on:click={() => { openEndGameModal(g); selectedPlayingGame = null; }}>게임 종료</button>
+                <button class="btn-delete" style="width:100%;" onclick={() => { openEndGameModal(g); selectedPlayingGame = null; }}>게임 종료</button>
             </div>
-            <button class="btn-cancel" style="width:100%; margin-top:0.75rem;" on:click={() => selectedPlayingGame = null}>닫기</button>
+            <button class="btn-cancel" style="width:100%; margin-top:0.75rem;" onclick={() => selectedPlayingGame = null}>닫기</button>
         </div>
     </div>
 {/if}
@@ -1243,7 +1219,7 @@
         width: 1rem;
         display: inline-block;
     }
-    .quick-add h3 {
+    .quick-add .toggle-header {
         font-size: 0.9rem;
         color: #666;
         margin-bottom: 0.5rem;
@@ -1283,13 +1259,6 @@
     }
     .chip-add:hover {
         background: #a0a0a0;
-    }
-    .game-card {
-        background: white;
-        padding: 1rem;
-        border-radius: 4px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        margin-bottom: 1rem;
     }
     .btn-delete {
         background: #ff4444;
@@ -1447,26 +1416,6 @@
         border: 1px solid #ddd;
         border-radius: 4px;
     }
-    .game-actions-container {
-        display: flex;
-        flex-direction: column;
-        gap: 0.75rem;
-        margin-top: 1rem;
-        padding-top: 1rem;
-        border-top: 1px dashed #eee;
-    }
-    .action-group {
-        display: flex;
-        gap: 0.5rem;
-        align-items: center;
-        flex-wrap: wrap;
-    }
-    .action-group form {
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-    }
-    
     @media (max-width: 600px) {
         .attendee-list li {
             flex-direction: column;
@@ -1480,18 +1429,6 @@
         .btn-delete {
             width: 100%; /* Keep specific override or reset if needed */
             margin-top: 0.5rem;
-        }
-        .game-actions-container {
-            align-items: stretch;
-        }
-        .inline-add-form {
-            flex-direction: row; 
-        }
-        .action-group {
-            flex-direction: row;
-        }
-        .action-group button, .action-group form {
-            flex: 1; 
         }
         .notice-manager {
             gap: 0.5rem;
@@ -1533,40 +1470,6 @@
     }
     .winner-option:has(input:checked) .medal {
         opacity: 1;
-    }
-
-    /* New Game UI Styles */
-    .game-header-row {
-        display: flex;
-        gap: 1rem;
-        margin-bottom: 1rem;
-    }
-    .game-thumb {
-        width: 60px;
-        height: 60px;
-        border-radius: 8px;
-        object-fit: cover;
-        background: #f0f0f0;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 1.5rem;
-    }
-    .game-details {
-        flex: 1;
-    }
-    .game-details h3 {
-        margin: 0 0 0.25rem 0;
-    }
-    .players-list {
-        margin: 0 0 0.25rem 0;
-        font-size: 0.9rem;
-        color: #555;
-    }
-    .end-time {
-        margin: 0;
-        font-size: 0.85rem;
-        color: #888;
     }
 
     /* New Admin UI Styles */
@@ -1635,18 +1538,6 @@
         margin-left: 0.2rem;
     }
 
-    .scheduled-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-        gap: 1rem;
-    }
-    .scheduled-card {
-        background: white;
-        padding: 1rem;
-        border-radius: 8px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        border-left: 6px solid #4caf50;
-    }
     .duration-input {
         width: 60px;
         padding: 0.4rem;
@@ -1740,18 +1631,6 @@
         border-radius: 8px;
     }
 
-    /* New Settings & Inline Add Styles */
-    .inline-add-form {
-        display: flex;
-        gap: 0.5rem;
-        align-items: center;
-    }
-    .attendee-select-mini {
-        padding: 0.4rem;
-        border-radius: 6px;
-        border: 1px solid #ddd;
-        font-size: 0.85rem;
-    }
     .btn-mini {
         padding: 0.4rem 0.8rem;
         background: #4c6ef5;
@@ -1785,40 +1664,12 @@
     .btn-manager-toggle:hover {
         opacity: 0.9;
     }
-    /* Unified Button Styles for Card Actions */
-    .action-group button, .btn-extend, .btn-delete.btn-unified {
-        padding: 0.4rem 0.8rem;
-        border-radius: 6px;
-        cursor: pointer;
-        font-size: 0.85rem;
-        font-weight: 600;
-        border: none;
-        color: white;
-        text-decoration: none;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        height: 34px; /* Fixed height for alignment */
-    }
-    
-    
-    .btn-delete.btn-unified {
-        background: #ff4444; 
-    }
-    
     .btn-extend {
         background: #4caf50;
     }
     .btn-extend:hover {
         background: #43a047;
     }
-    
-    /* Override existing minimal styles if needed or use new classes */
-    .action-group .btn-primary {
-       padding: 0.4rem 0.8rem;
-       font-size: 0.85rem;
-    }
-    
     .input-label {
         font-size: 0.85rem;
         font-weight: 600;
@@ -2125,10 +1976,6 @@
         align-items: center;
         gap: 0.5rem;
     }
-    .detail-form-row .attendee-select-mini {
-        flex: 1;
-    }
-
     /* 참여자 검색 셀렉트 */
     .search-select {
         position: relative;
@@ -2199,14 +2046,6 @@
         .btn-penalty { padding: 0.2rem 0.4rem; font-size: 0.75rem; }
         .badge { font-size: 0.65rem; padding: 0.05rem 0.3rem; }
         .arrival-time { font-size: 0.7rem; }
-        .game-header-row { gap: 0.5rem; }
-        .game-thumb { width: 44px; height: 44px; border-radius: 6px; }
-        .game-details h3 { font-size: 0.95rem; margin: 0 0 0.15rem 0; }
-        .game-details p { font-size: 0.8rem; margin: 0.1rem 0; }
-        .scheduled-card { padding: 0.75rem; }
-        .game-actions-container { gap: 0.5rem; }
-        .inline-add-form { flex-wrap: wrap; }
-        .attendee-select-mini { flex: 1; min-width: 0; font-size: 0.85rem; }
         .duration-input { width: 50px; }
         .input-label { font-size: 0.8rem; }
         .chip-container { font-size: 0.8rem; }

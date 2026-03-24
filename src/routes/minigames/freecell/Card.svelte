@@ -33,6 +33,7 @@
 	tabindex="-1"
 	onclick={onclick}
 	ondblclick={ondblclick}
+	onkeydown={(e) => { if (e.key === 'Enter' && onclick) onclick(); }}
 >
 	<span class="top-left">
 		<span class="rank">{card.rank}</span>

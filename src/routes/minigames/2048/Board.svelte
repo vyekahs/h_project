@@ -57,6 +57,7 @@
 	ontouchstart={handleTouchStart}
 	ontouchend={handleTouchEnd}
 	role="grid"
+	tabindex="0"
 	aria-label="2048 game board"
 >
 	<div class="board" style="--grid-size: {GRID_SIZE}; --gap: {GAP}px; --padding: {PADDING}px;">

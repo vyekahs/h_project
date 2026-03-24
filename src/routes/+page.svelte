@@ -527,7 +527,7 @@
     {/if}
 
     <!-- {#if !isStandalone}
-        <button class="install-guide-btn" on:click={() => showInstallGuide = true}>
+        <button class="install-guide-btn" onclick={() => showInstallGuide = true}>
             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
             앱 설치 방법
         </button>
@@ -623,9 +623,7 @@
         {#if (data.mainScheduledGames || []).length > 0}
             {@const mainGames = data.mainScheduledGames || []}
             <section class="tables-section">
-                <!-- svelte-ignore a11y-click-events-have-key-events -->
-                <!-- svelte-ignore a11y-no-static-element-interactions -->
-                <div class="main-games-toggle-header" on:click={() => { if (mainGames.length > 1) showAllMainGames = !showAllMainGames; }}>
+                <div class="main-games-toggle-header" onclick={() => { if (mainGames.length > 1) showAllMainGames = !showAllMainGames; }} onkeydown={(e) => { if (e.key === 'Enter' && mainGames.length > 1) showAllMainGames = !showAllMainGames; }} role="button" tabindex="0">
                     <h2>이번주 혼놀데이</h2>
                     {#if mainGames.length > 1}
                         <span class="expand-icon" class:rotated={showAllMainGames}>{showAllMainGames ? '접기' : `+${mainGames.length - 1}개 더보기`}</span>
@@ -761,19 +759,19 @@
                             <button type="submit" class="btn-visit-plan active">취소하기</button>
                         </form>
                     {:else}
-                        <button type="button" class="btn-visit-plan" on:click={openVisitPlanModal}>나도 갈 예정!</button>
+                        <button type="button" class="btn-visit-plan" onclick={openVisitPlanModal}>나도 갈 예정!</button>
                     {/if}
                 {/if}
             </div>
             <div class="visit-plan-grid">
                 {#each mergedVisitPlans as plan}
                     {@const isMyPlan = data.user && plan.attendee_id === data.user.id && !checkedInIds.has(data.user.id)}
-                    <!-- svelte-ignore a11y-no-static-element-interactions -->
+                    <!-- svelte-ignore a11y_no_static_element_interactions a11y_no_noninteractive_tabindex -->
                     <div
                         class="visit-plan-card"
                         class:editable={isMyPlan}
-                        on:click={() => isMyPlan && openEditVisitPlanModal()}
-                        on:keydown={(e) => isMyPlan && e.key === 'Enter' && openEditVisitPlanModal()}
+                        onclick={() => isMyPlan && openEditVisitPlanModal()}
+                        onkeydown={(e) => isMyPlan && e.key === 'Enter' && openEditVisitPlanModal()}
                         role={isMyPlan ? 'button' : undefined}
                         tabindex={isMyPlan ? 0 : undefined}
                     >
@@ -803,7 +801,7 @@
             <div class="section-header">
                 <h2>진행 중인 게임 ({liveGameCount ?? games.length})</h2>
                 {#if data.user && (data.user.can_manage_games || data.isAdmin)}
-                    <button class="btn-create" on:click={() => {
+                    <button class="btn-create" onclick={() => {
                         showModal = true;
                         selectedGameName = '';
                         selectedDuration = '';
@@ -829,7 +827,7 @@
                             <div class="header-meta-row">
                                 {#if isParticipant}
                                     <div class="manage-controls">
-                                        <button class="btn-action-text danger" on:click={() => openEndGameModal(game)}>종료</button>
+                                        <button class="btn-action-text danger" onclick={() => openEndGameModal(game)}>종료</button>
                                         <form method="POST" action="?/extendGame" use:enhance style="display:inline;">
                                             <input type="hidden" name="id" value={game.id}>
                                             <input type="hidden" name="minutes" value="30">
@@ -972,7 +970,7 @@
             </div>
             {#if games.length > 5}
                 <div class="show-more-container">
-                    <button class="btn-show-more" on:click={toggleLimitGames}>
+                    <button class="btn-show-more" onclick={toggleLimitGames}>
                         {limitGames === 5 ? '더보기 (+)' : '접기 (-)'}
                     </button>
                 </div>
@@ -984,7 +982,7 @@
             <div class="section-header">
                 <h2>시작 예정 게임 ({scheduledGames.length})</h2>
                  {#if data.user && (data.user.can_manage_games || data.isAdmin)}
-                    <button class="btn-create" on:click={openScheduledGameModal}>+ 예정 생성</button>
+                    <button class="btn-create" onclick={openScheduledGameModal}>+ 예정 생성</button>
                 {/if}
             </div>
             <div class="tables-grid">
@@ -1086,7 +1084,7 @@
             </div>
             {#if scheduledGames.length > 5}
                 <div class="show-more-container">
-                    <button class="btn-show-more" on:click={toggleLimitScheduledGames}>
+                    <button class="btn-show-more" onclick={toggleLimitScheduledGames}>
                         {limitScheduledGames === 5 ? '더보기 (+)' : '접기 (-)'}
                     </button>
                 </div>
@@ -1108,11 +1106,11 @@
             </div>
         {:else}
             <div class="tab-bar">
-                <button class="tab-btn" class:active={activeTab === 'home'} on:click={() => activeTab = 'home'}>
+                <button class="tab-btn" class:active={activeTab === 'home'} onclick={() => activeTab = 'home'}>
                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px; vertical-align:text-bottom;"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
                     홈
                 </button>
-                <button class="tab-btn" class:active={activeTab === 'games'} on:click={() => activeTab = 'games'}>
+                <button class="tab-btn" class:active={activeTab === 'games'} onclick={() => activeTab = 'games'}>
                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px; vertical-align:text-bottom;"><line x1="6" y1="12" x2="10" y2="12"/><line x1="8" y1="10" x2="8" y2="14"/><line x1="15" y1="13" x2="15.01" y2="13"/><line x1="18" y1="11" x2="18.01" y2="11"/><rect x="2" y="6" width="20" height="12" rx="2"/></svg>
                     게임
                 </button>
@@ -1128,32 +1126,28 @@
 </div>
 
 {#if showModal}
-    <!-- svelte-ignore a11y-click-events-have-key-events -->
-    <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
     <div 
         class="modal-backdrop" 
-        on:click={() => showModal = false} 
-        on:keydown={(e) => e.key === 'Escape' && (showModal = false)}
+        onclick={() => showModal = false} 
+        onkeydown={(e) => e.key === 'Escape' && (showModal = false)}
         role="button" 
         tabindex="-1"
         aria-label="Close modal"
     >
-        <div class="modal-content" on:click={handleModalClick} role="dialog" tabindex="-1">
+        <div class="modal-content" onclick={handleModalClick} onkeydown={(e) => e.stopPropagation()} role="dialog" tabindex="-1">
             <h2>새 게임 시작</h2>
             {#if parties.length > 0}
                 <div class="party-selector">
                     <span class="label-heading">고정팟 불러오기</span>
-                    <!-- svelte-ignore a11y-click-events-have-key-events -->
-                    <!-- svelte-ignore a11y-no-static-element-interactions -->
-                    <div class="party-dropdown-wrapper" on:click|stopPropagation>
-                        <button id="partyDropdown" type="button" class="party-dropdown-trigger" on:click={() => partyDropdownOpen = !partyDropdownOpen}>
+                    <div class="party-dropdown-wrapper" onclick={(e) => e.stopPropagation()} role="presentation">
+                        <button id="partyDropdown" type="button" class="party-dropdown-trigger" onclick={() => partyDropdownOpen = !partyDropdownOpen}>
                             <span>고정팟 선택</span>
                             <span class="party-chevron" class:open={partyDropdownOpen}>&#9662;</span>
                         </button>
                         {#if partyDropdownOpen}
                             <div class="party-dropdown-list">
                                 {#each parties as party}
-                                    <button type="button" class="party-dropdown-item" on:click={() => {
+                                    <button type="button" class="party-dropdown-item" onclick={() => {
                                         applyPartyToModal(party);
                                         partyDropdownOpen = false;
                                     }}>
@@ -1192,8 +1186,8 @@
                         placeholder="게임 이름 (직접 입력 또는 선택)" 
                         bind:value={selectedGameName} 
                         bind:this={searchInput}
-                        on:click={handleInputClick}
-                        on:focus={handleInputClick}
+                        onclick={handleInputClick}
+                        onfocus={handleInputClick}
                         required 
                         autocomplete="off" 
                     />
@@ -1202,7 +1196,7 @@
                         <ul class="dropdown-menu">
                             {#each filteredGames as game}
                                 <li>
-                                    <button type="button" on:click={() => selectGame(game)}>
+                                    <button type="button" onclick={() => selectGame(game)}>
                                         {#if game.image_url}
                                             <img src={game.image_url} alt="" class="mini-thumb" />
                                         {/if}
@@ -1271,11 +1265,11 @@
                     </div>
                 {:else}
                     <input type="hidden" name="guestCount" value="0" />
-                    <button type="button" class="btn-toggle-guest" on:click={() => showGuestInput = true}>+ 게스트 추가</button>
+                    <button type="button" class="btn-toggle-guest" onclick={() => showGuestInput = true}>+ 게스트 추가</button>
                 {/if}
 
                 <div class="modal-actions">
-                    <button type="button" on:click={() => showModal = false} class="btn-cancel">취소</button>
+                    <button type="button" onclick={() => showModal = false} class="btn-cancel">취소</button>
                     <button type="submit" class="btn-primary">게임 시작</button>
                 </div>
             </form>
@@ -1285,17 +1279,15 @@
 
 <!-- End Game Modal -->
 {#if endGameModalVisible && selectedEndGame}
-    <!-- svelte-ignore a11y-click-events-have-key-events -->
-    <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
     <div 
         class="modal-backdrop" 
-        on:click={() => endGameModalVisible = false} 
-        on:keydown={(e) => e.key === 'Escape' && (endGameModalVisible = false)}
+        onclick={() => endGameModalVisible = false} 
+        onkeydown={(e) => e.key === 'Escape' && (endGameModalVisible = false)}
         role="button" 
         tabindex="-1"
         aria-label="Close modal"
     >
-        <div class="modal-content" on:click|stopPropagation role="dialog" tabindex="-1">
+        <div class="modal-content" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="dialog" tabindex="-1">
             <h2>
                 <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--color-warning)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px; vertical-align:bottom;"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>
                 게임 종료 및 승자 선택
@@ -1348,7 +1340,7 @@
                 </div>
 
                 <div class="modal-actions">
-                    <button type="button" class="btn-cancel" on:click={() => endGameModalVisible = false}>취소</button>
+                    <button type="button" class="btn-cancel" onclick={() => endGameModalVisible = false}>취소</button>
                     <button type="submit" class="btn-primary">게임 종료 및 승점 기록</button>
                 </div>
             </form>
@@ -1358,17 +1350,15 @@
 
 
 {#if showScheduledGameModal}
-    <!-- svelte-ignore a11y-click-events-have-key-events -->
-    <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
     <div 
         class="modal-backdrop" 
-        on:click={() => showScheduledGameModal = false} 
-        on:keydown={(e) => e.key === 'Escape' && (showScheduledGameModal = false)}
+        onclick={() => showScheduledGameModal = false} 
+        onkeydown={(e) => e.key === 'Escape' && (showScheduledGameModal = false)}
         role="button" 
         tabindex="-1"
         aria-label="Close modal"
     >
-        <div class="modal-content" on:click={handleModalClick} role="dialog" tabindex="-1">
+        <div class="modal-content" onclick={handleModalClick} onkeydown={(e) => e.stopPropagation()} role="dialog" tabindex="-1">
             <h2>
                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px; vertical-align:text-bottom;"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
                 시작 예정 게임 생성
@@ -1376,17 +1366,15 @@
             {#if parties.length > 0}
                 <div class="party-selector">
                     <span class="label-heading">고정팟 불러오기</span>
-                    <!-- svelte-ignore a11y-click-events-have-key-events -->
-                    <!-- svelte-ignore a11y-no-static-element-interactions -->
-                    <div class="party-dropdown-wrapper" on:click|stopPropagation>
-                        <button id="scheduledPartyDropdown" type="button" class="party-dropdown-trigger" on:click={() => scheduledPartyDropdownOpen = !scheduledPartyDropdownOpen}>
+                    <div class="party-dropdown-wrapper" onclick={(e) => e.stopPropagation()} role="presentation">
+                        <button id="scheduledPartyDropdown" type="button" class="party-dropdown-trigger" onclick={() => scheduledPartyDropdownOpen = !scheduledPartyDropdownOpen}>
                             <span>고정팟 선택</span>
                             <span class="party-chevron" class:open={scheduledPartyDropdownOpen}>&#9662;</span>
                         </button>
                         {#if scheduledPartyDropdownOpen}
                             <div class="party-dropdown-list">
                                 {#each parties as party}
-                                    <button type="button" class="party-dropdown-item" on:click={() => {
+                                    <button type="button" class="party-dropdown-item" onclick={() => {
                                         applyPartyToScheduledModal(party);
                                         scheduledPartyDropdownOpen = false;
                                     }}>
@@ -1424,8 +1412,8 @@
                         placeholder="게임 이름 (직접 입력 또는 선택)" 
                         bind:value={scheduledGameName} 
                         bind:this={searchInput}
-                        on:click={handleInputClick}
-                        on:focus={handleInputClick}
+                        onclick={handleInputClick}
+                        onfocus={handleInputClick}
                         required 
                         autocomplete="off" 
                     />
@@ -1434,7 +1422,7 @@
                         <ul class="dropdown-menu">
                             {#each filteredScheduledGames as game}
                                 <li>
-                                    <button type="button" on:click={() => selectScheduledGame(game)}>
+                                    <button type="button" onclick={() => selectScheduledGame(game)}>
                                         {#if game.image_url}
                                             <img src={game.image_url} alt="" class="mini-thumb" />
                                         {/if}
@@ -1476,7 +1464,7 @@
                                 {@const memberName = (attendees || []).find(a => a.id === playerId)?.name || scheduledPartyMembers.find(m => m.id === playerId)?.name || `ID:${playerId}`}
                                 <span class="member-tag">
                                     {memberName}
-                                    <button type="button" class="tag-remove" on:click={() => {
+                                    <button type="button" class="tag-remove" onclick={() => {
                                         scheduledSelectedPlayerIds = scheduledSelectedPlayerIds.filter(id => id !== playerId);
                                     }}>&times;</button>
                                 </span>
@@ -1496,18 +1484,18 @@
                             bind:value={guestCount}
                             min="0"
                             max={Math.max(0, maxPlayers - 1)}
-                            on:input={() => { const limit = Math.max(0, maxPlayers - 1); if (guestCount > limit) guestCount = limit; }}
+                            oninput={() => { const limit = Math.max(0, maxPlayers - 1); if (guestCount > limit) guestCount = limit; }}
                             class="number-input"
                         />
                         <p class="hint">* 미등록 참가자 수 (본인 제외 최대 {Math.max(0, maxPlayers - 1)}명, 게스트1, 게스트2... 자동 생성)</p>
                     </div>
                 {:else}
                     <input type="hidden" name="guestCount" value="0" />
-                    <button type="button" class="btn-toggle-guest" on:click={() => showScheduledGuestInput = true}>+ 게스트 추가</button>
+                    <button type="button" class="btn-toggle-guest" onclick={() => showScheduledGuestInput = true}>+ 게스트 추가</button>
                 {/if}
 
                 <div class="modal-actions">
-                    <button type="button" on:click={() => showScheduledGameModal = false} class="btn-cancel">취소</button>
+                    <button type="button" onclick={() => showScheduledGameModal = false} class="btn-cancel">취소</button>
                     <button type="submit" class="btn-primary">예약 생성</button>
                 </div>
             </form>
@@ -1518,21 +1506,19 @@
 
 <!-- Alert Modal -->
 {#if alertVisible}
-    <!-- svelte-ignore a11y-click-events-have-key-events -->
-    <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
     <div 
         class="modal-backdrop" 
-        on:click={() => alertVisible = false} 
-        on:keydown={(e) => e.key === 'Escape' && (alertVisible = false)}
+        onclick={() => alertVisible = false} 
+        onkeydown={(e) => e.key === 'Escape' && (alertVisible = false)}
         role="button" 
         tabindex="-1"
         aria-label="Close alert"
     >
-        <div class="modal-content alert-modal" on:click|stopPropagation role="alertdialog" tabindex="-1">
+        <div class="modal-content alert-modal" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="alertdialog" tabindex="-1">
             <h3>알림</h3>
             <p>{alertMessage}</p>
             <div class="modal-actions">
-                <button class="btn-primary" on:click={() => alertVisible = false}>확인</button>
+                <button class="btn-primary" onclick={() => alertVisible = false}>확인</button>
             </div>
         </div>
     </div>
@@ -1540,22 +1526,20 @@
 
 <!-- Confirm Modal -->
 {#if confirmVisible}
-    <!-- svelte-ignore a11y-click-events-have-key-events -->
-    <!-- svelte-ignore a11y-no-noninteractive-element-interactions -->
     <div 
         class="modal-backdrop" 
-        on:click={() => handleConfirm(false)} 
-        on:keydown={(e) => e.key === 'Escape' && (handleConfirm(false))}
+        onclick={() => handleConfirm(false)} 
+        onkeydown={(e) => e.key === 'Escape' && (handleConfirm(false))}
         role="button" 
         tabindex="-1"
         aria-label="Close confirm"
     >
-        <div class="modal-content alert-modal" on:click|stopPropagation role="alertdialog" tabindex="-1">
+        <div class="modal-content alert-modal" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="alertdialog" tabindex="-1">
             <h3>확인</h3>
             <p>{confirmMessage}</p>
             <div class="modal-actions">
-                <button class="btn-cancel" on:click={() => handleConfirm(false)}>아니오</button>
-                <button class="btn-danger" on:click={() => handleConfirm(true)}>네</button>
+                <button class="btn-cancel" onclick={() => handleConfirm(false)}>아니오</button>
+                <button class="btn-danger" onclick={() => handleConfirm(true)}>네</button>
             </div>
         </div>
     </div>
@@ -1564,8 +1548,8 @@
 {#if showInstallGuide}
     <div 
         class="modal-backdrop" 
-        on:click|self={() => showInstallGuide = false}
-        on:keydown={(e) => e.key === 'Escape' && (showInstallGuide = false)}
+        onclick={(e) => { if (e.target === e.currentTarget) showInstallGuide = false; }}
+        onkeydown={(e) => e.key === 'Escape' && (showInstallGuide = false)}
         role="button"
         tabindex="-1"
         aria-label="Close guide"
@@ -1620,18 +1604,16 @@
                 </ol>
             {/if}
             <p class="guide-note">설치하면 앱처럼 바로 접속할 수 있어요.</p>
-            <button class="btn-modal-close" on:click={() => showInstallGuide = false}>닫기</button>
+            <button class="btn-modal-close" onclick={() => showInstallGuide = false}>닫기</button>
         </div>
     </div>
 {/if}
 
 {#if showVisitPlanModal}
-    <!-- svelte-ignore a11y-click-events-have-key-events -->
-    <!-- svelte-ignore a11y-no-static-element-interactions -->
     <div
         class="modal-backdrop"
-        on:click|self={() => showVisitPlanModal = false}
-        on:keydown={(e) => e.key === 'Escape' && (showVisitPlanModal = false)}
+        onclick={(e) => { if (e.target === e.currentTarget) showVisitPlanModal = false; }}
+        onkeydown={(e) => e.key === 'Escape' && (showVisitPlanModal = false)}
         role="button"
         tabindex="-1"
         aria-label="Close modal"
@@ -1640,8 +1622,8 @@
             <h3>몇 시쯤 올 예정인가요?</h3>
             <div class="visit-time-picker">
                 <!-- Custom Dropdown container -->
-                <div class="custom-dropdown" tabindex="0" on:blur={() => setTimeout(() => isTimeDropdownOpen = false, 150)}>
-                    <div class="dropdown-selected" class:open={isTimeDropdownOpen} on:click={() => isTimeDropdownOpen = !isTimeDropdownOpen}>
+                <div class="custom-dropdown" tabindex="0" role="listbox" onblur={() => setTimeout(() => isTimeDropdownOpen = false, 150)}>
+                    <div class="dropdown-selected" class:open={isTimeDropdownOpen} onclick={() => isTimeDropdownOpen = !isTimeDropdownOpen} onkeydown={(e) => e.key === 'Enter' && (isTimeDropdownOpen = !isTimeDropdownOpen)} role="button" tabindex="0">
                         <span>{selectedVisitTime ? formatVisitTime(selectedVisitTime) : '시간 선택'}</span>
                         <div class="dropdown-arrow"></div>
                     </div>
@@ -1649,10 +1631,10 @@
                     {#if isTimeDropdownOpen}
                         <div class="dropdown-options">
                             {#each getVisitTimeOptions() as option}
-                                <div class="dropdown-option" class:active={option === selectedVisitTime} on:click={() => {
+                                <div class="dropdown-option" class:active={option === selectedVisitTime} onclick={() => {
                                     selectedVisitTime = option;
                                     isTimeDropdownOpen = false;
-                                }}>
+                                }} onkeydown={(e) => { if (e.key === 'Enter') { selectedVisitTime = option; isTimeDropdownOpen = false; } }} role="option" aria-selected={option === selectedVisitTime} tabindex="0">
                                     {formatVisitTime(option)}
                                 </div>
                             {/each}
@@ -1675,7 +1657,7 @@
                 }}>
                     <button type="submit" class="btn-visit-maybe">상황 봐서 갈 수도 못갈수도</button>
                 </form>
-                <button type="button" class="btn-visit-cancel" on:click={() => showVisitPlanModal = false}>취소</button>
+                <button type="button" class="btn-visit-cancel" onclick={() => showVisitPlanModal = false}>취소</button>
             </div>
         </div>
     </div>
@@ -3430,13 +3412,6 @@
         margin-bottom: 1rem;
         padding-bottom: 1rem;
         border-bottom: 1px dashed var(--border-default);
-    }
-    .party-selector label {
-        display: block;
-        font-weight: 600;
-        font-size: 0.85rem;
-        color: var(--text-darker);
-        margin-bottom: 0.4rem;
     }
     .party-dropdown-wrapper {
         position: relative;
