@@ -58,10 +58,13 @@ export const handle: Handle = async ({ event, resolve }) => {
 	const response = await resolve(event);
 
 	// 성능 메트릭 기록 (정적 파일 제외)
-	const path = event.url.pathname;
+	const pathname = event.url.pathname;
+	// SvelteKit form action 이름 포함 (예: /games?/importBgg → /games?/importBgg)
+	const actionMatch = event.url.search.match(/^\?\/([\w]+)/);
+	const path = actionMatch ? `${pathname}?/${actionMatch[1]}` : pathname;
 	if (
-		!path.startsWith('/_app/') &&
-		!path.match(/\.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot)$/)
+		!pathname.startsWith('/_app/') &&
+		!pathname.match(/\.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot)$/)
 	) {
 		const duration = Date.now() - startTime;
 		recordRequest({
