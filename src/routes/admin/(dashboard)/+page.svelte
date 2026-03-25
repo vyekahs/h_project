@@ -1221,7 +1221,6 @@
     }
     .quick-add .toggle-header {
         font-size: 0.9rem;
-        color: #666;
         margin-bottom: 0.5rem;
     }
     .member-chips {

@@ -1072,9 +1072,7 @@
                     
                 {/each}
                 {#if games.length === 0}
-                    <div class="empty-state-message">
-                        <p>현재 진행 중인 게임이 없습니다.</p>
-                    </div>
+                    <p class="empty-state">현재 진행 중인 게임이 없습니다.</p>
                 {/if}
             </div>
             {#if games.length > 5}
@@ -1212,9 +1210,7 @@
                     </div>
                 {/each}
                 {#if scheduledGames.length === 0}
-                    <div class="empty-state-message">
-                        <p>예정된 게임이 없습니다.</p>
-                    </div>
+                    <p class="empty-state">예정된 게임이 없습니다.</p>
                 {/if}
             </div>
             {#if scheduledGames.length > 5}
