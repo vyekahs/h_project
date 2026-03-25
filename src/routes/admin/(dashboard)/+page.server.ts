@@ -427,6 +427,8 @@ export const actions: Actions = {
                 await tx.execute(sql`UPDATE attendees SET status = 'left' WHERE status = 'present'`);
                 // End all active games
                 await tx.execute(sql`UPDATE game_sessions SET status = 'finished', end_time = NOW() WHERE status = 'playing'`);
+                // Cancel today's scheduled games
+                await tx.execute(sql`UPDATE game_sessions SET status = 'finished' WHERE status = 'scheduled' AND scheduled_at::date = (NOW() AT TIME ZONE 'Asia/Seoul')::date`);
                 // Set is_open to false
                 await tx.execute(sql`INSERT INTO system_settings (key, value) VALUES ('is_open', 'false') ON CONFLICT (key) DO UPDATE SET value = 'false'`);
                 updateSettingsCache(false);

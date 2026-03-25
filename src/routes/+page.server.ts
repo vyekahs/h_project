@@ -130,18 +130,7 @@ export const load: PageServerLoad = async ({ locals }) => {
         userPartyIds,
         dailyVisitPlans: shared.dailyVisitPlans,
         mainScheduledGames: [
-            ...shared.scheduledGames.filter((g: any) => {
-                if (!g.show_on_main) return false;
-                // 마감 후에는 오늘의 예정된 게임을 숨김
-                if (!shared.isOpen && g.scheduled_at) {
-                    const now = new Date();
-                    const gameDate = new Date(g.scheduled_at);
-                    const today = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Seoul' }));
-                    const gameDateKST = new Date(gameDate.toLocaleString('en-US', { timeZone: 'Asia/Seoul' }));
-                    if (today.toDateString() === gameDateKST.toDateString()) return false;
-                }
-                return true;
-            }),
+            ...shared.scheduledGames.filter((g: any) => g.show_on_main),
             ...shared.todayPlayingMainGames,
         ],
         todayScheduledParticipants: shared.todayScheduledParticipants,
