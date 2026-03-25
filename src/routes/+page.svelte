@@ -4,6 +4,8 @@
     import { enhance, applyAction } from '$app/forms';
     import { invalidateAll } from '$app/navigation';
     import NotificationBell from '$lib/components/notifications/NotificationBell.svelte';
+    import WantToPlayCard from '$lib/components/games/WantToPlayCard.svelte';
+    import GameComments from '$lib/components/games/GameComments.svelte';
     let lastUpdated = new Date();
 
     // SSE 실시간 카운트
@@ -54,6 +56,7 @@
         mainScheduledGames: GameSession[];
         todayScheduledParticipants: { attendee_id: number; name: string; title_name?: string; is_party: boolean; planned_time: string }[];
         userHasVisitPlan: boolean;
+        wantToPlayPosts: any[];
     };
 
     interface Attendee {
@@ -171,6 +174,112 @@
 
     let endGameModalVisible = false;
     let selectedEndGame: GameSession | null = null;
+
+    // --- Want to Play ---
+    let showWtpCreateModal = false;
+    let wtpGameSource: 'registered' | 'custom' = 'registered';
+    let wtpGameName = '';
+    let wtpGameId: number | null = null;
+    let wtpMessage = '';
+    let wtpDropdownOpen = false;
+    let wtpSubmitting = false;
+    let showWtpDetailModal = false;
+    let selectedWtpPost: any = null;
+
+    $: wtpFilteredGames = (data.allGames as any[])?.filter((g: any) =>
+        g.name.toLowerCase().includes(wtpGameName.toLowerCase())
+    ) || [];
+
+    function openWtpCreateModal() {
+        showWtpCreateModal = true;
+        wtpGameSource = 'registered';
+        wtpGameName = '';
+        wtpGameId = null;
+        wtpMessage = '';
+        wtpDropdownOpen = false;
+    }
+
+    function selectWtpGame(game: any) {
+        wtpGameName = game.name;
+        wtpGameId = game.id;
+        wtpDropdownOpen = false;
+    }
+
+    async function submitWtpPost() {
+        if (!wtpGameName.trim()) return;
+        wtpSubmitting = true;
+        try {
+            const res = await fetch('/api/wanttoplay', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    gameId: wtpGameSource === 'registered' ? wtpGameId : null,
+                    gameName: wtpGameName.trim(),
+                    message: wtpMessage.trim() || undefined,
+                }),
+            });
+            const result = await res.json();
+            if (!res.ok) {
+                showAlert(result.error || '등록 실패');
+                return;
+            }
+            showWtpCreateModal = false;
+            await invalidateAll();
+        } catch {
+            showAlert('네트워크 오류');
+        } finally {
+            wtpSubmitting = false;
+        }
+    }
+
+    async function handleWtpJoin(postId: number) {
+        try {
+            const res = await fetch(`/api/wanttoplay/${postId}/join`, { method: 'POST' });
+            const result = await res.json();
+            if (!res.ok) { showAlert(result.error || '참여 실패'); return; }
+            await invalidateAll();
+            if (selectedWtpPost && selectedWtpPost.id === postId) {
+                selectedWtpPost = (data.wantToPlayPosts || []).find((p: any) => p.id === postId) || null;
+            }
+        } catch { showAlert('네트워크 오류'); }
+    }
+
+    async function handleWtpLeave(postId: number) {
+        // 작성자인 경우 글 삭제 경고
+        const post = (data.wantToPlayPosts || []).find((p: any) => p.id === postId);
+        if (post && data.user && post.created_by === data.user.id) {
+            if (!await showConfirm('작성자가 나가면 글이 삭제됩니다. 정말 나가시겠습니까?')) return;
+        }
+        try {
+            const res = await fetch(`/api/wanttoplay/${postId}/join`, { method: 'DELETE' });
+            const result = await res.json();
+            if (!res.ok) { showAlert(result.error || '나가기 실패'); return; }
+            await invalidateAll();
+            if (result.deleted) {
+                showWtpDetailModal = false;
+                selectedWtpPost = null;
+            } else if (selectedWtpPost && selectedWtpPost.id === postId) {
+                selectedWtpPost = (data.wantToPlayPosts || []).find((p: any) => p.id === postId) || null;
+            }
+        } catch { showAlert('네트워크 오류'); }
+    }
+
+    async function handleWtpClose(postId: number) {
+        if (!await showConfirm('정말 마감하시겠습니까?')) return;
+        try {
+            const res = await fetch(`/api/wanttoplay/${postId}`, { method: 'DELETE' });
+            const result = await res.json();
+            if (!res.ok) { showAlert(result.error || '마감 실패'); return; }
+            showWtpDetailModal = false;
+            selectedWtpPost = null;
+            await invalidateAll();
+        } catch { showAlert('네트워크 오류'); }
+    }
+
+    function openWtpDetail(post: any) {
+        selectedWtpPost = post;
+        showWtpDetailModal = true;
+    }
 
     // Visit Plan Modal
     let showVisitPlanModal = false;
@@ -977,6 +1086,32 @@
             {/if}
         </section>
 
+        <!-- 보드게임 하고싶어요 -->
+        <section class="tables-section">
+            <div class="section-header">
+                <h2>모집합니다({(data.wantToPlayPosts || []).length})</h2>
+                {#if data.user}
+                    <button class="btn-create" onclick={openWtpCreateModal}>+게임 등록</button>
+                {/if}
+            </div>
+            <p class="wtp-description">원하는 게임을 등록하고 사람을 모아보세요</p>
+            <p class="wtp-description">게임을 등록하면 대화방이 생겨요</p>
+
+            <div class="tables-grid">
+                {#each (data.wantToPlayPosts || []) as post (post.id)}
+                    <WantToPlayCard
+                        {post}
+                        userId={data.user?.id ?? null}
+                        onJoin={handleWtpJoin}
+                        onLeave={handleWtpLeave}
+                        onDetail={openWtpDetail}
+                    />
+                {/each}
+                {#if (data.wantToPlayPosts || []).length === 0}
+                    <p class="empty-state">아직 같이하기 글이 없어요. 같이 할 게임을 등록해보세요!</p>
+                {/if}
+            </div>
+        </section>
 
         <section class="tables-section">
             <div class="section-header">
@@ -1503,6 +1638,177 @@
     </div>
 {/if}
 
+
+<!-- Want to Play 작성 모달 -->
+{#if showWtpCreateModal}
+    <div
+        class="modal-backdrop"
+        onclick={() => showWtpCreateModal = false}
+        onkeydown={(e) => e.key === 'Escape' && (showWtpCreateModal = false)}
+        role="button"
+        tabindex="-1"
+        aria-label="Close modal"
+    >
+        <div class="modal-content" onclick={(e) => { e.stopPropagation(); if (!(e.target as HTMLElement).closest('.input-group')) wtpDropdownOpen = false; }} onkeydown={(e) => e.stopPropagation()} role="dialog" tabindex="-1">
+            <h2>같이 할 게임 등록</h2>
+
+            <div class="wtp-source-toggle">
+                <button class="wtp-toggle-btn" class:active={wtpGameSource === 'registered'} onclick={() => { wtpGameSource = 'registered'; wtpGameName = ''; wtpGameId = null; }}>혼놀에 있음</button>
+                <button class="wtp-toggle-btn" class:active={wtpGameSource === 'custom'} onclick={() => { wtpGameSource = 'custom'; wtpGameName = ''; wtpGameId = null; }}>혼놀에 없음</button>
+            </div>
+
+            {#if wtpGameSource === 'registered'}
+                <div class="input-group" style="position:relative;">
+                    <label for="wtpGameSearch">게임 검색</label>
+                        <input
+                            id="wtpGameSearch"
+                            type="text"
+                            bind:value={wtpGameName}
+                            placeholder="게임 이름을 검색하세요"
+                            autocomplete="off"
+                            onfocus={() => wtpDropdownOpen = true}
+                        />
+                        {#if wtpDropdownOpen && wtpFilteredGames.length > 0}
+                            <ul class="dropdown-menu">
+                                {#each wtpFilteredGames.slice(0, 10) as game}
+                                    <li>
+                                        <button type="button" onclick={() => selectWtpGame(game)}>
+                                            {#if game.image_url}
+                                                <img src={game.image_url} alt="" class="mini-thumb" />
+                                            {/if}
+                                            <div class="game-option-info">
+                                                <span class="name">{game.name}</span>
+                                                {#if game.min_players && game.max_players}
+                                                    <span class="meta">{game.min_players}-{game.max_players}명</span>
+                                                {/if}
+                                            </div>
+                                        </button>
+                                    </li>
+                                {/each}
+                            </ul>
+                        {/if}
+                </div>
+            {:else}
+                <div class="input-group">
+                    <label for="wtpCustomGame">게임 이름 입력</label>
+                    <input
+                        id="wtpCustomGame"
+                        type="text"
+                        bind:value={wtpGameName}
+                        placeholder="게임 이름을 입력하세요"
+                        maxlength="100"
+                    />
+                </div>
+            {/if}
+
+            <div class="input-group">
+                <label for="wtpMessage">메시지 (선택)</label>
+                <input
+                    id="wtpMessage"
+                    type="text"
+                    bind:value={wtpMessage}
+                    placeholder="같이 하실 분!"
+                    maxlength="200"
+                />
+            </div>
+
+            <div class="modal-actions">
+                <button class="btn-cancel" onclick={() => showWtpCreateModal = false}>취소</button>
+                <button
+                    class="btn-primary"
+                    onclick={submitWtpPost}
+                    disabled={!wtpGameName.trim() || wtpSubmitting}
+                >
+                    {wtpSubmitting ? '등록 중...' : '등록'}
+                </button>
+            </div>
+        </div>
+    </div>
+{/if}
+
+<!-- Want to Play 상세 모달 -->
+{#if showWtpDetailModal && selectedWtpPost}
+    <div
+        class="modal-backdrop"
+        onclick={() => { showWtpDetailModal = false; selectedWtpPost = null; }}
+        onkeydown={(e) => e.key === 'Escape' && (showWtpDetailModal = false, selectedWtpPost = null)}
+        role="button"
+        tabindex="-1"
+        aria-label="Close modal"
+    >
+        <div class="modal-content wtp-detail-modal" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="dialog" tabindex="-1">
+            <div class="wtp-detail-header">
+                <div class="wtp-detail-game">
+                    {#if selectedWtpPost.image_url}
+                        <img src={selectedWtpPost.image_url} alt={selectedWtpPost.game_name} class="wtp-detail-img" />
+                    {/if}
+                    <div>
+                        <h2>{selectedWtpPost.game_name}</h2>
+                        <p class="wtp-detail-message">{selectedWtpPost.message}</p>
+                    </div>
+                </div>
+                <button class="btn-close-modal" onclick={() => { showWtpDetailModal = false; selectedWtpPost = null; }}>&times;</button>
+            </div>
+
+            <div class="wtp-detail-participants">
+                <h3>참여자 ({selectedWtpPost.participants.length}명)</h3>
+                <div class="wtp-detail-names">
+                    {#each selectedWtpPost.participants as p}
+                        <span class="wtp-participant-tag">
+                            {#if p.title_name}<span class="tag-title">[ {p.title_name} ]</span>{/if}
+                            {p.name}
+                        </span>
+                    {/each}
+                </div>
+            </div>
+
+            <div class="wtp-detail-actions">
+                {#if data.user}
+                    {@const isJoined = selectedWtpPost.participants.some((p: any) => p.id === data.user?.id)}
+                    {#if isJoined}
+                        <button class="wtp-btn leave" onclick={() => handleWtpLeave(selectedWtpPost.id)}>나가기</button>
+                    {:else}
+                        <button class="wtp-btn join" onclick={() => handleWtpJoin(selectedWtpPost.id)}>참여</button>
+                    {/if}
+                    <button class="btn-create" onclick={async () => {
+                        // 마감 처리 후 예정 게임 등록 모달로 이동
+                        const postId = selectedWtpPost.id;
+                        const gameName = selectedWtpPost.game_name;
+                        const minP = selectedWtpPost.min_players;
+                        const maxP = selectedWtpPost.max_players;
+                        try {
+                            await fetch(`/api/wanttoplay/${postId}`, { method: 'DELETE' });
+                        } catch {}
+                        showWtpDetailModal = false;
+                        selectedWtpPost = null;
+                        await invalidateAll();
+                        // 예정 게임 모달 초기화 후 게임명 프리필
+                        dropdownOpen = false;
+                        guestCount = 0;
+                        showScheduledGuestInput = false;
+                        scheduledSelectedPlayerIds = [];
+                        scheduledPartyMembers = [];
+                        scheduledSelectedPartyId = null;
+                        scheduledGameName = gameName;
+                        if (minP) minPlayers = minP;
+                        if (maxP) maxPlayers = maxP;
+                        const now = new Date();
+                        now.setMinutes(Math.ceil((now.getMinutes() + 30) / 10) * 10);
+                        scheduledAt = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}T${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+                        showScheduledGameModal = true;
+                    }}>예정 게임 등록</button>
+                {/if}
+            </div>
+
+            <div class="wtp-detail-comments">
+                <h3>대화</h3>
+                {#if data.user}
+                    <GameComments gameId={`wtp_${selectedWtpPost.id}`} userId={data.user.id} isAdmin={data.isAdmin} />
+                {/if}
+            </div>
+        </div>
+    </div>
+{/if}
 
 <!-- Alert Modal -->
 {#if alertVisible}
@@ -3560,5 +3866,135 @@
         .container {
             max-width: 1000px;
         }
+    }
+
+    /* Want to Play styles */
+    .wtp-description {
+        margin: 0;
+        font-size: 0.85rem;
+        color: var(--text-hint);
+        line-height: 1.4;
+    }
+    .wtp-description:last-child {
+        margin-bottom: 0.5rem;
+    }
+
+    .wtp-source-toggle {
+        display: flex;
+        gap: 0.5rem;
+        margin-bottom: 1rem;
+    }
+    .wtp-toggle-btn {
+        flex: 1;
+        padding: 0.5rem;
+        border: 1px solid var(--border-light);
+        border-radius: 8px;
+        background: var(--bg-secondary);
+        color: var(--text-secondary);
+        font-size: 0.85rem;
+        cursor: pointer;
+        transition: all 0.15s;
+    }
+    .wtp-toggle-btn.active {
+        background: var(--color-blue, #3b82f6);
+        color: white;
+        border-color: var(--color-blue, #3b82f6);
+    }
+
+    .wtp-detail-modal {
+        max-height: 85vh;
+        overflow-y: auto;
+    }
+    .wtp-detail-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 0.5rem;
+    }
+    .wtp-detail-game {
+        display: flex;
+        gap: 0.75rem;
+        align-items: center;
+    }
+    .wtp-detail-game h2 {
+        margin: 0;
+        font-size: 1.1rem;
+    }
+    .wtp-detail-img {
+        width: 50px;
+        height: 50px;
+        border-radius: 8px;
+        object-fit: cover;
+    }
+    .wtp-detail-message {
+        margin: 0.25rem 0 0;
+        font-size: 0.85rem;
+        color: var(--text-secondary);
+    }
+    .btn-close-modal {
+        background: none;
+        border: none;
+        font-size: 1.5rem;
+        cursor: pointer;
+        color: var(--text-secondary);
+        padding: 0;
+        line-height: 1;
+    }
+    .wtp-detail-participants {
+        margin: 1rem 0;
+    }
+    .wtp-detail-participants h3 {
+        font-size: 0.9rem;
+        margin: 0 0 0.5rem;
+    }
+    .wtp-detail-names {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.35rem;
+    }
+    .wtp-participant-tag {
+        font-size: 0.8rem;
+        background: var(--bg-secondary);
+        padding: 0.2rem 0.5rem;
+        border-radius: 6px;
+        color: var(--text-primary);
+    }
+    .wtp-detail-actions {
+        display: flex;
+        gap: 0.5rem;
+        margin: 0.75rem 0;
+        flex-wrap: wrap;
+    }
+    .wtp-detail-comments {
+        margin-top: 1rem;
+        border-top: 1px solid var(--border-light);
+        padding-top: 0.75rem;
+    }
+    .wtp-detail-comments h3 {
+        font-size: 0.9rem;
+        margin: 0 0 0.5rem;
+    }
+
+    .wtp-btn {
+        padding: 0.4rem 0.85rem;
+        border-radius: 8px;
+        border: none;
+        font-size: 0.85rem;
+        font-weight: 500;
+        cursor: pointer;
+        transition: background 0.15s;
+    }
+    .wtp-btn.join {
+        background: var(--color-blue, #3b82f6);
+        color: white;
+    }
+    .wtp-btn.leave {
+        background: var(--bg-secondary);
+        color: var(--text-secondary);
+    }
+    .wtp-btn.close {
+        background: var(--bg-secondary);
+        color: var(--color-red, #ef4444);
+        border: 1px solid var(--color-red, #ef4444);
     }
 </style>

@@ -7,6 +7,7 @@ import { PartyService } from '$lib/server/services/partyService';
 import { emitLiveEvent } from '$lib/server/liveEvents';
 import { getSharedData } from '$lib/server/dataCache';
 import { NotificationService } from '$lib/server/services/notificationService';
+import { WantToPlayService } from '$lib/server/services/wantToPlayService';
 
 async function canModifyGame(request: Request, gameId: string | number): Promise<boolean> {
     const sessionToken = request.headers.get('cookie')?.match(/admin_session=([^;]+)/)?.[1];
@@ -45,7 +46,10 @@ export const load: PageServerLoad = async ({ locals }) => {
     const isAdmin = locals.isAdmin || false;
 
     // 공용 데이터는 메모리 캐시에서 가져옴 (동시 요청 시 DB 1번만 조회)
-    const shared = await getSharedData();
+    const [shared, wantToPlayPosts] = await Promise.all([
+        getSharedData(),
+        WantToPlayService.getOpenPosts(),
+    ]);
 
     // 유저별 데이터 — Drizzle이 커넥션 풀 자동 관리하므로 병렬 실행 가능
     let userPenaltyInfo = null;
@@ -126,11 +130,23 @@ export const load: PageServerLoad = async ({ locals }) => {
         userPartyIds,
         dailyVisitPlans: shared.dailyVisitPlans,
         mainScheduledGames: [
-            ...shared.scheduledGames.filter((g: any) => g.show_on_main),
+            ...shared.scheduledGames.filter((g: any) => {
+                if (!g.show_on_main) return false;
+                // 마감 후에는 오늘의 예정된 게임을 숨김
+                if (!shared.isOpen && g.scheduled_at) {
+                    const now = new Date();
+                    const gameDate = new Date(g.scheduled_at);
+                    const today = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Seoul' }));
+                    const gameDateKST = new Date(gameDate.toLocaleString('en-US', { timeZone: 'Asia/Seoul' }));
+                    if (today.toDateString() === gameDateKST.toDateString()) return false;
+                }
+                return true;
+            }),
             ...shared.todayPlayingMainGames,
         ],
         todayScheduledParticipants: shared.todayScheduledParticipants,
         userHasVisitPlan,
+        wantToPlayPosts,
     };
 };
 

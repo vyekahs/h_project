@@ -293,8 +293,8 @@
 	}
 
 	.load-more-btn {
-		background: rgba(255, 255, 255, 0.4);
-		border: 1px solid rgba(255, 255, 255, 0.5);
+		background: var(--bg-secondary);
+		border: 1px solid var(--border-light);
 		border-radius: 10px;
 		padding: 0.4rem 1rem;
 		font-size: 0.8rem;
@@ -304,7 +304,7 @@
 	}
 
 	.load-more-btn:hover {
-		background: rgba(255, 255, 255, 0.6);
+		background: var(--bg-hover);
 	}
 
 	.load-more-btn:disabled {
@@ -313,8 +313,8 @@
 	}
 
 	.comment-item {
-		background: rgba(255, 255, 255, 0.35);
-		border: 1px solid rgba(255, 255, 255, 0.4);
+		background: var(--bg-secondary);
+		border: 1px solid var(--border-light);
 		border-radius: 12px;
 		padding: 0.6rem 0.8rem;
 	}
@@ -389,7 +389,7 @@
 	.input-area {
 		flex-shrink: 0;
 		padding: 0.5rem;
-		border-top: 1px solid rgba(255, 255, 255, 0.3);
+		border-top: 1px solid var(--border-light);
 	}
 
 	.input-hint {
@@ -489,32 +489,4 @@
 		to { opacity: 1; transform: scale(1); }
 	}
 
-	/* Dark theme overrides */
-	.dark .empty-state { color: rgba(255,255,255,0.4); }
-	.dark .empty-sub { color: rgba(255,255,255,0.3); }
-	.dark .load-more-btn {
-		background: rgba(255,255,255,0.08);
-		border-color: rgba(255,255,255,0.15);
-		color: rgba(255,255,255,0.6);
-	}
-	.dark .load-more-btn:hover { background: rgba(255,255,255,0.15); }
-	.dark .comment-item {
-		background: rgba(255,255,255,0.06);
-		border-color: rgba(255,255,255,0.1);
-	}
-	.dark .user-name { color: #f1f5f9; }
-	.dark .user-title {
-		background: rgba(59,130,246,0.2);
-		color: #93c5fd;
-	}
-	.dark .comment-time { color: rgba(255,255,255,0.35); }
-	.dark .delete-btn { color: rgba(255,255,255,0.35); }
-	.dark .delete-btn:hover {
-		color: #fca5a5;
-		background: rgba(239,68,68,0.15);
-	}
-	.dark .comment-content { color: #e2e8f0; }
-	.dark .comment-content :global(.mention) { color: #93c5fd; }
-	.dark .input-area { border-top-color: rgba(255,255,255,0.1); }
-	.dark .input-hint { color: rgba(255,255,255,0.35); }
 </style>

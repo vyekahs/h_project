@@ -7,3 +7,4 @@ export * from './parties';
 export * from './recurring';
 export * from './minigame';
 export * from './performance';
+export * from './wanttoplay';

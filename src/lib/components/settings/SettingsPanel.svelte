@@ -11,6 +11,7 @@
         { key: 'visit_plan', label: '방문 예정 알림', desc: '다른 사람이 오늘 방문 예정에 추가할 때 알림을 받습니다' },
         { key: 'game_join', label: '게임 참가 알림', desc: '내가 참여 중인 게임에 다른 사람이 참가할 때 알림을 받습니다' },
         { key: 'rank_change', label: '랭킹 변동 알림', desc: '미니게임 랭킹이 변동될 때 알림을 받습니다' },
+        { key: 'wtp_join', label: '같이하기 참여 알림', desc: '내가 올린 같이하기 글에 다른 사람이 참여할 때 알림을 받습니다' },
     ] as const;
 
     let notifPrefs = $state<Record<string, boolean>>({
@@ -18,6 +19,7 @@
         visit_plan: false,
         game_join: false,
         rank_change: false,
+        wtp_join: false,
     });
     let prefsLoaded = $state(false);
 

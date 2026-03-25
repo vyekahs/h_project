@@ -155,7 +155,17 @@ export const CommentService = {
 			WHERE name IN (${nameConditions})
 		`);
 
-		const gameName = GAME_REGISTRY[gameId]?.name ?? gameId;
+		let gameName: string;
+		let mentionUrl: string;
+		if (gameId.startsWith('wtp_')) {
+			const wtpId = parseInt(gameId.slice(4));
+			const wtpResult = await db.execute(sql`SELECT game_name FROM want_to_play_posts WHERE id = ${wtpId}`);
+			gameName = (wtpResult[0] as any)?.game_name ?? '같이하기';
+			mentionUrl = '/?tab=games';
+		} else {
+			gameName = GAME_REGISTRY[gameId]?.name ?? gameId;
+			mentionUrl = `/minigames/start/${gameId}?tab=comments`;
+		}
 
 		for (const u of users as any[]) {
 			if (u.id === fromUserId) continue; // Don't notify self
@@ -165,7 +175,7 @@ export const CommentService = {
 					type: 'mention',
 					title: '멘션 알림',
 					body: `${fromName}님이 ${gameName} 댓글에서 당신을 언급했습니다`,
-					url: `/minigames/start/${gameId}?tab=comments`,
+					url: mentionUrl,
 				},
 				fromUserId,
 				`game:${gameId}:comment:${commentId}`
