@@ -1089,7 +1089,7 @@
         <!-- 보드게임 하고싶어요 -->
         <section class="tables-section">
             <div class="section-header">
-                <h2>모집합니다({(data.wantToPlayPosts || []).length})</h2>
+                <h2>want to play({(data.wantToPlayPosts || []).length})</h2>
                 {#if data.user}
                     <button class="btn-create" onclick={openWtpCreateModal}>+게임 등록</button>
                 {/if}
