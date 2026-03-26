@@ -17,7 +17,7 @@ class SSENotificationChannel implements NotificationChannel {
 const channels: NotificationChannel[] = [new SSENotificationChannel()];
 
 // mention은 기존 호환: 행 없으면 ON. 나머지 새 알림은 행 없으면 OFF.
-const DEFAULT_ON_TYPES = ['mention'];
+const DEFAULT_ON_TYPES = ['mention', 'wtp_message'];
 
 export const NotificationService = {
 	async notify(userId: number, payload: NotificationPayload, fromUserId?: number, referenceId?: string) {
@@ -40,6 +40,44 @@ export const NotificationService = {
 		`);
 
 		// 2. Send via all channels
+		await Promise.allSettled(channels.map(ch => ch.send(userId, payload)));
+	},
+
+	/**
+	 * Upsert: 같은 reference_id + user_id의 안 읽은 알림이 있으면 갱신, 없으면 생성
+	 */
+	async upsertNotify(userId: number, payload: NotificationPayload, fromUserId?: number, referenceId?: string) {
+		// 0. Check notification preference
+		const prefResult = await db.execute(sql`
+			SELECT enabled FROM notification_preferences
+			WHERE attendee_id = ${userId} AND notification_type = ${payload.type}
+		`);
+		if (prefResult.length > 0) {
+			if ((prefResult[0] as any).enabled === false) return;
+		} else {
+			if (!DEFAULT_ON_TYPES.includes(payload.type)) return;
+		}
+
+		// 1. 기존 안 읽은 알림 갱신 시도
+		if (referenceId) {
+			const updated = await db.execute(sql`
+				UPDATE notifications
+				SET message = ${payload.body}, from_user_id = ${fromUserId ?? null}, created_at = NOW()
+				WHERE user_id = ${userId} AND reference_id = ${referenceId} AND is_read = false
+				RETURNING id
+			`);
+			if (updated.length > 0) {
+				// 갱신됨 — SSE만 재전송
+				await Promise.allSettled(channels.map(ch => ch.send(userId, payload)));
+				return;
+			}
+		}
+
+		// 2. 새로 생성
+		await db.execute(sql`
+			INSERT INTO notifications (user_id, type, message, from_user_id, reference_id)
+			VALUES (${userId}, ${payload.type}, ${payload.body}, ${fromUserId ?? null}, ${referenceId ?? null})
+		`);
 		await Promise.allSettled(channels.map(ch => ch.send(userId, payload)));
 	},
 
@@ -101,6 +139,8 @@ export const NotificationService = {
 			visit_plan: false,
 			game_join: false,
 			rank_change: false,
+			wtp_join: false,
+			wtp_message: true,
 		};
 		for (const row of res as any[]) {
 			prefs[row.notification_type] = row.enabled;

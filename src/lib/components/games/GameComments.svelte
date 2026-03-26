@@ -165,11 +165,23 @@
 		return new Date(dateStr).toLocaleDateString('ko-KR', { month: 'short', day: 'numeric' });
 	}
 
+	const isWtp = gameId.startsWith('wtp_');
+
 	function renderContent(content: string): string {
 		// Escape HTML first
 		const escaped = content.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-		// Highlight @mentions
+		// wtp에서는 멘션 하이라이트 안 함
+		if (isWtp) return escaped;
 		return escaped.replace(/@([\w가-힣]{1,50})/g, '<span class="mention">@$1</span>');
+	}
+
+	let wtpInputValue = $state('');
+	function handleWtpKeydown(e: KeyboardEvent) {
+		if (e.key === 'Enter' && !e.shiftKey && wtpInputValue.trim()) {
+			e.preventDefault();
+			handleSubmit(wtpInputValue.trim());
+			wtpInputValue = '';
+		}
 	}
 </script>
 
@@ -220,13 +232,25 @@
 
 	<!-- Fixed input at bottom -->
 	<div class="input-area">
-		<p class="input-hint">1분에 한번씩만 작성할 수 있습니다</p>
-		<MentionInput
-			bind:value={inputValue}
-			onsubmit={handleSubmit}
-			disabled={submitting}
-			{dark}
-		/>
+		{#if isWtp}
+			<input
+				type="text"
+				class="wtp-chat-input"
+				bind:value={wtpInputValue}
+				onkeydown={handleWtpKeydown}
+				placeholder="메시지를 입력하세요"
+				disabled={submitting}
+				maxlength="200"
+			/>
+		{:else}
+			<p class="input-hint">1분에 한번씩만 작성할 수 있습니다</p>
+			<MentionInput
+				bind:value={inputValue}
+				onsubmit={handleSubmit}
+				disabled={submitting}
+				{dark}
+			/>
+		{/if}
 	</div>
 </div>
 
@@ -396,6 +420,19 @@
 		margin: 0 0 0.3rem 0.4rem;
 		font-size: 0.7rem;
 		color: var(--text-muted, #999);
+	}
+
+	.wtp-chat-input {
+		width: 100%;
+		padding: 0.6rem 0.8rem;
+		border: 1px solid var(--border-default, #ddd);
+		border-radius: 10px;
+		font-size: 0.9rem;
+		outline: none;
+		transition: border-color 0.15s;
+	}
+	.wtp-chat-input:focus {
+		border-color: var(--color-blue, #339af0);
 	}
 
 	/* Modal */

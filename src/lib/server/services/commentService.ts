@@ -67,15 +67,17 @@ export const CommentService = {
 			throw new Error('댓글은 1~200자로 작성해주세요');
 		}
 
-		// Spam check: 60s cooldown per user per game
+		// Spam check: wtp은 1초, 나머지는 60초
+		const isWtp = gameId.startsWith('wtp_');
+		const cooldownInterval = isWtp ? sql`INTERVAL '1 second'` : sql`INTERVAL '60 seconds'`;
 		const recent = await db.execute(sql`
 			SELECT 1 FROM minigame_game_comments
 			WHERE user_id = ${userId} AND game_id = ${gameId}
-			  AND created_at > NOW() - INTERVAL '60 seconds'
+			  AND created_at > NOW() - ${cooldownInterval}
 			LIMIT 1
 		`);
 		if (recent.length > 0) {
-			throw new Error('1분에 한번씩만 작성할 수 있습니다');
+			throw new Error(isWtp ? '천천히 입력해 주세요' : '1분에 한번씩만 작성할 수 있습니다');
 		}
 
 		// Insert
@@ -102,13 +104,22 @@ export const CommentService = {
 			title_name: user?.title_name ?? null,
 		};
 
-		// Parse mentions and send notifications (non-blocking — don't fail comment on notification error)
-		const mentions = this.parseMentions(trimmed);
-		if (mentions.length > 0) {
+		if (isWtp) {
+			// wtp: 멘션 없음, 대신 참여자 전원에게 메시지 알림
 			try {
-				await this.processMentions(userId, gameId, comment.id, mentions, user?.nickname ?? '익명');
+				await this.notifyWtpParticipants(userId, gameId, user?.nickname ?? '익명');
 			} catch (e) {
-				console.error('[CommentService] processMentions failed:', e);
+				console.error('[CommentService] notifyWtpParticipants failed:', e);
+			}
+		} else {
+			// 미니게임: 멘션 알림
+			const mentions = this.parseMentions(trimmed);
+			if (mentions.length > 0) {
+				try {
+					await this.processMentions(userId, gameId, comment.id, mentions, user?.nickname ?? '익명');
+				} catch (e) {
+					console.error('[CommentService] processMentions failed:', e);
+				}
 			}
 		}
 
@@ -143,6 +154,31 @@ export const CommentService = {
 			}
 		}
 		return mentions;
+	},
+
+	async notifyWtpParticipants(fromUserId: number, gameId: string, fromName: string) {
+		const wtpId = parseInt(gameId.slice(4));
+		const [postResult, participantsResult] = await Promise.all([
+			db.execute(sql`SELECT game_name FROM want_to_play_posts WHERE id = ${wtpId}`),
+			db.execute(sql`SELECT attendee_id FROM want_to_play_participants WHERE post_id = ${wtpId}`),
+		]);
+		const gameName = (postResult[0] as any)?.game_name ?? '같이하기';
+		const referenceId = `wtp:${wtpId}`;
+
+		for (const row of participantsResult as any[]) {
+			if (row.attendee_id === fromUserId) continue;
+			await NotificationService.upsertNotify(
+				row.attendee_id,
+				{
+					type: 'wtp_message',
+					title: '같이하기 대화',
+					body: `${fromName}님이 "${gameName}" 대화방에 메시지를 보냈습니다`,
+					url: '/?tab=games',
+				},
+				fromUserId,
+				referenceId
+			);
+		}
 	},
 
 	async processMentions(fromUserId: number, gameId: string, commentId: number, mentionedNames: string[], fromName: string) {

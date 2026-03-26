@@ -3,7 +3,7 @@ import { NotificationService } from '$lib/server/services/notificationService';
 import { verifyAttendeeSession } from '$lib/server/auth';
 import type { RequestHandler } from './$types';
 
-const VALID_TYPES = ['mention', 'visit_plan', 'game_join', 'rank_change', 'wtp_join'];
+const VALID_TYPES = ['mention', 'visit_plan', 'game_join', 'rank_change', 'wtp_join', 'wtp_message'];
 
 export const GET: RequestHandler = async ({ cookies }) => {
 	const sessionToken = cookies.get('user_session');
