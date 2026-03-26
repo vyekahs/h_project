@@ -32,17 +32,21 @@ import type { Handle } from '@sveltejs/kit';
 export const handle: Handle = async ({ event, resolve }) => {
 	const startTime = Date.now();
 
-	// 1+2. 인증 쿼리 순차 실행 (커넥션 1개씩만 사용)
-	const userSessionToken = event.cookies.get('user_session');
-	if (userSessionToken) {
-		const user = await verifyAttendeeSession(userSessionToken);
-		if (user) event.locals.user = user;
-	}
+	// API 키 인증 엔드포인트는 세션 검증 스킵 (DB 커넥션 절약)
+	const isApiKeyRoute = event.url.pathname.startsWith('/api/ble/') || event.url.pathname.startsWith('/api/wifi/');
+	if (!isApiKeyRoute) {
+		// 1+2. 인증 쿼리 순차 실행 (커넥션 1개씩만 사용)
+		const userSessionToken = event.cookies.get('user_session');
+		if (userSessionToken) {
+			const user = await verifyAttendeeSession(userSessionToken);
+			if (user) event.locals.user = user;
+		}
 
-	const adminSessionToken = event.cookies.get('admin_session');
-	if (adminSessionToken) {
-		const isAdmin = await verifyAdminSession(adminSessionToken);
-		if (isAdmin) event.locals.isAdmin = isAdmin;
+		const adminSessionToken = event.cookies.get('admin_session');
+		if (adminSessionToken) {
+			const isAdmin = await verifyAdminSession(adminSessionToken);
+			if (isAdmin) event.locals.isAdmin = isAdmin;
+		}
 	}
 
 	// /admin 경로 보호 (admin 전용)
