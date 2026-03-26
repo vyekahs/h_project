@@ -101,6 +101,23 @@ export function markAllLeft() {
     lastSeenWifiMap.clear();
 }
 
+/** BLE lastSeen 업데이트 (Rust BLE 서버에서 호출) */
+export function updateLastSeenBle(attendeeId: number, timestamp: number) {
+    lastSeenBleMap.set(attendeeId, timestamp);
+}
+
+/** 오토오픈 윈도우 계산 (오픈시간 ±2시간) */
+export function calculateAutoOpenWindow(): boolean {
+    if (!settingsCache) return false;
+    const now = new Date();
+    const kstNow = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+    const currentMins = kstNow.getUTCHours() * 60 + kstNow.getUTCMinutes();
+    const [openHour, openMinute] = settingsCache.openingTime.split(':').map(Number);
+    const openMins = openHour * 60 + openMinute;
+    const diff = currentMins - openMins;
+    return diff >= -120 && diff <= 120;
+}
+
 /** 기기 등록 시 IRK 캐시에 즉시 추가 (중복 IRK는 업데이트) */
 export async function addToIrkCache(attendeeId: number, irk: string, name: string, wifiMac?: string) {
     if (irkCache) {
@@ -230,7 +247,7 @@ function verifyMetric(hash: Buffer, prand: Buffer, key: Buffer, padding: 'Head'|
 
 
 /** 캐시 초기화 (settings, IRK, attendee — 첫 요청에서 DB 로드 후 영구 캐시) */
-async function ensureCachesLoaded(source: string = 'BLE') {
+export async function ensureCachesLoaded(source: string = 'BLE') {
     if (!settingsCache) {
         try {
             const settingsRes = await db.execute(sql`SELECT key, value FROM system_settings WHERE key IN ('is_open', 'opening_time')`);
@@ -419,7 +436,7 @@ export async function processScanResults(scannerId: string, timestamp: number, s
 /**
  * Auto Check-in (배치 처리) — BLE/WiFi 공통
  */
-async function processAutoCheckin(detectedAttendeeIds: Set<number>, isWithinAutoOpenWindow: boolean, source: 'BLE' | 'WiFi') {
+export async function processAutoCheckin(detectedAttendeeIds: Set<number>, isWithinAutoOpenWindow: boolean, source: 'BLE' | 'WiFi') {
     // 1. Auto-Open: 어드민 감지 시 자동 오픈
     for (const attendeeId of detectedAttendeeIds) {
         const attendee = attendeeCache.get(attendeeId);
@@ -505,7 +522,7 @@ async function processAutoCheckin(detectedAttendeeIds: Set<number>, isWithinAuto
 /**
  * Auto Checkout Job
  */
-async function checkAutoCheckout() {
+export async function checkAutoCheckout() {
     const now = Date.now();
     const timeoutThreshold = now - CHECKOUT_TIMEOUT_MS;
 

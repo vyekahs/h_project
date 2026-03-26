@@ -3,6 +3,21 @@ import { db } from '$lib/server/db/index';
 import { sql } from 'drizzle-orm';
 import { addToIrkCache } from '$lib/server/ble';
 
+const BLE_SERVER_URL = process.env.BLE_SERVER_URL || 'http://ble-server:3001';
+const INTERNAL_API_KEY = process.env.INTERNAL_API_KEY || 'ble_internal_secret_2026';
+
+async function notifyBleServerIrkAdd(attendeeId: number, irkHex: string) {
+    try {
+        await fetch(`${BLE_SERVER_URL}/irk/add`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-internal-key': INTERNAL_API_KEY },
+            body: JSON.stringify({ attendee_id: attendeeId, irk_hex: irkHex })
+        });
+    } catch (e) {
+        console.error('[IRK] Failed to notify BLE server (add):', e);
+    }
+}
+
 export class DeviceRegistrationService {
     static async startRegistration(deviceId: string, attendeeId: number, deviceName: string = 'Phone') {
         const pin = Math.floor(1000 + Math.random() * 9000).toString();
@@ -72,6 +87,7 @@ export class DeviceRegistrationService {
         `);
 
         await addToIrkCache(attendeeId, irk, deviceName);
+        notifyBleServerIrkAdd(attendeeId, irk);
         console.log(`[Service] Registration ${regId} completed directly (BLE PIN verified)`);
         return { success: true };
     }
@@ -90,6 +106,7 @@ export class DeviceRegistrationService {
         `);
 
         await addToIrkCache(attendeeId, irk, deviceName);
+        notifyBleServerIrkAdd(attendeeId, irk);
         console.log(`[Service] Direct registration completed for attendee: ${attendeeId}`);
         return { success: true };
     }
@@ -129,6 +146,7 @@ export class DeviceRegistrationService {
 
         if (result.success) {
             await addToIrkCache(result.attendeeId, result.irk, result.deviceName);
+            notifyBleServerIrkAdd(result.attendeeId, result.irk);
             console.log(`[Service] Registration ${regId} completed with PIN verification`);
         }
         return { success: result.success, ...(result.success ? {} : { error: (result as any).error }) };

@@ -3,9 +3,19 @@
 }
 
 damonpyo.mooo.com {
-    reverse_proxy app:3000
+    handle /api/ble/report {
+        reverse_proxy ble-server:3001
+    }
+    handle {
+        reverse_proxy app:3000
+    }
 }
 
 honnol.org {
-    reverse_proxy app:3000
+    handle /api/ble/report {
+        reverse_proxy ble-server:3001
+    }
+    handle {
+        reverse_proxy app:3000
+    }
 }

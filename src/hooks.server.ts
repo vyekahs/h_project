@@ -33,7 +33,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 	const startTime = Date.now();
 
 	// API 키 인증 엔드포인트는 세션 검증 스킵 (DB 커넥션 절약)
-	const isApiKeyRoute = event.url.pathname.startsWith('/api/ble/') || event.url.pathname.startsWith('/api/wifi/');
+	const isApiKeyRoute = event.url.pathname.startsWith('/api/ble/') || event.url.pathname.startsWith('/api/wifi/') || event.url.pathname.startsWith('/api/internal/');
 	if (!isApiKeyRoute) {
 		// 1+2. 인증 쿼리 순차 실행 (커넥션 1개씩만 사용)
 		const userSessionToken = event.cookies.get('user_session');

@@ -173,7 +173,16 @@ export const actions: Actions = {
             const devRes = await db.execute(sql`SELECT irk FROM user_devices WHERE id = ${deviceId} AND attendee_id = ${user.id}`);
             await db.execute(sql`DELETE FROM user_devices WHERE id = ${deviceId} AND attendee_id = ${user.id}`);
             if (devRes.length > 0) {
-                removeFromIrkCache(user.id, (devRes[0] as any).irk);
+                const irk = (devRes[0] as any).irk;
+                removeFromIrkCache(user.id, irk);
+                // BLE 서버에 IRK 삭제 알림 (fire-and-forget)
+                const BLE_SERVER_URL = process.env.BLE_SERVER_URL || 'http://ble-server:3001';
+                const INTERNAL_API_KEY = process.env.INTERNAL_API_KEY || 'ble_internal_secret_2026';
+                fetch(`${BLE_SERVER_URL}/irk/remove`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'x-internal-key': INTERNAL_API_KEY },
+                    body: JSON.stringify({ attendee_id: user.id, irk_hex: irk })
+                }).catch(e => console.error('[IRK] Failed to notify BLE server (remove):', e));
             }
             return { success: true };
         } catch (e) {
