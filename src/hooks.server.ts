@@ -59,7 +59,11 @@ export const handle: Handle = async ({ event, resolve }) => {
 		}
 	}
 
+	const beforeResolve = Date.now();
 	const response = await resolve(event);
+	if (isApiKeyRoute) {
+		console.log(`[HOOK] ⏱️ ${event.url.pathname}: auth=${beforeResolve - startTime}ms, resolve=${Date.now() - beforeResolve}ms, total=${Date.now() - startTime}ms`);
+	}
 
 	// 성능 메트릭 기록 (정적 파일 제외)
 	const pathname = event.url.pathname;

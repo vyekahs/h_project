@@ -14,13 +14,16 @@ export const POST: RequestHandler = async ({ request }) => {
     }
 
     try {
+        const t0 = Date.now();
         // Parse JSON with control character sanitization (BLE device names may contain them)
         const rawText = await request.text();
+        const t1 = Date.now();
         const sanitized = rawText.replace(/[\x00-\x1F\x7F]/g, '');
         const body = JSON.parse(sanitized);
         const { scanner_id, timestamp, devices, batch_index, total_batches } = body;
         const isLastBatch = !total_batches || (batch_index === total_batches - 1);
 
+        console.log(`[BLE] ⏱️ request.text() took ${t1 - t0}ms (${rawText.length} bytes)`);
         console.log(`[BLE] Report from ${scanner_id}: ${devices?.length || 0} devices (batch ${(batch_index ?? 0) + 1}/${total_batches ?? 1})`);
         // Log MACs with RSSI to identify close devices
         console.log(`[BLE] Devices: ${devices?.map((d: any) => `${d.mac} (${d.rssi}dBm)`).join(', ')}`);
