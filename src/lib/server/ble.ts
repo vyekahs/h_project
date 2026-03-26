@@ -450,7 +450,7 @@ async function processAutoCheckin(detectedAttendeeIds: Set<number>, isWithinAuto
     try {
         const existing = await db.execute(sql`
             SELECT DISTINCT attendee_id FROM visits
-            WHERE attendee_id = ANY(${needCheckin})
+            WHERE attendee_id IN (${sql.join(needCheckin.map(id => sql`${id}`), sql`, `)})
               AND departure_time IS NULL
               AND arrival_time::date = (NOW() AT TIME ZONE 'Asia/Seoul')::date
         `);
@@ -463,7 +463,7 @@ async function processAutoCheckin(detectedAttendeeIds: Set<number>, isWithinAuto
     const resumeIds = needCheckin.filter(id => existingVisitIds.has(id));
     if (resumeIds.length > 0) {
         try {
-            await db.execute(sql`UPDATE attendees SET status = 'present', updated_at = NOW() WHERE id = ANY(${resumeIds})`);
+            await db.execute(sql`UPDATE attendees SET status = 'present', updated_at = NOW() WHERE id IN (${sql.join(resumeIds.map(id => sql`${id}`), sql`, `)})`);
             for (const id of resumeIds) {
                 const attendee = attendeeCache.get(id);
                 if (attendee) attendee.status = 'present';
@@ -480,12 +480,12 @@ async function processAutoCheckin(detectedAttendeeIds: Set<number>, isWithinAuto
     if (newCheckinIds.length > 0) {
         try {
             await db.transaction(async (tx) => {
-                await tx.execute(sql`UPDATE attendees SET status = 'present', arrival_time = NOW(), updated_at = NOW() WHERE id = ANY(${newCheckinIds})`);
+                await tx.execute(sql`UPDATE attendees SET status = 'present', arrival_time = NOW(), updated_at = NOW() WHERE id IN (${sql.join(newCheckinIds.map(id => sql`${id}`), sql`, `)})`);
                 // visits 배치 INSERT (unnest 사용)
                 for (const id of newCheckinIds) {
                     await tx.execute(sql`INSERT INTO visits (attendee_id, arrival_time) VALUES (${id}, NOW())`);
                 }
-                await tx.execute(sql`DELETE FROM daily_visit_plans WHERE attendee_id = ANY(${newCheckinIds}) AND plan_date = CURRENT_DATE`);
+                await tx.execute(sql`DELETE FROM daily_visit_plans WHERE attendee_id IN (${sql.join(newCheckinIds.map(id => sql`${id}`), sql`, `)}) AND plan_date = CURRENT_DATE`);
             });
             for (const id of newCheckinIds) {
                 const attendee = attendeeCache.get(id);
