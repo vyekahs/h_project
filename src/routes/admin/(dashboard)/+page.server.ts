@@ -421,20 +421,7 @@ export const actions: Actions = {
     closeDay: async () => {
         try {
             await db.transaction(async (tx) => {
-                // Checkout all active visits
-                await tx.execute(sql`UPDATE visits SET departure_time = NOW() WHERE departure_time IS NULL`);
-                // Set all attendees to 'left'
-                await tx.execute(sql`UPDATE attendees SET status = 'left' WHERE status = 'present'`);
-                // End all active games
-                await tx.execute(sql`UPDATE game_sessions SET status = 'finished', end_time = NOW() WHERE status = 'playing'`);
-                // Cancel today's scheduled games
-                await tx.execute(sql`UPDATE game_sessions SET status = 'finished' WHERE status = 'scheduled' AND scheduled_at::date = (NOW() AT TIME ZONE 'Asia/Seoul')::date`);
-                // Set is_open to false
-                await tx.execute(sql`INSERT INTO system_settings (key, value) VALUES ('is_open', 'false') ON CONFLICT (key) DO UPDATE SET value = 'false'`);
-                updateSettingsCache(false);
-                markAllLeft();
-
-                // Record business date to prevent auto-close from re-triggering if reopened
+                // Calculate business date (before 9AM KST = previous day)
                 const now = new Date();
                 const kstNow = new Date(now.getTime() + 9 * 60 * 60 * 1000);
                 const currentHour = kstNow.getUTCHours();
@@ -443,6 +430,21 @@ export const actions: Actions = {
                     businessDateObj.setUTCDate(businessDateObj.getUTCDate() - 1);
                 }
                 const businessDate = businessDateObj.toISOString().split('T')[0];
+
+                // Checkout all active visits
+                await tx.execute(sql`UPDATE visits SET departure_time = NOW() WHERE departure_time IS NULL`);
+                // Set all attendees to 'left'
+                await tx.execute(sql`UPDATE attendees SET status = 'left' WHERE status = 'present'`);
+                // End all active games
+                await tx.execute(sql`UPDATE game_sessions SET status = 'finished', end_time = NOW() WHERE status = 'playing'`);
+                // Cancel scheduled games for this business day only
+                await tx.execute(sql`UPDATE game_sessions SET status = 'finished' WHERE status = 'scheduled' AND scheduled_at::date = ${businessDate}::date`);
+                // Set is_open to false
+                await tx.execute(sql`INSERT INTO system_settings (key, value) VALUES ('is_open', 'false') ON CONFLICT (key) DO UPDATE SET value = 'false'`);
+                updateSettingsCache(false);
+                markAllLeft();
+
+                // Record business date to prevent auto-close from re-triggering if reopened
                 await tx.execute(sql`INSERT INTO system_settings (key, value) VALUES ('last_auto_close_date', ${businessDate}) ON CONFLICT (key) DO UPDATE SET value = ${businessDate}`);
             });
             emitLiveEvent('visitors');
