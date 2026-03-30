@@ -295,6 +295,108 @@ function solve(seed, maxNodes = 300000) {
 	return -1;
 }
 
+// ─── Difficulty Scoring ───
+
+/**
+ * Compute a perceived difficulty score for a deal.
+ * Higher score = harder for a human player.
+ *
+ * Factors:
+ *  1. Solver move count — more moves needed = harder
+ *  2. Ace burial depth — aces buried deep = harder start
+ *  3. Low-card blocking — 2s/3s buried under high cards = frustrating
+ *  4. Initial free moves — fewer immediate moves = harder
+ *  5. Initial sequence count — fewer pre-formed sequences = harder
+ *  6. Suit clustering — same-suit cards clumped together = harder
+ */
+function scoreDifficulty(seed, solverMoves) {
+	const state = dealCards(seed);
+
+	// 1. Solver move count (normalized, weight: 30%)
+	// Most games solve in 40-120 moves
+	const moveScore = Math.min(solverMoves / 120, 1.0);
+
+	// 2. Ace burial depth (weight: 25%)
+	// How deep aces are buried in columns (0 = on top, 6 = at bottom of 7-card column)
+	let aceBurial = 0;
+	for (const col of state.tableau) {
+		for (let i = 0; i < col.length; i++) {
+			if (col[i].value === 1) {
+				// Cards on top of this ace (deeper = worse)
+				aceBurial += col.length - 1 - i;
+			}
+		}
+	}
+	// Max burial: 4 aces × 6 deep = 24
+	const aceScore = Math.min(aceBurial / 20, 1.0);
+
+	// 3. Low-card blocking (weight: 20%)
+	// Count how many cards sit on top of 2s and 3s
+	let lowCardBlocking = 0;
+	for (const col of state.tableau) {
+		for (let i = 0; i < col.length; i++) {
+			if (col[i].value <= 3) {
+				lowCardBlocking += col.length - 1 - i;
+			}
+		}
+	}
+	// Normalize (max ~48 but typically 0-30)
+	const blockScore = Math.min(lowCardBlocking / 28, 1.0);
+
+	// 4. Initial free moves — count cards that can immediately move somewhere useful
+	// (weight: 15%)
+	let freeMoves = 0;
+	for (let col = 0; col < 8; col++) {
+		const column = state.tableau[col];
+		if (column.length === 0) continue;
+		const bottom = column[column.length - 1];
+
+		// Can go to foundation?
+		if (canMoveToFoundation(bottom, state.foundations) !== null) {
+			freeMoves += 2; // Foundation moves are extra valuable
+		}
+
+		// Can stack on another column?
+		for (let other = 0; other < 8; other++) {
+			if (other === col) continue;
+			if (canMoveToTableau(bottom, state.tableau[other])) {
+				freeMoves++;
+				break;
+			}
+		}
+	}
+	// More free moves = easier → invert
+	// Typical range: 2-12
+	const freeScore = 1.0 - Math.min(freeMoves / 12, 1.0);
+
+	// 5. Initial sequences (weight: 10%)
+	// Count pre-formed descending alternating-color sequences
+	let totalSeqCards = 0;
+	for (const col of state.tableau) {
+		if (col.length <= 1) continue;
+		for (let i = col.length - 1; i > 0; i--) {
+			if (isOppositeColor(col[i], col[i - 1]) && col[i].value === col[i - 1].value - 1) {
+				totalSeqCards++;
+			} else {
+				break;
+			}
+		}
+	}
+	// More sequence cards = easier → invert
+	// Typical range: 0-10
+	const seqScore = 1.0 - Math.min(totalSeqCards / 10, 1.0);
+
+	// Weighted composite
+	const score =
+		moveScore * 0.30 +
+		aceScore * 0.25 +
+		blockScore * 0.20 +
+		freeScore * 0.15 +
+		seqScore * 0.10;
+
+	return score;
+}
+
 // ─── Main ───
 
 const startSeed = parseInt(process.argv[2]) || 1;
@@ -309,7 +411,8 @@ let solvable = 0, unsolvable = 0;
 for (let seed = startSeed; seed <= endSeed; seed++) {
 	const moves = solve(seed, 200000);
 	if (moves >= 0) {
-		results.push({ seed, moves });
+		const difficulty = scoreDifficulty(seed, moves);
+		results.push({ seed, moves, difficulty });
 		solvable++;
 	} else {
 		unsolvable++;
@@ -324,8 +427,8 @@ for (let seed = startSeed; seed <= endSeed; seed++) {
 
 console.log(`\nClassic: ${solvable} solvable, ${unsolvable} unsolvable`);
 
-// Sort by move count
-results.sort((a, b) => a.moves - b.moves);
+// Sort by composite difficulty score
+results.sort((a, b) => a.difficulty - b.difficulty);
 
 // 5 tiers
 const perTier = Math.floor(results.length / 5);
@@ -344,7 +447,9 @@ for (const [tier, seeds] of Object.entries(tiers)) {
 	const minMoves = Math.min(...tierResults.map((r) => r.moves));
 	const maxMoves = Math.max(...tierResults.map((r) => r.moves));
 	const avgMoves = Math.round(tierResults.reduce((s, r) => s + r.moves, 0) / tierResults.length);
-	console.log(`  ${tier}: ${seeds.length} seeds, moves ${minMoves}-${maxMoves} (avg: ${avgMoves})`);
+	const minDiff = Math.min(...tierResults.map((r) => r.difficulty)).toFixed(3);
+	const maxDiff = Math.max(...tierResults.map((r) => r.difficulty)).toFixed(3);
+	console.log(`  ${tier}: ${seeds.length} seeds, moves ${minMoves}-${maxMoves} (avg: ${avgMoves}), difficulty ${minDiff}-${maxDiff}`);
 }
 
 // Output as TypeScript

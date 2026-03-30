@@ -163,6 +163,8 @@
                                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="8" rx="1.5" fill="rgba(255,255,255,0.15)"/><rect x="3" y="13" width="8" height="8" rx="1.5" fill="rgba(255,255,255,0.3)"/><rect x="13" y="13" width="8" height="8" rx="1.5" fill="rgba(255,255,255,0.45)"/><text x="7" y="7" dy=".35em" font-size="4.5" font-weight="bold" fill="currentColor" stroke="none" text-anchor="middle">2</text><text x="17" y="7" dy=".35em" font-size="4.5" font-weight="bold" fill="currentColor" stroke="none" text-anchor="middle">0</text><text x="7" y="17" dy=".35em" font-size="4.5" font-weight="bold" fill="currentColor" stroke="none" text-anchor="middle">4</text><text x="17" y="17" dy=".35em" font-size="4.5" font-weight="bold" fill="currentColor" stroke="none" text-anchor="middle">8</text></svg>
                                     {:else if game.id === 'freecell'}
                                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="3" fill="rgba(255,255,255,0.1)"/><text x="9" y="11" font-size="9" font-weight="bold" fill="currentColor" stroke="none" text-anchor="middle">K</text><path d="M15 13 L18 16 L15 19 L12 16 Z" fill="currentColor" stroke="none"/></svg>
+                                    {:else if game.id === 'regicide'}
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="3" fill="rgba(255,255,255,0.1)"/><path d="M8 14 l 2 -5 l 2 2 l 2 -2 l 2 5 z" fill="currentColor" stroke="none"/><line x1="8" y1="16.5" x2="16" y2="16.5" stroke="currentColor" stroke-width="1.5"/></svg>
                                     {/if}
                                 </div>
                             </div>
@@ -201,6 +203,8 @@
                                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="8" rx="1.5" fill="rgba(255,255,255,0.15)"/><rect x="3" y="13" width="8" height="8" rx="1.5" fill="rgba(255,255,255,0.3)"/><rect x="13" y="13" width="8" height="8" rx="1.5" fill="rgba(255,255,255,0.45)"/><text x="7" y="7" dy=".35em" font-size="4.5" font-weight="bold" fill="currentColor" stroke="none" text-anchor="middle">2</text><text x="17" y="7" dy=".35em" font-size="4.5" font-weight="bold" fill="currentColor" stroke="none" text-anchor="middle">0</text><text x="7" y="17" dy=".35em" font-size="4.5" font-weight="bold" fill="currentColor" stroke="none" text-anchor="middle">4</text><text x="17" y="17" dy=".35em" font-weight="bold" font-size="4.5" fill="currentColor" stroke="none" text-anchor="middle">8</text></svg>
                                     {:else if game.id === 'freecell'}
                                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="3" fill="rgba(255,255,255,0.1)"/><text x="9" y="11" font-size="9" font-weight="bold" fill="currentColor" stroke="none" text-anchor="middle">K</text><path d="M15 13 L18 16 L15 19 L12 16 Z" fill="currentColor" stroke="none"/></svg>
+                                    {:else if game.id === 'regicide'}
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="3" fill="rgba(255,255,255,0.1)"/><path d="M8 14 l 2 -5 l 2 2 l 2 -2 l 2 5 z" fill="currentColor" stroke="none"/><line x1="8" y1="16.5" x2="16" y2="16.5" stroke="currentColor" stroke-width="1.5"/></svg>
                                     {/if}
                                 </div>
                             </div>
@@ -288,6 +292,12 @@
                                 <rect x="4" y="2" width="16" height="20" rx="3" fill="rgba(255,255,255,0.1)"/>
                                 <text x="9" y="11" font-size="9" font-weight="bold" fill="currentColor" stroke="none" text-anchor="middle">K</text>
                                 <path d="M15 13 L18 16 L15 19 L12 16 Z" fill="currentColor" stroke="none"/>
+                            </svg>
+                        {:else if game.id === 'regicide'}
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <rect x="4" y="2" width="16" height="20" rx="3" fill="rgba(255,255,255,0.1)"/>
+                                <path d="M8 14 l 2 -5 l 2 2 l 2 -2 l 2 5 z" fill="currentColor" stroke="none"/>
+                                <line x1="8" y1="16.5" x2="16" y2="16.5" stroke="currentColor" stroke-width="1.5"/>
                             </svg>
                         {/if}
                     </div>
