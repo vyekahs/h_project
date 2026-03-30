@@ -3131,6 +3131,8 @@
         margin-left: 4px;
         font-weight: 500;
         vertical-align: middle;
+        flex-shrink: 0;
+        white-space: nowrap;
     }
     .btn-reserve-mini, .btn-join-mini {
         background: var(--color-amber);
