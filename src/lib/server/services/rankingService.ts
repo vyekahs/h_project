@@ -302,6 +302,7 @@ export const RankingService = {
                 p.played_at as achieved_at
             FROM minigame_play_log p
             LEFT JOIN attendees a ON p.user_id = a.id
+            WHERE p.type != 'start'
             ORDER BY p.played_at DESC
             LIMIT ${limit}
         `);
@@ -333,7 +334,7 @@ export const RankingService = {
         const res = await db.execute(sql`
             SELECT game_id, COUNT(*) as play_count
             FROM minigame_play_log
-            WHERE played_at >= ${oneMonthAgo.toISOString()}
+            WHERE played_at >= ${oneMonthAgo.toISOString()} AND type != 'start'
             GROUP BY game_id
             ORDER BY play_count DESC
             LIMIT ${limit}
