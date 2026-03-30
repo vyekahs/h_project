@@ -51,3 +51,56 @@ self.addEventListener('fetch', (e) => {
 		)
 	);
 });
+
+// Push notification handler
+self.addEventListener('push', (e) => {
+	const event = e as PushEvent;
+	if (!event.data) return;
+
+	event.waitUntil(
+		(self as unknown as ServiceWorkerGlobalScope).clients
+			.matchAll({ type: 'window', includeUncontrolled: true })
+			.then((clientList) => {
+				// 앱이 포커스 상태면 SSE 토스트가 처리하므로 push 알림 스킵
+				const isAppFocused = clientList.some((c) => c.focused);
+				if (isAppFocused) return;
+
+				const data = event.data!.json();
+				return (self as unknown as ServiceWorkerGlobalScope).registration.showNotification(
+					data.title,
+					{
+						body: data.body,
+						icon: '/icon-192.png',
+						badge: '/icon-192.png',
+						data: { url: data.url },
+						tag: data.type, // 같은 타입 알림 그룹핑
+						renotify: true,
+					}
+				);
+			})
+	);
+});
+
+// 알림 클릭 시 해당 URL로 이동
+self.addEventListener('notificationclick', (e) => {
+	const event = e as NotificationEvent;
+	event.notification.close();
+
+	const url = event.notification.data?.url || '/';
+
+	event.waitUntil(
+		(self as unknown as ServiceWorkerGlobalScope).clients
+			.matchAll({ type: 'window', includeUncontrolled: true })
+			.then((clientList) => {
+				// 기존 열린 창이 있으면 포커스 + 네비게이션
+				for (const client of clientList) {
+					if ('focus' in client) {
+						(client as WindowClient).navigate(url);
+						return (client as WindowClient).focus();
+					}
+				}
+				// 없으면 새 창 열기
+				return (self as unknown as ServiceWorkerGlobalScope).clients.openWindow(url);
+			})
+	);
+});

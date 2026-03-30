@@ -346,6 +346,20 @@ async function migrate() {
         await pool.query("ALTER TABLE minigame_play_log ADD COLUMN IF NOT EXISTS type VARCHAR(10) DEFAULT 'clear';");
         await pool.query('CREATE INDEX IF NOT EXISTS idx_play_log_type_game ON minigame_play_log(game_id, type);');
 
+        // 31. Push Subscriptions (Web Push 알림)
+        console.log('[31] Checking push_subscriptions table...');
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS push_subscriptions (
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER NOT NULL REFERENCES attendees(id) ON DELETE CASCADE,
+                endpoint TEXT NOT NULL UNIQUE,
+                p256dh TEXT NOT NULL,
+                auth TEXT NOT NULL,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            );
+        `);
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_push_subs_user ON push_subscriptions(user_id);');
+
     } catch (err) {
         console.error('Migration failed:', err);
         process.exit(1);
