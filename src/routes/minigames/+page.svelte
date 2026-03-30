@@ -93,6 +93,15 @@
             accentColor: '#059669',
             releasedAt: '2026-03-23',
             forceNew: true
+        },
+        {
+            id: 'regicide',
+            name: '레지사이드',
+            tagline: '12명의 적을 무찔러라',
+            url: '/minigames/start/regicide',
+            accentColor: '#dc2626',
+            releasedAt: '2026-03-26',
+            forceNew: true
         }
     ];
 

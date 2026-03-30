@@ -187,6 +187,17 @@ export const RankingService = {
              const undoPenalty = Math.max(0, mistakes) * undoPenaltyPerUse;
 
              calculatedScore = Math.max(baseScore, baseScore + timeBonus - undoPenalty);
+        } else if (gameId === 'regicide') {
+             // Regicide: single 'classic' difficulty
+             // mistakes = jestersUsed (0, 1, 2)
+             // Victory tier bonus: gold(0 jesters)=300, silver(1)=150, bronze(2)=50
+             const tierBonus = mistakes === 0 ? 300 : mistakes === 1 ? 150 : 50;
+
+             // Time bonus: faster = more points (time limit 10 min)
+             const timeLimit = 600;
+             const timeBonus = Math.max(0, (timeLimit - clearTime) * 2);
+
+             calculatedScore = tierBonus + timeBonus;
         } else {
              calculatedScore = score || 0;
         }

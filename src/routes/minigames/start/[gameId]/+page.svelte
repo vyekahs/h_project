@@ -132,6 +132,15 @@
         goto(`${gameConfig.gameUrl}${separator}autostart=true&difficulty=${difficulty}`);
     }
 
+    function startTutorial() {
+        if (browser) {
+            localStorage.removeItem('regicide_tutorial_done');
+            localStorage.removeItem('regicide_save');
+        }
+        const separator = gameConfig.gameUrl.includes('?') ? '&' : '?';
+        goto(`${gameConfig.gameUrl}${separator}autostart=true&difficulty=classic`);
+    }
+
     function resumeGame() {
         const separator = gameConfig.gameUrl.includes('?') ? '&' : '?';
         goto(`${gameConfig.gameUrl}${separator}resume=true`);
@@ -253,6 +262,9 @@
 
                                 <div class="start-actions">
                                     <button class="btn-primary huge" onclick={startGame}>게임 시작</button>
+                                    {#if gameConfig.id === 'regicide'}
+                                        <button class="btn-text" onclick={startTutorial}>튜토리얼 다시하기</button>
+                                    {/if}
                                     {#if hasSavedGame}
                                         <button class="btn-text" onclick={() => startMode = 'initial'}>취소</button>
                                     {/if}

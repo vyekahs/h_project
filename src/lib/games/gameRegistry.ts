@@ -149,5 +149,17 @@ export const GAME_REGISTRY: Record<string, GameConfig> = {
 		},
 		localStorageSaveKey: 'freecell_save',
 		hasTutorials: true
+	},
+	regicide: {
+		id: 'regicide',
+		name: '레지사이드',
+		displayTitle: 'Regicide',
+		gameUrl: '/minigames/regicide',
+		difficulties: ['classic'],
+		difficultyLabels: {
+			classic: '클래식'
+		},
+		localStorageSaveKey: 'regicide_save',
+		hasTutorials: false
 	}
 };
