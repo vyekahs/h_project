@@ -16,6 +16,10 @@ export function emitNotification(userId: number, data: { type: string; title: st
 	getLiveEmitter().emit('notification', { userId, ...data });
 }
 
+export function emitPartyChatMessage(userId: number, data: { partyId: number; comment: any }) {
+	getLiveEmitter().emit('party_chat', { userId, ...data });
+}
+
 // SSE connection counter
 if ((globalThis as any).__sseConnectionCount === undefined) {
 	(globalThis as any).__sseConnectionCount = 0;

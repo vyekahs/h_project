@@ -3,6 +3,7 @@
     import { hapticsEnabled } from '$lib/stores/haptics';
     import { themeStore } from '$lib/stores/theme.svelte';
     import { user } from '$lib/stores/user';
+    import { isPushSupported, isPushSubscribed, isStandalone, subscribeToPush, unsubscribeFromPush } from '$lib/utils/pushSubscription';
 
     let { open = $bindable(false) } = $props();
 
@@ -13,6 +14,7 @@
         { key: 'rank_change', label: '랭킹 변동 알림', desc: '미니게임 랭킹이 변동될 때 알림을 받습니다' },
         { key: 'wtp_join', label: '같이하기 참여 알림', desc: '내가 올린 같이하기 글에 다른 사람이 참여할 때 알림을 받습니다' },
         { key: 'wtp_message', label: '같이하기 대화 알림', desc: '같이하기 대화방에 새 메시지가 올 때 알림을 받습니다' },
+        { key: 'party_message', label: '고정팟 대화 알림', desc: '고정팟 대화방에 새 메시지가 올 때 알림을 받습니다' },
     ] as const;
 
     let notifPrefs = $state<Record<string, boolean>>({
@@ -22,10 +24,27 @@
         rank_change: false,
         wtp_join: false,
         wtp_message: true,
+        party_message: true,
     });
     let prefsLoaded = $state(false);
 
+    // Push notification state
+    let pushSupported = $state(false);
+    let pushSubscribed = $state(false);
+    let pushLoading = $state(false);
+    let pushIsStandalone = $state(true);
+    let isIOS = $state(false);
+
     onMount(async () => {
+        // Push 지원 여부 체크
+        pushSupported = isPushSupported();
+        pushIsStandalone = isStandalone();
+        isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+
+        if (pushSupported) {
+            pushSubscribed = await isPushSubscribed();
+        }
+
         if ($user.id) {
             try {
                 const res = await fetch('/api/notifications/preferences');
@@ -36,6 +55,24 @@
             } catch {}
         }
     });
+
+    async function togglePush() {
+        if (pushLoading) return;
+        pushLoading = true;
+        try {
+            if (pushSubscribed) {
+                await unsubscribeFromPush();
+                pushSubscribed = false;
+            } else {
+                const success = await subscribeToPush();
+                pushSubscribed = success;
+            }
+        } catch {
+            // 권한 거부 등
+        } finally {
+            pushLoading = false;
+        }
+    }
 
     async function toggleNotifPref(type: string) {
         const newValue = !notifPrefs[type];
@@ -148,6 +185,42 @@
                     </p>
                 {/if}
             </div>
+
+            <!-- Push Notification Toggle -->
+            {#if $user.id}
+            <div class="setting-card push-card">
+                <div class="setting-info">
+                    <div class="setting-title">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+                        </svg>
+                        푸시 알림
+                    </div>
+                    <div class="setting-desc">
+                        {#if !pushSupported}
+                            <span class="no-support">이 브라우저에서는 푸시 알림을 지원하지 않습니다.</span>
+                        {:else if isIOS && !pushIsStandalone}
+                            <span class="no-support">홈 화면에 추가한 후 푸시 알림을 사용할 수 있습니다.</span>
+                        {:else}
+                            앱을 닫아도 새 알림을 받을 수 있습니다.
+                        {/if}
+                    </div>
+                </div>
+                {#if pushSupported && (!isIOS || pushIsStandalone)}
+                    <label class="toggle-switch">
+                        <input
+                            type="checkbox"
+                            checked={pushSubscribed}
+                            onchange={togglePush}
+                            disabled={pushLoading}
+                        >
+                        <span class="slider" class:active={pushSubscribed}>
+                            <span class="slider-button"></span>
+                        </span>
+                    </label>
+                {/if}
+            </div>
+            {/if}
 
             <!-- Notification Settings -->
             {#if $user.id}
@@ -328,13 +401,15 @@
         transform: translateX(22px);
     }
 
-    .haptics-card {
+    .haptics-card,
+    .push-card {
         display: flex;
         justify-content: space-between;
         align-items: center;
     }
 
-    .haptics-card .setting-info {
+    .haptics-card .setting-info,
+    .push-card .setting-info {
         margin-bottom: 0;
         flex: 1;
     }

@@ -48,7 +48,18 @@ export function GET({ request, cookies }: { request: Request; cookies: any }) {
 				}
 			}
 
+			function onPartyChat(payload: any) {
+				if (closed) return;
+				if (payload.userId === userId) {
+					send('party_chat', {
+						partyId: payload.partyId,
+						comment: payload.comment,
+					});
+				}
+			}
+
 			emitter.on('notification', onNotification);
+			emitter.on('party_chat', onPartyChat);
 
 			heartbeatTimer = setInterval(() => {
 				if (closed) return;
@@ -63,6 +74,7 @@ export function GET({ request, cookies }: { request: Request; cookies: any }) {
 				if (closed) return;
 				closed = true;
 				emitter.off('notification', onNotification);
+				emitter.off('party_chat', onPartyChat);
 				if (heartbeatTimer) clearInterval(heartbeatTimer);
 				try { controller.close(); } catch {}
 			}

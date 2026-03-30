@@ -68,12 +68,12 @@
 
 	<main class="content">
 		{@render children()}
-        {#if !$page.url.pathname.startsWith('/admin') && !$page.url.pathname.includes('/minigames/') && !$page.url.pathname.startsWith('/tools/')}
+        {#if !$page.url.pathname.startsWith('/admin') && !$page.url.pathname.includes('/minigames/') && !$page.url.pathname.startsWith('/tools/') && !$page.url.pathname.startsWith('/party/')}
              <AdBanner adSlot="footer-banner" />
         {/if}
 	</main>
 
-	{#if !$page.url.pathname.startsWith('/admin') && !$page.url.pathname.startsWith('/minigames/') && !$page.url.pathname.startsWith('/tools/')}
+	{#if !$page.url.pathname.startsWith('/admin') && !$page.url.pathname.startsWith('/minigames/') && !$page.url.pathname.startsWith('/tools/') && !$page.url.pathname.startsWith('/party/')}
 	<footer class="site-footer">
 		<a href="/about">소개</a>
 		<span class="divider">|</span>

@@ -147,6 +147,9 @@
     let selectedPartyId: number | null = null;
     let scheduledSelectedPartyId: number | null = null;
 
+    // 채팅 바로가기
+    let showChatDropdown = false;
+
     $: parties = (data.parties || []) as Party[];
     $: userPartyIds = new Set(data.userPartyIds || []);
 
@@ -624,6 +627,25 @@
                 <span class="status-pill closed">마감</span>
                 {/if}
                 <NotificationBell />
+                {#if parties.length > 0}
+                    <div class="chat-shortcut-wrapper">
+                        <button class="chat-shortcut-btn" onclick={() => showChatDropdown = !showChatDropdown} aria-label="고정팟 채팅">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                        </button>
+                        {#if showChatDropdown}
+                            <div class="chat-dropdown-backdrop" onclick={() => showChatDropdown = false} onkeydown={(e) => e.key === 'Escape' && (showChatDropdown = false)} role="button" tabindex="-1"></div>
+                            <div class="chat-dropdown">
+                                <div class="chat-dropdown-title">고정팟 채팅</div>
+                                {#each parties as party}
+                                    <a href="/party/{party.id}/chat" class="chat-dropdown-item" onclick={() => showChatDropdown = false}>
+                                        <span class="chat-party-name">{party.name}</span>
+                                        <span class="chat-party-members">{party.members.length}명</span>
+                                    </a>
+                                {/each}
+                            </div>
+                        {/if}
+                    </div>
+                {/if}
             </div>
         </div>
     </header>
@@ -2381,7 +2403,74 @@
         background: var(--bg-hover);
         padding: 0.1rem 0.4rem;
         border-radius: 4px;
-    } 
+    }
+
+    /* Chat shortcut */
+    .chat-shortcut-wrapper {
+        position: relative;
+    }
+    .chat-shortcut-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: none;
+        border: none;
+        color: var(--text-secondary);
+        cursor: pointer;
+        padding: 0.2rem;
+        border-radius: 8px;
+        transition: color 0.15s;
+    }
+    .chat-shortcut-btn:hover {
+        color: var(--text-primary);
+    }
+    .chat-dropdown-backdrop {
+        position: fixed;
+        inset: 0;
+        z-index: 149;
+    }
+    .chat-dropdown {
+        position: absolute;
+        top: 100%;
+        right: 0;
+        margin-top: 0.5rem;
+        background: var(--bg-primary);
+        border: 1px solid var(--border-default);
+        border-radius: 12px;
+        box-shadow: 0 8px 24px var(--shadow-lg);
+        min-width: 180px;
+        z-index: 150;
+        overflow: hidden;
+    }
+    .chat-dropdown-title {
+        padding: 0.6rem 0.8rem 0.4rem;
+        font-size: 0.75rem;
+        font-weight: 700;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 0.3px;
+    }
+    .chat-dropdown-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.5rem;
+        padding: 0.6rem 0.8rem;
+        text-decoration: none;
+        color: var(--text-primary);
+        transition: background 0.15s;
+    }
+    .chat-dropdown-item:hover {
+        background: var(--bg-hover);
+    }
+    .chat-party-name {
+        font-size: 0.9rem;
+        font-weight: 600;
+    }
+    .chat-party-members {
+        font-size: 0.75rem;
+        color: var(--text-muted);
+    }
 
     @keyframes pulse {
         0% { opacity: 1; }

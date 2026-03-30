@@ -544,8 +544,9 @@
                                             {/each}
                                         </div>
                                     </div>
-                                    {#if party.is_owner}
-                                        <div class="party-actions-row">
+                                    <div class="party-actions-row">
+                                        <a href="/party/{party.id}/chat" class="btn-party-chat">채팅</a>
+                                        {#if party.is_owner}
                                             <button class="btn-edit-party" on:click={() => openEditPartyModal(party)}>수정</button>
                                             <form method="POST" action="?/deleteParty" use:enhance={() => {
                                                 return async ({ result, update }) => {
@@ -560,8 +561,8 @@
                                                     }
                                                 }}>삭제</button>
                                             </form>
-                                        </div>
-                                    {/if}
+                                        {/if}
+                                    </div>
                                 </div>
                             {/each}
                         </div>
@@ -1815,6 +1816,20 @@
     }
     .btn-delete-party:hover {
         background: var(--color-error-bg);
+    }
+    .btn-party-chat {
+        border: none;
+        padding: 0.3rem 0.7rem;
+        border-radius: 6px;
+        font-size: 0.8rem;
+        font-weight: 600;
+        cursor: pointer;
+        text-decoration: none;
+        background: var(--color-info-bg);
+        color: var(--color-blue-bright);
+    }
+    .btn-party-chat:hover {
+        opacity: 0.85;
     }
 
     /* Party Modal */

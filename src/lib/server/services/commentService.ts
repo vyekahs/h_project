@@ -2,6 +2,7 @@ import { db } from '$lib/server/db/index';
 import { sql } from 'drizzle-orm';
 import { NotificationService } from './notificationService';
 import { GAME_REGISTRY } from '$lib/games/gameRegistry';
+import { emitPartyChatMessage } from '$lib/server/liveEvents';
 
 export interface CommentWithUser {
 	id: number;
@@ -67,17 +68,20 @@ export const CommentService = {
 			throw new Error('댓글은 1~200자로 작성해주세요');
 		}
 
-		// Spam check: wtp은 1초, 나머지는 60초
+		// Spam check: party는 쿨다운 없음, wtp은 1초, 나머지는 60초
 		const isWtp = gameId.startsWith('wtp_');
-		const cooldownInterval = isWtp ? sql`INTERVAL '1 second'` : sql`INTERVAL '60 seconds'`;
-		const recent = await db.execute(sql`
-			SELECT 1 FROM minigame_game_comments
-			WHERE user_id = ${userId} AND game_id = ${gameId}
-			  AND created_at > NOW() - ${cooldownInterval}
-			LIMIT 1
-		`);
-		if (recent.length > 0) {
-			throw new Error(isWtp ? '천천히 입력해 주세요' : '1분에 한번씩만 작성할 수 있습니다');
+		const isParty = gameId.startsWith('party_');
+		if (!isParty) {
+			const cooldownInterval = isWtp ? sql`INTERVAL '1 second'` : sql`INTERVAL '60 seconds'`;
+			const recent = await db.execute(sql`
+				SELECT 1 FROM minigame_game_comments
+				WHERE user_id = ${userId} AND game_id = ${gameId}
+				  AND created_at > NOW() - ${cooldownInterval}
+				LIMIT 1
+			`);
+			if (recent.length > 0) {
+				throw new Error(isWtp ? '천천히 입력해 주세요' : '1분에 한번씩만 작성할 수 있습니다');
+			}
 		}
 
 		// Insert
@@ -104,7 +108,14 @@ export const CommentService = {
 			title_name: user?.title_name ?? null,
 		};
 
-		if (isWtp) {
+		if (isParty) {
+			// 고정팟: 멤버 전원에게 실시간 채팅 알림
+			try {
+				await this.notifyPartyMembers(userId, gameId, comment, user?.nickname ?? '익명');
+			} catch (e) {
+				console.error('[CommentService] notifyPartyMembers failed:', e);
+			}
+		} else if (isWtp) {
 			// wtp: 멘션 없음, 대신 참여자 전원에게 메시지 알림
 			try {
 				await this.notifyWtpParticipants(userId, gameId, user?.nickname ?? '익명');
@@ -154,6 +165,36 @@ export const CommentService = {
 			}
 		}
 		return mentions;
+	},
+
+	async notifyPartyMembers(fromUserId: number, gameId: string, comment: CommentWithUser, fromName: string) {
+		const partyId = parseInt(gameId.slice(6)); // 'party_' = 6 chars
+		const membersResult = await db.execute(sql`
+			SELECT gpm.attendee_id, gp.name as party_name
+			FROM game_party_members gpm
+			JOIN game_parties gp ON gpm.party_id = gp.id
+			WHERE gpm.party_id = ${partyId}
+		`);
+		const partyName = (membersResult[0] as any)?.party_name ?? '고정팟';
+		const referenceId = `party_chat:${partyId}`;
+
+		for (const row of membersResult as any[]) {
+			if (row.attendee_id === fromUserId) continue;
+			// SSE 실시간 채팅 메시지 전달
+			emitPartyChatMessage(row.attendee_id, { partyId, comment });
+			// DB 알림 저장 (upsert로 중복 방지)
+			await NotificationService.upsertNotify(
+				row.attendee_id,
+				{
+					type: 'party_message',
+					title: '고정팟 대화',
+					body: `${fromName}님이 "${partyName}" 대화방에 메시지를 보냈습니다`,
+					url: `/party/${partyId}/chat`,
+				},
+				fromUserId,
+				referenceId
+			);
+		}
 	},
 
 	async notifyWtpParticipants(fromUserId: number, gameId: string, fromName: string) {

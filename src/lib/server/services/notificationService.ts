@@ -2,6 +2,7 @@ import { db } from '$lib/server/db/index';
 import { sql } from 'drizzle-orm';
 import { emitNotification } from '$lib/server/liveEvents';
 import type { NotificationPayload, NotificationChannel } from './notificationChannel';
+import { PushNotificationChannel } from './pushNotificationChannel';
 
 class SSENotificationChannel implements NotificationChannel {
 	async send(userId: number, notification: NotificationPayload) {
@@ -14,10 +15,10 @@ class SSENotificationChannel implements NotificationChannel {
 	}
 }
 
-const channels: NotificationChannel[] = [new SSENotificationChannel()];
+const channels: NotificationChannel[] = [new SSENotificationChannel(), new PushNotificationChannel()];
 
 // mention은 기존 호환: 행 없으면 ON. 나머지 새 알림은 행 없으면 OFF.
-const DEFAULT_ON_TYPES = ['mention', 'wtp_message'];
+const DEFAULT_ON_TYPES = ['mention', 'wtp_message', 'party_message'];
 
 export const NotificationService = {
 	async notify(userId: number, payload: NotificationPayload, fromUserId?: number, referenceId?: string) {
@@ -141,6 +142,7 @@ export const NotificationService = {
 			rank_change: false,
 			wtp_join: false,
 			wtp_message: true,
+			party_message: true,
 		};
 		for (const row of res as any[]) {
 			prefs[row.notification_type] = row.enabled;
