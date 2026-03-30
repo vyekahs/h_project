@@ -328,9 +328,12 @@ export const RankingService = {
     },
 
     async getPopularGames(limit = 3): Promise<{ gameId: string; playCount: number }[]> {
+        const oneMonthAgo = new Date();
+        oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
         const res = await db.execute(sql`
             SELECT game_id, COUNT(*) as play_count
             FROM minigame_play_log
+            WHERE played_at >= ${oneMonthAgo.toISOString()}
             GROUP BY game_id
             ORDER BY play_count DESC
             LIMIT ${limit}
