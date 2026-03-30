@@ -74,7 +74,7 @@
             url: '/minigames/start/train-tracks',
             accentColor: '#78716c',
             releasedAt: '2026-03-12',
-            forceNew: true
+            forceNew: false
         },
         {
             id: '2048',

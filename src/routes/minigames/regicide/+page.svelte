@@ -136,12 +136,14 @@
 				/>
 
 				<div class="bottom-bar">
-					<JesterPanel
-						jestersRemaining={game.jestersRemaining}
-						jestersUsed={game.jestersUsed}
-						canUse={game.turnPhase === 'select_cards' && game.jestersRemaining > 0 && game.gamePhase === 'playing'}
-						onFlip={game.flipJester}
-					/>
+					<div class="bottom-row">
+						<JesterPanel
+							jestersRemaining={game.jestersRemaining}
+							jestersUsed={game.jestersUsed}
+							canUse={game.turnPhase === 'select_cards' && game.jestersRemaining > 0 && game.gamePhase === 'playing'}
+							onFlip={game.flipJester}
+						/>
+					</div>
 					<CombatLog entries={game.combatLog} />
 				</div>
 			</div>
@@ -389,11 +391,16 @@
 	.bottom-bar {
 		flex-shrink: 0;
 		display: flex;
-		align-items: flex-start;
-		gap: 0.5rem;
-		padding: 0.5rem 0;
+		flex-direction: column;
+		gap: 4px;
+		padding: 4px 0;
 		width: 100%;
-		max-height: 120px;
+	}
+
+	.bottom-row {
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
 	}
 
 	/* ─── Modals ─── */

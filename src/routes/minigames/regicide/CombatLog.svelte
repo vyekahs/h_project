@@ -3,15 +3,14 @@
 
 	let { entries }: { entries: CombatLogEntry[] } = $props();
 
-	let expanded = $state(false);
+	let showAll = $state(false);
 	let scrollEl = $state<HTMLDivElement | null>(null);
 
-	const visibleEntries = $derived(expanded ? entries : entries.slice(-4));
-	const hasMore = $derived(entries.length > 4);
+	// Show last 3 in compact, all when expanded
+	const visibleEntries = $derived(showAll ? entries : entries.slice(-3));
 
-	// Auto-scroll to bottom when new entries arrive
+	// Auto-scroll to bottom
 	$effect(() => {
-		// Access entries.length to track changes
 		void entries.length;
 		const el = scrollEl;
 		if (el) {
@@ -34,37 +33,29 @@
 	};
 
 	const iconMap: Record<CombatLogEntry['type'], string> = {
-		play: '\u25B6',
-		power: '\u2728',
-		damage: '\u2694',
-		enemy_attack: '\u{1F6E1}',
-		discard: '\u21A9',
-		defeat: '\u{1F480}',
-		jester: '\u{1F0CF}',
-		draw: '\u{1F4E5}',
-		heal: '\u{1F49A}'
+		play: '▶',
+		power: '✨',
+		damage: '⚔',
+		enemy_attack: '🛡',
+		discard: '↩',
+		defeat: '💀',
+		jester: '🃏',
+		draw: '📥',
+		heal: '💚'
 	};
 </script>
 
-<div class="combat-log">
-	<div class="log-header">
+<div class="combat-log" class:expanded={showAll}>
+	<button class="log-toggle" onclick={() => (showAll = !showAll)}>
 		<span class="log-title">전투 기록</span>
-		{#if hasMore}
-			<button class="toggle-btn" onclick={() => (expanded = !expanded)}>
-				{expanded ? '접기' : '더보기'}
-			</button>
-		{/if}
-	</div>
+		<span class="toggle-icon">{showAll ? '▼' : '▲'}</span>
+	</button>
 
-	<div
-		bind:this={scrollEl}
-		class="log-entries"
-		class:expanded
-	>
+	<div bind:this={scrollEl} class="log-entries">
 		{#if visibleEntries.length === 0}
 			<div class="empty">전투 기록이 없습니다</div>
 		{:else}
-			{#each visibleEntries as entry, i (expanded ? i : entries.length - visibleEntries.length + i)}
+			{#each visibleEntries as entry, i (showAll ? i : entries.length - visibleEntries.length + i)}
 				<div class="log-entry" style:color={colorMap[entry.type]}>
 					<span class="entry-icon">{iconMap[entry.type]}</span>
 					<span class="entry-message">{entry.message}</span>
@@ -76,92 +67,82 @@
 
 <style>
 	.combat-log {
-		flex: 1;
-		min-width: 0;
+		width: 100%;
 		background: var(--bg-surface);
 		border: 1px solid var(--border-primary);
-		border-radius: 12px;
-		padding: 0.4rem 0.5rem;
-		display: flex;
-		flex-direction: column;
+		border-radius: 10px;
+		overflow: hidden;
 	}
 
-	.log-header {
+	.log-toggle {
+		width: 100%;
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
-		margin-bottom: 0.25rem;
-		flex-shrink: 0;
-	}
-
-	.log-title {
-		font-size: 0.7rem;
-		font-weight: 600;
-		color: var(--text-tertiary);
-		text-transform: uppercase;
-		letter-spacing: 0.03em;
-	}
-
-	.toggle-btn {
-		font-size: 0.65rem;
-		font-weight: 600;
-		color: var(--color-blue);
+		padding: 6px 10px;
 		background: none;
 		border: none;
 		cursor: pointer;
-		padding: 0.15rem 0.3rem;
-		border-radius: 4px;
-		transition: background 0.15s;
+		-webkit-tap-highlight-color: transparent;
 	}
 
-	.toggle-btn:active {
+	.log-toggle:active {
 		background: var(--bg-hover);
+	}
+
+	.log-title {
+		font-size: 11px;
+		font-weight: 600;
+		color: var(--text-tertiary);
+	}
+
+	.toggle-icon {
+		font-size: 10px;
+		color: var(--text-tertiary);
 	}
 
 	.log-entries {
 		overflow-y: auto;
-		max-height: 72px;
+		max-height: 56px;
 		scrollbar-width: none;
-		display: flex;
-		flex-direction: column;
-		gap: 1px;
+		padding: 0 10px 6px;
 	}
 
 	.log-entries::-webkit-scrollbar {
 		display: none;
 	}
 
-	.log-entries.expanded {
-		max-height: 80px;
+	.combat-log.expanded .log-entries {
+		max-height: 200px;
 	}
 
 	.empty {
-		font-size: 0.7rem;
+		font-size: 11px;
 		color: var(--text-tertiary);
 		text-align: center;
-		padding: 0.5rem 0;
+		padding: 4px 0;
 	}
 
 	.log-entry {
 		display: flex;
-		align-items: baseline;
-		gap: 0.3rem;
-		font-size: 0.72rem;
-		line-height: 1.4;
-		padding: 0.1rem 0;
+		align-items: flex-start;
+		gap: 4px;
+		font-size: 11px;
+		line-height: 1.5;
+		padding: 1px 0;
 	}
 
 	.entry-icon {
 		flex-shrink: 0;
-		font-size: 0.65rem;
-		width: 1rem;
+		font-size: 10px;
+		width: 14px;
 		text-align: center;
+		padding-top: 2px;
 	}
 
 	.entry-message {
 		min-width: 0;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
+		word-break: keep-all;
+		overflow-wrap: break-word;
 	}
 </style>
