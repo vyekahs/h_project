@@ -2,7 +2,7 @@ import { GAME_CONFIG } from '$lib/config';
 import { getRandomLevel, parseLevel } from '$lib/games/unblock-me/levels';
 import type { Block, UnblockLevel } from '$lib/games/unblock-me/levels';
 import { goto } from '$app/navigation';
-import { formatTime } from '$lib/games/utils';
+import { formatTime, trackGameStart } from '$lib/games/utils';
 import { rankUpStore } from '$lib/stores/rankUpStore.svelte';
 
 export type GameState = 'start' | 'playing' | 'paused' | 'finished';
@@ -133,6 +133,7 @@ export function createUnblockMeGame() {
 
     // Game flow
     function startGame() {
+        trackGameStart('unblock-me', difficulty);
         localStorage.removeItem('unblockme_save');
             const level = getRandomLevel(difficulty);
             currentLevel = level;

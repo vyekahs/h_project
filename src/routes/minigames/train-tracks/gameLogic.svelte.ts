@@ -3,7 +3,7 @@ import { generateLevel, validateRowColCounts, checkWin } from '$lib/games/train-
 import type { Cell, Difficulty, ToolType } from '$lib/games/train-tracks/types';
 import { toolToTrack, DIFFICULTY_CONFIG } from '$lib/games/train-tracks/types';
 import { goto } from '$app/navigation';
-import { formatTime } from '$lib/games/utils';
+import { formatTime, trackGameStart } from '$lib/games/utils';
 import { rankUpStore } from '$lib/stores/rankUpStore.svelte';
 
 export type GameState = 'start' | 'playing' | 'paused' | 'finished';
@@ -251,6 +251,7 @@ export function createTrainTracksGame() {
 
 	// Game flow
 	function startGame() {
+		trackGameStart('train-tracks', difficulty);
 		localStorage.removeItem('train_tracks_save');
 		const level = generateLevel(difficulty);
 		grid = level.grid;

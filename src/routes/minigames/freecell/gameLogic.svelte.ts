@@ -16,7 +16,7 @@ import {
 import type { FreecellState, Location, MoveAction, Card } from '$lib/games/freecell/types';
 import { locationsEqual } from '$lib/games/freecell/types';
 import { SEEDS } from '$lib/games/freecell/seeds';
-import { formatTime } from '$lib/games/utils';
+import { formatTime, trackGameStart } from '$lib/games/utils';
 import { rankUpStore } from '$lib/stores/rankUpStore.svelte';
 
 export type GameState = 'start' | 'playing' | 'paused' | 'finished';
@@ -178,6 +178,7 @@ export function createFreecellGame() {
 
 	async function startGame(diff?: string) {
 		if (diff) difficulty = diff;
+		trackGameStart('freecell', difficulty);
 		localStorage.removeItem('freecell_save');
 
 		seed = pickSeed(difficulty);

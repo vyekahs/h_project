@@ -2,7 +2,7 @@ import { GAME_CONFIG } from '$lib/config';
 import { generateLevel, canPour, pourWater, checkWin, isStuck, isEffectivelyStuck } from '$lib/games/water-sort/levels';
 import { TUBE_CAPACITY, type Tube, type Difficulty } from '$lib/games/water-sort/types';
 import { goto } from '$app/navigation';
-import { formatTime } from '$lib/games/utils';
+import { formatTime, trackGameStart } from '$lib/games/utils';
 import { browser } from '$app/environment';
 import { rankUpStore } from '$lib/stores/rankUpStore.svelte';
 
@@ -188,6 +188,7 @@ export function createWaterSortGame() {
 
 	// Game flow
 	function startGame() {
+		trackGameStart('water-sort', difficulty);
 		localStorage.removeItem('watersort_save');
 		const level = generateLevel(difficulty);
 		tubes = level.tubes;

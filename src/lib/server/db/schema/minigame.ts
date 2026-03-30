@@ -31,6 +31,7 @@ export const minigamePlayLog = pgTable('minigame_play_log', {
 	score: integer('score'),
 	clearTime: integer('clear_time'),
 	playedAt: timestamp('played_at').defaultNow(),
+	type: varchar('type', { length: 10 }).default('clear'),
 });
 
 export const minigameMonthlyRankings = pgTable('minigame_monthly_rankings', {

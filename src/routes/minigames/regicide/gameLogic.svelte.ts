@@ -19,7 +19,7 @@ import {
 } from '$lib/games/regicide/gameLogic';
 import type { Card, Enemy, Suit, GamePhase, TurnPhase, VictoryTier, CombatLogEntry } from '$lib/games/regicide/types';
 import { SUIT_POWER_NAME, SUIT_NAME_KO, cardToString, getCardValue } from '$lib/games/regicide/types';
-import { formatTime } from '$lib/games/utils';
+import { formatTime, trackGameStart } from '$lib/games/utils';
 import { rankUpStore } from '$lib/stores/rankUpStore.svelte';
 import { TUTORIAL_SCENARIO } from '$lib/games/regicide/tutorial/tutorialScenarios';
 import type { TutorialStep, TutorialGameState } from '$lib/games/regicide/tutorial/tutorialTypes';
@@ -223,6 +223,7 @@ export function createRegicideGame() {
 
 	function startGame(diff?: string) {
 		if (diff) difficulty = diff;
+		trackGameStart('regicide', difficulty);
 		localStorage.removeItem('regicide_save');
 
 		const gs = initGame();

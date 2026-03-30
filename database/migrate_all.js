@@ -341,6 +341,11 @@ async function migrate() {
         `);
         await pool.query('CREATE INDEX IF NOT EXISTS idx_wtp_participants_post ON want_to_play_participants(post_id);');
 
+        // 30. Minigame play log type (시작/클리어 구분)
+        console.log('[30] Adding type column to minigame_play_log...');
+        await pool.query("ALTER TABLE minigame_play_log ADD COLUMN IF NOT EXISTS type VARCHAR(10) DEFAULT 'clear';");
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_play_log_type_game ON minigame_play_log(game_id, type);');
+
     } catch (err) {
         console.error('Migration failed:', err);
         process.exit(1);

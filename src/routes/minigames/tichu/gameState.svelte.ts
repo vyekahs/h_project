@@ -9,6 +9,7 @@ import { TutorialEngine } from '$lib/games/tichu/tutorial/tutorialEngine';
 import { getLessonById, LESSONS } from '$lib/games/tichu/tutorial/tutorialScenarios';
 import type { TutorialStep } from '$lib/games/tichu/tutorial/tutorialTypes';
 import { getPhoenixSubstituteRank } from '$lib/games/tichu/combinations';
+import { trackGameStart } from '$lib/games/utils';
 
 export type GameView = 'setup' | 'game' | 'tutorial';
 export type ToastType = 'info' | 'success' | 'error' | 'warning';
@@ -293,6 +294,7 @@ export function createTichuGameState() {
 	// ===== Game Lifecycle =====
 
 	function startGame() {
+		trackGameStart('tichu', 'classic');
 		if (engine) {
 			engine.destroy();
 		}

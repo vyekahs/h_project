@@ -1,7 +1,7 @@
 import { GAME_CONFIG } from '$lib/config';
 import { createBoard, cloneBoard, move, canMove, getMaxTile } from '$lib/games/2048/gameLogic';
 import type { Board, Direction, MoveResult } from '$lib/games/2048/types';
-import { formatTime } from '$lib/games/utils';
+import { formatTime, trackGameStart } from '$lib/games/utils';
 import { rankUpStore } from '$lib/stores/rankUpStore.svelte';
 
 export type GameState = 'start' | 'playing' | 'paused' | 'finished';
@@ -133,6 +133,7 @@ export function create2048Game() {
 
 	// Game flow
 	function startGame() {
+		trackGameStart('2048', 'classic');
 		localStorage.removeItem('2048_save');
 		board = createBoard();
 		moveCount = 0;

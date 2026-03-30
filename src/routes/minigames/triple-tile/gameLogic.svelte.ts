@@ -9,7 +9,7 @@ import {
 } from '$lib/games/triple-tile/tileLogic';
 import { DIFFICULTY_CONFIG, type Difficulty, type Tile } from '$lib/games/triple-tile/types';
 import { goto } from '$app/navigation';
-import { formatTime } from '$lib/games/utils';
+import { formatTime, trackGameStart } from '$lib/games/utils';
 import { rankUpStore } from '$lib/stores/rankUpStore.svelte';
 
 export type GameState = 'start' | 'playing' | 'paused' | 'finished';
@@ -195,6 +195,7 @@ export function createTripleTileGame() {
 
 	// Game flow
 	function startGame() {
+		trackGameStart('triple-tile', difficulty);
 		localStorage.removeItem('triple_tile_save');
 		const config = DIFFICULTY_CONFIG[difficulty];
 

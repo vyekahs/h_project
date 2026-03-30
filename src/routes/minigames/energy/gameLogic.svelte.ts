@@ -2,7 +2,7 @@ import { GAME_CONFIG } from '$lib/config';
 import { generateLevel, computePoweredTiles, checkWin } from '$lib/games/energy/levels';
 import type { Tile, Difficulty } from '$lib/games/energy/types';
 import { goto } from '$app/navigation';
-import { formatTime } from '$lib/games/utils';
+import { formatTime, trackGameStart } from '$lib/games/utils';
 import { browser } from '$app/environment';
 import { rankUpStore } from '$lib/stores/rankUpStore.svelte';
 
@@ -185,6 +185,7 @@ export function createEnergyGame() {
 
 	// Game flow
 	function startGame(force = false) {
+		trackGameStart('energy', difficulty);
 		showTutorial = false;
 		showGuide = false;
 		localStorage.removeItem('energy_save');

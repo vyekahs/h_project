@@ -3,7 +3,7 @@ import { generateKillerSudoku, getCageErrors, findCageForCell, type Cage } from 
 import { goto } from '$app/navigation';
 import { browser } from '$app/environment';
 import { GAME_CONFIG } from '$lib/config';
-import { formatTime } from '$lib/games/utils';
+import { formatTime, trackGameStart } from '$lib/games/utils';
 import { rankUpStore } from '$lib/stores/rankUpStore.svelte';
 
 export type GameState = 'start' | 'playing' | 'paused' | 'finished';
@@ -157,6 +157,7 @@ export function createKillerSudokuGame() {
     }
 
     async function startGame(force = false) {
+        trackGameStart('killer-sudoku', difficulty);
         showTutorial = false;
         showGuide = false;
 

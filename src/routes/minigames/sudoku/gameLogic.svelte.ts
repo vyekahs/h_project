@@ -3,7 +3,7 @@ import { generateKillerSudoku, type Cage, getCageErrors } from '$lib/games/sudok
 import { goto } from '$app/navigation';
 import { browser } from '$app/environment';
 import { GAME_CONFIG } from '$lib/config';
-import { formatTime } from '$lib/games/utils';
+import { formatTime, trackGameStart } from '$lib/games/utils';
 import { rankUpStore } from '$lib/stores/rankUpStore.svelte';
 
 export type GameState = 'start' | 'playing' | 'paused' | 'finished';
@@ -179,6 +179,7 @@ export function createSudokuGame() {
     }
 
     async function startGame(force = false) {
+        trackGameStart('sudoku', difficulty);
         // Play Count (Only for new games)
             if (force || !hasSavedGame) {
                 if (browser) {
