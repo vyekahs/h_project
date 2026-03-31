@@ -158,11 +158,19 @@ async function migrate() {
                 id SERIAL PRIMARY KEY,
                 party_id INTEGER REFERENCES game_parties(id) ON DELETE CASCADE,
                 attendee_id INTEGER REFERENCES attendees(id) ON DELETE CASCADE,
+                status VARCHAR(20) NOT NULL DEFAULT 'pending',
                 UNIQUE(party_id, attendee_id)
             );
         `);
         await pool.query('CREATE INDEX IF NOT EXISTS idx_game_parties_owner ON game_parties(owner_id);');
         await pool.query('CREATE INDEX IF NOT EXISTS idx_game_party_members_party ON game_party_members(party_id);');
+        // status 컬럼 추가 후, 기존 멤버(status 미설정) backfill
+        const colCheck = await pool.query(`SELECT 1 FROM information_schema.columns WHERE table_name='game_party_members' AND column_name='status'`);
+        if (colCheck.rows.length === 0) {
+            await pool.query('ALTER TABLE game_party_members ADD COLUMN status VARCHAR(20) NOT NULL DEFAULT \'pending\'');
+            await pool.query(`UPDATE game_party_members SET status = 'accepted'`);
+            console.log('  → Added status column and backfilled existing members as accepted');
+        }
 
         // 16. Party-linked game sessions (고정팟 전용 게임)
         console.log('[16] Checking party_id on game_sessions...');

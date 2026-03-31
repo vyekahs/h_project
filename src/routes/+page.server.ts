@@ -90,14 +90,14 @@ export const load: PageServerLoad = async ({ locals }) => {
                             'id', a.id, 'name', a.name
                         ) ORDER BY a.name) FILTER (WHERE a.id IS NOT NULL), '[]') as members
                     FROM game_parties gp
-                    LEFT JOIN game_party_members gpm ON gp.id = gpm.party_id
+                    LEFT JOIN game_party_members gpm ON gp.id = gpm.party_id AND gpm.status = 'accepted'
                     LEFT JOIN attendees a ON gpm.attendee_id = a.id
                     LEFT JOIN games g ON gp.game_id = g.id
                     WHERE gp.owner_id = ${user.id}
                     GROUP BY gp.id, gp.name, gp.game_id, gp.game_name, gp.duration, gp.guest_count, g.image_url, g.name
                     ORDER BY gp.updated_at DESC
                 `),
-                db.execute(sql`SELECT party_id FROM game_party_members WHERE attendee_id = ${user.id}`),
+                db.execute(sql`SELECT party_id FROM game_party_members WHERE attendee_id = ${user.id} AND status = 'accepted'`),
                 db.execute(sql`SELECT id FROM daily_visit_plans WHERE attendee_id = ${user.id} AND plan_date = CURRENT_DATE`),
             ]);
 

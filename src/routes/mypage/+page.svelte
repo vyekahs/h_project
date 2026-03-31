@@ -513,6 +513,41 @@
 
         {#if activeTab === 'parties'}
             <div class="tab-content">
+                {#if data.pendingInvitations && data.pendingInvitations.length > 0}
+                    <div class="invitation-section">
+                        <h4 class="invitation-title">받은 초대</h4>
+                        {#each data.pendingInvitations as invite}
+                            <div class="invitation-card">
+                                <div class="invite-info">
+                                    <strong>{invite.party_name}</strong>
+                                    {#if invite.game_name || invite.resolved_game_name}
+                                        <span class="party-game-label">{invite.game_name || invite.resolved_game_name}</span>
+                                    {/if}
+                                    <span class="invite-from">{invite.owner_name}님의 초대</span>
+                                </div>
+                                <div class="invite-actions">
+                                    <form method="POST" action="?/acceptInvite" use:enhance={() => {
+                                        return async ({ result, update }) => {
+                                            if (result.type === 'success') await update();
+                                        };
+                                    }}>
+                                        <input type="hidden" name="partyId" value={invite.party_id} />
+                                        <button type="submit" class="btn-accept">수락</button>
+                                    </form>
+                                    <form method="POST" action="?/declineInvite" use:enhance={() => {
+                                        return async ({ result, update }) => {
+                                            if (result.type === 'success') await update();
+                                        };
+                                    }}>
+                                        <input type="hidden" name="partyId" value={invite.party_id} />
+                                        <button type="submit" class="btn-decline">거절</button>
+                                    </form>
+                                </div>
+                            </div>
+                        {/each}
+                    </div>
+                {/if}
+
                 <div class="parties-section">
                     <div class="section-header">
                         <h3>고정팟 관리</h3>
@@ -540,7 +575,14 @@
                                         </div>
                                         <div class="party-member-tags">
                                             {#each party.members as member}
-                                                <span class="member-tag">{member.name}</span>
+                                                <span class="member-tag" class:member-pending={party.is_owner && member.status === 'pending'} class:member-declined={party.is_owner && member.status === 'declined'}>
+                                                    {member.name}
+                                                    {#if party.is_owner && member.status === 'pending'}
+                                                        <span class="status-badge pending">대기</span>
+                                                    {:else if party.is_owner && member.status === 'declined'}
+                                                        <span class="status-badge declined">거절</span>
+                                                    {/if}
+                                                </span>
                                             {/each}
                                         </div>
                                     </div>
@@ -861,7 +903,7 @@
                 </div>
 
                 <div class="form-group">
-                    <span class="label-heading">멤버 선택 <span class="member-hint">함께 플레이한 사람만 표시됩니다</span></span>
+                    <span class="label-heading">초대할 멤버 선택 <span class="member-hint">함께 플레이한 사람만 표시됩니다</span></span>
                     <div class="member-select-list">
                         {#each (data.allAttendees || []) as attendee}
                             <label class="member-checkbox" class:owner={data.user && attendee.id === data.user.id}>
@@ -1950,5 +1992,88 @@
         font-size: 0.75rem;
         color: var(--text-hint);
         font-weight: 400;
+    }
+
+    /* Invitation Section */
+    .invitation-section {
+        margin-bottom: 1.2rem;
+    }
+    .invitation-title {
+        font-size: 0.95rem;
+        font-weight: 700;
+        margin-bottom: 0.6rem;
+        color: var(--text-dark);
+    }
+    .invitation-card {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.8rem;
+        padding: 0.7rem 0.9rem;
+        background: var(--bg-secondary);
+        border-radius: 8px;
+        margin-bottom: 0.5rem;
+    }
+    .invite-info {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.4rem;
+        font-size: 0.88rem;
+    }
+    .invite-from {
+        font-size: 0.78rem;
+        color: var(--text-tertiary);
+    }
+    .invite-actions {
+        display: flex;
+        gap: 0.4rem;
+        flex-shrink: 0;
+    }
+    .btn-accept, .btn-decline {
+        border: none;
+        padding: 0.3rem 0.7rem;
+        border-radius: 6px;
+        font-size: 0.8rem;
+        font-weight: 600;
+        cursor: pointer;
+    }
+    .btn-accept {
+        background: var(--color-success-bg);
+        color: var(--color-green-dark);
+    }
+    .btn-accept:hover {
+        opacity: 0.85;
+    }
+    .btn-decline {
+        background: var(--bg-tertiary);
+        color: var(--text-secondary);
+    }
+    .btn-decline:hover {
+        opacity: 0.85;
+    }
+
+    /* Member Status Badges */
+    .member-tag.member-pending {
+        opacity: 0.65;
+    }
+    .member-tag.member-declined {
+        opacity: 0.45;
+        text-decoration: line-through;
+    }
+    .status-badge {
+        font-size: 0.65rem;
+        padding: 0.1rem 0.3rem;
+        border-radius: 3px;
+        font-weight: 600;
+        margin-left: 0.15rem;
+    }
+    .status-badge.pending {
+        background: var(--color-warning-bg);
+        color: var(--color-yellow-dark);
+    }
+    .status-badge.declined {
+        background: var(--bg-tertiary);
+        color: var(--text-tertiary);
     }
 </style>

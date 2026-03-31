@@ -22,7 +22,7 @@ export const load: PageServerLoad = async ({ parent, params }) => {
 				'id', a.id, 'name', a.name
 			) ORDER BY a.name) FILTER (WHERE a.id IS NOT NULL), '[]') as members
 		FROM game_parties gp
-		LEFT JOIN game_party_members gpm ON gp.id = gpm.party_id
+		LEFT JOIN game_party_members gpm ON gp.id = gpm.party_id AND gpm.status = 'accepted'
 		LEFT JOIN attendees a ON gpm.attendee_id = a.id
 		WHERE gp.id = ${partyId}
 		GROUP BY gp.id, gp.name

@@ -3,6 +3,7 @@ import { sql } from 'drizzle-orm';
 import { verifyAttendeeSession } from '$lib/server/auth';
 import { removeFromIrkCache } from '$lib/server/ble';
 import { PartyService } from '$lib/server/services/partyService';
+import { NotificationService } from '$lib/server/services/notificationService';
 import type { PageServerLoad, Actions } from './$types';
 import { redirect, fail } from '@sveltejs/kit';
 
@@ -50,7 +51,7 @@ export const load: PageServerLoad = async ({ parent }) => {
     const stats = statsResult[0] as any;
 
     // Fetch Registered Devices & Parties & All Attendees & All Games
-    const [devicesResult, parties, allAttendeesResult, allGamesResult] = await Promise.all([
+    const [devicesResult, parties, allAttendeesResult, allGamesResult, pendingInvitations] = await Promise.all([
         db.execute(sql`SELECT id, name, created_at, last_seen_at FROM user_devices WHERE attendee_id = ${user.id} ORDER BY created_at DESC`),
         PartyService.getUserParties(user.id).catch(() => []),
         db.execute(sql`
@@ -68,7 +69,8 @@ export const load: PageServerLoad = async ({ parent }) => {
                )
             ORDER BY a.name ASC
         `),
-        db.execute(sql`SELECT id, name, playtime_min, image_url FROM games ORDER BY name ASC`)
+        db.execute(sql`SELECT id, name, playtime_min, image_url FROM games ORDER BY name ASC`),
+        PartyService.getPendingInvitations(user.id).catch(() => [])
     ]);
     // Trigger Title Check (Background)
     try {
@@ -84,7 +86,8 @@ export const load: PageServerLoad = async ({ parent }) => {
         devices: devicesResult as any[],
         parties: parties as any[],
         allAttendees: allAttendeesResult as any[],
-        allGames: allGamesResult as any[]
+        allGames: allGamesResult as any[],
+        pendingInvitations: pendingInvitations as any[]
     };
 };
 
@@ -106,7 +109,16 @@ export const actions: Actions = {
         if (!partyName) return fail(400, { error: '팟 이름을 입력해주세요.' });
 
         try {
-            await PartyService.createParty(user.id, { name: partyName, gameId, gameName, duration, guestCount, memberIds });
+            const { partyId, inviteeIds } = await PartyService.createParty(user.id, { name: partyName, gameId, gameName, duration, guestCount, memberIds });
+            // 초대 알림 발송 (non-blocking)
+            for (const inviteeId of inviteeIds) {
+                NotificationService.notify(inviteeId, {
+                    type: 'party_invite',
+                    title: '고정팟 초대',
+                    body: `${user.name}님이 '${partyName}' 고정팟에 초대했습니다`,
+                    url: '/mypage?tab=parties'
+                }, user.id, `party_invite:${partyId}`).catch(console.error);
+            }
             return { success: true };
         } catch (e: any) {
             return fail(500, { error: e.message || '고정팟 생성에 실패했습니다.' });
@@ -131,7 +143,16 @@ export const actions: Actions = {
         if (!partyId || !partyName) return fail(400, { error: '필수 정보가 누락되었습니다.' });
 
         try {
-            await PartyService.updateParty(user.id, partyId, { name: partyName, gameId, gameName, duration, guestCount, memberIds });
+            const { newInviteeIds } = await PartyService.updateParty(user.id, partyId, { name: partyName, gameId, gameName, duration, guestCount, memberIds });
+            // 새로 초대된 멤버에게 알림 발송 (non-blocking)
+            for (const inviteeId of newInviteeIds) {
+                NotificationService.notify(inviteeId, {
+                    type: 'party_invite',
+                    title: '고정팟 초대',
+                    body: `${user.name}님이 '${partyName}' 고정팟에 초대했습니다`,
+                    url: '/mypage?tab=parties'
+                }, user.id, `party_invite:${partyId}`).catch(console.error);
+            }
             return { success: true };
         } catch (e: any) {
             if (e.message === 'Not authorized') return fail(403, { error: '권한이 없습니다.' });
@@ -155,6 +176,44 @@ export const actions: Actions = {
             return { success: true };
         } catch (e: any) {
             return fail(500, { error: e.message || '고정팟 삭제에 실패했습니다.' });
+        }
+    },
+
+    acceptInvite: async ({ request, cookies }) => {
+        const userSessionToken = cookies.get('user_session');
+        if (!userSessionToken) return fail(401, { error: '로그인이 필요합니다.' });
+        const user = await verifyAttendeeSession(userSessionToken);
+        if (!user) return fail(401, { error: '로그인이 필요합니다.' });
+
+        const data = await request.formData();
+        const partyId = parseInt(data.get('partyId')?.toString() || '0');
+        if (!partyId) return fail(400, { error: '잘못된 요청입니다.' });
+
+        try {
+            const accepted = await PartyService.acceptInvite(partyId, user.id);
+            if (!accepted) return fail(404, { error: '초대를 찾을 수 없습니다.' });
+            return { success: true };
+        } catch (e: any) {
+            return fail(500, { error: e.message || '초대 수락에 실패했습니다.' });
+        }
+    },
+
+    declineInvite: async ({ request, cookies }) => {
+        const userSessionToken = cookies.get('user_session');
+        if (!userSessionToken) return fail(401, { error: '로그인이 필요합니다.' });
+        const user = await verifyAttendeeSession(userSessionToken);
+        if (!user) return fail(401, { error: '로그인이 필요합니다.' });
+
+        const data = await request.formData();
+        const partyId = parseInt(data.get('partyId')?.toString() || '0');
+        if (!partyId) return fail(400, { error: '잘못된 요청입니다.' });
+
+        try {
+            const declined = await PartyService.declineInvite(partyId, user.id);
+            if (!declined) return fail(404, { error: '초대를 찾을 수 없습니다.' });
+            return { success: true };
+        } catch (e: any) {
+            return fail(500, { error: e.message || '초대 거절에 실패했습니다.' });
         }
     },
 

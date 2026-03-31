@@ -15,6 +15,7 @@
         { key: 'wtp_join', label: '같이하기 참여 알림', desc: '내가 올린 같이하기 글에 다른 사람이 참여할 때 알림을 받습니다' },
         { key: 'wtp_message', label: '같이하기 대화 알림', desc: '같이하기 대화방에 새 메시지가 올 때 알림을 받습니다' },
         { key: 'party_message', label: '고정팟 대화 알림', desc: '고정팟 대화방에 새 메시지가 올 때 알림을 받습니다' },
+        { key: 'party_invite', label: '고정팟 초대 알림', desc: '고정팟에 초대될 때 알림을 받습니다' },
     ] as const;
 
     let notifPrefs = $state<Record<string, boolean>>({
@@ -25,6 +26,7 @@
         wtp_join: false,
         wtp_message: true,
         party_message: true,
+        party_invite: true,
     });
     let prefsLoaded = $state(false);
 

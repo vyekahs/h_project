@@ -18,6 +18,7 @@ export const gamePartyMembers = pgTable('game_party_members', {
 	id: serial('id').primaryKey(),
 	partyId: integer('party_id').references(() => gameParties.id, { onDelete: 'cascade' }),
 	attendeeId: integer('attendee_id').references(() => attendees.id, { onDelete: 'cascade' }),
+	status: varchar('status', { length: 20 }).default('pending').notNull(),
 }, (table) => [
 	unique().on(table.partyId, table.attendeeId),
 ]);

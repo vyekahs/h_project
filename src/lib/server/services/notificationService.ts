@@ -18,7 +18,7 @@ class SSENotificationChannel implements NotificationChannel {
 const channels: NotificationChannel[] = [new SSENotificationChannel(), new PushNotificationChannel()];
 
 // mention은 기존 호환: 행 없으면 ON. 나머지 새 알림은 행 없으면 OFF.
-const DEFAULT_ON_TYPES = ['mention', 'wtp_message', 'party_message'];
+const DEFAULT_ON_TYPES = ['mention', 'wtp_message', 'party_message', 'party_invite'];
 
 export const NotificationService = {
 	async notify(userId: number, payload: NotificationPayload, fromUserId?: number, referenceId?: string) {
@@ -143,6 +143,7 @@ export const NotificationService = {
 			wtp_join: false,
 			wtp_message: true,
 			party_message: true,
+			party_invite: true,
 		};
 		for (const row of res as any[]) {
 			prefs[row.notification_type] = row.enabled;
