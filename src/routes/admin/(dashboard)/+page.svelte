@@ -111,6 +111,18 @@
         selectedParticipantId = '';
     }
 
+    function refreshSelectedScheduledGame() {
+        if (!selectedScheduledGame) return;
+        const updated = (data.scheduledGames as GameSession[])?.find(g => g.id === selectedScheduledGame!.id);
+        selectedScheduledGame = updated ?? null;
+    }
+
+    function refreshSelectedPlayingGame() {
+        if (!selectedPlayingGame) return;
+        const updated = (data.games as GameSession[])?.find(g => g.id === selectedPlayingGame!.id);
+        selectedPlayingGame = updated ?? null;
+    }
+
     function selectParticipant(user: any) {
         selectedParticipantId = String(user.id);
         participantSearch = user.name;
@@ -1037,6 +1049,7 @@
                         if (result.type === 'failure') showAlert((result as any).data?.error || '오류');
                         resetParticipantSearch();
                         await update();
+                        refreshSelectedScheduledGame();
                     };
                 }} class="detail-form-row">
                     <input type="hidden" name="sessionId" value={g.id} />
@@ -1057,18 +1070,44 @@
                     </div>
                     <button type="submit" class="btn-mini">추가</button>
                 </form>
-                <form method="POST" action="?/addGuestToGame" use:enhance class="detail-form-row">
+                <form method="POST" action="?/addGuestToGame" use:enhance={() => {
+                    return async ({ result, update }) => {
+                        if (result.type === 'failure') showAlert((result as any).data?.error || '오류');
+                        await update();
+                        refreshSelectedScheduledGame();
+                    };
+                }} class="detail-form-row">
                     <input type="hidden" name="sessionId" value={g.id} />
                     <button type="submit" class="btn-mini btn-guest" style="width:100%;">게스트 추가</button>
                 </form>
                 <hr style="border:none; border-top:1px solid #eee; margin:0.5rem 0;" />
-                <form method="POST" action="?/startScheduledGame" use:enhance class="detail-form-row">
+                <form method="POST" action="?/startScheduledGame" use:enhance={() => {
+                    return async ({ result, update }) => {
+                        if (result.type === 'failure') {
+                            showAlert((result as any).data?.error || '오류');
+                        } else {
+                            selectedScheduledGame = null;
+                            showAlert('게임이 시작되었습니다!');
+                        }
+                        await update();
+                    };
+                }} class="detail-form-row">
                     <input type="hidden" name="sessionId" value={g.id} />
                     <span class="input-label">예상(분):</span>
                     <input type="number" name="duration" value="60" class="duration-input" />
                     <button type="submit" class="btn-primary">게임 시작</button>
                 </form>
-                <form method="POST" action="?/dissolveScheduledGame" use:enhance class="detail-form-row">
+                <form method="POST" action="?/dissolveScheduledGame" use:enhance={() => {
+                    return async ({ result, update }) => {
+                        if (result.type === 'failure') {
+                            showAlert((result as any).data?.error || '오류');
+                        } else {
+                            selectedScheduledGame = null;
+                            showAlert('게임이 폭파되었습니다.');
+                        }
+                        await update();
+                    };
+                }} class="detail-form-row">
                     <input type="hidden" name="sessionId" value={g.id} />
                     <button type="submit" class="btn-delete" style="width:100%;">게임 폭파</button>
                 </form>
@@ -1103,6 +1142,7 @@
                         if (result.type === 'failure') showAlert((result as any).data?.error || '오류');
                         resetParticipantSearch();
                         await update();
+                        refreshSelectedPlayingGame();
                     };
                 }} class="detail-form-row">
                     <input type="hidden" name="sessionId" value={g.id} />
@@ -1123,18 +1163,36 @@
                     </div>
                     <button type="submit" class="btn-mini">추가</button>
                 </form>
-                <form method="POST" action="?/addGuestToGame" use:enhance class="detail-form-row">
+                <form method="POST" action="?/addGuestToGame" use:enhance={() => {
+                    return async ({ result, update }) => {
+                        if (result.type === 'failure') showAlert((result as any).data?.error || '오류');
+                        await update();
+                        refreshSelectedPlayingGame();
+                    };
+                }} class="detail-form-row">
                     <input type="hidden" name="sessionId" value={g.id} />
                     <button type="submit" class="btn-mini btn-guest" style="width:100%;">게스트 추가</button>
                 </form>
                 <hr style="border:none; border-top:1px solid #eee; margin:0.5rem 0;" />
                 <div class="detail-form-row" style="gap:0.5rem;">
-                    <form method="POST" action="?/extendGame" use:enhance style="flex:1;">
+                    <form method="POST" action="?/extendGame" use:enhance={() => {
+                        return async ({ result, update }) => {
+                            if (result.type === 'failure') showAlert((result as any).data?.error || '오류');
+                            await update();
+                            refreshSelectedPlayingGame();
+                        };
+                    }} style="flex:1;">
                         <input type="hidden" name="id" value={g.id} />
                         <input type="hidden" name="minutes" value="10" />
                         <button type="submit" class="btn-extend" style="width:100%;">+10분</button>
                     </form>
-                    <form method="POST" action="?/extendGame" use:enhance style="flex:1;">
+                    <form method="POST" action="?/extendGame" use:enhance={() => {
+                        return async ({ result, update }) => {
+                            if (result.type === 'failure') showAlert((result as any).data?.error || '오류');
+                            await update();
+                            refreshSelectedPlayingGame();
+                        };
+                    }} style="flex:1;">
                         <input type="hidden" name="id" value={g.id} />
                         <input type="hidden" name="minutes" value="30" />
                         <button type="submit" class="btn-extend" style="width:100%;">+30분</button>
