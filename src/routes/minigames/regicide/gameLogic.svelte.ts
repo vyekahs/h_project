@@ -342,9 +342,9 @@ export function createRegicideGame() {
 		currentEnemy = dmgResult.enemy;
 
 		if (powerResult.damageMultiplier > 1) {
-			addLog('damage', `더블 데미지! ${totalDamage} 피해 (${currentEnemy.currentHp} HP 남음)`);
+			addLog('damage', `♣ 더블! ${attackValue}×2 = ${totalDamage} 데미지 (HP: ${currentEnemy.currentHp})`);
 		} else {
-			addLog('damage', `${totalDamage} 피해 (${currentEnemy.currentHp} HP 남음)`);
+			addLog('damage', `${totalDamage} 데미지 (HP: ${currentEnemy.currentHp})`);
 		}
 
 		// Animation: damage hit

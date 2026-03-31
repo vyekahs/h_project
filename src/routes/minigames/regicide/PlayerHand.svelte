@@ -38,6 +38,32 @@
 
 	const hasSelection = $derived(activeIds.size > 0);
 
+	// Dynamic card overlap based on container width
+	const CARD_WIDTH = 60;
+	const CARD_GAP = 4; // minimum gap between cards
+	let containerEl = $state<HTMLDivElement | null>(null);
+	let containerWidth = $state(360);
+
+	$effect(() => {
+		const el = containerEl;
+		if (!el) return;
+		const ro = new ResizeObserver(entries => {
+			containerWidth = entries[0].contentRect.width;
+		});
+		ro.observe(el);
+		return () => ro.disconnect();
+	});
+
+	const cardMargin = $derived(() => {
+		const count = sortedHand.length;
+		if (count <= 1) return 0;
+		const totalNeeded = count * CARD_WIDTH + (count - 1) * CARD_GAP;
+		const available = containerWidth - 8; // padding
+		if (totalNeeded <= available) return CARD_GAP;
+		// overlap = how much each card must shift left
+		return -((totalNeeded - available) / (count - 1));
+	});
+
 	const POWER_LABELS: Record<Suit, { icon: string; label: string; color: string }> = {
 		hearts: { icon: '♥', label: '치유', color: '#ef4444' },
 		diamonds: { icon: '♦', label: '드로우', color: '#3b82f6' },
@@ -112,10 +138,14 @@
 		{/if}
 	{/if}
 
-	<div class="hand-scroll">
-		<div class="hand-row" style:--card-count={sortedHand.length}>
-			{#each sortedHand as card (card.id)}
-				<div class="card-slot" class:selected-discard={mode === 'discard' && (discardIds?.has(card.id) ?? false)}>
+	<div class="hand-scroll" bind:this={containerEl}>
+		<div class="hand-row">
+			{#each sortedHand as card, i (card.id)}
+				<div
+					class="card-slot"
+					class:selected-discard={mode === 'discard' && (discardIds?.has(card.id) ?? false)}
+					style:margin-left="{i === 0 ? 0 : cardMargin()}px"
+				>
 					<Card
 						{card}
 						selected={activeIds.has(card.id)}
@@ -172,37 +202,18 @@
 
 	.hand-scroll {
 		width: 100%;
-		overflow-x: hidden;
-		overflow-y: visible;
-		padding: 16px 4px 4px;
+		overflow: hidden;
+		padding: 12px 4px 4px;
 	}
 
 	.hand-row {
 		display: flex;
 		justify-content: center;
-		padding: 0;
 	}
 
-	/* Card overlap: 60px card width. Available = 100%.
-	   Overlap = max(0, (count * 60 - available) / (count - 1))
-	   Using CSS: each card except first gets negative margin based on card count */
 	.card-slot {
-		transition: margin 0.15s ease;
-		/* Default overlap for small hands (≤5 cards): no overlap */
-		margin-left: 2px;
+		flex-shrink: 0;
 	}
-	.card-slot:first-child {
-		margin-left: 0;
-	}
-
-	/* 6+ cards: progressive overlap to fit screen */
-	.hand-row[style*="--card-count: 6"] .card-slot:not(:first-child) { margin-left: -6px; }
-	.hand-row[style*="--card-count: 7"] .card-slot:not(:first-child) { margin-left: -10px; }
-	.hand-row[style*="--card-count: 8"] .card-slot:not(:first-child) { margin-left: -14px; }
-	.hand-row[style*="--card-count: 9"] .card-slot:not(:first-child) { margin-left: -16px; }
-	.hand-row[style*="--card-count: 10"] .card-slot:not(:first-child) { margin-left: -18px; }
-	.hand-row[style*="--card-count: 11"] .card-slot:not(:first-child) { margin-left: -20px; }
-	.hand-row[style*="--card-count: 12"] .card-slot:not(:first-child) { margin-left: -22px; }
 
 	.card-slot.selected-discard :global(.card.selected) {
 		box-shadow: 0 0 0 2px #ef4444, 0 4px 12px rgba(239, 68, 68, 0.3);

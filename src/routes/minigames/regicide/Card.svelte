@@ -98,24 +98,25 @@
 	}
 
 	.card.compact {
-		width: 48px;
-		height: 67px;
+		width: 32px;
+		height: 44px;
+		border-radius: 4px;
 	}
 
 	.card.compact .rank {
-		font-size: 9px;
+		font-size: 8px;
 	}
 
 	.card.compact .suit-small {
-		font-size: 7px;
+		font-size: 6px;
 	}
 
 	.card.compact .center-suit {
-		font-size: 18px;
+		font-size: 13px;
 	}
 
 	.card.compact .corner {
-		padding: 2px 3px;
+		padding: 1px 2px;
 	}
 
 	/* Face-down card */

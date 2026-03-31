@@ -20,15 +20,6 @@
 	const hpPercent = $derived(Math.max(0, (enemy.currentHp / enemy.maxHp) * 100));
 	const effectiveAttack = $derived(Math.max(0, enemy.attack - enemy.shieldReduction));
 
-	const tierLabel = $derived(() => {
-		const rank = enemy.card.rank;
-		if (rank === 'J') return 'J단계';
-		if (rank === 'Q') return 'Q단계';
-		return 'K단계';
-	});
-
-	const tierProgress = $derived(`${enemiesDefeated}/12`);
-
 	function hpBarColor(pct: number): string {
 		if (pct > 60) return '#22c55e';
 		if (pct > 30) return '#eab308';
@@ -44,10 +35,8 @@
 </script>
 
 <div class="enemy-container">
-	<div class="tier-badge">
-		{tierLabel()} — 처치 {tierProgress}
-	</div>
-
+<div class="enemy-top">
+	<!-- Left: Card -->
 	<div class="enemy-card-area">
 		<div
 			class="enemy-card"
@@ -77,7 +66,7 @@
 		<!-- Defeat badge -->
 		{#if animEvent?.type === 'defeat'}
 			<div class="defeat-badge">
-				{animEvent.exactKill ? '정확 처치!' : '처치!'}
+				{animEvent.exactKill ? '완벽 처치!' : '처치!'}
 			</div>
 		{/if}
 
@@ -105,39 +94,39 @@
 		{/if}
 	</div>
 
-	<div class="hp-section">
-		<div class="hp-bar-track">
-			<div
-				class="hp-bar-fill"
-				style:width="{hpPercent}%"
-				style:background={hpBarColor(hpPercent)}
-			></div>
+	<!-- Right: Stats -->
+	<div class="enemy-stats">
+		<div class="enemy-name" style:color={SUIT_COLOR[enemy.card.suit] === 'red' ? '#dc2626' : '#1e293b'}>
+			{enemy.card.rank}{symbol}
+			<span class="tier-text">처치 {enemiesDefeated}/12</span>
 		</div>
-		<div class="hp-text">
-			HP: {enemy.currentHp} / {enemy.maxHp}
+
+		<div class="stats-row">
+			<span class="stat">⚔️ ATK {enemy.attack}</span>
+			{#if enemy.shieldReduction > 0}
+				<span class="stat shield">🛡️ -{enemy.shieldReduction} = {effectiveAttack}</span>
+			{/if}
+		</div>
+
+		<div class="immune-row">
+			<span class="immune-label">면역</span>
+			<span class="immune-suit" style:color={SUIT_COLOR[enemy.card.suit] === 'red' ? '#dc2626' : '#475569'}>
+				{symbol} {SUIT_NAME_KO[enemy.card.suit]}
+			</span>
 		</div>
 	</div>
-
-	<div class="stats-row">
-		<div class="stat">
-			<span class="stat-icon">⚔️</span>
-			<span class="stat-label">ATK</span>
-			<span class="stat-value">{enemy.attack}</span>
-		</div>
-		{#if enemy.shieldReduction > 0}
-			<div class="stat shield">
-				<span class="stat-icon">🛡️</span>
-				<span class="stat-value">-{enemy.shieldReduction}</span>
-				<span class="stat-effective">= {effectiveAttack}</span>
+	</div>
+	<div class="enemy-bottom">
+		<div class="hp-section">
+			<div class="hp-label">HP {enemy.currentHp}/{enemy.maxHp}</div>
+			<div class="hp-bar-track">
+				<div
+					class="hp-bar-fill"
+					style:width="{hpPercent}%"
+					style:background={hpBarColor(hpPercent)}
+				></div>
 			</div>
-		{/if}
-	</div>
-
-	<div class="immune-row">
-		<span class="immune-label">면역</span>
-		<span class="immune-suit" style:color={SUIT_COLOR[enemy.card.suit] === 'red' ? '#ef4444' : '#475569'}>
-			{symbol} {SUIT_NAME_KO[enemy.card.suit]}
-		</span>
+		</div>
 	</div>
 </div>
 
@@ -146,35 +135,159 @@
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-		gap: 8px;
-		padding: 12px;
+		gap: 2px;
+		padding: 2px 12px;
 		background: var(--bg-surface);
 		border-radius: 12px;
 		border: 1px solid var(--border-primary);
+		width: 100%;
+	}
+	.enemy-top{
+		display: flex;
+		flex-direction: row;
+		align-items: center;
+		gap: 12px;
+		padding: 8px 12px;
+		background: var(--bg-surface);
+		border-radius: 12px;
+		border: 1px solid var(--border-primary);
+		width: 100%;
+	}
+	.enemy-bottom {
+		display: flex;
+		width: 100%;
+		padding: 0 4px;
 	}
 
-	.tier-badge {
-		font-size: 11px;
-		font-weight: 600;
-		color: var(--text-tertiary);
-		background: var(--bg-tertiary);
-		padding: 3px 10px;
-		border-radius: 10px;
-	}
+	/* ─── Card ─── */
 
 	.enemy-card-area {
 		position: relative;
+		flex-shrink: 0;
 	}
 
 	.enemy-card {
-		width: 90px;
-		height: 126px;
+		width: 64px;
+		height: 90px;
 		background: #0f172a;
-		border-radius: 8px;
+		border-radius: 6px;
 		border: 2px solid #334155;
 		position: relative;
 		box-shadow: var(--shadow-lg);
 		transition: border-color 0.3s;
+	}
+
+	.corner {
+		position: absolute;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		line-height: 1;
+		padding: 3px 4px;
+	}
+	.top-left { top: 0; left: 0; }
+	.bottom-right { bottom: 0; right: 0; transform: rotate(180deg); }
+	.rank { font-size: 13px; font-weight: 800; font-family: 'Georgia', serif; }
+	.suit { font-size: 9px; line-height: 1; }
+	.center-suit {
+		position: absolute;
+		top: 50%;
+		left: 50%;
+		transform: translate(-50%, -50%);
+		font-size: 24px;
+		line-height: 1;
+		opacity: 0.9;
+	}
+
+	/* ─── Stats (right side) ─── */
+
+	.enemy-stats {
+		flex: 1;
+		min-width: 0;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 4px;
+	}
+
+	.enemy-name {
+		font-size: 18px;
+		font-weight: 800;
+		color: var(--text-primary);
+		display: flex;
+		align-items: baseline;
+		gap: 6px;
+	}
+
+	.tier-text {
+		font-size: 11px;
+		font-weight: 500;
+		color: var(--text-tertiary);
+	}
+
+	.hp-section {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+		width: 100%;
+	}
+
+	.hp-label {
+		font-size: 12px;
+		font-weight: 700;
+		color: var(--text-primary);
+	}
+
+	.hp-bar-track {
+		width: 100%;
+		height: 10px;
+		background: var(--bg-tertiary);
+		border-radius: 5px;
+		overflow: hidden;
+	}
+
+	.hp-bar-fill {
+		height: 100%;
+		border-radius: 4px;
+		transition: width 0.4s ease, background 0.4s ease;
+	}
+
+	.stats-row {
+		display: flex;
+		gap: 8px;
+		align-items: center;
+	}
+
+	.stat {
+		font-size: 14px;
+		font-weight: 700;
+		color: var(--text-primary);
+	}
+
+	.stat.shield {
+		color: #2563eb;
+	}
+
+	.immune-row {
+		display: flex;
+		align-items: center;
+		gap: 5px;
+		font-size: 13px;
+	}
+
+	.immune-label {
+		color: var(--text-tertiary);
+		font-weight: 600;
+		background: var(--bg-tertiary);
+		padding: 2px 6px;
+		border-radius: 4px;
+		font-size: 12px;
+	}
+
+	.immune-suit {
+		font-weight: 700;
+		font-size: 14px;
 	}
 
 	/* ─── Animations ─── */
@@ -185,11 +298,10 @@
 	}
 	@keyframes shake {
 		0%, 100% { transform: translateX(0); }
-		15% { transform: translateX(-6px) rotate(-1deg); }
-		30% { transform: translateX(5px) rotate(1deg); }
-		45% { transform: translateX(-4px); }
-		60% { transform: translateX(3px); }
-		75% { transform: translateX(-2px); }
+		15% { transform: translateX(-5px) rotate(-1deg); }
+		30% { transform: translateX(4px) rotate(1deg); }
+		45% { transform: translateX(-3px); }
+		60% { transform: translateX(2px); }
 	}
 
 	.enemy-card.defeated {
@@ -204,31 +316,29 @@
 	.enemy-card.enemy-attacking {
 		animation: enemyPulse 0.5s ease;
 		border-color: #f59e0b;
-		box-shadow: 0 0 20px rgba(245, 158, 11, 0.4);
+		box-shadow: 0 0 16px rgba(245, 158, 11, 0.4);
 	}
 	@keyframes enemyPulse {
 		0%, 100% { transform: scale(1); }
-		50% { transform: scale(1.06); }
+		50% { transform: scale(1.05); }
 	}
-
-	/* ─── Overlays ─── */
 
 	.damage-popup {
 		position: absolute;
 		top: 50%;
 		left: 50%;
 		transform: translate(-50%, -50%);
-		font-size: 28px;
+		font-size: 24px;
 		font-weight: 900;
 		color: #ef4444;
-		text-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
+		text-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
 		animation: damageFloat 0.6s ease-out forwards;
 		pointer-events: none;
 		z-index: 10;
 	}
 	.damage-popup.doubled {
 		color: #f59e0b;
-		font-size: 32px;
+		font-size: 28px;
 	}
 	@keyframes damageFloat {
 		0% { transform: translate(-50%, -50%) scale(0.5); opacity: 0; }
@@ -241,13 +351,13 @@
 		top: 50%;
 		left: 50%;
 		transform: translate(-50%, -50%);
-		font-size: 18px;
+		font-size: 14px;
 		font-weight: 800;
 		color: #fbbf24;
-		text-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
+		text-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
 		background: rgba(0, 0, 0, 0.6);
-		padding: 6px 16px;
-		border-radius: 8px;
+		padding: 4px 10px;
+		border-radius: 6px;
 		animation: defeatBadge 0.7s ease forwards;
 		pointer-events: none;
 		z-index: 10;
@@ -264,10 +374,10 @@
 		top: 50%;
 		left: 50%;
 		transform: translate(-50%, -50%);
-		font-size: 24px;
+		font-size: 20px;
 		font-weight: 800;
 		color: #f59e0b;
-		text-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
+		text-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
 		animation: attackFlash 0.5s ease;
 		pointer-events: none;
 		z-index: 10;
@@ -280,98 +390,31 @@
 
 	.power-overlay {
 		position: absolute;
-		top: -8px;
+		top: -6px;
 		left: 50%;
 		transform: translateX(-50%);
 		display: flex;
-		gap: 4px;
+		gap: 3px;
 		animation: powerSlide 0.7s ease forwards;
 		pointer-events: none;
 		z-index: 10;
 		white-space: nowrap;
 	}
 	@keyframes powerSlide {
-		0% { transform: translateX(-50%) translateY(10px); opacity: 0; }
+		0% { transform: translateX(-50%) translateY(8px); opacity: 0; }
 		30% { transform: translateX(-50%) translateY(-4px); opacity: 1; }
 		100% { transform: translateX(-50%) translateY(-4px); opacity: 0; }
 	}
 
 	.power-tag {
-		font-size: 11px;
+		font-size: 10px;
 		font-weight: 700;
 		color: #fff;
-		padding: 3px 8px;
-		border-radius: 6px;
+		padding: 2px 6px;
+		border-radius: 4px;
 		text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
 	}
 	.power-tag.immune {
 		background: #64748b;
 	}
-
-	/* ─── Card face ─── */
-
-	.corner {
-		position: absolute;
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		line-height: 1;
-		padding: 5px 6px;
-	}
-	.top-left { top: 0; left: 0; }
-	.bottom-right { bottom: 0; right: 0; transform: rotate(180deg); }
-	.rank { font-size: 16px; font-weight: 800; font-family: 'Georgia', serif; }
-	.suit { font-size: 12px; line-height: 1; }
-	.center-suit {
-		position: absolute;
-		top: 50%;
-		left: 50%;
-		transform: translate(-50%, -50%);
-		font-size: 36px;
-		line-height: 1;
-		opacity: 0.9;
-	}
-
-	/* ─── HP ─── */
-
-	.hp-section { width: 100%; max-width: 180px; }
-	.hp-bar-track {
-		width: 100%;
-		height: 10px;
-		background: var(--bg-tertiary);
-		border-radius: 5px;
-		overflow: hidden;
-	}
-	.hp-bar-fill {
-		height: 100%;
-		border-radius: 5px;
-		transition: width 0.4s ease, background 0.4s ease;
-	}
-	.hp-text {
-		text-align: center;
-		font-size: 12px;
-		font-weight: 600;
-		color: var(--text-primary);
-		margin-top: 3px;
-	}
-
-	/* ─── Stats ─── */
-
-	.stats-row { display: flex; gap: 12px; align-items: center; }
-	.stat { display: flex; align-items: center; gap: 4px; font-size: 13px; color: var(--text-primary); }
-	.stat-icon { font-size: 14px; }
-	.stat-label { font-weight: 500; color: var(--text-tertiary); }
-	.stat-value { font-weight: 700; }
-	.stat.shield .stat-value { color: #60a5fa; }
-	.stat-effective { color: #f59e0b; font-weight: 700; }
-
-	.immune-row { display: flex; align-items: center; gap: 6px; font-size: 11px; }
-	.immune-label {
-		color: var(--text-tertiary);
-		font-weight: 500;
-		background: var(--bg-tertiary);
-		padding: 1px 6px;
-		border-radius: 4px;
-	}
-	.immune-suit { font-weight: 600; font-size: 12px; }
 </style>

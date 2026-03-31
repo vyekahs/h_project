@@ -1,5 +1,6 @@
 <script lang="ts">
 	import Board from './Board.svelte';
+	import PlayerHand from './PlayerHand.svelte';
 	import DiscardModal from './DiscardModal.svelte';
 	import JesterPanel from './JesterPanel.svelte';
 	import CombatLog from './CombatLog.svelte';
@@ -118,34 +119,54 @@
 
 			<div class="game-area">
 				<Board
-					playerHand={game.playerHand}
 					currentEnemy={game.currentEnemy}
 					castleDeck={game.castleDeck}
 					tavernDeck={game.tavernDeck}
 					discardPile={game.discardPile}
-					selectedCardIds={game.selectedCardIds}
 					currentShield={game.currentShield}
-					turnPhase={game.turnPhase}
-					canPlay={game.canPlay}
 					playedCardsThisEnemy={game.playedCardsThisEnemy}
-					highlightCardIds={tutorialHighlightIds}
-					interactionBlocked={tutorialBlocked || game.isAnimating}
 					animEvent={game.animEvent}
-					onToggleCard={game.toggleCardSelection}
-					onPlayCards={game.playSelectedCards}
 				/>
+			</div>
 
-				<div class="bottom-bar">
-					<div class="bottom-row">
-						<JesterPanel
-							jestersRemaining={game.jestersRemaining}
-							jestersUsed={game.jestersUsed}
-							canUse={game.turnPhase === 'select_cards' && game.jestersRemaining > 0 && game.gamePhase === 'playing'}
-							onFlip={game.flipJester}
-						/>
+			<!-- Hand area: fixed at bottom -->
+			<div class="hand-area">
+				{#if game.currentShield > 0}
+					<div class="shield-bar">🛡️ 방어막: {game.currentShield} (적 공격력 -{game.currentShield})</div>
+				{/if}
+				<div class="hand-top-row">
+					<div class="suit-ref">
+						<span class="ref-item"><span class="ref-s" style:color="#ef4444">♥</span>치유</span>
+						<span class="ref-item"><span class="ref-s" style:color="#3b82f6">♦</span>드로우</span>
+						<span class="ref-item"><span class="ref-s" style:color="#1e293b">♣</span>×2</span>
+						<span class="ref-item"><span class="ref-s" style:color="#1e293b">♠</span>방어</span>
 					</div>
-					<CombatLog entries={game.combatLog} />
+					<JesterPanel
+						jestersRemaining={game.jestersRemaining}
+						jestersUsed={game.jestersUsed}
+						canUse={game.turnPhase === 'select_cards' && game.jestersRemaining > 0 && game.gamePhase === 'playing'}
+						onFlip={game.flipJester}
+					/>
 				</div>
+				<PlayerHand
+					hand={game.playerHand}
+					selectedIds={game.selectedCardIds}
+					mode="play"
+					highlightIds={tutorialHighlightIds}
+					enemySuit={game.currentEnemy?.card.suit}
+					onCardClick={tutorialBlocked || game.isAnimating ? () => {} : game.toggleCardSelection}
+				/>
+				{#if game.turnPhase === 'select_cards'}
+					<button
+						class="btn-play"
+						type="button"
+						disabled={!game.canPlay || tutorialBlocked || game.isAnimating}
+						onclick={game.playSelectedCards}
+					>
+						▶ 플레이
+					</button>
+				{/if}
+				<CombatLog entries={game.combatLog} />
 			</div>
 		</div>
 
@@ -283,6 +304,7 @@
 		overscroll-behavior: none;
 		margin: 0 auto;
 		background: var(--bg-secondary);
+		overflow: hidden;
 	}
 
 	header {
@@ -366,6 +388,7 @@
 		width: 100%;
 		max-width: 500px;
 		flex: 1;
+		min-height: 0;
 		transition:
 			filter 0.3s,
 			opacity 0.3s;
@@ -381,26 +404,82 @@
 	.game-area {
 		width: 100%;
 		flex: 1;
-		overflow-y: auto;
-		overflow-x: hidden;
-		-webkit-overflow-scrolling: touch;
+		min-height: 0;
 		display: flex;
 		flex-direction: column;
+		overflow: hidden;
 	}
 
-	.bottom-bar {
+	.hand-area {
 		flex-shrink: 0;
+		width: 100%;
 		display: flex;
 		flex-direction: column;
-		gap: 4px;
-		padding: 4px 0;
-		width: 100%;
+		gap: 2px;
+		padding-bottom: env(safe-area-inset-bottom, 0px);
 	}
 
-	.bottom-row {
+	.shield-bar {
+		text-align: center;
+		font-size: 12px;
+		font-weight: 700;
+		color: #2563eb;
+		background: #eff6ff;
+		border: 1px solid #bfdbfe;
+		border-radius: 6px;
+		padding: 3px 8px;
+	}
+
+	.hand-top-row {
 		display: flex;
 		align-items: center;
-		gap: 0.5rem;
+		justify-content: space-between;
+		padding: 0 4px;
+	}
+
+	.suit-ref {
+		display: flex;
+		gap: 8px;
+	}
+
+	.ref-item {
+		display: flex;
+		align-items: center;
+		gap: 2px;
+		font-size: 11px;
+		font-weight: 600;
+		color: var(--text-tertiary);
+	}
+
+	.ref-s {
+		font-size: 13px;
+	}
+
+	.btn-play {
+		width: 100%;
+		padding: 10px;
+		border: none;
+		border-radius: 12px;
+		font-size: 14px;
+		font-weight: 700;
+		cursor: pointer;
+		background: var(--bg-dark, #1e293b);
+		color: var(--bg-primary, #fff);
+		-webkit-tap-highlight-color: transparent;
+		transition: opacity 0.15s, transform 0.1s;
+	}
+
+	.btn-play:active {
+		transform: scale(0.97);
+	}
+
+	.btn-play:disabled {
+		opacity: 0.4;
+		cursor: not-allowed;
+	}
+
+	.btn-play:disabled:active {
+		transform: none;
 	}
 
 	/* ─── Modals ─── */

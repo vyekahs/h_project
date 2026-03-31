@@ -39,7 +39,7 @@
 		display: flex;
 		justify-content: center;
 		gap: 16px;
-		padding: 8px 12px;
+		padding: 0px 12px;
 		background: var(--bg-secondary);
 		border-radius: 10px;
 	}
