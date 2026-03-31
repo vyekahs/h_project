@@ -1,5 +1,6 @@
 <script lang="ts">
     import { invalidateAll } from '$app/navigation';
+    import { page } from '$app/stores';
     import { onMount } from 'svelte';
     import { fade } from 'svelte/transition';
     import SettingsPanel from '$lib/components/settings/SettingsPanel.svelte';
@@ -174,7 +175,15 @@
 
     // Tab State
     type Tab = 'dashboard' | 'titles' | 'history' | 'parties';
+    const validTabs: Tab[] = ['dashboard', 'titles', 'history', 'parties'];
     let activeTab: Tab = 'dashboard';
+
+    $: {
+        const tabParam = $page.url.searchParams.get('tab');
+        if (tabParam && validTabs.includes(tabParam as Tab)) {
+            activeTab = tabParam as Tab;
+        }
+    }
     // Feedback Logic
 
     let showFeedbackModal = false;
