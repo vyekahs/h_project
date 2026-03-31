@@ -142,6 +142,10 @@
 				goto('/');
 			} else if (parts[0] === 'ranking' && parts[1]) {
 				goto(`/minigames/start/${parts[1]}?tab=ranking`);
+			} else if (parts[0] === 'party_chat' && parts[1]) {
+				goto(`/party/${parts[1]}/chat`);
+			} else if (parts[0] === 'party_invite') {
+				goto('/mypage?tab=parties');
 			}
 		}
 	}
