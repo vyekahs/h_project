@@ -112,6 +112,11 @@ async fn handle_ble_report(
         report.total_batches.unwrap_or(1),
     );
 
+    // Log first 3 MACs for debugging
+    for (i, dev) in report.devices.iter().enumerate().take(3) {
+        tracing::info!("[BLE] MAC sample[{}]: {} ({}dBm)", i, dev.mac, dev.rssi);
+    }
+
     // 3. IRK matching
     let mut matched_ids: Vec<u32> = Vec::new();
     let mut matched_set = std::collections::HashSet::new();

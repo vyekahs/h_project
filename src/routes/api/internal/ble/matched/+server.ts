@@ -22,6 +22,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		const { scanner_id, matched_attendee_ids, is_last_batch, source } = await request.json();
 
 		const actualScannerId = scanner_id || 'unknown_scanner';
+		console.log(`[Internal BLE] from=${actualScannerId}, matched=${matched_attendee_ids?.length ?? 0} users, ids=[${(matched_attendee_ids || []).join(',')}], last=${is_last_batch}`);
 
 		// Scanner heartbeat (fire-and-forget)
 		db.execute(sql`
