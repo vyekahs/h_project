@@ -23,10 +23,6 @@ interface UserDevice {
 const rpaCache = new Map<string, { attendeeId: number; expiresAt: number }>();
 const CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes (BLE RPA rotation ~15min, 여유 확보)
 
-// Negative cache: 매칭 안 된 MAC 단기 캐시 (반복 스캔 방지)
-const negativeCacheMs = 5 * 60 * 1000; // 5 minutes
-const negativeCache = new Set<string>(); // MAC addresses with no match
-const negativeCacheExpiry = new Map<string, number>(); // MAC -> expiresAt
 
 // IRK Device Cache (서버 시작 후 첫 요청에서 로드, 이후 영구 캐시)
 let irkCache: UserDevice[] | null = null;
@@ -347,17 +343,6 @@ export async function processScanResults(scannerId: string, timestamp: number, s
             }
         }
 
-        // 네거티브 캐시 확인 (매칭 안 된 MAC 스킵)
-        if (!attendeeId) {
-            const negExpiry = negativeCacheExpiry.get(scan.mac);
-            if (negExpiry && nowTs < negExpiry) {
-                continue; // 최근에 매칭 실패한 MAC, 스킵
-            } else if (negExpiry) {
-                negativeCache.delete(scan.mac);
-                negativeCacheExpiry.delete(scan.mac);
-            }
-        }
-
         if (!attendeeId) {
             for (const device of allDevices) {
                 if (resolveRPA(scan.mac, device.irk)) {
@@ -368,11 +353,6 @@ export async function processScanResults(scannerId: string, timestamp: number, s
                     });
                     break;
                 }
-            }
-            // 매칭 실패 시 네거티브 캐시 등록
-            if (!attendeeId) {
-                negativeCache.add(scan.mac);
-                negativeCacheExpiry.set(scan.mac, nowTs + negativeCacheMs);
             }
         }
 
@@ -434,87 +414,46 @@ export async function processScanResults(scannerId: string, timestamp: number, s
 }
 
 /**
- * Auto Check-in (배치 처리) — BLE/WiFi 공통
+ * Auto Check-in — BLE/WiFi 공통 (1명씩 처리)
  */
 export async function processAutoCheckin(detectedAttendeeIds: Set<number>, isWithinAutoOpenWindow: boolean, source: 'BLE' | 'WiFi') {
-    // 1. Auto-Open: 어드민 감지 시 자동 오픈
     for (const attendeeId of detectedAttendeeIds) {
         const attendee = attendeeCache.get(attendeeId);
         if (!attendee) continue;
+
+        // Auto-Open Logic (오픈시간 ±2시간만 허용)
         if (!settingsCache!.isOpen && attendee.isAdmin && isWithinAutoOpenWindow) {
             console.log(`[${kstTime()}][${source}] 🚨 Admin ${attendeeId} (${attendee.name}) detected! Auto-Opening Gym...`);
             await db.execute(sql`INSERT INTO system_settings (key, value) VALUES ('is_open', 'true') ON CONFLICT (key) DO UPDATE SET value = 'true'`);
             settingsCache!.isOpen = true;
             pushAutoLog('auto-open', source, attendee.name, attendeeId);
-            break; // 한 명만 오픈하면 됨
         }
-    }
 
-    if (!settingsCache!.isOpen) return;
-
-    // 2. 체크인 대상 수집 (status !== 'present')
-    const needCheckin: number[] = [];
-    for (const attendeeId of detectedAttendeeIds) {
-        const attendee = attendeeCache.get(attendeeId);
-        if (attendee && attendee.status !== 'present') {
-            needCheckin.push(attendeeId);
-        }
-    }
-    if (needCheckin.length === 0) return;
-
-    // 3. 배치 조회: 오늘 열린 방문이 있는 유저
-    let existingVisitIds = new Set<number>();
-    try {
-        const existing = await db.execute(sql`
-            SELECT DISTINCT attendee_id FROM visits
-            WHERE attendee_id IN (${sql.join(needCheckin.map(id => sql`${id}`), sql`, `)})
-              AND departure_time IS NULL
-              AND arrival_time::date = (NOW() AT TIME ZONE 'Asia/Seoul')::date
-        `);
-        existingVisitIds = new Set((existing as any[]).map(r => r.attendee_id));
-    } catch (e) {
-        console.error(`[${source}] Failed to batch-check existing visits`, e);
-    }
-
-    // 4a. 기존 visit 있는 유저 → status만 업데이트 (배치)
-    const resumeIds = needCheckin.filter(id => existingVisitIds.has(id));
-    if (resumeIds.length > 0) {
-        try {
-            await db.execute(sql`UPDATE attendees SET status = 'present', updated_at = NOW() WHERE id IN (${sql.join(resumeIds.map(id => sql`${id}`), sql`, `)})`);
-            for (const id of resumeIds) {
-                const attendee = attendeeCache.get(id);
-                if (attendee) attendee.status = 'present';
-                console.log(`[${kstTime()}][${source}] User ${id} already has open visit today, updating status only`);
+        if (settingsCache!.isOpen && attendee.status !== 'present') {
+            const existing = await db.execute(sql`
+                SELECT id FROM visits WHERE attendee_id = ${attendeeId} AND departure_time IS NULL AND arrival_time::date = (NOW() AT TIME ZONE 'Asia/Seoul')::date
+            `);
+            if (existing.length > 0) {
+                console.log(`[${kstTime()}][${source}] User ${attendeeId} already has open visit today, updating status only`);
+                await db.execute(sql`UPDATE attendees SET status = 'present', updated_at = NOW() WHERE id = ${attendeeId}`);
+                attendee.status = 'present';
+                emitLiveEvent('visitors');
+                continue;
             }
-            emitLiveEvent('visitors');
-        } catch (e) {
-            console.error(`[${source}] Failed to batch-resume users`, e);
-        }
-    }
 
-    // 4b. 신규 체크인 유저 → 트랜잭션 (배치)
-    const newCheckinIds = needCheckin.filter(id => !existingVisitIds.has(id));
-    if (newCheckinIds.length > 0) {
-        try {
-            await db.transaction(async (tx) => {
-                await tx.execute(sql`UPDATE attendees SET status = 'present', arrival_time = NOW(), updated_at = NOW() WHERE id IN (${sql.join(newCheckinIds.map(id => sql`${id}`), sql`, `)})`);
-                // visits 배치 INSERT (unnest 사용)
-                for (const id of newCheckinIds) {
-                    await tx.execute(sql`INSERT INTO visits (attendee_id, arrival_time) VALUES (${id}, NOW())`);
-                }
-                await tx.execute(sql`DELETE FROM daily_visit_plans WHERE attendee_id IN (${sql.join(newCheckinIds.map(id => sql`${id}`), sql`, `)}) AND plan_date = CURRENT_DATE`);
-            });
-            for (const id of newCheckinIds) {
-                const attendee = attendeeCache.get(id);
-                if (attendee) {
-                    attendee.status = 'present';
-                    pushAutoLog('checkin', source, attendee.name, id);
-                }
-                console.log(`[${kstTime()}][${source}] Auto Checking-in User ${id}`);
+            console.log(`[${kstTime()}][${source}] Auto Checking-in User ${attendeeId}`);
+            try {
+                await db.transaction(async (tx) => {
+                    await tx.execute(sql`UPDATE attendees SET status = 'present', arrival_time = NOW(), updated_at = NOW() WHERE id = ${attendeeId}`);
+                    await tx.execute(sql`INSERT INTO visits (attendee_id, arrival_time) VALUES (${attendeeId}, NOW())`);
+                    await tx.execute(sql`DELETE FROM daily_visit_plans WHERE attendee_id = ${attendeeId} AND plan_date = CURRENT_DATE`);
+                });
+                attendee.status = 'present';
+                pushAutoLog('checkin', source, attendee.name, attendeeId);
+                emitLiveEvent('visitors');
+            } catch (e) {
+                console.error(`[${source}] Failed to check-in ${attendeeId}`, e);
             }
-            emitLiveEvent('visitors');
-        } catch (e) {
-            console.error(`[${source}] Failed to batch check-in`, e);
         }
     }
 }

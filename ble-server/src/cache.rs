@@ -29,6 +29,9 @@ impl IrkStore {
             }
         }
         tracing::info!("IRK store loaded: {} devices", self.entries.len());
+        if let Some(first) = self.entries.first() {
+            tracing::info!("IRK sample: attendee_id={}, irk_hex={}, irk_bytes={:02x?}", first.attendee_id, first.irk_hex, &first.irk_bytes[..4]);
+        }
     }
 
     pub fn add(&mut self, attendee_id: u32, irk_hex: &str) {
