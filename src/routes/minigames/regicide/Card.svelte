@@ -2,13 +2,14 @@
 	import { SUIT_SYMBOL, SUIT_COLOR } from '$lib/games/regicide/types';
 	import type { Card } from '$lib/games/regicide/types';
 
-	let { card, selected = false, dimmed = false, compact = false, faceDown = false, highlighted = false, onclick }: {
+	let { card, selected = false, dimmed = false, compact = false, faceDown = false, highlighted = false, immune = false, onclick }: {
 		card: Card;
 		selected?: boolean;
 		dimmed?: boolean;
 		compact?: boolean;
 		faceDown?: boolean;
 		highlighted?: boolean;
+		immune?: boolean;
 		onclick?: () => void;
 	} = $props();
 
@@ -43,6 +44,14 @@
 				<span class="suit-small">{symbol}</span>
 			</div>
 			<div class="center-suit">{symbol}</div>
+			{#if immune}
+				<div class="immune-overlay">
+					<svg viewBox="0 0 60 84" class="immune-svg">
+						<line x1="4" y1="4" x2="56" y2="80" stroke="rgba(239,68,68,0.4)" stroke-width="8" stroke-linecap="round" />
+						<line x1="56" y1="4" x2="4" y2="80" stroke="rgba(239,68,68,0.4)" stroke-width="8" stroke-linecap="round" />
+					</svg>
+				</div>
+			{/if}
 			<div class="corner bottom-right">
 				<span class="rank">{card.rank}</span>
 				<span class="suit-small">{symbol}</span>
@@ -200,5 +209,16 @@
 		transform: translate(-50%, -50%);
 		font-size: 24px;
 		line-height: 1;
+	}
+
+	.immune-overlay {
+		position: absolute;
+		inset: 0;
+		pointer-events: none;
+	}
+
+	.immune-svg {
+		width: 100%;
+		height: 100%;
 	}
 </style>

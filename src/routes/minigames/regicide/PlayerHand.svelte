@@ -150,6 +150,7 @@
 						{card}
 						selected={activeIds.has(card.id)}
 						highlighted={highlightIds?.has(card.id) ?? false}
+						immune={!!enemySuit && card.suit === enemySuit}
 						onclick={() => onCardClick(card.id)}
 					/>
 				</div>
