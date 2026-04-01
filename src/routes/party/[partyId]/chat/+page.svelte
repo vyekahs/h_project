@@ -28,6 +28,7 @@
 	let showModal = $state(false);
 	let deleteTargetId = $state<number | null>(null);
 	let showDeleteConfirm = $state(false);
+	let chatPage: HTMLDivElement | undefined = $state();
 
 	// SSE 연결
 	let eventSource: EventSource | null = null;
@@ -56,8 +57,29 @@
 			} catch {}
 		});
 
+		// visualViewport API로 모바일 키보드 대응
+		function handleViewportResize() {
+			if (!chatPage) return;
+			const vv = window.visualViewport;
+			if (vv) {
+				chatPage.style.height = `${vv.height}px`;
+				chatPage.style.top = `${vv.offsetTop}px`;
+				// 키보드 올라올 때 스크롤 하단 유지
+				requestAnimationFrame(() => {
+					if (scrollContainer) {
+						scrollContainer.scrollTop = scrollContainer.scrollHeight;
+					}
+				});
+			}
+		}
+
+		window.visualViewport?.addEventListener('resize', handleViewportResize);
+		window.visualViewport?.addEventListener('scroll', handleViewportResize);
+
 		return () => {
 			eventSource?.close();
+			window.visualViewport?.removeEventListener('resize', handleViewportResize);
+			window.visualViewport?.removeEventListener('scroll', handleViewportResize);
 		};
 	});
 
@@ -173,7 +195,7 @@
 	<title>{data.party.name} 채팅</title>
 </svelte:head>
 
-<div class="chat-page">
+<div class="chat-page" bind:this={chatPage}>
 	<!-- Header -->
 	<header class="chat-header">
 		<button class="back-btn" onclick={() => history.back()} aria-label="뒤로 가기">
@@ -275,7 +297,10 @@
 		display: flex;
 		flex-direction: column;
 		position: fixed;
-		inset: 0;
+		left: 0;
+		right: 0;
+		top: 0;
+		height: 100%;
 		z-index: 50;
 		background: var(--bg-secondary);
 		color: var(--text-primary);
