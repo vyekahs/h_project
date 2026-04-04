@@ -6,6 +6,16 @@ import { sql } from 'drizzle-orm';
 
 const SCANNER_API_KEY = process.env.SCANNER_API_KEY || 'hproject_scanner_secret_2026';
 
+// ESP32-C6: 더 긴 스캔, 큰 배치 가능
+// ESP32-C3: 메모리 제한으로 보수적 설정
+const SCANNER_CONFIG: Record<string, { scan_time: number; scan_rounds: number; batch_size: number; scan_interval: number }> = {
+    scanner_main:  { scan_time: 15, scan_rounds: 3, batch_size: 50, scan_interval: 50 },  // C6
+    scanner_sub_hall: { scan_time: 10, scan_rounds: 3, batch_size: 30, scan_interval: 30 },  // C3
+    scanner_entrance:  { scan_time: 10, scan_rounds: 3, batch_size: 30, scan_interval: 30 },  // C3
+    scanner_2f:        { scan_time: 10, scan_rounds: 3, batch_size: 30, scan_interval: 30 },  // C3
+};
+const DEFAULT_CONFIG = { scan_time: 10, scan_rounds: 3, batch_size: 30, scan_interval: 30 };
+
 export const POST: RequestHandler = async ({ request }) => {
     // 1. Auth Check
     const authHeader = request.headers.get('x-api-key');
@@ -47,7 +57,8 @@ export const POST: RequestHandler = async ({ request }) => {
 
         // 3. Quick Response Strategy: Respond immediately, process in background
         // This prevents ECONNRESET errors when processScanResults takes too long
-        const responsePromise = json({ success: true, count: devices.length });
+        const config = SCANNER_CONFIG[actualScannerId] ?? DEFAULT_CONFIG;
+        const responsePromise = json({ success: true, count: devices.length, config });
 
         // Process in background without blocking response
         processScanResults(actualScannerId, timestamp, devices, isLastBatch).catch(e => {

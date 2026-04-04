@@ -17,12 +17,12 @@ const char* API_SERVER = "https://damonpyo.mooo.com";
 const char* API_KEY = "hproject_scanner_secret_2026";
 const char* SCANNER_ID = "scanner_sub_hall";
 
-// BLE
+// BLE (서버에서 동적 업데이트 가능)
 BLEScan* pBLEScan;
-const int SCAN_TIME = 5;
-const int SCAN_ROUNDS = 3;
-const int BATCH_SIZE = 30;  // 50→30: ESP32-C3 메모리 안정성
-const unsigned long SCAN_INTERVAL = 60 * 1000;
+int scanTime = 10;
+int scanRounds = 3;
+int batchSize = 30;
+unsigned long scanInterval = 30 * 1000;
 unsigned long lastScanTime = 0;
 
 // Buffer (multi-scan dedup)
@@ -83,12 +83,11 @@ void setup() {
   Serial.println();
 
   pBLEScan = BLEDevice::getScan();
-  pBLEScan->setActiveScan(true);
-  // 더 민감한 스캔을 위한 파라미터 조정
-  pBLEScan->setInterval(160);  // 100ms 간격 (100 * 0.625ms = 100ms)
-  pBLEScan->setWindow(80);     // 50ms 윈도우 (80 * 0.625ms = 50ms)
+  pBLEScan->setActiveScan(false);   // Passive scan (MAC+RSSI만 필요, RF 시간 절약)
+  pBLEScan->setInterval(160);       // 100ms 간격
+  pBLEScan->setWindow(160);         // 100ms 윈도우 = 100% 듀티 (연속 수신)
 
-  Serial.println("=== SCANNER READY ===\n");
+  Serial.println("=== SCANNER READY (passive, 100% duty, 30s interval) ===\n");
 }
 
 void addDevice(String mac, int rssi, String name) {
@@ -179,6 +178,18 @@ bool sendBatch(int startIdx, int endIdx, int batchIndex, int totalBatches) {
 
   if (code > 0) {
     Serial.println("OK (" + String(code) + ")");
+
+    // 서버 응답에서 config 업데이트
+    DynamicJsonDocument resDoc(256);
+    if (deserializeJson(resDoc, response) == DeserializationError::Ok && resDoc.containsKey("config")) {
+      JsonObject cfg = resDoc["config"];
+      if (cfg.containsKey("scan_time"))     scanTime     = cfg["scan_time"].as<int>();
+      if (cfg.containsKey("scan_rounds"))   scanRounds   = cfg["scan_rounds"].as<int>();
+      if (cfg.containsKey("batch_size"))    batchSize     = cfg["batch_size"].as<int>();
+      if (cfg.containsKey("scan_interval")) scanInterval  = cfg["scan_interval"].as<int>() * 1000UL;
+      Serial.println("  Config updated: scan=" + String(scanTime) + "s x" + String(scanRounds) + " batch=" + String(batchSize) + " interval=" + String(scanInterval / 1000) + "s");
+    }
+
     return true;
   } else {
     Serial.println("Error: " + String(code) + " " + response);
@@ -187,7 +198,7 @@ bool sendBatch(int startIdx, int endIdx, int batchIndex, int totalBatches) {
 }
 
 void loop() {
-  if (millis() - lastScanTime < SCAN_INTERVAL) {
+  if (millis() - lastScanTime < scanInterval) {
     delay(1000);
     return;
   }
@@ -205,9 +216,9 @@ void loop() {
 
   // Multi-round scan
   deviceCount = 0;
-  for (int round = 1; round <= SCAN_ROUNDS; round++) {
-    Serial.println("Scan round " + String(round) + "/" + String(SCAN_ROUNDS) + "...");
-    BLEScanResults* foundDevices = pBLEScan->start(SCAN_TIME, false);
+  for (int round = 1; round <= scanRounds; round++) {
+    Serial.println("Scan round " + String(round) + "/" + String(scanRounds) + "...");
+    BLEScanResults* foundDevices = pBLEScan->start(scanTime, false);
     int count = foundDevices->getCount();
     Serial.println("  Found: " + String(count) + " devices");
 
@@ -217,21 +228,17 @@ void loop() {
       int rssi = device.getRSSI();
       String name = device.haveName() ? String(device.getName().c_str()) : "";
 
-      // RSSI 보정: ESP32-C6 실측 결과 보정 불필요 (TX Power 설정으로 해결됨)
-      // 초기 -70~-86dBm → TX Power 설정 후 -38~-70dBm (정상)
-      int adjustedRssi = rssi;  // 보정 제거 (실측치 그대로 사용)
-
-      addDevice(mac, adjustedRssi, name);
+      addDevice(mac, rssi, name);
 
       // 디버깅: 가까운 디바이스 출력
       if (rssi > -70) {
-        Serial.println("  Close device: " + mac + " RSSI=" + String(rssi) + " (adj=" + String(adjustedRssi) + ")");
+        Serial.println("  Close device: " + mac + " RSSI=" + String(rssi));
       }
     }
     pBLEScan->clearResults();
 
-    if (round < SCAN_ROUNDS) {
-      delay(1000);
+    if (round < scanRounds) {
+      delay(500);  // 라운드 간 대기 단축 (1초 → 0.5초)
     }
   }
 
@@ -250,20 +257,20 @@ void loop() {
                    " VeryWeak(-80-)=" + String(veryWeakCount));
 
     if (strongCount == 0 && deviceCount > 5) {
-      Serial.println("⚠️  WARNING: All signals weak! Check antenna connection!");
+      Serial.println("WARNING: All signals weak! Check antenna connection!");
     }
   }
 
   if (deviceCount == 0) return;
 
   // Send in batches
-  int totalBatches = (deviceCount + BATCH_SIZE - 1) / BATCH_SIZE;
+  int totalBatches = (deviceCount + batchSize - 1) / batchSize;
   Serial.println("Sending in " + String(totalBatches) + " batch(es)");
 
   int successCount = 0;
   for (int batch = 0; batch < totalBatches; batch++) {
-    int startIdx = batch * BATCH_SIZE;
-    int endIdx = min(startIdx + BATCH_SIZE, deviceCount);
+    int startIdx = batch * batchSize;
+    int endIdx = min(startIdx + batchSize, deviceCount);
 
     if (sendBatch(startIdx, endIdx, batch, totalBatches)) {
       successCount++;
