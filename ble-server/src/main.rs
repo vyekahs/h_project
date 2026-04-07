@@ -291,7 +291,7 @@ async fn main() {
     let state = Arc::new(AppState {
         irk_store: RwLock::new(cache::IrkStore::new()),
         rpa_cache: RwLock::new(cache::RpaCache::new(30 * 60)), // 30 min
-        negative_cache: RwLock::new(cache::NegativeCache::new(5 * 60)), // 5 min
+        negative_cache: RwLock::new(cache::NegativeCache::new(30)), // 30s (RPA rotation 후 빠른 재매칭)
         http_client: reqwest::Client::new(),
         config,
     });

@@ -482,13 +482,16 @@ export async function checkAutoCheckout() {
         console.error('[AUTO] Failed to fetch playing users, proceeding without game check', e);
     }
 
-    // 디버그: 모든 present 유저의 lastSeen 상태 출력
+    // 디버그: 체크아웃 임박 유저만 출력 (lastSeen > threshold의 절반)
+    const warnThreshold = now - CHECKOUT_TIMEOUT_MS / 2;
     for (const attendee of presentUsers) {
         const bleSeen = lastSeenBleMap.get(attendee.id) ?? 0;
         const wifiSeen = lastSeenWifiMap.get(attendee.id) ?? 0;
         const lastSeen = Math.max(bleSeen, wifiSeen);
-        const agoMin = lastSeen > 0 ? Math.round((now - lastSeen) / 60000) : -1;
-        console.log(`[${kstTime()}][AUTO] Status: ${attendee.name}(${attendee.id}) lastSeen=${agoMin}min ago, threshold=20min, playing=${playingUserIds.has(attendee.id)}`);
+        if (lastSeen > 0 && lastSeen < warnThreshold) {
+            const agoMin = Math.round((now - lastSeen) / 60000);
+            console.log(`[${kstTime()}][AUTO] ⚠️ ${attendee.name}(${attendee.id}) lastSeen=${agoMin}min ago, threshold=${CHECKOUT_TIMEOUT_MS / 60000}min, playing=${playingUserIds.has(attendee.id)}`);
+        }
     }
 
     for (const attendee of presentUsers) {
