@@ -209,17 +209,11 @@
                     </div>
                 </div>
                 {#if pushSupported && (!isIOS || pushIsStandalone)}
-                    <label class="toggle-switch">
-                        <input
-                            type="checkbox"
-                            checked={pushSubscribed}
-                            onchange={togglePush}
-                            disabled={pushLoading}
-                        >
+                    <button class="toggle-switch" onclick={togglePush} disabled={pushLoading} aria-pressed={pushSubscribed}>
                         <span class="slider" class:active={pushSubscribed}>
                             <span class="slider-button"></span>
                         </span>
-                    </label>
+                    </button>
                 {/if}
             </div>
             {/if}
@@ -272,7 +266,7 @@
         width: 100%;
         height: 100%;
         background: var(--overlay-heavy);
-        z-index: 1000;
+        z-index: 1100;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -363,6 +357,9 @@
         width: 50px;
         height: 28px;
         cursor: pointer;
+        background: none;
+        border: none;
+        padding: 0;
     }
 
     .toggle-switch input {
