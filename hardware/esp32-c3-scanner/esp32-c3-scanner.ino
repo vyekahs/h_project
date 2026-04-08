@@ -15,7 +15,7 @@ const char* WIFI_PASS = "a4ke01fh66";
 // Server Config
 const char* API_SERVER = "https://damonpyo.mooo.com";
 const char* API_KEY = "hproject_scanner_secret_2026";
-const char* SCANNER_ID = "scanner_sub_hall";
+const char* SCANNER_ID = "scanner_main_hall";
 
 // BLE (서버에서 동적 업데이트 가능)
 BLEScan* pBLEScan;
