@@ -11,8 +11,9 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
 	return outputArray;
 }
 
-function arrayBufferToBase64(buffer: ArrayBuffer): string {
-	return btoa(String.fromCharCode(...new Uint8Array(buffer)));
+function arrayBufferToBase64url(buffer: ArrayBuffer): string {
+	const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)));
+	return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
 export function isPushSupported(): boolean {
@@ -55,8 +56,8 @@ export async function subscribeToPush(): Promise<boolean> {
 		body: JSON.stringify({
 			endpoint: subscription.endpoint,
 			keys: {
-				p256dh: arrayBufferToBase64(subscription.getKey('p256dh')!),
-				auth: arrayBufferToBase64(subscription.getKey('auth')!),
+				p256dh: arrayBufferToBase64url(subscription.getKey('p256dh')!),
+				auth: arrayBufferToBase64url(subscription.getKey('auth')!),
 			},
 		}),
 	});
