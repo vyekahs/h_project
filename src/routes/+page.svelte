@@ -6,11 +6,11 @@
     import NotificationBell from '$lib/components/notifications/NotificationBell.svelte';
     import WantToPlayCard from '$lib/components/games/WantToPlayCard.svelte';
     import GameComments from '$lib/components/games/GameComments.svelte';
-    let lastUpdated = new Date();
+    let lastUpdated = $state(new Date());
 
     // SSE 실시간 카운트
-    let liveVisitorCount: number | null = null;
-    let liveGameCount: number | null = null;
+    let liveVisitorCount: number | null = $state(null);
+    let liveGameCount: number | null = $state(null);
     let eventSource: EventSource | null = null;
     let refreshTimer: ReturnType<typeof setTimeout> | null = null;
     let sseReconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -36,29 +36,31 @@
         members: { id: number; name: string }[];
     }
 
-    export let data: {
-        attendees: Attendee[];
-        games: GameSession[];
-        scheduledGames: GameSession[];
-        userReservation: Reservation | null;
-        userScheduledGames: GameSession[];
-        userPlayingGame: GameSession | null;
-        user: User | null;
-        isOpen: boolean;
-        notice: string | null;
-        userPenaltyInfo: { penalty_points: number } | null;
-        isAdmin: boolean;
-        reservations: Reservation[];
-        allGames: any[];
-        parties: Party[];
-        userPartyIds: number[];
-        dailyVisitPlans: { id: number; attendee_id: number; name: string; planned_time?: string | null; title_name?: string }[];
-        mainScheduledGames: GameSession[];
-        todayScheduledParticipants: { attendee_id: number; name: string; title_name?: string; is_party: boolean; planned_time: string }[];
-        userHasVisitPlan: boolean;
-        wantToPlayPosts: any[];
-        wtpAvailableTags: { id: number; name: string }[];
-    };
+    let { data } = $props<{
+        data: {
+            attendees: Attendee[];
+            games: GameSession[];
+            scheduledGames: GameSession[];
+            userReservation: Reservation | null;
+            userScheduledGames: GameSession[];
+            userPlayingGame: GameSession | null;
+            user: User | null;
+            isOpen: boolean;
+            notice: string | null;
+            userPenaltyInfo: { penalty_points: number } | null;
+            isAdmin: boolean;
+            reservations: Reservation[];
+            allGames: any[];
+            parties: Party[];
+            userPartyIds: number[];
+            dailyVisitPlans: { id: number; attendee_id: number; name: string; planned_time?: string | null; title_name?: string }[];
+            mainScheduledGames: GameSession[];
+            todayScheduledParticipants: { attendee_id: number; name: string; title_name?: string; is_party: boolean; planned_time: string }[];
+            userHasVisitPlan: boolean;
+            wantToPlayPosts: any[];
+            wtpAvailableTags: { id: number; name: string }[];
+        };
+    }>();
 
     interface Attendee {
         id: number;
@@ -79,6 +81,7 @@
         max_players: number;
         created_by: number;
         party_id: number | null;
+        recurring_schedule_id?: number | null;
         participants: { id: number; name: string; is_guest?: boolean }[];
         players: { id: number; name: string; is_guest?: boolean }[];
         scheduled_at: string;
@@ -103,56 +106,56 @@
         reservations: Reservation[];
     }
 
-    $: attendees = data.attendees as Attendee[];
-    $: games = data.games as GameSession[];
-    $: scheduledGames = data.scheduledGames as GameSession[];
-    $: userReservation = data.userReservation as Reservation | null;
-    $: userScheduledGames = (data.userScheduledGames || []) as GameSession[]; // Change to array
+    const attendees = $derived(data.attendees as Attendee[]);
+    const games = $derived(data.games as GameSession[]);
+    const scheduledGames = $derived(data.scheduledGames as GameSession[]);
+    const userReservation = $derived(data.userReservation as Reservation | null);
+    const userScheduledGames = $derived((data.userScheduledGames || []) as GameSession[]);
 
     // 오늘 갈 예정: 예약 참가자 합치기 (체크인한 사람, 이미 등록된 사람 제외)
-    $: checkedInIds = new Set((data.attendees || []).map((a: any) => a.id));
-    $: visitPlanIds = new Set((data.dailyVisitPlans || []).map((p: any) => p.attendee_id));
-    $: scheduledVisitors = (data.todayScheduledParticipants || []).filter((p: any) => !checkedInIds.has(p.attendee_id) && !visitPlanIds.has(p.attendee_id));
-    $: mergedVisitPlans = [...(data.dailyVisitPlans || []), ...scheduledVisitors.map((p: any) => ({ attendee_id: p.attendee_id, name: p.name, planned_time: p.planned_time, title_name: p.title_name, is_party: p.is_party }))];
+    const checkedInIds = $derived(new Set((data.attendees || []).map((a: any) => a.id)));
+    const visitPlanIds = $derived(new Set((data.dailyVisitPlans || []).map((p: any) => p.attendee_id)));
+    const scheduledVisitors = $derived((data.todayScheduledParticipants || []).filter((p: any) => !checkedInIds.has(p.attendee_id) && !visitPlanIds.has(p.attendee_id)));
+    const mergedVisitPlans = $derived([...(data.dailyVisitPlans || []), ...scheduledVisitors.map((p: any) => ({ attendee_id: p.attendee_id, name: p.name, planned_time: p.planned_time, title_name: p.title_name, is_party: p.is_party }))]);
 
     function getGameReservations(gameId: number) {
         return (data.reservations || []).filter((r: any) => r.session_id === gameId);
     }
 
     // --- Tab System ---
-    let activeTab: 'home' | 'games' = 'home';
-    let isTablet = false;
-    let showAllMainGames = false;
+    let activeTab: 'home' | 'games' = $state('home');
+    let isTablet = $state(false);
+    let showAllMainGames = $state(false);
     // --- Game Management Logic ---
-    let showModal = false;
-    let selectedGameName = '';
-    let selectedDuration = '';
-    let selectedGameId = '';
-    let dropdownOpen = false;
+    let showModal = $state(false);
+    let selectedGameName = $state('');
+    let selectedDuration = $state('');
+    let selectedGameId = $state('');
+    let dropdownOpen = $state(false);
     let searchInput: HTMLInputElement;
 
-    let showScheduledGameModal = false;
-    let scheduledGameName = '';
-    let scheduledAt = '';
-    let minPlayers = 2;
-    let maxPlayers = 4;
-    let guestCount = 0;
-    let selectedPlayerIds: number[] = [];
-    let scheduledSelectedPlayerIds: number[] = [];
-    let partyMembers: { id: number; name: string }[] = [];
-    let scheduledPartyMembers: { id: number; name: string }[] = [];
-    let partyDropdownOpen = false;
-    let scheduledPartyDropdownOpen = false;
-    let showGuestInput = false;
-    let showScheduledGuestInput = false;
-    let selectedPartyId: number | null = null;
-    let scheduledSelectedPartyId: number | null = null;
+    let showScheduledGameModal = $state(false);
+    let scheduledGameName = $state('');
+    let scheduledAt = $state('');
+    let minPlayers = $state(2);
+    let maxPlayers = $state(4);
+    let guestCount = $state(0);
+    let selectedPlayerIds: number[] = $state([]);
+    let scheduledSelectedPlayerIds: number[] = $state([]);
+    let partyMembers: { id: number; name: string }[] = $state([]);
+    let scheduledPartyMembers: { id: number; name: string }[] = $state([]);
+    let partyDropdownOpen = $state(false);
+    let scheduledPartyDropdownOpen = $state(false);
+    let showGuestInput = $state(false);
+    let showScheduledGuestInput = $state(false);
+    let selectedPartyId: number | null = $state(null);
+    let scheduledSelectedPartyId: number | null = $state(null);
 
     // 채팅 바로가기
-    let showChatDropdown = false;
+    let showChatDropdown = $state(false);
 
-    $: parties = (data.parties || []) as Party[];
-    $: userPartyIds = new Set(data.userPartyIds || []);
+    const parties = $derived((data.parties || []) as Party[]);
+    const userPartyIds = $derived(new Set(data.userPartyIds || []));
 
     function canJoinGame(game: any): boolean {
         if (!game.party_id) return true;
@@ -160,7 +163,7 @@
     }
 
     // 참석자 + 고정팟 미참석 멤버 병합 (고정팟 멤버 상단 정렬)
-    $: mergedAttendees = (() => {
+    const mergedAttendees = $derived.by(() => {
         const attendeeIds = new Set((attendees || []).map(a => a.id));
         const partyMemberIds = new Set(partyMembers.map(m => m.id));
         const extra = partyMembers
@@ -174,26 +177,26 @@
             return 0;
         });
         return sorted;
-    })();
+    });
 
-    let endGameModalVisible = false;
-    let selectedEndGame: GameSession | null = null;
+    let endGameModalVisible = $state(false);
+    let selectedEndGame: GameSession | null = $state(null);
 
     // --- Want to Play ---
-    let showWtpCreateModal = false;
-    let wtpGameSource: 'registered' | 'custom' = 'registered';
-    let wtpGameName = '';
-    let wtpGameId: number | null = null;
-    let wtpMessage = '';
-    let wtpDropdownOpen = false;
-    let wtpSubmitting = false;
+    let showWtpCreateModal = $state(false);
+    let wtpGameSource: 'registered' | 'custom' = $state('registered');
+    let wtpGameName = $state('');
+    let wtpGameId: number | null = $state(null);
+    let wtpMessage = $state('');
+    let wtpDropdownOpen = $state(false);
+    let wtpSubmitting = $state(false);
     let wtpSelectedTags: number[] = $state([]);
-    let showWtpDetailModal = false;
-    let selectedWtpPost: any = null;
+    let showWtpDetailModal = $state(false);
+    let selectedWtpPost: any = $state(null);
 
-    $: wtpFilteredGames = (data.allGames as any[])?.filter((g: any) =>
+    const wtpFilteredGames = $derived((data.allGames as any[])?.filter((g: any) =>
         g.name.toLowerCase().includes(wtpGameName.toLowerCase())
-    ) || [];
+    ) || []);
 
     function openWtpCreateModal() {
         showWtpCreateModal = true;
@@ -289,9 +292,9 @@
     }
 
     // Visit Plan Modal
-    let showVisitPlanModal = false;
-    let selectedVisitTime = '';
-    let isTimeDropdownOpen = false;
+    let showVisitPlanModal = $state(false);
+    let selectedVisitTime = $state('');
+    let isTimeDropdownOpen = $state(false);
 
     function getDefaultVisitTime(): string {
         const now = new Date();
@@ -344,12 +347,12 @@
         showVisitPlanModal = true;
     }
 
-    let alertVisible = false;
-    let alertMessage = '';
+    let alertVisible = $state(false);
+    let alertMessage = $state('');
 
     // Confirm Modal
-    let confirmVisible = false;
-    let confirmMessage = '';
+    let confirmVisible = $state(false);
+    let confirmMessage = $state('');
     let confirmResolve: ((value: boolean) => void) | null = null;
 
     function showConfirm(msg: string): Promise<boolean> {
@@ -364,9 +367,9 @@
     }
 
     // PWA Install Guide
-    let showInstallGuide = false;
-    let isIOS = false;
-    let isStandalone = false;
+    let showInstallGuide = $state(false);
+    let isIOS = $state(false);
+    let isStandalone = $state(false);
 
     let tabletMq: MediaQueryList;
     onMount(() => {
@@ -423,8 +426,8 @@
     });
 
     // Limit visible games
-    let limitGames = 5;
-    let limitScheduledGames = 5;
+    let limitGames = $state(5);
+    let limitScheduledGames = $state(5);
 
     function toggleLimitGames() {
         limitGames = limitGames === 5 ? games.length : 5;
@@ -498,13 +501,13 @@
         };
     };
 
-    $: filteredGames = (data.allGames as any[])?.filter((g: any) => 
+    const filteredGames = $derived((data.allGames as any[])?.filter((g: any) =>
         g.name.toLowerCase().includes(selectedGameName.toLowerCase())
-    ) || [];
+    ) || []);
 
-    $: filteredScheduledGames = (data.allGames as any[])?.filter((g: any) => 
+    const filteredScheduledGames = $derived((data.allGames as any[])?.filter((g: any) =>
         g.name.toLowerCase().includes(scheduledGameName.toLowerCase())
-    ) || [];
+    ) || []);
 
     function selectGame(game: { name: string, id: number, playtime_min: number }) {
         selectedGameName = game.name;
