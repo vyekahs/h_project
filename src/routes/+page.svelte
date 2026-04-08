@@ -57,6 +57,7 @@
         todayScheduledParticipants: { attendee_id: number; name: string; title_name?: string; is_party: boolean; planned_time: string }[];
         userHasVisitPlan: boolean;
         wantToPlayPosts: any[];
+        wtpAvailableTags: { id: number; name: string }[];
     };
 
     interface Attendee {
@@ -186,6 +187,7 @@
     let wtpMessage = '';
     let wtpDropdownOpen = false;
     let wtpSubmitting = false;
+    let wtpSelectedTags: number[] = $state([]);
     let showWtpDetailModal = false;
     let selectedWtpPost: any = null;
 
@@ -199,6 +201,7 @@
         wtpGameName = '';
         wtpGameId = null;
         wtpMessage = '';
+        wtpSelectedTags = [];
         wtpDropdownOpen = false;
     }
 
@@ -219,6 +222,7 @@
                     gameId: wtpGameSource === 'registered' ? wtpGameId : null,
                     gameName: wtpGameName.trim(),
                     message: wtpMessage.trim() || undefined,
+                    tagIds: wtpSelectedTags.length > 0 ? wtpSelectedTags : undefined,
                 }),
             });
             const result = await res.json();
@@ -1730,6 +1734,30 @@
                 />
             </div>
 
+            {#if data.wtpAvailableTags?.length}
+                <div class="input-group">
+                    <label>태그 (선택)</label>
+                    <div class="wtp-tag-selector">
+                        {#each data.wtpAvailableTags as tag}
+                            <button
+                                type="button"
+                                class="wtp-tag-chip"
+                                class:selected={wtpSelectedTags.includes(tag.id)}
+                                onclick={() => {
+                                    if (wtpSelectedTags.includes(tag.id)) {
+                                        wtpSelectedTags = wtpSelectedTags.filter(id => id !== tag.id);
+                                    } else if (wtpSelectedTags.length < 5) {
+                                        wtpSelectedTags = [...wtpSelectedTags, tag.id];
+                                    }
+                                }}
+                            >
+                                {tag.name}
+                            </button>
+                        {/each}
+                    </div>
+                </div>
+            {/if}
+
             <div class="modal-actions">
                 <button class="btn-cancel" onclick={() => showWtpCreateModal = false}>취소</button>
                 <button
@@ -1767,6 +1795,14 @@
                 </div>
                 <button class="btn-close-modal" onclick={() => { showWtpDetailModal = false; selectedWtpPost = null; }}>&times;</button>
             </div>
+
+            {#if selectedWtpPost.tags?.length > 0}
+                <div class="wtp-tags-display" style="margin-bottom: 0.75rem;">
+                    {#each selectedWtpPost.tags as tag}
+                        <span class="wtp-tag-badge">{tag.name}</span>
+                    {/each}
+                </div>
+            {/if}
 
             <div class="wtp-detail-participants">
                 <h3>참여자 ({selectedWtpPost.participants.length}명)</h3>
@@ -3266,7 +3302,7 @@
         display: flex;
         justify-content: center;
         align-items: center;
-        z-index: 1000;
+        z-index: 1100;
     }
     .modal-content {
         background: var(--bg-primary);
@@ -3986,6 +4022,46 @@
         background: var(--color-blue, #3b82f6);
         color: white;
         border-color: var(--color-blue, #3b82f6);
+    }
+
+    .wtp-tag-selector {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.4rem;
+    }
+    .wtp-tag-chip {
+        padding: 0.3rem 0.7rem;
+        border-radius: 16px;
+        border: 1px solid var(--border-light);
+        background: var(--bg-secondary);
+        color: var(--text-secondary);
+        font-size: 0.8rem;
+        cursor: pointer;
+        transition: all 0.15s;
+    }
+    .wtp-tag-chip.selected {
+        background: var(--color-blue, #3b82f6);
+        color: white;
+        border-color: var(--color-blue, #3b82f6);
+    }
+    .wtp-tag-chip:hover:not(.selected) {
+        border-color: var(--color-blue, #3b82f6);
+        color: var(--color-blue, #3b82f6);
+    }
+    .wtp-tags-display {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.25rem;
+        margin-top: 0.3rem;
+    }
+    .wtp-tag-badge {
+        display: inline-block;
+        padding: 0.1rem 0.45rem;
+        border-radius: 10px;
+        background: var(--color-blue-light, #dbeafe);
+        color: var(--color-blue, #3b82f6);
+        font-size: 0.7rem;
+        font-weight: 500;
     }
 
     .wtp-detail-modal {

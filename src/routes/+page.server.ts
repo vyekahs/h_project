@@ -46,9 +46,10 @@ export const load: PageServerLoad = async ({ locals }) => {
     const isAdmin = locals.isAdmin || false;
 
     // 공용 데이터는 메모리 캐시에서 가져옴 (동시 요청 시 DB 1번만 조회)
-    const [shared, wantToPlayPosts] = await Promise.all([
+    const [shared, wantToPlayPosts, wtpAvailableTags] = await Promise.all([
         getSharedData(),
         WantToPlayService.getOpenPosts(),
+        WantToPlayService.getAvailableTags(),
     ]);
 
     // 유저별 데이터 — Drizzle이 커넥션 풀 자동 관리하므로 병렬 실행 가능
@@ -136,6 +137,7 @@ export const load: PageServerLoad = async ({ locals }) => {
         todayScheduledParticipants: shared.todayScheduledParticipants,
         userHasVisitPlan,
         wantToPlayPosts,
+        wtpAvailableTags,
     };
 };
 

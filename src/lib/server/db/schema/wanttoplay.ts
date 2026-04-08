@@ -1,4 +1,4 @@
-import { pgTable, serial, integer, varchar, text, timestamp, unique, index } from 'drizzle-orm/pg-core';
+import { pgTable, serial, integer, varchar, text, timestamp, unique, index, primaryKey } from 'drizzle-orm/pg-core';
 import { attendees } from './core';
 import { games } from './games';
 
@@ -17,6 +17,20 @@ export const wantToPlayPosts = pgTable('want_to_play_posts', {
 }, (table) => [
 	index('idx_wtp_status_created').on(table.status, table.createdAt),
 	index('idx_wtp_created_by').on(table.createdBy),
+]);
+
+export const wtpTags = pgTable('wtp_tags', {
+	id: serial('id').primaryKey(),
+	name: varchar('name', { length: 30 }).notNull().unique(),
+	sortOrder: integer('sort_order').notNull().default(0),
+});
+
+export const wtpPostTags = pgTable('wtp_post_tags', {
+	postId: integer('post_id').notNull().references(() => wantToPlayPosts.id, { onDelete: 'cascade' }),
+	tagId: integer('tag_id').notNull().references(() => wtpTags.id, { onDelete: 'cascade' }),
+}, (table) => [
+	primaryKey({ columns: [table.postId, table.tagId] }),
+	index('idx_wtp_post_tags_post').on(table.postId),
 ]);
 
 export const wantToPlayParticipants = pgTable('want_to_play_participants', {

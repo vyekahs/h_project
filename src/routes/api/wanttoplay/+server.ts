@@ -19,7 +19,7 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 	const user = await verifyAttendeeSession(sessionToken);
 	if (!user) return json({ error: '세션이 만료되었습니다' }, { status: 401 });
 
-	const { gameId, gameName, message } = await request.json();
+	const { gameId, gameName, message, tagIds } = await request.json();
 
 	if (!gameName || typeof gameName !== 'string' || gameName.trim().length === 0) {
 		return json({ error: '게임 이름이 필요합니다' }, { status: 400 });
@@ -30,13 +30,17 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 	if (message && typeof message === 'string' && message.length > 200) {
 		return json({ error: '메시지는 200자 이내로 입력해주세요' }, { status: 400 });
 	}
+	if (tagIds && (!Array.isArray(tagIds) || tagIds.length > 5)) {
+		return json({ error: '태그는 최대 5개까지 선택할 수 있습니다' }, { status: 400 });
+	}
 
 	try {
 		const result = await WantToPlayService.createPost(
 			user.id,
 			gameId ?? null,
 			gameName.trim(),
-			message
+			message,
+			tagIds
 		);
 		return json(result, { status: 201 });
 	} catch (e: any) {

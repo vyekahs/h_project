@@ -2,6 +2,11 @@ import { db } from '$lib/server/db/index';
 import { sql } from 'drizzle-orm';
 import { NotificationService } from './notificationService';
 
+export interface WtpTag {
+	id: number;
+	name: string;
+}
+
 export interface WtpPost {
 	id: number;
 	game_id: number | null;
@@ -17,6 +22,7 @@ export interface WtpPost {
 	created_at: string;
 	participant_count: number;
 	participants: { id: number; name: string; title_name: string | null }[];
+	tags: WtpTag[];
 }
 
 export const WantToPlayService = {
@@ -59,14 +65,30 @@ export const WantToPlayService = {
 			participantsByPost.get(p.post_id)!.push({ id: p.id, name: p.name, title_name: p.title_name });
 		}
 
+		// 태그 조회
+		const tags = await db.execute(sql`
+			SELECT pt.post_id, t.id, t.name
+			FROM wtp_post_tags pt
+			JOIN wtp_tags t ON pt.tag_id = t.id
+			WHERE pt.post_id IN (${idList})
+			ORDER BY t.sort_order ASC
+		`);
+
+		const tagsByPost = new Map<number, WtpTag[]>();
+		for (const t of tags as any[]) {
+			if (!tagsByPost.has(t.post_id)) tagsByPost.set(t.post_id, []);
+			tagsByPost.get(t.post_id)!.push({ id: t.id, name: t.name });
+		}
+
 		return (posts as any[]).map(p => ({
 			...p,
 			participants: participantsByPost.get(p.id) ?? [],
 			participant_count: (participantsByPost.get(p.id) ?? []).length,
+			tags: tagsByPost.get(p.id) ?? [],
 		}));
 	},
 
-	async createPost(userId: number, gameId: number | null, gameName: string, message?: string): Promise<{ id: number }> {
+	async createPost(userId: number, gameId: number | null, gameName: string, message?: string, tagIds?: number[]): Promise<{ id: number }> {
 		// 최대 5개 open 글 제한
 		const openCount = await db.execute(sql`
 			SELECT COUNT(*)::int as cnt FROM want_to_play_posts
@@ -106,6 +128,16 @@ export const WantToPlayService = {
 			INSERT INTO want_to_play_participants (post_id, attendee_id)
 			VALUES (${postId}, ${userId})
 		`);
+
+		// 태그 저장
+		if (tagIds && tagIds.length > 0) {
+			const tagValues = tagIds.map(tagId => sql`(${postId}, ${tagId})`);
+			await db.execute(sql`
+				INSERT INTO wtp_post_tags (post_id, tag_id)
+				VALUES ${sql.join(tagValues, sql`, `)}
+				ON CONFLICT DO NOTHING
+			`);
+		}
 
 		return { id: postId };
 	},
@@ -168,6 +200,13 @@ export const WantToPlayService = {
 		`);
 		if (result.length === 0) throw new Error('참여 중이 아닙니다');
 		return { deleted: false };
+	},
+
+	async getAvailableTags(): Promise<WtpTag[]> {
+		const tags = await db.execute(sql`
+			SELECT id, name FROM wtp_tags ORDER BY sort_order ASC
+		`);
+		return (tags as any[]).map(t => ({ id: t.id, name: t.name }));
 	},
 
 	async closePost(userId: number, postId: number, isAdmin: boolean): Promise<void> {

@@ -13,6 +13,7 @@
 		created_at: string;
 		participant_count: number;
 		participants: { id: number; name: string; title_name: string | null }[];
+		tags?: { id: number; name: string }[];
 	}
 
 	let {
@@ -55,6 +56,14 @@
 	</div>
 
 	<p class="wtp-message">{post.message}</p>
+
+	{#if post.tags && post.tags.length > 0}
+		<div class="wtp-tags-display">
+			{#each post.tags as tag}
+				<span class="wtp-tag-badge">{tag.name}</span>
+			{/each}
+		</div>
+	{/if}
 
 	<div class="wtp-footer">
 		<div class="wtp-participants">
@@ -149,6 +158,21 @@
 		font-size: 0.85rem;
 		color: var(--text-primary);
 		line-height: 1.4;
+	}
+	.wtp-tags-display {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.25rem;
+		margin-bottom: 0.3rem;
+	}
+	.wtp-tag-badge {
+		display: inline-block;
+		padding: 0.1rem 0.45rem;
+		border-radius: 10px;
+		background: var(--color-blue-light, #dbeafe);
+		color: var(--color-blue, #3b82f6);
+		font-size: 0.65rem;
+		font-weight: 500;
 	}
 
 	.wtp-footer {

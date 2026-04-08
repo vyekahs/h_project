@@ -349,13 +349,37 @@ async function migrate() {
         `);
         await pool.query('CREATE INDEX IF NOT EXISTS idx_wtp_participants_post ON want_to_play_participants(post_id);');
 
-        // 30. Minigame play log type (시작/클리어 구분)
-        console.log('[30] Adding type column to minigame_play_log...');
+        // 30. WTP Tags (같이하기 태그)
+        console.log('[30] Checking wtp_tags tables...');
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS wtp_tags (
+                id SERIAL PRIMARY KEY,
+                name VARCHAR(30) NOT NULL UNIQUE,
+                sort_order INTEGER NOT NULL DEFAULT 0
+            );
+        `);
+        await pool.query(`
+            INSERT INTO wtp_tags (name, sort_order) VALUES
+                ('초보자도 가능', 1), ('룰 설명 가능', 2),
+                ('평일 중', 3), ('주말에 가능', 4), ('2인 전용', 5)
+            ON CONFLICT (name) DO NOTHING;
+        `);
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS wtp_post_tags (
+                post_id INTEGER NOT NULL REFERENCES want_to_play_posts(id) ON DELETE CASCADE,
+                tag_id INTEGER NOT NULL REFERENCES wtp_tags(id) ON DELETE CASCADE,
+                PRIMARY KEY (post_id, tag_id)
+            );
+        `);
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_wtp_post_tags_post ON wtp_post_tags(post_id);');
+
+        // 31. Minigame play log type (시작/클리어 구분)
+        console.log('[31] Adding type column to minigame_play_log...');
         await pool.query("ALTER TABLE minigame_play_log ADD COLUMN IF NOT EXISTS type VARCHAR(10) DEFAULT 'clear';");
         await pool.query('CREATE INDEX IF NOT EXISTS idx_play_log_type_game ON minigame_play_log(game_id, type);');
 
-        // 31. Push Subscriptions (Web Push 알림)
-        console.log('[31] Checking push_subscriptions table...');
+        // 32. Push Subscriptions (Web Push 알림)
+        console.log('[32] Checking push_subscriptions table...');
         await pool.query(`
             CREATE TABLE IF NOT EXISTS push_subscriptions (
                 id SERIAL PRIMARY KEY,
