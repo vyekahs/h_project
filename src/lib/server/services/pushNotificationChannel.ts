@@ -2,16 +2,20 @@ import webpush from 'web-push';
 import { db } from '$lib/server/db/index';
 import { sql } from 'drizzle-orm';
 import { env } from '$env/dynamic/private';
+import { env as publicEnv } from '$env/dynamic/public';
 import type { NotificationChannel, NotificationPayload } from './notificationChannel';
 
 let configured = false;
 
 function ensureConfigured() {
 	if (configured) return;
-	const publicKey = env.PUBLIC_VAPID_KEY;
+	const publicKey = publicEnv.PUBLIC_VAPID_KEY;
 	const privateKey = env.VAPID_PRIVATE_KEY;
 	const subject = env.VAPID_SUBJECT || 'mailto:admin@example.com';
-	if (!publicKey || !privateKey) return;
+	if (!publicKey || !privateKey) {
+		console.warn('[Push] VAPID 키 미설정 - PUBLIC_VAPID_KEY:', !!publicKey, 'VAPID_PRIVATE_KEY:', !!privateKey);
+		return;
+	}
 	webpush.setVapidDetails(subject, publicKey, privateKey);
 	configured = true;
 }
@@ -46,6 +50,7 @@ export class PushNotificationChannel implements NotificationChannel {
 						pushPayload
 					)
 					.catch(async (err: any) => {
+						console.error(`[Push] sendNotification 실패 (sub ${sub.id}):`, err.statusCode || err.message || err);
 						if (err.statusCode === 410 || err.statusCode === 404) {
 							await db.execute(sql`
 								DELETE FROM push_subscriptions WHERE id = ${sub.id}
