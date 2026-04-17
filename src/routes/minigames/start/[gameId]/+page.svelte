@@ -295,6 +295,8 @@
                                     <p class="score-desc">점수 = 기본점수 + 시간보너스 - 초과조작 x 감점</p>
                                 {:else if gameConfig.id === '2048'}
                                     <p class="score-desc">점수 = 타일 병합 점수 합계</p>
+                                {:else if gameConfig.id === 'block-blaster'}
+                                    <p class="score-desc">점수 = 배치 셀 수 + 줄 제거 보너스(줄²×10) + 콤보 보너스</p>
                                 {:else if gameConfig.id === 'regicide'}
                                     <p class="score-desc">점수 = 승리등급(🥇300/🥈150/🥉50) + (10분 - 클리어시간) x 2</p>
                                 {:else}
