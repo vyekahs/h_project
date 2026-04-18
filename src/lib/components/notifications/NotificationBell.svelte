@@ -35,12 +35,14 @@
 		fetchUnreadCount();
 		connectSSE();
 		document.addEventListener('click', handleClickOutside);
+		window.addEventListener('notifications-read', fetchUnreadCount);
 	});
 
 	onDestroy(() => {
 		eventSource?.close();
 		if (typeof document !== 'undefined') {
 			document.removeEventListener('click', handleClickOutside);
+			window.removeEventListener('notifications-read', fetchUnreadCount);
 		}
 	});
 

@@ -120,6 +120,16 @@ export const NotificationService = {
 		`);
 	},
 
+	async markAsReadByReference(userId: number, referenceId: string): Promise<number> {
+		const res = await db.execute(sql`
+			UPDATE notifications
+			SET is_read = true
+			WHERE user_id = ${userId} AND reference_id = ${referenceId} AND is_read = false
+			RETURNING id
+		`);
+		return (res as any[]).length;
+	},
+
 	async getUnreadCount(userId: number): Promise<number> {
 		const res = await db.execute(sql`
 			SELECT COUNT(*) as count

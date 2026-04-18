@@ -9,10 +9,13 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 	const user = await verifyAttendeeSession(sessionToken);
 	if (!user) return json({ error: '세션이 만료되었습니다' }, { status: 401 });
 
-	const { notificationIds, all } = await request.json();
+	const { notificationIds, all, referenceId } = await request.json();
 
 	if (all) {
 		await NotificationService.markAllAsRead(user.id);
+	} else if (referenceId && typeof referenceId === 'string') {
+		const count = await NotificationService.markAsReadByReference(user.id, referenceId);
+		return json({ success: true, cleared: count });
 	} else if (Array.isArray(notificationIds) && notificationIds.length > 0) {
 		await NotificationService.markAsRead(user.id, notificationIds);
 	} else {

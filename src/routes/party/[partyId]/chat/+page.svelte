@@ -34,6 +34,15 @@
 	let eventSource: EventSource | null = null;
 
 	onMount(() => {
+		// 채팅방 진입 시 해당 파티 채팅 알림 읽음 처리
+		fetch('/api/notifications/read', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ referenceId: `party_chat:${partyId}` }),
+		}).then(res => {
+			if (res.ok) window.dispatchEvent(new Event('notifications-read'));
+		}).catch(() => {});
+
 		// 초기 스크롤 하단
 		requestAnimationFrame(() => {
 			if (scrollContainer) {
