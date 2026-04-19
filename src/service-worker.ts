@@ -61,18 +61,28 @@ self.addEventListener('push', (e) => {
 		(self as unknown as ServiceWorkerGlobalScope).clients
 			.matchAll({ type: 'window', includeUncontrolled: true })
 			.then((clientList) => {
-				// 앱이 포커스 상태면 SSE 토스트가 처리하므로 push 알림 스킵
-				const isAppFocused = clientList.some((c) => c.focused);
-				if (isAppFocused) return;
-
 				const data = event.data!.json();
+				const targetUrl = data.url || '/';
+
+				// 해당 URL의 페이지를 보고 있으면 push 알림 스킵 (SSE 토스트가 처리)
+				const isViewingTarget = clientList.some((c) => {
+					if (!c.focused) return false;
+					try {
+						const clientUrl = new URL(c.url);
+						return clientUrl.pathname === targetUrl || clientUrl.pathname.startsWith(targetUrl);
+					} catch {
+						return false;
+					}
+				});
+				if (isViewingTarget) return;
+
 				return (self as unknown as ServiceWorkerGlobalScope).registration.showNotification(
 					data.title,
 					{
 						body: data.body,
 						icon: '/icon-192.png',
 						badge: '/icon-192.png',
-						data: { url: data.url },
+						data: { url: targetUrl },
 						tag: data.type, // 같은 타입 알림 그룹핑
 						renotify: true,
 					}

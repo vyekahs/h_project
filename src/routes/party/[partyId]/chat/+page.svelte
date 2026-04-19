@@ -62,6 +62,14 @@
 							scrollContainer.scrollTop = scrollContainer.scrollHeight;
 						}
 					});
+					// 채팅방을 보고 있으므로 새로 들어온 알림도 즉시 읽음 처리
+					fetch('/api/notifications/read', {
+						method: 'POST',
+						headers: { 'Content-Type': 'application/json' },
+						body: JSON.stringify({ referenceId: `party_chat:${partyId}` }),
+					}).then(res => {
+						if (res.ok) window.dispatchEvent(new Event('notifications-read'));
+					}).catch(() => {});
 				}
 			} catch {}
 		});
@@ -207,7 +215,7 @@
 <div class="chat-page" bind:this={chatPage}>
 	<!-- Header -->
 	<header class="chat-header">
-		<button class="back-btn" onclick={() => history.back()} aria-label="뒤로 가기">
+		<button class="back-btn" onclick={() => { if (history.length > 1) history.back(); else location.href = '/'; }} aria-label="뒤로 가기">
 			<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
 				<polyline points="15 18 9 12 15 6"></polyline>
 			</svg>
