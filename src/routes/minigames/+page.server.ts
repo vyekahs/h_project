@@ -2,7 +2,7 @@ import { redirect } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
 import { RankingService } from '$lib/server/services/rankingService';
 
-const GAME_IDS = ['sudoku', 'killer-sudoku', 'unblock-me', 'tichu', 'energy', 'water-sort', 'triple-tile', 'train-tracks', 'freecell', 'regicide'];
+const GAME_IDS = ['sudoku', 'killer-sudoku', 'unblock-me', 'tichu', 'energy', 'water-sort', 'triple-tile', 'train-tracks', '2048', 'freecell', 'regicide', 'block-blaster'];
 
 export const load: PageServerLoad = async ({ locals }) => {
     if (!locals.user) {
