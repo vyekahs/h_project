@@ -3,7 +3,7 @@
 	import { STRATEGY_PRESETS } from '$lib/games/tichu/ai/presets';
 	import type { createTichuGameState } from '../gameState.svelte';
 	import LessonSelect from './LessonSelect.svelte';
-	import GameComments from '$lib/components/games/GameComments.svelte';
+
 
 	interface Props {
 		game: ReturnType<typeof createTichuGameState>;
@@ -78,10 +78,7 @@
 			<button class="tab-btn" class:active={activeTab === 'ranking'} onclick={() => activeTab = 'ranking'}>
 				랭킹
 			</button>
-			<button class="tab-btn" class:active={activeTab === 'comments'} onclick={() => activeTab = 'comments'}>
-				댓글
-			</button>
-		</div>
+			</div>
 
 		{#if activeTab === 'setup'}
 			{#if showSetup}
@@ -186,19 +183,6 @@
 						</table>
 					{/if}
 				</div>
-			</div>
-		{:else if activeTab === 'comments'}
-			<div class="comments-wrapper">
-				{#if user}
-					<GameComments
-						gameId="tichu"
-						userId={user.id}
-						{isAdmin}
-						dark
-					/>
-				{:else}
-					<div class="comments-empty">로그인이 필요합니다</div>
-				{/if}
 			</div>
 		{/if}
 	</div>

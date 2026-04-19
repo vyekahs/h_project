@@ -2,7 +2,7 @@
     import { goto } from '$app/navigation';
     import { browser } from '$app/environment';
     import RankingBoard from '$lib/components/gamification/RankingBoard.svelte';
-    import GameComments from '$lib/components/games/GameComments.svelte';
+
     import type { GameConfig } from '$lib/games/gameRegistry';
     import { formatTime } from '$lib/games/utils';
 
@@ -216,14 +216,6 @@
                         공략집
                     </button>
                 {/if}
-                <div class="tab-divider"></div>
-                <button
-                    class="tab-btn"
-                    class:active={activeTab === 'comments'}
-                    onclick={() => activeTab = 'comments'}
-                >
-                    댓글
-                </button>
             </div>
 
             <!-- Tab Content -->
@@ -421,19 +413,6 @@
                         </div>
                     </div>
 
-                <!-- 4. Comments Tab -->
-                {:else if activeTab === 'comments'}
-                    {#if currentUser}
-                        <GameComments
-                            gameId={gameConfig.id}
-                            userId={currentUser.id}
-                            isAdmin={isAdmin}
-                        />
-                    {:else}
-                        <div class="subpage-body">
-                            <div class="empty-state">로그인이 필요합니다</div>
-                        </div>
-                    {/if}
                 {/if}
             </div>
         </div>
