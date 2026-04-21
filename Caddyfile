@@ -19,14 +19,14 @@ honnol.org {
         reverse_proxy app:3000
     }
 }
-  item.damonpyo.mooo.com {                                                                      
-      basicauth {                                                                               
-          arang $2a$14$vtVgGA19Hk6RZLQnmiIiQeVCux./9u9Lnfes36OOInlasdSxpz6ji
-      }                                                         
-      handle /api/* {                                                                           
-          uri strip_prefix /api
-          reverse_proxy host.docker.internal:8001                                               
-      }                                                                                         
-      reverse_proxy host.docker.internal:3001
-  }                                                                                             
-           
+itemselector.mooo.com {                                                                      
+    basicauth {                                                                               
+        arang $2a$14$vtVgGA19Hk6RZLQnmiIiQeVCux./9u9Lnfes36OOInlasdSxpz6ji
+    }                                                         
+    handle /api/* {                                                                           
+        uri strip_prefix /api
+        reverse_proxy host.docker.internal:8001                                               
+    }                                                                                         
+    reverse_proxy host.docker.internal:3001
+}                                                                                             
+        
