@@ -602,7 +602,7 @@
     .tab-content {
         flex: 1;
         width: 100%;
-        overflow: hidden;
+        overflow-y: auto;
         display: flex;
         flex-direction: column;
         min-height: 0;
@@ -627,7 +627,6 @@
         align-items: center;
         gap: 1rem;
         padding: 0.5rem 0;
-        overflow: hidden;
         min-height: 0;
     }
 
@@ -637,6 +636,16 @@
         overflow-y: auto;
         padding: 0.5rem;
         min-height: 0;
+    }
+
+    .start-actions {
+        flex-shrink: 0;
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.5rem 0;
     }
 
     .options {
