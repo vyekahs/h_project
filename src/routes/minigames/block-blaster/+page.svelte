@@ -464,6 +464,7 @@
 		pointer-events: none;
 		z-index: 200;
 		opacity: 0.75;
+		transform: translate(-50%, -50%);
 	}
 
 	.floating-grid {
