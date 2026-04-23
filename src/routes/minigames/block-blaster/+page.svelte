@@ -75,8 +75,8 @@
 		if (dragBlockIndex === null) return;
 
 		if (isDragging && dragBlock && boardRef) {
-			// 드롭: 플로팅 블록 중심 좌표로 보드 셀 계산
-			const cell = boardRef.getCellFromXY(dragX, dragY);
+			// 드롭: 블록 중심 보정된 좌표로 보드 셀 계산
+			const cell = boardRef.getCellFromXY(dragX, dragY, dragBlock);
 			if (cell) {
 				game.selectBlock(dragBlockIndex);
 				game.placeBlockAt(cell.row, cell.col);

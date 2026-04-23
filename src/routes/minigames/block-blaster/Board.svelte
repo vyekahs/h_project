@@ -51,7 +51,9 @@
 			}
 			return;
 		}
-		const cell = cellFromXY(dragX, dragY);
+		// 블록 중심 보정: 블록 크기의 절반만큼 좌표를 이동
+		const blockOffset = getBlockCenterOffset(dragBlock);
+		const cell = cellFromXY(dragX - blockOffset.x, dragY - blockOffset.y);
 		if (!cell) {
 			ghostCells = [];
 			return;
@@ -67,6 +69,27 @@
 				g.row >= 0 && g.row < GRID_SIZE && g.col >= 0 && g.col < GRID_SIZE
 			);
 	});
+
+	function getCellStep(): number {
+		if (!boardEl) return 0;
+		const rect = boardEl.getBoundingClientRect();
+		const padding = 6;
+		const gap = 3;
+		const innerWidth = rect.width - padding * 2;
+		const cellSize = (innerWidth - gap * (GRID_SIZE - 1)) / GRID_SIZE;
+		return cellSize + gap;
+	}
+
+	function getBlockCenterOffset(block: BlockShape): { x: number; y: number } {
+		const step = getCellStep();
+		if (step === 0) return { x: 0, y: 0 };
+		let maxR = 0, maxC = 0;
+		for (const [r, c] of block.cells) {
+			if (r > maxR) maxR = r;
+			if (c > maxC) maxC = c;
+		}
+		return { x: (maxC * step) / 2, y: (maxR * step) / 2 };
+	}
 
 	function cellFromXY(px: number, py: number): { row: number; col: number } | null {
 		if (!boardEl) return null;
@@ -130,7 +153,11 @@
 	}
 
 	// 드롭 처리: page에서 pointerup 시 Board 좌표 계산용으로 export
-	export function getCellFromXY(px: number, py: number) {
+	export function getCellFromXY(px: number, py: number, block?: BlockShape | null) {
+		if (block) {
+			const offset = getBlockCenterOffset(block);
+			return cellFromXY(px - offset.x, py - offset.y);
+		}
 		return cellFromXY(px, py);
 	}
 
