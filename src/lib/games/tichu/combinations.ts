@@ -225,22 +225,29 @@ function detectStraight(cards: Card[], normalCards: NormalCard[], hasPhoenix: bo
 		const needed = cards.length;
 		const uniqueCount = sorted.length; // phoenix counted separately
 
-		// Try to form a straight of 'needed' length
-		// We have uniqueCount real ranks + 1 phoenix
-		if (uniqueCount < needed - 1) return null;
+		// Phoenix occupies one slot; remaining (needed-1) slots are normal cards (+ optional mahjong).
+		// They must all have distinct ranks → unique count must equal needed - 1.
+		if (uniqueCount !== needed - 1) return null;
 
-		for (let start = 0; start <= sorted.length - (needed - 1); start++) {
+		// Try every possible base rank for the straight window.
+		// Phoenix can fill a missing rank either inside [sorted[0]..sorted[last]]
+		// or extend below sorted[0] / above sorted[last].
+		const minBase = Math.max(1, sorted[0] - (needed - 1));
+		const maxBase = sorted[0];
+		for (let base = minBase; base <= maxBase; base++) {
+			const highRank = base + needed - 1;
+			if (highRank > 14) continue; // A is max in straights
+			if (highRank < sorted[sorted.length - 1]) continue; // window must cover all real ranks
+
 			let gaps = 0;
-			const base = sorted[start];
 			for (let i = 0; i < needed; i++) {
 				const expectedRank = base + i;
 				if (!sorted.includes(expectedRank)) gaps++;
 			}
-			if (gaps <= 1) {
-				const highRank = base + needed - 1;
-				if (highRank <= 14) { // A is max in straights
-					return { type: 'straight', cards, rank: highRank, length: needed };
-				}
+			// gaps counts ranks in window that aren't in sorted; phoenix fills exactly one
+			// (or zero if the window already contains all real ranks and phoenix is unused — invalid since phoenix is in cards)
+			if (gaps === 1) {
+				return { type: 'straight', cards, rank: highRank, length: needed };
 			}
 		}
 		return null;
@@ -425,20 +432,24 @@ export function getPhoenixSubstituteRank(cards: Card[]): number | null {
 		const sorted = [...new Set(allRanks)].sort((a, b) => a - b);
 		const needed = cards.length;
 
-		for (let start = 0; start <= sorted.length - (needed - 1); start++) {
-			let gapRank: number | null = null;
-			let gaps = 0;
-			const base = sorted[start];
-			for (let i = 0; i < needed; i++) {
-				const expectedRank = base + i;
-				if (!sorted.includes(expectedRank)) {
-					gaps++;
-					gapRank = expectedRank;
-				}
-			}
-			if (gaps === 1 && gapRank !== null) {
+		if (sorted.length === needed - 1) {
+			const minBase = Math.max(1, sorted[0] - (needed - 1));
+			const maxBase = sorted[0];
+			for (let base = minBase; base <= maxBase; base++) {
 				const highRank = base + needed - 1;
-				if (highRank <= 14) return gapRank;
+				if (highRank > 14) continue;
+				if (highRank < sorted[sorted.length - 1]) continue;
+
+				let gapRank: number | null = null;
+				let gaps = 0;
+				for (let i = 0; i < needed; i++) {
+					const expectedRank = base + i;
+					if (!sorted.includes(expectedRank)) {
+						gaps++;
+						gapRank = expectedRank;
+					}
+				}
+				if (gaps === 1 && gapRank !== null) return gapRank;
 			}
 		}
 	}
