@@ -1,5 +1,5 @@
 /**
- * 블록블라스터 특수능력 모드 — 능력 데이터/타입/추첨 로직
+ * 블록블라스터 플러스 모드 — 능력 데이터/타입/추첨 로직
  */
 
 export type AbilityCategory = 'clear' | 'manipulate' | 'defense' | 'passive';

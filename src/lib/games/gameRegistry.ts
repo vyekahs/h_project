@@ -170,7 +170,7 @@ export const GAME_REGISTRY: Record<string, GameConfig> = {
 		difficulties: ['classic', 'special'],
 		difficultyLabels: {
 			classic: '클래식',
-			special: '특수능력'
+			special: '플러스'
 		},
 		localStorageSaveKey: 'block_blaster_save',
 		hasTutorials: false

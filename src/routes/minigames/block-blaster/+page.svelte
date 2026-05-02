@@ -13,6 +13,7 @@
 	import DangerOverlay from './DangerOverlay.svelte';
 	import DangerStageIntro from './DangerStageIntro.svelte';
 	import DangerClearBanner from './DangerClearBanner.svelte';
+	import PlusIntroModal from './PlusIntroModal.svelte';
 	import GamePauseModal from '$lib/components/games/GamePauseModal.svelte';
 	import GameResultModal from '$lib/components/games/GameResultModal.svelte';
 	import { goto, replaceState } from '$app/navigation';
@@ -23,6 +24,28 @@
 	import type { BlockShape } from '$lib/games/block-blaster/types';
 
 	const game = createBlockBlasterGame();
+
+	const PLUS_INTRO_SEEN_KEY = 'block_blaster_plus_intro_seen';
+	let showPlusIntro = $state(false);
+	let pendingPlusStart: (() => void) | null = null;
+
+	function maybeShowPlusIntro(onProceed: () => void) {
+		const seen = browser ? localStorage.getItem(PLUS_INTRO_SEEN_KEY) === '1' : true;
+		if (seen) {
+			onProceed();
+			return;
+		}
+		pendingPlusStart = onProceed;
+		showPlusIntro = true;
+	}
+
+	function dismissPlusIntro() {
+		if (browser) localStorage.setItem(PLUS_INTRO_SEEN_KEY, '1');
+		showPlusIntro = false;
+		const proceed = pendingPlusStart;
+		pendingPlusStart = null;
+		proceed?.();
+	}
 
 	// 탭 선택 블록
 	const selectedBlock = $derived(
@@ -232,7 +255,13 @@
 
 		if (params.get('autostart') === 'true') {
 			replaceState(window.location.pathname, {});
-			user.refresh().then(() => game.startGame(mode));
+			user.refresh().then(() => {
+				if (mode === 'special') {
+					maybeShowPlusIntro(() => game.startGame(mode));
+				} else {
+					game.startGame(mode);
+				}
+			});
 		} else if (params.get('resume') === 'true') {
 			replaceState(window.location.pathname, {});
 			game.loadGame();
@@ -524,6 +553,11 @@
 				</div>
 			</div>
 		</div>
+	{/if}
+
+	<!-- 플러스 모드 첫 진입 시 게임 설명 모달 -->
+	{#if showPlusIntro}
+		<PlusIntroModal onClose={dismissPlusIntro} />
 	{/if}
 
 	<!-- 위험 스테이지 인트로 — 사용자가 확인 버튼 누를 때까지 표시 -->
