@@ -327,9 +327,9 @@
 								{#if ds}
 									{@const active = ds.dangers.filter((d) => !d.resolved && d.delayTurns === 0)}
 									{@const pending = ds.dangers.filter((d) => !d.resolved && d.delayTurns > 0)}
-									STAGE {game.stagesCleared + 1}/{game.maxStage} · 위험 {active.length}/{active.length + pending.length}{#if pending.length > 0} (다음 {Math.min(...pending.map((d) => d.delayTurns))}턴 후){:else if game.dangerCountdownActive} · 다음까지 {game.turnsUntilNextDanger}턴{/if}
+									WAVE {game.stagesCleared + 1}/{game.maxStage} · 위협 {active.length}/{active.length + pending.length}{#if pending.length > 0} (다음 {Math.min(...pending.map((d) => d.delayTurns))}턴 후){:else if game.dangerCountdownActive} · 다음 WAVE {game.turnsUntilNextDanger}턴{/if}
 								{:else}
-									STAGE {game.stagesCleared}/{game.maxStage} · 다음 위험까지 {game.turnsUntilNextDanger}턴
+									WAVE {game.stagesCleared}/{game.maxStage} · 다음 WAVE까지 {game.turnsUntilNextDanger}턴
 								{/if}
 							</span>
 						{/if}
@@ -491,9 +491,9 @@
 		{#if game.gameState === 'finished'}
 			<GameResultModal
 				isWon={game.isCleared}
-				title={game.isCleared ? `🏆 STAGE ${game.maxStage} 클리어!` : 'GAME OVER'}
+				title={game.isCleared ? `🏆 WAVE ${game.maxStage} 정복!` : 'GAME OVER'}
 				message={game.isCleared
-					? `${game.maxStage}스테이지를 모두 클리어했습니다!`
+					? `${game.maxStage}개의 WAVE를 모두 정복했습니다!`
 					: game.gameOverReason === 'doom'
 						? '게임오버 줄을 제때 비우지 못했습니다.'
 						: game.gameOverReason === 'no-blocks'

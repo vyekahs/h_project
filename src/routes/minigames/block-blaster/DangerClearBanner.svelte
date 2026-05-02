@@ -9,8 +9,8 @@
 	<div class="ribbon">
 		<span class="check">✓</span>
 		<div class="text">
-			<div class="title">STAGE {stageNumber} 클리어!</div>
-			<div class="sub">위험 {dangerCount}개 해결 · 보상 획득</div>
+			<div class="title">WAVE {stageNumber} 클리어!</div>
+			<div class="sub">위협 {dangerCount}개 격파 · 보상 획득</div>
 		</div>
 	</div>
 </div>
