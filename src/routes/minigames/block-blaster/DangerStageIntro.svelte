@@ -24,7 +24,7 @@
 <div class="overlay">
 	<div class="modal" role="dialog" aria-modal="true" tabindex="-1">
 		<div class="stage-tag">WAVE {stageNumber}</div>
-		<div class="warn">위협 {dangers.length}개 등장!{#if dangers.length > 1} (단계별 등장){/if}</div>
+		<div class="warn">신규 위협 {dangers.length}{dangers.length > 1 ? '종' : '종'} 등장!</div>
 
 		<div class="danger-list">
 			{#each uniqueDangers as d (d.type)}

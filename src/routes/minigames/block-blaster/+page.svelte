@@ -562,11 +562,11 @@
 		<PlusIntroModal onClose={dismissPlusIntro} />
 	{/if}
 
-	<!-- 위험 스테이지 인트로 — 사용자가 확인 버튼 누를 때까지 표시 -->
-	{#if game.isSpecialMode && game.pendingDangerIntro && game.currentDangerStage}
+	<!-- 위험 인트로 — 처음 만나는 위험 종류만 안내. 모두 본 종류면 모달 X -->
+	{#if game.isSpecialMode && game.pendingDangerIntro}
 		<DangerStageIntro
-			stageNumber={game.currentDangerStage.stageNumber}
-			dangers={game.currentDangerStage.dangers}
+			stageNumber={game.pendingDangerIntro.stageNumber}
+			dangers={game.pendingDangerIntro.dangers}
 			onConfirm={game.dismissDangerIntro}
 		/>
 	{/if}

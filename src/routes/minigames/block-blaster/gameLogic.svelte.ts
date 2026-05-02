@@ -38,7 +38,8 @@ import {
 	type CellColor,
 	type CellMetaMap,
 	type Danger,
-	type DangerStage
+	type DangerStage,
+	type DangerType
 } from '$lib/games/block-blaster/types';
 import { formatTime, trackGameStart } from '$lib/games/utils';
 import { rankUpStore } from '$lib/stores/rankUpStore.svelte';
@@ -299,9 +300,14 @@ export function createBlockBlasterGame() {
 	/** 평시 ↔ 위험 사이클 — null이면 평시, 객체이면 위험 스테이지 진행 중 */
 	let currentDangerStage: DangerStage | null = $state(null);
 	/** 위험 스테이지 인트로 표시용 — 사용자 확인 클릭 시 사라짐 */
-	let pendingDangerIntro = $state(false);
+	/** 위험 인트로 모달 — 새로 등장하는 위험 종류 안내. null이면 모달 안 띄움(이미 다 본 종류) */
+	let pendingDangerIntro: { stageNumber: number; dangers: Danger[] } | null = $state(null);
+	/** 게임 진행 중 사용자가 이미 본 위험 종류 — 같은 종류는 다시 안내 안 함 */
+	let seenDangerTypes: Set<DangerType> = $state(new Set());
 	/** 위험 스테이지 클리어 배너 — { stageNumber, dangerCount } 또는 null */
 	let pendingDangerClear: { stageNumber: number; dangerCount: number } | null = $state(null);
+	/** WAVE 클리어 직후 곧 드래프트 모달이 뜰 예정인지 — afterPlace가 게임오버 보류 판단에 사용 */
+	let pendingStageRewardScheduled = $state(false);
 	/** 게임오버 사유 — 'doom' (게임오버 줄로 끝남) | 'no-blocks' (배치 불가) | null */
 	let gameOverReason: 'doom' | 'no-blocks' | null = $state(null);
 	let pendingDraftOptions: Ability[] | null = $state(null);
@@ -571,6 +577,7 @@ export function createBlockBlasterGame() {
 				postDangerSettleTurns,
 				resolvedDangerCount,
 				dangerCountdownActive,
+				seenDangerTypes: Array.from(seenDangerTypes),
 				draftCount,
 				stage,
 				stagesCleared,
@@ -624,6 +631,7 @@ export function createBlockBlasterGame() {
 			postDangerSettleTurns = data.postDangerSettleTurns ?? 0;
 			resolvedDangerCount = data.resolvedDangerCount ?? 0;
 			dangerCountdownActive = data.dangerCountdownActive ?? false;
+			seenDangerTypes = new Set(data.seenDangerTypes ?? []);
 			draftCount = data.draftCount || 0;
 			stage = data.stage || 1;
 			stagesCleared = data.stagesCleared || 0;
@@ -647,7 +655,7 @@ export function createBlockBlasterGame() {
 			clearingCols = [];
 			isAnimating = false;
 			pendingAbilitySlot = null;
-			pendingDangerIntro = false;
+			pendingDangerIntro = null;
 			pendingDangerClear = null;
 			gameOverReason = null;
 
@@ -705,7 +713,9 @@ export function createBlockBlasterGame() {
 		cellMeta = {};
 		pendingDangerClear = null;
 		gameOverReason = null;
-		pendingDangerIntro = false;
+		pendingDangerIntro = null;
+		seenDangerTypes = new Set();
+		pendingStageRewardScheduled = false;
 		lastSnapshots = [];
 		nextBlocksQueue = [];
 		pendingDraftOptions = null;
@@ -907,6 +917,11 @@ export function createBlockBlasterGame() {
 				// 능력으로 탈출 가능 — 게임오버 보류 (안내 모달 없음)
 				return;
 			}
+			// WAVE 클리어 보상이 진행 중이면 게임오버 보류 — 드래프트로 받을 능력이
+			// 위기를 풀어줄 수 있으므로 afterDraftPick 시점에 다시 판정.
+			if (pendingStageRewardScheduled || pendingDraftOptions || pendingDangerClear) {
+				return;
+			}
 			gameOverReason = 'no-blocks';
 			isAnimating = true;
 			setTimeout(() => {
@@ -1088,13 +1103,26 @@ export function createBlockBlasterGame() {
 		if (currentDangerStage === null) {
 			// 평시 → 새 스테이지 시작
 			currentDangerStage = fresh;
-			pendingDangerIntro = true;
 		} else {
 			// 합류 — 새 dangers를 기존 배열에 push, 잠금 슬롯도 누적
 			currentDangerStage.dangers.push(...fresh.dangers);
 			currentDangerStage.lockedTraySlots += fresh.lockedTraySlots;
-			// 합류는 인트로 모달 X — 새 위험 등장은 단계별 등장으로 자연스럽게 보임
 		}
+
+		// 인트로 — 사용자가 처음 보는 위험 종류만 추려서 안내. 모두 본 종류면 모달 안 띄움.
+		const newKindDangers: Danger[] = [];
+		const seenInThisIntro = new Set<DangerType>();
+		for (const d of fresh.dangers) {
+			if (seenDangerTypes.has(d.type)) continue;
+			if (seenInThisIntro.has(d.type)) continue; // 같은 종류 중복 카드 X
+			seenInThisIntro.add(d.type);
+			newKindDangers.push(d);
+		}
+		if (newKindDangers.length > 0) {
+			pendingDangerIntro = { stageNumber, dangers: newKindDangers };
+		}
+		// 본 적 있는 종류로 마킹은 인트로 닫힐 때(또는 모달 안 뜨면 즉시) 처리
+		for (const d of fresh.dangers) seenDangerTypes.add(d.type);
 
 		// settle/카운트 리셋 — 새 위험이 합류했으니 다시 처음부터
 		postDangerSettleTurns = 0;
@@ -1110,7 +1138,7 @@ export function createBlockBlasterGame() {
 	}
 
 	function dismissDangerIntro() {
-		pendingDangerIntro = false;
+		pendingDangerIntro = null;
 	}
 
 	/**
@@ -1270,7 +1298,8 @@ export function createBlockBlasterGame() {
 				return;
 			}
 
-			// 드래프트 모달 (배너 후)
+			// 드래프트 모달 (배너 후) — afterPlace의 게임오버 보류 신호 ON
+			pendingStageRewardScheduled = true;
 			setTimeout(() => openAbilityDraft(), 1500);
 		}
 	}
@@ -1321,11 +1350,14 @@ export function createBlockBlasterGame() {
 	}
 
 	function openAbilityDraft() {
+		// 모달이 열리는 순간 scheduled 신호 해제 — 이후엔 pendingDraftOptions가 보류 신호
+		pendingStageRewardScheduled = false;
 		const options = drawAbilities(ABILITY_POOL, inventory, 3, stage);
 		if (options.length === 0) {
-			// 후보 없음 — 보너스 카운터 소진하고 그냥 평시 복귀
+			// 후보 없음 — 보너스 카운터 소진하고 그냥 평시 복귀 + 보류해뒀던 게임오버 재검사
 			if (bonusDraftsRemaining > 0) bonusDraftsRemaining--;
 			saveGame();
+			afterPlace();
 			return;
 		}
 		pendingDraftOptions = options;
@@ -1399,6 +1431,8 @@ export function createBlockBlasterGame() {
 		}
 
 		saveGame();
+		// 보상 진행 중에 보류해둔 게임오버 판정 재검사 — 새 능력으로 풀 수 있는지 확인
+		afterPlace();
 	}
 
 	function handleGameClear() {
