@@ -5,7 +5,6 @@ import {
 	canPlaceBlock,
 	placeBlock,
 	findCompletedLines,
-	clearLines,
 	calculateScore,
 	canPlaceAnyBlock
 } from '$lib/games/block-blaster/gameLogic';
@@ -32,9 +31,11 @@ import {
 } from '$lib/games/block-blaster/abilities';
 import {
 	GRID_SIZE,
+	cellKey,
 	type BoardGrid,
 	type BlockShape,
 	type CellColor,
+	type CellMetaMap,
 	type Danger,
 	type DangerStage
 } from '$lib/games/block-blaster/types';
@@ -206,6 +207,8 @@ export function createBlockBlasterGame() {
 	let nextBlocksQueue: BlockShape[][] = $state([]); // peek-next용 큐
 	/** 위험 클리어 시 보너스 드래프트 횟수 (9~10 스테이지 추가 보너스용) */
 	let bonusDraftsRemaining = $state(0);
+	/** 셀별 메타데이터 — 위험 셀(petrified), 강화 블록(hp) */
+	let cellMeta: CellMetaMap = $state({});
 
 	// rotate-block 변형 선택 모달 상태
 	let pendingTransform: {
@@ -448,6 +451,7 @@ export function createBlockBlasterGame() {
 				stagesCleared,
 				currentDangerStage,
 				bonusDraftsRemaining,
+				cellMeta,
 				lastSnapshots,
 				nextBlocksQueue,
 				// pending modal/action states — 새로고침 후에도 진행 가능하도록
@@ -496,6 +500,7 @@ export function createBlockBlasterGame() {
 			stagesCleared = data.stagesCleared || 0;
 			currentDangerStage = data.currentDangerStage || null;
 			bonusDraftsRemaining = data.bonusDraftsRemaining || 0;
+			cellMeta = data.cellMeta || {};
 			lastSnapshots = data.lastSnapshots || [];
 			nextBlocksQueue = data.nextBlocksQueue || [];
 
@@ -564,6 +569,7 @@ export function createBlockBlasterGame() {
 		stagesCleared = 0;
 		currentDangerStage = null;
 		bonusDraftsRemaining = 0;
+		cellMeta = {};
 		pendingActIntro = null;
 		pendingDangerIntro = false;
 		lastSnapshots = [];
@@ -661,7 +667,7 @@ export function createBlockBlasterGame() {
 			}
 
 			setTimeout(() => {
-				grid = clearLines(grid, rows, cols);
+				clearLinesWithMeta(rows, cols);
 				clearingRows = [];
 				clearingCols = [];
 				isAnimating = false;
@@ -681,6 +687,45 @@ export function createBlockBlasterGame() {
 			saveGame();
 			afterPlace();
 		}
+	}
+
+	/**
+	 * 라인 클리어 + cellMeta 후처리.
+	 * - 강화 블록(hp): 영향 받으면 hp -1. hp가 남아있으면 같은 색으로 grid에 다시 채움.
+	 * - petrified 셀: 라인 클리어로 자연 사라짐 (meta 제거)
+	 * - 일반 셀: meta 제거(있다면)
+	 */
+	function clearLinesWithMeta(rows: number[], cols: number[]) {
+		const affected = new Set<string>();
+		for (const r of rows) {
+			for (let c = 0; c < GRID_SIZE; c++) affected.add(cellKey(r, c));
+		}
+		for (const c of cols) {
+			for (let r = 0; r < GRID_SIZE; r++) affected.add(cellKey(r, c));
+		}
+
+		const newGrid = cloneGrid(grid);
+		const newMeta = { ...cellMeta };
+
+		for (const key of affected) {
+			const [r, c] = key.split(',').map(Number);
+			const meta = newMeta[key];
+			const color = newGrid[r][c];
+
+			if (meta?.hp && meta.hp > 1 && color !== 0) {
+				// 강화 블록 — HP 차감하고 다시 채움
+				newMeta[key] = { ...meta, hp: meta.hp - 1 };
+				// grid는 그대로 유지 (라인 클리어 X 효과)
+				continue;
+			}
+
+			// 일반 셀 또는 강화 HP 0 도달 → 비움
+			newGrid[r][c] = 0;
+			delete newMeta[key];
+		}
+
+		grid = newGrid;
+		cellMeta = newMeta;
 	}
 
 	/**
@@ -864,6 +909,24 @@ export function createBlockBlasterGame() {
 
 		stage = stageNumber;
 		currentDangerStage = generateDangerStage(stageNumber, grid);
+
+		// reinforced 위험은 즉시 보드에 강화 블록 배치 + cellMeta에 HP 설정
+		const next = cloneGrid(grid);
+		const nextMeta = { ...cellMeta };
+		for (const d of currentDangerStage.dangers) {
+			if (d.type === 'reinforced') {
+				const [r, c] = d.cells[0];
+				if (next[r][c] === 0) {
+					// 보이도록 어두운 색(임시: 색 번호 사용 안하고 회색 톤은 시각에서 처리)
+					// 회색 표현 위해 색 번호 5 사용하고 cellMeta로 reinforced 표시
+					next[r][c] = 5 as CellColor;
+					nextMeta[cellKey(r, c)] = { hp: stageNumber <= 5 ? 2 : 3 };
+				}
+			}
+		}
+		grid = next;
+		cellMeta = nextMeta;
+
 		pendingDangerIntro = true;
 		setTimeout(() => { pendingDangerIntro = false; }, 600);
 		saveGame();
@@ -881,8 +944,8 @@ export function createBlockBlasterGame() {
 			if (!d.resolved && isDangerResolved(d, grid)) {
 				d.resolved = true;
 				score += 200; // 위험 1개 해결 보너스
-				// 카운트가 1 이상 남았는데 해결 = 긴박 보너스
-				if (d.countdown > 1) score += 100;
+				// 카운트가 1 이상 남았는데 해결 = 긴박 보너스 (reinforced는 카운트 의미 없음)
+				if (d.type !== 'reinforced' && d.countdown > 1) score += 100;
 				// 트레이 잠금 1개 해제 (가장 우측부터)
 				if (ds.lockedTraySlots > 0) ds.lockedTraySlots--;
 			}
@@ -894,17 +957,31 @@ export function createBlockBlasterGame() {
 			return;
 		}
 
-		// 3) 카운트다운 -1 (해결 안 된 위험만)
+		// 3) 카운트다운 -1 (해결 안 된 위험만, reinforced 제외)
 		for (const d of ds.dangers) {
-			if (!d.resolved) d.countdown = Math.max(0, d.countdown - 1);
+			if (d.resolved) continue;
+			if (d.type === 'reinforced') continue; // reinforced는 카운트다운 X (HP로 해결)
+			d.countdown = Math.max(0, d.countdown - 1);
 		}
 
-		// 4) 카운트 0 도달 — 게임오버 줄이면 즉시 게임오버
+		// 4) 카운트 0 도달 처리
 		for (const d of ds.dangers) {
+			if (d.resolved) continue;
 			if (isDoomTriggered(d, grid)) {
-				// 즉시 게임오버 처리
+				// 게임오버 줄 — 즉시 게임오버
 				setTimeout(() => handleGameOver(), 400);
 				return;
+			}
+			if (d.type === 'hazard-zone' && d.countdown === 0) {
+				// 위험 구역 카운트 0 — 영역의 채워진 셀들을 petrified로 변환
+				const nextMeta = { ...cellMeta };
+				for (const [r, c] of d.cells) {
+					if (grid[r][c] !== 0) {
+						nextMeta[cellKey(r, c)] = { ...nextMeta[cellKey(r, c)], petrified: true };
+					}
+				}
+				cellMeta = nextMeta;
+				d.resolved = true; // 만료 처리(보너스 없음)
 			}
 		}
 	}
@@ -1314,7 +1391,7 @@ export function createBlockBlasterGame() {
 				}
 				const fxCells = collectFilledCells((r) => rows.includes(r));
 				if (fxCells.length > 0) triggerAbilityFx('beam-row', fxCells, [target.row, target.col]);
-				grid = clearLines(grid, rows, []);
+				clearLinesWithMeta(rows, []);
 				return true;
 			}
 			case 'clear-col': {
@@ -1327,7 +1404,7 @@ export function createBlockBlasterGame() {
 				}
 				const fxCells = collectFilledCells((_, c) => cols.includes(c));
 				if (fxCells.length > 0) triggerAbilityFx('beam-col', fxCells, [target.row, target.col]);
-				grid = clearLines(grid, [], cols);
+				clearLinesWithMeta([], cols);
 				return true;
 			}
 			case 'bomb-3x3': {
@@ -1513,6 +1590,7 @@ export function createBlockBlasterGame() {
 		get maxStage() { return MAX_STAGE; },
 		get stagesCleared() { return stagesCleared; },
 		get currentDangerStage() { return currentDangerStage; },
+		get cellMeta() { return cellMeta; },
 		get pendingActIntro() { return pendingActIntro; },
 		get pendingDangerIntro() { return pendingDangerIntro; },
 		get bonusDraftsRemaining() { return bonusDraftsRemaining; },

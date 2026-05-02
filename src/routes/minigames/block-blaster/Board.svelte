@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { GRID_SIZE, type BoardGrid, type BlockShape } from '$lib/games/block-blaster/types';
+	import { GRID_SIZE, cellKey, type BoardGrid, type BlockShape, type CellMetaMap } from '$lib/games/block-blaster/types';
 	import { canPlaceBlock } from '$lib/games/block-blaster/gameLogic';
 	import type { AbilityFx } from './gameLogic.svelte';
 	import type { Snippet } from 'svelte';
@@ -18,6 +18,7 @@
 		isAnimating = false,
 		abilityFx = null,
 		abilityPreviewCells = [],
+		cellMeta = {},
 		children
 	} = $props<{
 		grid: BoardGrid;
@@ -33,6 +34,7 @@
 		isAnimating: boolean;
 		abilityFx?: AbilityFx | null;
 		abilityPreviewCells?: [number, number][];
+		cellMeta?: CellMetaMap;
 		children?: Snippet;
 	}>();
 
@@ -220,6 +222,7 @@
 		{#each Array(GRID_SIZE) as _, row}
 			{#each Array(GRID_SIZE) as _, col}
 				{@const color = grid[row][col]}
+				{@const meta = cellMeta[cellKey(row, col)]}
 				{@const ghost = getGhost(row, col)}
 				{@const placed = isPlaced(row, col)}
 				{@const clearing = isClearing(row, col) && color !== 0}
@@ -232,6 +235,8 @@
 					class:filled={color !== 0}
 					class:placed
 					class:clearing
+					class:petrified={meta?.petrified}
+					class:reinforced={meta?.hp != null && meta.hp > 0}
 					class:ability-preview={previewing}
 					class:ability-preview-empty={previewing && color === 0}
 					class:ghost-valid={ghost?.valid === true}
@@ -240,6 +245,9 @@
 						ghost?.valid ? `--block-color: var(--block-color-${activeBlock?.color ?? 1})` : ''
 					)}
 				>
+					{#if meta?.hp != null && meta.hp > 0}
+						<span class="hp-badge">{meta.hp}</span>
+					{/if}
 					{#if fx}
 						<div
 							class="fx fx-{fx.kind}"
@@ -286,6 +294,36 @@
 
 	.cell.filled {
 		background: var(--block-color);
+	}
+
+	/* 위험 셀 — petrified (검은 돌) */
+	.cell.petrified {
+		background: #1f2937 !important;
+		box-shadow:
+			inset 0 0 0 1px rgba(255, 255, 255, 0.08),
+			inset 0 1px 2px rgba(255, 255, 255, 0.15);
+	}
+
+	/* 강화 블록 — 어두운 회색 + 갈라짐 효과 */
+	.cell.reinforced {
+		background: #4b5563 !important;
+		box-shadow:
+			inset 0 0 0 1.5px rgba(255, 255, 255, 0.18),
+			inset 0 0 8px rgba(0, 0, 0, 0.5);
+		position: relative;
+	}
+
+	.hp-badge {
+		position: absolute;
+		inset: 0;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		font-size: 0.85rem;
+		font-weight: 800;
+		color: #fbbf24;
+		text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
+		pointer-events: none;
 	}
 
 	.cell.placed {

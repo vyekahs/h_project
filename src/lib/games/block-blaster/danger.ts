@@ -53,53 +53,37 @@ export function lockedSlotsForStage(stage: number): number {
 }
 
 /**
- * 1단계 — doom-row / doom-col 위험만 생성.
- * 2단계 이후 다른 type으로 확장 시 여기에 분기 추가.
- *
- * 보드 상태(grid)를 보고 가능하면 "이미 채워진 줄"을 우선 위험으로 지정.
- * 빈 줄도 위험이 될 수 있으나 채워진 줄이 더 긴장감 있음.
+ * 위험 스테이지 생성 — 사용 가능한 위험 종류 풀에서 뽑아 N개 구성.
+ * 1단계: doom-row, doom-col
+ * 2단계: + hazard-zone, reinforced
+ * 3단계: + spreading
  */
+function availableDangerTypes(stageNumber: number): DangerType[] {
+	// 2단계 적용 — hazard-zone, reinforced도 풀에 추가
+	// 큰 막에 따라 점진 해금 가능하지만, 단순화를 위해 모든 스테이지에서 등장 허용
+	if (stageNumber <= 2) {
+		// 1막은 doom-row/col 위주로 학습
+		return ['doom-row', 'doom-col'];
+	}
+	return ['doom-row', 'doom-col', 'hazard-zone', 'reinforced'];
+}
+
 export function generateDangerStage(stageNumber: number, grid: BoardGrid): DangerStage {
 	const dangerCount = dangerCountForStage(stageNumber);
 	const dangers: Danger[] = [];
 	const usedRows = new Set<number>();
 	const usedCols = new Set<number>();
+	const usedZoneAnchors = new Set<string>(); // 영역 중복 방지
+	const types = availableDangerTypes(stageNumber);
 
 	for (let i = 0; i < dangerCount; i++) {
-		// 1단계는 doom-row/col만 — 50% 확률로 결정
-		const type: DangerType = Math.random() < 0.5 ? 'doom-row' : 'doom-col';
-
-		if (type === 'doom-row') {
-			const row = pickAvailableLine(usedRows, GRID_SIZE);
-			if (row === null) continue;
-			usedRows.add(row);
-			const cells: [number, number][] = [];
-			for (let c = 0; c < GRID_SIZE; c++) cells.push([row, c]);
-			const cd = countdownForStage(stageNumber);
-			dangers.push({
-				id: generateId('doom-row'),
-				type: 'doom-row',
-				cells,
-				countdown: cd,
-				initialCountdown: cd,
-				resolved: false
-			});
-		} else {
-			const col = pickAvailableLine(usedCols, GRID_SIZE);
-			if (col === null) continue;
-			usedCols.add(col);
-			const cells: [number, number][] = [];
-			for (let r = 0; r < GRID_SIZE; r++) cells.push([r, col]);
-			const cd = countdownForStage(stageNumber);
-			dangers.push({
-				id: generateId('doom-col'),
-				type: 'doom-col',
-				cells,
-				countdown: cd,
-				initialCountdown: cd,
-				resolved: false
-			});
-		}
+		const type: DangerType = types[Math.floor(Math.random() * types.length)];
+		const danger = createDanger(type, stageNumber, grid, {
+			usedRows,
+			usedCols,
+			usedZoneAnchors
+		});
+		if (danger) dangers.push(danger);
 	}
 
 	return {
@@ -107,6 +91,96 @@ export function generateDangerStage(stageNumber: number, grid: BoardGrid): Dange
 		dangers,
 		lockedTraySlots: lockedSlotsForStage(stageNumber)
 	};
+}
+
+interface CreateDangerCtx {
+	usedRows: Set<number>;
+	usedCols: Set<number>;
+	usedZoneAnchors: Set<string>;
+}
+
+function createDanger(
+	type: DangerType,
+	stageNumber: number,
+	grid: BoardGrid,
+	ctx: CreateDangerCtx
+): Danger | null {
+	const cd = countdownForStage(stageNumber);
+	switch (type) {
+		case 'doom-row': {
+			const row = pickAvailableLine(ctx.usedRows, GRID_SIZE);
+			if (row === null) return null;
+			ctx.usedRows.add(row);
+			const cells: [number, number][] = [];
+			for (let c = 0; c < GRID_SIZE; c++) cells.push([row, c]);
+			return {
+				id: generateId('doom-row'),
+				type: 'doom-row',
+				cells,
+				countdown: cd,
+				initialCountdown: cd,
+				resolved: false
+			};
+		}
+		case 'doom-col': {
+			const col = pickAvailableLine(ctx.usedCols, GRID_SIZE);
+			if (col === null) return null;
+			ctx.usedCols.add(col);
+			const cells: [number, number][] = [];
+			for (let r = 0; r < GRID_SIZE; r++) cells.push([r, col]);
+			return {
+				id: generateId('doom-col'),
+				type: 'doom-col',
+				cells,
+				countdown: cd,
+				initialCountdown: cd,
+				resolved: false
+			};
+		}
+		case 'hazard-zone': {
+			// 3×3 영역. 보드 안쪽으로만 (앵커 0~5)
+			const anchorR = Math.floor(Math.random() * (GRID_SIZE - 2));
+			const anchorC = Math.floor(Math.random() * (GRID_SIZE - 2));
+			const key = `${anchorR},${anchorC}`;
+			if (ctx.usedZoneAnchors.has(key)) return null;
+			ctx.usedZoneAnchors.add(key);
+			const cells: [number, number][] = [];
+			for (let r = anchorR; r < anchorR + 3; r++) {
+				for (let c = anchorC; c < anchorC + 3; c++) {
+					cells.push([r, c]);
+				}
+			}
+			return {
+				id: generateId('zone'),
+				type: 'hazard-zone',
+				cells,
+				countdown: cd,
+				initialCountdown: cd,
+				resolved: false
+			};
+		}
+		case 'reinforced': {
+			// 1셀 강화 블록 — 빈 셀 무작위 선택
+			const empty: [number, number][] = [];
+			for (let r = 0; r < GRID_SIZE; r++) {
+				for (let c = 0; c < GRID_SIZE; c++) {
+					if (grid[r][c] === 0) empty.push([r, c]);
+				}
+			}
+			if (empty.length === 0) return null;
+			const [r, c] = empty[Math.floor(Math.random() * empty.length)];
+			return {
+				id: generateId('reinforced'),
+				type: 'reinforced',
+				cells: [[r, c]],
+				countdown: 999, // 카운트다운 의미 없음 (HP로 해결)
+				initialCountdown: 999,
+				resolved: false
+			};
+		}
+		default:
+			return null;
+	}
 }
 
 function pickAvailableLine(used: Set<number>, max: number): number | null {
@@ -120,18 +194,24 @@ function pickAvailableLine(used: Set<number>, max: number): number | null {
 
 /**
  * 위험이 해결되었는지 판정.
- * doom-row/col: 해당 줄/열의 모든 셀이 비어있으면 해결.
- * (라인 클리어로 비워지면 자연 해결됨)
+ * doom-row/col: 해당 줄/열의 모든 셀이 비어있으면 해결
+ * hazard-zone: 영역의 모든 셀이 비어있으면 해결
+ * reinforced: 강화 블록 셀이 비어있으면 해결 (HP 0 도달)
  */
 export function isDangerResolved(danger: Danger, grid: BoardGrid): boolean {
 	if (danger.resolved) return true;
 	switch (danger.type) {
 		case 'doom-row':
-		case 'doom-col': {
+		case 'doom-col':
+		case 'hazard-zone': {
 			for (const [r, c] of danger.cells) {
 				if (grid[r][c] !== 0) return false;
 			}
 			return true;
+		}
+		case 'reinforced': {
+			const [r, c] = danger.cells[0];
+			return grid[r][c] === 0;
 		}
 		default:
 			return false;

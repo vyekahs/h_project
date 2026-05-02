@@ -1,5 +1,4 @@
 <script lang="ts">
-	import { GRID_SIZE } from '$lib/games/block-blaster/types';
 	import type { Danger } from '$lib/games/block-blaster/types';
 
 	let { dangers } = $props<{ dangers: Danger[] }>();
@@ -27,8 +26,8 @@
 <div class="danger-overlay">
 	{#each activeDangers as d (d.id)}
 		{@const sev = severity(d)}
-		{@const idx = lineIndex(d)}
 		{#if d.type === 'doom-row'}
+			{@const idx = lineIndex(d)}
 			<div
 				class="doom-line doom-row sev-{sev}"
 				style="--idx: {idx}"
@@ -37,10 +36,21 @@
 				<span class="countdown">{d.countdown}</span>
 			</div>
 		{:else if d.type === 'doom-col'}
+			{@const idx = lineIndex(d)}
 			<div
 				class="doom-line doom-col sev-{sev}"
 				style="--idx: {idx}"
 				aria-label="게임오버 열, 카운트다운 {d.countdown}"
+			>
+				<span class="countdown">{d.countdown}</span>
+			</div>
+		{:else if d.type === 'hazard-zone'}
+			{@const ar = d.cells[0][0]}
+			{@const ac = d.cells[0][1]}
+			<div
+				class="hazard-zone sev-{sev}"
+				style="--ar: {ar}; --ac: {ac};"
+				aria-label="위험 구역, 카운트다운 {d.countdown}"
 			>
 				<span class="countdown">{d.countdown}</span>
 			</div>
@@ -79,6 +89,20 @@
 		bottom: 0;
 		width: calc((100% - 7 * 3px) / 8);
 		left: calc(var(--idx) * (((100% - 7 * 3px) / 8) + 3px));
+	}
+
+	/* 위험 구역: 3×3 영역 */
+	.hazard-zone {
+		position: absolute;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: calc(3 * ((100% - 7 * 3px) / 8) + 2 * 3px);
+		height: calc(3 * ((100% - 7 * 3px) / 8) + 2 * 3px);
+		top: calc(var(--ar) * (((100% - 7 * 3px) / 8) + 3px));
+		left: calc(var(--ac) * (((100% - 7 * 3px) / 8) + 3px));
+		border-radius: 6px;
+		box-sizing: border-box;
 	}
 
 	/* 심각도별 색 */

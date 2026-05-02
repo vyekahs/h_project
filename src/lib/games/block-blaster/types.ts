@@ -21,6 +21,23 @@ export type BoardGrid = CellColor[][];
 /** 위험 종류 */
 export type DangerType = 'doom-row' | 'doom-col' | 'hazard-zone' | 'reinforced' | 'spreading';
 
+/**
+ * 셀별 메타데이터 — `BoardGrid`(색상 0~5)와 분리된 추가 정보.
+ * 좌표 키 `"r,c"` 기반의 객체 맵으로 보관.
+ */
+export interface CellMeta {
+	/** 위험 셀(petrified) — 라인 클리어 외에는 제거 불가 */
+	petrified?: boolean;
+	/** 강화 블록 잔여 HP (>0이면 라인 클리어 영향 시 -1, 0 되면 사라짐) */
+	hp?: number;
+}
+
+export type CellMetaMap = Record<string, CellMeta>;
+
+export function cellKey(r: number, c: number): string {
+	return `${r},${c}`;
+}
+
 /** 활성 위험 한 건 */
 export interface Danger {
 	id: string;

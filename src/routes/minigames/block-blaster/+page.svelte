@@ -360,6 +360,7 @@
 					isAnimating={game.isAnimating}
 					abilityFx={game.abilityFx}
 					abilityPreviewCells={abilityPreviewCells}
+					cellMeta={game.cellMeta}
 				>
 					{#if game.isSpecialMode && game.currentDangerStage}
 						<DangerOverlay dangers={game.currentDangerStage.dangers} />
