@@ -54,6 +54,12 @@ export interface Danger {
 	initialCountdown: number;
 	/** 해결됨 마커 — 해결 직후 ticking에서 제외, UI 페이드아웃 처리용 */
 	resolved: boolean;
+	/**
+	 * 등장 지연 턴 수 (단계별 위험 등장용).
+	 * 0이면 활성(보드에 표시·카운트다운 진행), >0이면 대기 중(매 턴 -1).
+	 * 0이 되는 순간 활성화되며 reinforced/spreading은 그때 보드에 셀 배치.
+	 */
+	delayTurns: number;
 }
 
 /** 위험 스테이지 활성 상태 */

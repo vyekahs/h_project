@@ -73,6 +73,18 @@ function availableDangerTypes(stageNumber: number): DangerType[] {
 	return ['doom-row', 'doom-col', 'hazard-zone', 'reinforced', 'spreading'];
 }
 
+/**
+ * 위험 등장 간격(턴 수) — 막별 차등.
+ * 첫 위험은 즉시(0), 이후 위험은 이 간격만큼 대기 후 등장.
+ * 기(1~2): 3턴 / 승(3~5): 2~3턴 / 전(6~8): 2턴 / 결(9~10): 1~2턴
+ */
+function dangerStaggerInterval(stageNumber: number): number {
+	if (stageNumber <= 2) return 3;
+	if (stageNumber <= 5) return 2 + Math.floor(Math.random() * 2); // 2~3
+	if (stageNumber <= 8) return 2;
+	return 1 + Math.floor(Math.random() * 2); // 1~2
+}
+
 export function generateDangerStage(stageNumber: number, grid: BoardGrid): DangerStage {
 	const dangerCount = dangerCountForStage(stageNumber);
 	const dangers: Danger[] = [];
@@ -81,6 +93,7 @@ export function generateDangerStage(stageNumber: number, grid: BoardGrid): Dange
 	const usedZoneAnchors = new Set<string>(); // 영역 중복 방지
 	const types = availableDangerTypes(stageNumber);
 
+	let cumulativeDelay = 0;
 	for (let i = 0; i < dangerCount; i++) {
 		const type: DangerType = types[Math.floor(Math.random() * types.length)];
 		const danger = createDanger(type, stageNumber, grid, {
@@ -88,7 +101,11 @@ export function generateDangerStage(stageNumber: number, grid: BoardGrid): Dange
 			usedCols,
 			usedZoneAnchors
 		});
-		if (danger) dangers.push(danger);
+		if (!danger) continue;
+		// 첫 위험(i=0)은 즉시 등장, 이후 위험은 누적 간격 후 등장
+		if (i > 0) cumulativeDelay += dangerStaggerInterval(stageNumber);
+		danger.delayTurns = cumulativeDelay;
+		dangers.push(danger);
 	}
 
 	return {
@@ -128,7 +145,8 @@ function createDanger(
 				cells,
 				countdown: doomCd,
 				initialCountdown: doomCd,
-				resolved: false
+				resolved: false,
+				delayTurns: 0
 			};
 		}
 		case 'doom-col': {
@@ -144,7 +162,8 @@ function createDanger(
 				cells,
 				countdown: doomCd,
 				initialCountdown: doomCd,
-				resolved: false
+				resolved: false,
+				delayTurns: 0
 			};
 		}
 		case 'hazard-zone': {
@@ -166,7 +185,8 @@ function createDanger(
 				cells,
 				countdown: cd,
 				initialCountdown: cd,
-				resolved: false
+				resolved: false,
+				delayTurns: 0
 			};
 		}
 		case 'reinforced': {
@@ -185,7 +205,8 @@ function createDanger(
 				cells: [[r, c]],
 				countdown: 999, // 카운트다운 의미 없음 (HP로 해결)
 				initialCountdown: 999,
-				resolved: false
+				resolved: false,
+				delayTurns: 0
 			};
 		}
 		case 'spreading': {
@@ -206,7 +227,8 @@ function createDanger(
 				cells: [[r, c]],
 				countdown: interval,
 				initialCountdown: interval,
-				resolved: false
+				resolved: false,
+				delayTurns: 0
 			};
 		}
 		default:

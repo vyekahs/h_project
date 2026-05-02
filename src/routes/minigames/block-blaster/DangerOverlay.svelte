@@ -3,7 +3,8 @@
 
 	let { dangers } = $props<{ dangers: Danger[] }>();
 
-	const activeDangers = $derived(dangers.filter((d: Danger) => !d.resolved));
+	// 대기 중(delayTurns>0) 위험은 보드에 표시하지 않음 — 활성된 시점에만 등장
+	const activeDangers = $derived(dangers.filter((d: Danger) => !d.resolved && d.delayTurns === 0));
 
 	/** 카운트 비율 — 0~1, 작을수록 위험 */
 	function ratio(d: Danger): number {

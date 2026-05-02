@@ -325,9 +325,11 @@
 							{@const ds = game.currentDangerStage}
 							<span class="mode-tag" class:danger={ds !== null}>
 								{#if ds}
-									STAGE {ds.stageNumber}/{game.maxStage} · 위험 {ds.dangers.filter((d) => !d.resolved).length}/{ds.dangers.length}
+									{@const active = ds.dangers.filter((d) => !d.resolved && d.delayTurns === 0)}
+									{@const pending = ds.dangers.filter((d) => !d.resolved && d.delayTurns > 0)}
+									STAGE {ds.stageNumber}/{game.maxStage} · 위험 {active.length}/{active.length + pending.length}{#if pending.length > 0} (다음 {Math.min(...pending.map((d) => d.delayTurns))}턴 후){/if}
 								{:else}
-									STAGE {game.stagesCleared}/{game.maxStage} · 다음 위험까지 {game.linesUntilNextDanger}줄
+									STAGE {game.stagesCleared}/{game.maxStage} · 다음 위험까지 {game.turnsUntilNextDanger}턴
 								{/if}
 							</span>
 						{/if}

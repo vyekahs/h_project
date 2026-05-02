@@ -282,7 +282,7 @@ export function createBlockBlasterGame() {
 
 	// Special mode
 	let inventory: OwnedAbility[] = $state([]);
-	let linesClearedSinceLastDraft = $state(0); // 평시에서 다음 위험 스테이지까지 누적 라인 수
+	let turnsSinceLastDanger = $state(0); // 평시에서 다음 위험 스테이지까지 누적 턴 수 (블록 배치 1회 = 1턴)
 	let draftCount = $state(0);
 	/** 위험 스테이지 진행 카운터 — 0 시작, 클리어할 때마다 +1, MAX_STAGE 도달 시 게임 클리어 */
 	let stagesCleared = $state(0);
@@ -541,7 +541,7 @@ export function createBlockBlasterGame() {
 				hasRestarted,
 				// special mode fields
 				inventory,
-				linesClearedSinceLastDraft,
+				turnsSinceLastDanger,
 				draftCount,
 				stage,
 				stagesCleared,
@@ -590,7 +590,8 @@ export function createBlockBlasterGame() {
 			hasRestarted = data.hasRestarted || false;
 
 			inventory = data.inventory || [];
-			linesClearedSinceLastDraft = data.linesClearedSinceLastDraft || 0;
+			// 구버전(라인 기준) 저장과의 호환을 위해 양쪽 키를 받음
+			turnsSinceLastDanger = data.turnsSinceLastDanger ?? data.linesClearedSinceLastDraft ?? 0;
 			draftCount = data.draftCount || 0;
 			stage = data.stage || 1;
 			stagesCleared = data.stagesCleared || 0;
@@ -660,7 +661,7 @@ export function createBlockBlasterGame() {
 
 		// Reset special-mode state (must come before generating tray so getTraySize works)
 		inventory = [];
-		linesClearedSinceLastDraft = 0;
+		turnsSinceLastDanger = 0;
 		draftCount = 0;
 		stage = 1;
 		stagesCleared = 0;
@@ -766,10 +767,6 @@ export function createBlockBlasterGame() {
 			score += points;
 			linesCleared += totalLines;
 
-			if (isSpecialMode()) {
-				linesClearedSinceLastDraft += totalLines;
-			}
-
 			setTimeout(() => {
 				clearLinesWithMeta(rows, cols);
 				clearingRows = [];
@@ -853,6 +850,8 @@ export function createBlockBlasterGame() {
 		if (currentDangerStage) {
 			tickAndResolveDangers(tick);
 		} else if (tick) {
+			// 평시에서 블록 배치 1회 = 1턴 (능력 사용은 턴 X)
+			turnsSinceLastDanger++;
 			tryEnterNextDangerStage();
 		}
 	}
@@ -1015,15 +1014,25 @@ export function createBlockBlasterGame() {
 	// Special Mode — 위험 사이클 시스템 (1단계: doom-row/doom-col)
 	// =========================================================================
 
-	/** 평시에서 다음 위험 스테이지 진입을 위해 필요한 라인 클리어 수 */
-	const LINES_TO_NEXT_DANGER = 5;
+	/**
+	 * 평시 ↔ 위험 사이의 평시 길이 — 다음에 진입할 스테이지(stagesCleared+1) 기준 막별 차등.
+	 * 기(1~2): 10턴, 승(3~5): 8턴, 전(6~8): 6턴, 결(9~10): 5턴.
+	 * 능력 사용은 카운트 영향 X — 블록 배치 1회 = 1턴.
+	 */
+	function turnsToNextDanger(): number {
+		const next = stagesCleared + 1;
+		if (next <= 2) return 10;
+		if (next <= 5) return 8;
+		if (next <= 8) return 6;
+		return 5;
+	}
 
 	/**
-	 * 평시에서 라인 누적이 임계값에 도달하면 다음 위험 스테이지로 진입 시도.
+	 * 평시에서 턴 누적이 임계값에 도달하면 다음 위험 스테이지로 진입 시도.
 	 */
 	function tryEnterNextDangerStage() {
-		if (linesClearedSinceLastDraft < LINES_TO_NEXT_DANGER) return;
-		linesClearedSinceLastDraft = 0;
+		if (turnsSinceLastDanger < turnsToNextDanger()) return;
+		turnsSinceLastDanger = 0;
 		enterDangerStage();
 	}
 
@@ -1035,28 +1044,10 @@ export function createBlockBlasterGame() {
 		stage = stageNumber;
 		currentDangerStage = generateDangerStage(stageNumber, grid);
 
-		// 위험 진입 시 보드에 즉시 배치되는 위험 처리
-		// - reinforced: 강화 블록 (회색 + HP)
-		// - spreading: 근원 셀 (보라/특수 색 + spreadOrigin 마커)
-		const next = cloneGrid(grid);
-		const nextMeta = { ...cellMeta };
+		// 활성(delayTurns=0) 위험만 보드에 배치. 대기 중 위험은 활성화 시점에 배치.
 		for (const d of currentDangerStage.dangers) {
-			if (d.type === 'reinforced') {
-				const [r, c] = d.cells[0];
-				if (next[r][c] === 0) {
-					next[r][c] = 5 as CellColor;
-					nextMeta[cellKey(r, c)] = { hp: stageNumber <= 5 ? 2 : 3 };
-				}
-			} else if (d.type === 'spreading') {
-				const [r, c] = d.cells[0];
-				if (next[r][c] === 0) {
-					next[r][c] = 5 as CellColor;
-					nextMeta[cellKey(r, c)] = { spreadOrigin: true };
-				}
-			}
+			if (d.delayTurns === 0) activateDangerOnBoard(d, stageNumber);
 		}
-		grid = next;
-		cellMeta = nextMeta;
 
 		// 인트로는 사용자가 확인 버튼 눌러야 사라짐 (자동 close X)
 		pendingDangerIntro = true;
@@ -1065,6 +1056,30 @@ export function createBlockBlasterGame() {
 
 	function dismissDangerIntro() {
 		pendingDangerIntro = false;
+	}
+
+	/**
+	 * 위험을 보드에 활성화 — reinforced/spreading은 셀을 그리드에 배치.
+	 * doom-row/col, hazard-zone은 영역 표시만 — DangerOverlay가 cells 좌표로 그림.
+	 */
+	function activateDangerOnBoard(d: Danger, stageNumber: number) {
+		if (d.type === 'reinforced') {
+			const [r, c] = d.cells[0];
+			if (grid[r][c] === 0) {
+				const next = cloneGrid(grid);
+				next[r][c] = 5 as CellColor;
+				grid = next;
+				cellMeta = { ...cellMeta, [cellKey(r, c)]: { hp: stageNumber <= 5 ? 2 : 3 } };
+			}
+		} else if (d.type === 'spreading') {
+			const [r, c] = d.cells[0];
+			if (grid[r][c] === 0) {
+				const next = cloneGrid(grid);
+				next[r][c] = 5 as CellColor;
+				grid = next;
+				cellMeta = { ...cellMeta, [cellKey(r, c)]: { spreadOrigin: true } };
+			}
+		}
 	}
 
 	/**
@@ -1077,12 +1092,13 @@ export function createBlockBlasterGame() {
 
 		// 1) 해결 판정 — 변화가 없을 때까지 반복 (fixpoint).
 		//    spreading 자식 cascade로 grid가 비워지면 같은 tick의 다른 doom-row/zone도
-		//    함께 해결될 수 있도록.
+		//    함께 해결될 수 있도록. 대기 중(delayTurns>0) 위험은 판정 제외.
 		let changed = true;
 		while (changed) {
 			changed = false;
 			for (const d of ds.dangers) {
 				if (d.resolved) continue;
+				if (d.delayTurns > 0) continue;
 				if (!isDangerResolved(d, grid)) continue;
 				d.resolved = true;
 				changed = true;
@@ -1119,16 +1135,26 @@ export function createBlockBlasterGame() {
 		// 능력 사용 경로 — 카운트다운 진행 없이 종료 (위험은 해결 판정만)
 		if (!tickCountdowns) return;
 
-		// 3) 카운트다운 -1 (해결 안 된 위험만)
+		// 3a) 대기 중 위험 delay -1 → 0 도달 시 활성화 (보드에 셀 배치)
 		for (const d of ds.dangers) {
 			if (d.resolved) continue;
+			if (d.delayTurns <= 0) continue;
+			d.delayTurns--;
+			if (d.delayTurns === 0) activateDangerOnBoard(d, ds.stageNumber);
+		}
+
+		// 3b) 카운트다운 -1 (활성 + 미해결 위험만)
+		for (const d of ds.dangers) {
+			if (d.resolved) continue;
+			if (d.delayTurns > 0) continue;
 			if (d.type === 'reinforced') continue; // reinforced는 HP로 해결
 			d.countdown = Math.max(0, d.countdown - 1);
 		}
 
-		// 4) 카운트 0 도달 처리
+		// 4) 카운트 0 도달 처리 (활성 위험만)
 		for (const d of ds.dangers) {
 			if (d.resolved) continue;
+			if (d.delayTurns > 0) continue;
 			if (isDoomTriggered(d, grid)) {
 				// 게임오버 줄 — 사유 기록 + 잠시 후 게임오버 (위험 강조 표시 시간 확보)
 				gameOverReason = 'doom';
@@ -1821,7 +1847,7 @@ export function createBlockBlasterGame() {
 		// Special-mode getters
 		get inventory() { return inventory; },
 		get stage() { return stage; },
-		get linesClearedSinceLastDraft() { return linesClearedSinceLastDraft; },
+		get turnsSinceLastDanger() { return turnsSinceLastDanger; },
 		get draftCount() { return draftCount; },
 		get pendingDraftOptions() { return pendingDraftOptions; },
 		get pendingAbilitySlot() { return pendingAbilitySlot; },
@@ -1841,8 +1867,8 @@ export function createBlockBlasterGame() {
 		get pendingDangerClear() { return pendingDangerClear; },
 		get gameOverReason() { return gameOverReason; },
 		get bonusDraftsRemaining() { return bonusDraftsRemaining; },
-		get linesUntilNextDanger() {
-			return Math.max(0, LINES_TO_NEXT_DANGER - linesClearedSinceLastDraft);
+		get turnsUntilNextDanger() {
+			return Math.max(0, turnsToNextDanger() - turnsSinceLastDanger);
 		},
 		get abilityFx() { return abilityFx; },
 		get isSpecialMode() { return isSpecialMode(); },
