@@ -212,18 +212,27 @@ export function getLevelEffect(id: string, level: number): string {
 	}
 }
 
-/** 카테고리별 베이스 쿨다운 (Lv1 기준). 패시브는 -1 */
+/**
+ * 능력별 베이스 쿨다운 (Lv1 기준). 패시브는 0.
+ * 효과 강도와 사용 빈도를 고려해 개별 조정 — 강력할수록 길게, 위기 탈출용은 짧게.
+ */
 export function baseCooldown(ability: Ability): number {
 	if (ability.targetType === 'passive') return 0;
-	// bomb-3x3은 광역이라 추가 +2
-	if (ability.id === 'bomb-3x3') return 15;
-	switch (ability.category) {
-		case 'clear':
-			return 13;
-		case 'manipulate':
-			return 10;
-		case 'defense':
-			return 11;
+	switch (ability.id) {
+		case 'clear-row':
+		case 'clear-col':
+			return 10; // 위기 탈출 핵심 — 자주 쓰게
+		case 'bomb-3x3':
+			return 14; // 광역 + 형태 자유
+		case 'clear-color':
+			return 16; // Epic, 다중 색까지 — 강력
+		case 'single-cell':
+			return 12; // 원하는 모양 그리기 — 자유도 매우 높음
+		case 'swap-block':
+		case 'rotate-block':
+			return 8; // 단순 교체/변형 — 불운 보정
+		case 'undo':
+			return 12; // 리스크 헷지
 		default:
 			return 10;
 	}
