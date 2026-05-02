@@ -169,6 +169,52 @@ export function computeAbilityPreview(
 
 export { formatTime };
 
+/**
+ * 플러스 모드 시작용 — 보드의 약 25%를 무작위로 채운 시작 그리드 생성.
+ * 두세 턴이면 자연스럽게 정리되도록:
+ * - 완성된 줄/열이 있으면 안 됨
+ * - 어느 줄/열도 7칸 이상 차있으면 안 됨 (라인 완성 직전 회피)
+ * - 트레이의 모든 블록이 적어도 한 자리에는 놓일 수 있어야 함
+ */
+function generateSeededGrid(blocks: (BlockShape | null)[]): BoardGrid {
+	const TARGET_FILL = Math.round(GRID_SIZE * GRID_SIZE * 0.25); // 16칸
+	const MAX_ATTEMPTS = 30;
+
+	for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+		const g = createEmptyGrid();
+		const positions: [number, number][] = [];
+		for (let r = 0; r < GRID_SIZE; r++)
+			for (let c = 0; c < GRID_SIZE; c++) positions.push([r, c]);
+		for (let i = positions.length - 1; i > 0; i--) {
+			const j = Math.floor(Math.random() * (i + 1));
+			[positions[i], positions[j]] = [positions[j], positions[i]];
+		}
+		for (let i = 0; i < TARGET_FILL; i++) {
+			const [r, c] = positions[i];
+			g[r][c] = ((Math.floor(Math.random() * 5) + 1) as CellColor);
+		}
+
+		let bad = false;
+		for (let r = 0; r < GRID_SIZE && !bad; r++) {
+			let n = 0;
+			for (let c = 0; c < GRID_SIZE; c++) if (g[r][c] !== 0) n++;
+			if (n >= 7) bad = true;
+		}
+		for (let c = 0; c < GRID_SIZE && !bad; c++) {
+			let n = 0;
+			for (let r = 0; r < GRID_SIZE; r++) if (g[r][c] !== 0) n++;
+			if (n >= 7) bad = true;
+		}
+		if (bad) continue;
+
+		if (!canPlaceAnyBlock(g, blocks)) continue;
+
+		return g;
+	}
+
+	return createEmptyGrid();
+}
+
 interface GridSnapshot {
 	grid: BoardGrid;
 	currentBlocks: (BlockShape | null)[];
@@ -587,6 +633,12 @@ export function createBlockBlasterGame() {
 		pendingColorChoose = null;
 
 		currentBlocks = generateTraySet();
+
+		// 플러스 모드: 빈 보드 대신 25% 채워진 시작 보드
+		if (mode === 'special') {
+			grid = generateSeededGrid(currentBlocks);
+		}
+
 		gameState = 'playing';
 		startTimer();
 		saveGame();
