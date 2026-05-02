@@ -2,6 +2,7 @@
 	import { GRID_SIZE, type BoardGrid, type BlockShape } from '$lib/games/block-blaster/types';
 	import { canPlaceBlock } from '$lib/games/block-blaster/gameLogic';
 	import type { AbilityFx } from './gameLogic.svelte';
+	import type { Snippet } from 'svelte';
 
 	let {
 		grid,
@@ -15,9 +16,9 @@
 		clearingRows = [],
 		clearingCols = [],
 		isAnimating = false,
-		hazardCells = [],
 		abilityFx = null,
-		abilityPreviewCells = []
+		abilityPreviewCells = [],
+		children
 	} = $props<{
 		grid: BoardGrid;
 		selectedBlock: BlockShape | null;
@@ -30,9 +31,9 @@
 		clearingRows: number[];
 		clearingCols: number[];
 		isAnimating: boolean;
-		hazardCells?: [number, number][];
 		abilityFx?: AbilityFx | null;
 		abilityPreviewCells?: [number, number][];
+		children?: Snippet;
 	}>();
 
 	let boardEl = $state<HTMLDivElement | null>(null);
@@ -176,10 +177,6 @@
 		return clearingRows.includes(row) || clearingCols.includes(col);
 	}
 
-	function isHazard(row: number, col: number): boolean {
-		return hazardCells.some(([r, c]: [number, number]) => r === row && c === col);
-	}
-
 	function isAbilityPreview(row: number, col: number): boolean {
 		return abilityPreviewCells.some(([r, c]: [number, number]) => r === row && c === col);
 	}
@@ -226,7 +223,6 @@
 				{@const ghost = getGhost(row, col)}
 				{@const placed = isPlaced(row, col)}
 				{@const clearing = isClearing(row, col) && color !== 0}
-				{@const hazard = isHazard(row, col)}
 				{@const previewing = isAbilityPreview(row, col)}
 				{@const fxIdx = getFxIndex(row, col)}
 				{@const fx = fxIdx >= 0 ? abilityFx : null}
@@ -236,7 +232,6 @@
 					class:filled={color !== 0}
 					class:placed
 					class:clearing
-					class:hazard
 					class:ability-preview={previewing}
 					class:ability-preview-empty={previewing && color === 0}
 					class:ghost-valid={ghost?.valid === true}
@@ -255,10 +250,12 @@
 			{/each}
 		{/each}
 	</div>
+	{#if children}{@render children()}{/if}
 </div>
 
 <style>
 	.board-wrapper {
+		position: relative;
 		width: 100%;
 		max-width: min(100%, 400px);
 		max-height: 100%;

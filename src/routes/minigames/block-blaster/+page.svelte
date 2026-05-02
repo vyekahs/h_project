@@ -10,6 +10,8 @@
 	import ColorChooseModal from './ColorChooseModal.svelte';
 	import PeekStrip from './PeekStrip.svelte';
 	import AbilityIcon from './AbilityIcon.svelte';
+	import DangerOverlay from './DangerOverlay.svelte';
+	import DangerStageIntro from './DangerStageIntro.svelte';
 	import GamePauseModal from '$lib/components/games/GamePauseModal.svelte';
 	import GameResultModal from '$lib/components/games/GameResultModal.svelte';
 	import { goto, replaceState } from '$app/navigation';
@@ -355,7 +357,11 @@
 					isAnimating={game.isAnimating}
 					abilityFx={game.abilityFx}
 					abilityPreviewCells={abilityPreviewCells}
-				/>
+				>
+					{#if game.isSpecialMode && game.currentDangerStage}
+						<DangerOverlay dangers={game.currentDangerStage.dangers} />
+					{/if}
+				</Board>
 			</div>
 
 			<BlockTray
@@ -508,6 +514,15 @@
 				</div>
 			</div>
 		</div>
+	{/if}
+
+	<!-- 위험 스테이지 인트로 (작은 기) -->
+	{#if game.isSpecialMode && game.pendingDangerIntro && game.currentDangerStage}
+		<DangerStageIntro
+			stageNumber={game.currentDangerStage.stageNumber}
+			dangerCount={game.currentDangerStage.dangers.length}
+			act={game.pendingActIntro}
+		/>
 	{/if}
 
 	<!-- 드래그 중인 플로팅 블록 -->
