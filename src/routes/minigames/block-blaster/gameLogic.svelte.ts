@@ -196,9 +196,7 @@ export function createBlockBlasterGame() {
 	let stage = $state(1);
 	/** 평시 ↔ 위험 사이클 — null이면 평시, 객체이면 위험 스테이지 진행 중 */
 	let currentDangerStage: DangerStage | null = $state(null);
-	/** 막 인트로 표시용 — 'act-1' ... 'act-4' 또는 null. 표시 후 자동 클리어 */
-	let pendingActIntro: number | null = $state(null);
-	/** 위험 스테이지 인트로 표시용 — 표시 직후 자동 클리어 */
+	/** 위험 스테이지 인트로 표시용 — 사용자 확인 클릭 시 사라짐 */
 	let pendingDangerIntro = $state(false);
 	/** 위험 스테이지 클리어 배너 — { stageNumber, dangerCount } 또는 null */
 	let pendingDangerClear: { stageNumber: number; dangerCount: number } | null = $state(null);
@@ -522,7 +520,6 @@ export function createBlockBlasterGame() {
 			clearingCols = [];
 			isAnimating = false;
 			pendingAbilitySlot = null;
-			pendingActIntro = null;
 			pendingDangerIntro = false;
 			pendingDangerClear = null;
 			gameOverReason = null;
@@ -578,7 +575,6 @@ export function createBlockBlasterGame() {
 		cellMeta = {};
 		pendingDangerClear = null;
 		gameOverReason = null;
-		pendingActIntro = null;
 		pendingDangerIntro = false;
 		lastSnapshots = [];
 		nextBlocksQueue = [];
@@ -886,14 +882,6 @@ export function createBlockBlasterGame() {
 	/** 평시에서 다음 위험 스테이지 진입을 위해 필요한 라인 클리어 수 */
 	const LINES_TO_NEXT_DANGER = 5;
 
-	/** 큰 막(act) 결정 — stage 기반 */
-	function getActForStage(s: number): number {
-		if (s <= 2) return 1; // 기
-		if (s <= 5) return 2; // 승
-		if (s <= 8) return 3; // 전
-		return 4; // 결
-	}
-
 	/**
 	 * 평시에서 라인 누적이 임계값에 도달하면 다음 위험 스테이지로 진입 시도.
 	 */
@@ -908,14 +896,6 @@ export function createBlockBlasterGame() {
 	 */
 	function enterDangerStage() {
 		const stageNumber = stagesCleared + 1;
-		// 막 인트로는 새 막이 시작되는 첫 위험 스테이지(1, 3, 6, 9)에서만
-		const newAct = getActForStage(stageNumber);
-		const prevAct = stageNumber === 1 ? 0 : getActForStage(stageNumber - 1);
-		if (newAct !== prevAct) {
-			pendingActIntro = newAct;
-			setTimeout(() => { pendingActIntro = null; }, 2000);
-		}
-
 		stage = stageNumber;
 		currentDangerStage = generateDangerStage(stageNumber, grid);
 
@@ -942,9 +922,13 @@ export function createBlockBlasterGame() {
 		grid = next;
 		cellMeta = nextMeta;
 
+		// 인트로는 사용자가 확인 버튼 눌러야 사라짐 (자동 close X)
 		pendingDangerIntro = true;
-		setTimeout(() => { pendingDangerIntro = false; }, 3000);
 		saveGame();
+	}
+
+	function dismissDangerIntro() {
+		pendingDangerIntro = false;
 	}
 
 	/**
@@ -1673,7 +1657,6 @@ export function createBlockBlasterGame() {
 		get stagesCleared() { return stagesCleared; },
 		get currentDangerStage() { return currentDangerStage; },
 		get cellMeta() { return cellMeta; },
-		get pendingActIntro() { return pendingActIntro; },
 		get pendingDangerIntro() { return pendingDangerIntro; },
 		get pendingDangerClear() { return pendingDangerClear; },
 		get gameOverReason() { return gameOverReason; },
@@ -1709,6 +1692,7 @@ export function createBlockBlasterGame() {
 		useAbility,
 		cancelPendingAbility,
 		applyAbilityToTarget,
+		dismissDangerIntro,
 		pickTransform,
 		cancelTransform,
 		pickSwap,

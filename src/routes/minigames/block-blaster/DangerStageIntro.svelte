@@ -2,18 +2,11 @@
 	import type { Danger } from '$lib/games/block-blaster/types';
 	import { dangerLabel, dangerDescription } from '$lib/games/block-blaster/danger';
 
-	let { stageNumber, dangers, act = null } = $props<{
+	let { stageNumber, dangers, onConfirm } = $props<{
 		stageNumber: number;
 		dangers: Danger[];
-		act?: number | null;
+		onConfirm: () => void;
 	}>();
-
-	const actNames: Record<number, string> = {
-		1: '기 — 도입',
-		2: '승 — 전개',
-		3: '전 — 위기',
-		4: '결 — 클라이맥스'
-	};
 
 	/** 같은 종류 위험은 한 번만 안내 (예: doom-row 2개여도 1줄 설명) */
 	const uniqueDangers = $derived.by(() => {
@@ -28,83 +21,82 @@
 	});
 </script>
 
-<div class="intro" class:has-act={act !== null}>
-	{#if act !== null}
-		<div class="act-tag">ACT {act}</div>
-		<div class="act-name">{actNames[act] ?? ''}</div>
-	{/if}
-	<div class="stage-tag">STAGE {stageNumber}</div>
-	<div class="warn">위험 {dangers.length}개 등장!</div>
+<div class="overlay">
+	<div class="modal" role="dialog" aria-modal="true" tabindex="-1">
+		<div class="stage-tag">STAGE {stageNumber}</div>
+		<div class="warn">위험 {dangers.length}개 등장!</div>
 
-	<div class="danger-list">
-		{#each uniqueDangers as d (d.type)}
-			<div class="danger-item">
-				<div class="danger-name">⚠️ {dangerLabel(d.type)}</div>
-				<div class="danger-desc">{dangerDescription(d.type)}</div>
-			</div>
-		{/each}
+		<div class="danger-list">
+			{#each uniqueDangers as d (d.type)}
+				<div class="danger-item">
+					<div class="danger-name">⚠️ {dangerLabel(d.type)}</div>
+					<div class="danger-desc">{dangerDescription(d.type)}</div>
+				</div>
+			{/each}
+		</div>
+
+		<button class="confirm-btn" onclick={onConfirm}>확인</button>
 	</div>
 </div>
 
 <style>
-	.intro {
+	.overlay {
 		position: fixed;
 		inset: 0;
 		display: flex;
-		flex-direction: column;
 		align-items: center;
 		justify-content: center;
-		gap: 0.4rem;
-		background: rgba(0, 0, 0, 0.55);
+		background: rgba(0, 0, 0, 0.65);
 		backdrop-filter: blur(6px);
 		-webkit-backdrop-filter: blur(6px);
 		z-index: 270;
-		pointer-events: none;
 		padding: 1rem;
-		animation: introIn 0.3s cubic-bezier(0.2, 0.8, 0.2, 1), introOut 0.4s ease-out 2.6s forwards;
+		animation: fadeIn 0.25s ease-out;
 	}
 
-	.act-tag {
-		font-size: 0.7rem;
-		font-weight: 800;
-		letter-spacing: 4px;
-		color: #fbbf24;
-	}
-
-	.act-name {
-		font-size: 1rem;
-		font-weight: 700;
+	.modal {
+		width: 100%;
+		max-width: 380px;
+		background: linear-gradient(135deg, #1f2937, #111827);
+		border: 2px solid rgba(239, 68, 68, 0.5);
+		border-radius: 18px;
+		padding: 1.25rem 1.1rem;
 		color: #fff;
-		margin-bottom: 0.6rem;
+		box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5), 0 0 24px rgba(239, 68, 68, 0.35);
+		animation: popIn 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+		display: flex;
+		flex-direction: column;
+		align-items: stretch;
 	}
 
 	.stage-tag {
-		font-size: 2rem;
+		font-size: 1.6rem;
 		font-weight: 900;
 		color: #fff;
-		letter-spacing: 2px;
-		text-shadow: 0 2px 12px rgba(239, 68, 68, 0.6);
+		letter-spacing: 1.5px;
+		text-shadow: 0 2px 12px rgba(239, 68, 68, 0.5);
+		text-align: center;
 	}
 
 	.warn {
 		font-size: 0.95rem;
 		font-weight: 700;
 		color: #ef4444;
-		text-shadow: 0 0 8px rgba(239, 68, 68, 0.6);
+		text-shadow: 0 0 8px rgba(239, 68, 68, 0.5);
 		margin-bottom: 0.85rem;
+		text-align: center;
 	}
 
 	.danger-list {
 		display: flex;
 		flex-direction: column;
 		gap: 0.5rem;
-		max-width: 360px;
-		width: 100%;
+		margin-bottom: 1rem;
 	}
 
 	.danger-item {
-		background: rgba(0, 0, 0, 0.55);
-		border: 1px solid rgba(239, 68, 68, 0.45);
+		background: rgba(255, 255, 255, 0.04);
+		border: 1px solid rgba(239, 68, 68, 0.4);
 		border-radius: 10px;
 		padding: 0.55rem 0.75rem;
 	}
@@ -117,17 +109,36 @@
 	}
 
 	.danger-desc {
-		font-size: 0.72rem;
+		font-size: 0.75rem;
 		color: rgba(255, 255, 255, 0.85);
-		line-height: 1.4;
+		line-height: 1.45;
 	}
 
-	@keyframes introIn {
-		from { opacity: 0; transform: scale(1.1); }
+	.confirm-btn {
+		width: 100%;
+		padding: 0.75rem;
+		border: none;
+		border-radius: 12px;
+		background: linear-gradient(135deg, #ef4444, #b91c1c);
+		color: #fff;
+		font-family: inherit;
+		font-size: 0.9rem;
+		font-weight: 800;
+		cursor: pointer;
+		box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
+	}
+
+	.confirm-btn:active {
+		transform: scale(0.98);
+	}
+
+	@keyframes fadeIn {
+		from { opacity: 0; }
+		to { opacity: 1; }
+	}
+
+	@keyframes popIn {
+		from { opacity: 0; transform: scale(0.95); }
 		to { opacity: 1; transform: scale(1); }
-	}
-
-	@keyframes introOut {
-		to { opacity: 0; transform: scale(0.95); }
 	}
 </style>

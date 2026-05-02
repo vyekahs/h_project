@@ -526,12 +526,12 @@
 		</div>
 	{/if}
 
-	<!-- 위험 스테이지 인트로 (작은 기) -->
+	<!-- 위험 스테이지 인트로 — 사용자가 확인 버튼 누를 때까지 표시 -->
 	{#if game.isSpecialMode && game.pendingDangerIntro && game.currentDangerStage}
 		<DangerStageIntro
 			stageNumber={game.currentDangerStage.stageNumber}
 			dangers={game.currentDangerStage.dangers}
-			act={game.pendingActIntro}
+			onConfirm={game.dismissDangerIntro}
 		/>
 	{/if}
 
