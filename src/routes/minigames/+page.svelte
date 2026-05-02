@@ -111,6 +111,15 @@
             accentColor: '#8b5cf6',
             releasedAt: '2026-04-15',
             forceNew: true
+        },
+        {
+            id: 'match-crash',
+            name: '매치크래쉬',
+            tagline: '3개를 맞춰 터뜨려라!',
+            url: '/minigames/start/match-crash',
+            accentColor: '#e74c3c',
+            releasedAt: '2026-04-21',
+            forceNew: true
         }
     ];
 
@@ -176,6 +185,8 @@
                                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="3" fill="rgba(255,255,255,0.1)"/><path d="M8 14 l 2 -5 l 2 2 l 2 -2 l 2 5 z" fill="currentColor" stroke="none"/><line x1="8" y1="16.5" x2="16" y2="16.5" stroke="currentColor" stroke-width="1.5"/></svg>
                                     {:else if game.id === 'block-blaster'}
                                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="16" width="16" height="4" rx="1" fill="rgba(255,255,255,0.2)"/><rect x="4" y="10" width="4" height="4" rx="1" fill="rgba(255,255,255,0.4)"/><rect x="16" y="4" width="4" height="10" rx="1" fill="rgba(255,255,255,0.15)"/><rect x="10" y="5" width="4" height="4" rx="1" fill="rgba(255,255,255,0.6)"/></svg>
+                                    {:else if game.id === 'match-crash'}
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="12" r="4" fill="rgba(231,76,60,0.6)"/><circle cx="12" cy="12" r="4" fill="rgba(46,204,113,0.6)"/><circle cx="18" cy="12" r="4" fill="rgba(52,152,219,0.6)"/></svg>
                                     {/if}
                                 </div>
                             </div>
@@ -218,6 +229,8 @@
                                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="3" fill="rgba(255,255,255,0.1)"/><path d="M8 14 l 2 -5 l 2 2 l 2 -2 l 2 5 z" fill="currentColor" stroke="none"/><line x1="8" y1="16.5" x2="16" y2="16.5" stroke="currentColor" stroke-width="1.5"/></svg>
                                     {:else if game.id === 'block-blaster'}
                                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="16" width="16" height="4" rx="1" fill="rgba(255,255,255,0.2)"/><rect x="4" y="10" width="4" height="4" rx="1" fill="rgba(255,255,255,0.4)"/><rect x="16" y="4" width="4" height="10" rx="1" fill="rgba(255,255,255,0.15)"/><rect x="10" y="5" width="4" height="4" rx="1" fill="rgba(255,255,255,0.6)"/></svg>
+                                    {:else if game.id === 'match-crash'}
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="12" r="4" fill="rgba(231,76,60,0.6)"/><circle cx="12" cy="12" r="4" fill="rgba(46,204,113,0.6)"/><circle cx="18" cy="12" r="4" fill="rgba(52,152,219,0.6)"/></svg>
                                     {/if}
                                 </div>
                             </div>
@@ -318,6 +331,12 @@
                                 <rect x="4" y="10" width="4" height="4" rx="1" fill="rgba(255,255,255,0.4)"/>
                                 <rect x="16" y="4" width="4" height="10" rx="1" fill="rgba(255,255,255,0.15)"/>
                                 <rect x="10" y="5" width="4" height="4" rx="1" fill="rgba(255,255,255,0.6)"/>
+                            </svg>
+                        {:else if game.id === 'match-crash'}
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <circle cx="6" cy="12" r="4" fill="rgba(231,76,60,0.6)"/>
+                                <circle cx="12" cy="12" r="4" fill="rgba(46,204,113,0.6)"/>
+                                <circle cx="18" cy="12" r="4" fill="rgba(52,152,219,0.6)"/>
                             </svg>
                         {/if}
                     </div>

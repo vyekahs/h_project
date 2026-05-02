@@ -174,5 +174,19 @@ export const GAME_REGISTRY: Record<string, GameConfig> = {
 		},
 		localStorageSaveKey: 'block_blaster_save',
 		hasTutorials: false
+	},
+	'match-crash': {
+		id: 'match-crash',
+		name: '매치크래쉬',
+		displayTitle: 'Match Crash',
+		gameUrl: '/minigames/match-crash',
+		difficulties: ['timebreaker', 'infinite', 'classic'],
+		difficultyLabels: {
+			timebreaker: '타임브레이커',
+			infinite: '무한모드',
+			classic: '클래식'
+		},
+		localStorageSaveKey: 'match_crash_save',
+		hasTutorials: false
 	}
 };
