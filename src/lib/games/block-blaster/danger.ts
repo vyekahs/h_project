@@ -93,7 +93,6 @@ export function generateDangerStage(stageNumber: number, grid: BoardGrid): Dange
 	const usedZoneAnchors = new Set<string>(); // 영역 중복 방지
 	const types = availableDangerTypes(stageNumber);
 
-	let cumulativeDelay = 0;
 	for (let i = 0; i < dangerCount; i++) {
 		const type: DangerType = types[Math.floor(Math.random() * types.length)];
 		const danger = createDanger(type, stageNumber, grid, {
@@ -102,10 +101,27 @@ export function generateDangerStage(stageNumber: number, grid: BoardGrid): Dange
 			usedZoneAnchors
 		});
 		if (!danger) continue;
-		// 첫 위험(i=0)은 즉시 등장, 이후 위험은 누적 간격 후 등장
-		if (i > 0) cumulativeDelay += dangerStaggerInterval(stageNumber);
-		danger.delayTurns = cumulativeDelay;
 		dangers.push(danger);
+	}
+
+	// 등장 순서 — 게임을 어렵게 하는 위험이 먼저, 게임오버를 일으키는 위험은 뒤로.
+	// (난이도가 점진 상승하며 가장 위협적인 위험이 마지막에 등장하도록)
+	const dangerOrderRank = (t: DangerType): number => {
+		switch (t) {
+			case 'reinforced': return 0;
+			case 'spreading': return 1;
+			case 'hazard-zone': return 2;
+			case 'doom-row':
+			case 'doom-col': return 3;
+		}
+	};
+	dangers.sort((a, b) => dangerOrderRank(a.type) - dangerOrderRank(b.type));
+
+	// 정렬된 순서대로 등장 간격 부여 — 첫 위험은 즉시, 이후는 누적 간격 후
+	let cumulativeDelay = 0;
+	for (let i = 0; i < dangers.length; i++) {
+		if (i > 0) cumulativeDelay += dangerStaggerInterval(stageNumber);
+		dangers[i].delayTurns = cumulativeDelay;
 	}
 
 	return {

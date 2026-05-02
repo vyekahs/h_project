@@ -12,7 +12,8 @@ import { generateBlockSet } from '$lib/games/block-blaster/blocks';
 import {
 	generateDangerStage,
 	isDangerResolved,
-	isDoomTriggered
+	isDoomTriggered,
+	dangerCountForStage
 } from '$lib/games/block-blaster/danger';
 import {
 	ABILITY_POOL,
@@ -283,6 +284,13 @@ export function createBlockBlasterGame() {
 	// Special mode
 	let inventory: OwnedAbility[] = $state([]);
 	let turnsSinceLastDanger = $state(0); // 평시에서 다음 위험 스테이지까지 누적 턴 수 (블록 배치 1회 = 1턴)
+	/** 모든 위험이 다 등장한 후의 추가 대기 턴 수 — 3턴 후 다음 스테이지 카운트 시작 */
+	let postDangerSettleTurns = $state(0);
+	/** 현재 진행 중인 위험 스테이지(들)에서 해결한 위험 누적 카운트 */
+	let resolvedDangerCount = $state(0);
+	/** 위험 스테이지 진행 중 다음 스테이지 카운트가 시작되었는지 — 모든 위험 등장 + 3턴 경과 후 true */
+	let dangerCountdownActive = $state(false);
+	const POST_DANGER_SETTLE_TURNS = 3;
 	let draftCount = $state(0);
 	/** 위험 스테이지 진행 카운터 — 0 시작, 클리어할 때마다 +1, MAX_STAGE 도달 시 게임 클리어 */
 	let stagesCleared = $state(0);
@@ -560,6 +568,9 @@ export function createBlockBlasterGame() {
 				// special mode fields
 				inventory,
 				turnsSinceLastDanger,
+				postDangerSettleTurns,
+				resolvedDangerCount,
+				dangerCountdownActive,
 				draftCount,
 				stage,
 				stagesCleared,
@@ -610,6 +621,9 @@ export function createBlockBlasterGame() {
 			inventory = data.inventory || [];
 			// 구버전(라인 기준) 저장과의 호환을 위해 양쪽 키를 받음
 			turnsSinceLastDanger = data.turnsSinceLastDanger ?? data.linesClearedSinceLastDraft ?? 0;
+			postDangerSettleTurns = data.postDangerSettleTurns ?? 0;
+			resolvedDangerCount = data.resolvedDangerCount ?? 0;
+			dangerCountdownActive = data.dangerCountdownActive ?? false;
 			draftCount = data.draftCount || 0;
 			stage = data.stage || 1;
 			stagesCleared = data.stagesCleared || 0;
@@ -680,6 +694,9 @@ export function createBlockBlasterGame() {
 		// Reset special-mode state (must come before generating tray so getTraySize works)
 		inventory = [];
 		turnsSinceLastDanger = 0;
+		postDangerSettleTurns = 0;
+		resolvedDangerCount = 0;
+		dangerCountdownActive = false;
 		draftCount = 0;
 		stage = 1;
 		stagesCleared = 0;
@@ -1057,18 +1074,39 @@ export function createBlockBlasterGame() {
 	/**
 	 * 위험 스테이지 진입 — 보드에 위험 등장, 트레이 잠금, 인트로 표시.
 	 */
+	/**
+	 * 위험 스테이지 진입.
+	 * - 평시(currentDangerStage=null)에서 호출 → 새 스테이지 시작
+	 * - 위험 진행 중 호출 → 다음 스테이지 위험들이 현재 dangers에 합류 (압박 누적)
+	 *
+	 * stagesCleared는 해결 누적 카운트로 따로 갱신되므로 여기선 stage 번호만 산정.
+	 */
 	function enterDangerStage() {
 		const stageNumber = stagesCleared + 1;
 		stage = stageNumber;
-		currentDangerStage = generateDangerStage(stageNumber, grid);
+		const fresh = generateDangerStage(stageNumber, grid);
 
-		// 활성(delayTurns=0) 위험만 보드에 배치. 대기 중 위험은 활성화 시점에 배치.
-		for (const d of currentDangerStage.dangers) {
+		if (currentDangerStage === null) {
+			// 평시 → 새 스테이지 시작
+			currentDangerStage = fresh;
+			pendingDangerIntro = true;
+		} else {
+			// 합류 — 새 dangers를 기존 배열에 push, 잠금 슬롯도 누적
+			currentDangerStage.dangers.push(...fresh.dangers);
+			currentDangerStage.lockedTraySlots += fresh.lockedTraySlots;
+			// 합류는 인트로 모달 X — 새 위험 등장은 단계별 등장으로 자연스럽게 보임
+		}
+
+		// settle/카운트 리셋 — 새 위험이 합류했으니 다시 처음부터
+		postDangerSettleTurns = 0;
+		dangerCountdownActive = false;
+		turnsSinceLastDanger = 0;
+
+		// 활성(delayTurns=0) 위험을 보드에 배치. 대기 중 위험은 활성화 시점에 배치.
+		for (const d of fresh.dangers) {
 			if (d.delayTurns === 0) activateDangerOnBoard(d, stageNumber);
 		}
 
-		// 인트로는 사용자가 확인 버튼 눌러야 사라짐 (자동 close X)
-		pendingDangerIntro = true;
 		saveGame();
 	}
 
@@ -1126,6 +1164,10 @@ export function createBlockBlasterGame() {
 				// 트레이 잠금 1개 해제 (가장 우측부터)
 				if (ds.lockedTraySlots > 0) ds.lockedTraySlots--;
 
+				// 해결 누적 카운트 → 임계 도달 시 스테이지 클리어 처리
+				resolvedDangerCount++;
+				checkStageClearByCount();
+
 				// spreading 해결 시 — 자식 셀들도 모두 함께 사라짐
 				if (d.type === 'spreading') {
 					const origin = d.cells[0];
@@ -1144,9 +1186,9 @@ export function createBlockBlasterGame() {
 			}
 		}
 
-		// 2) 모두 해결됐으면 보상 (드래프트 + 평시 복귀)
+		// 2) 모든 위험이 해결됐으면 평시 복귀 (스테이지 클리어 보상은 이미 누적 처리됨)
 		if (ds.dangers.every(d => d.resolved)) {
-			finishDangerStage();
+			endDangerStage();
 			return;
 		}
 
@@ -1169,6 +1211,24 @@ export function createBlockBlasterGame() {
 			d.countdown = Math.max(0, d.countdown - 1);
 		}
 
+		// 3c) 위험 진행 중에도 다음 스테이지 카운트 진행 — 모든 위험 등장 후 settle 3턴 경과 후 시작
+		const allAppeared = ds.dangers.every(d => d.resolved || d.delayTurns === 0);
+		if (allAppeared) {
+			if (!dangerCountdownActive) {
+				postDangerSettleTurns++;
+				if (postDangerSettleTurns >= POST_DANGER_SETTLE_TURNS) {
+					dangerCountdownActive = true;
+				}
+			}
+			if (dangerCountdownActive) {
+				turnsSinceLastDanger++;
+				if (turnsSinceLastDanger >= turnsToNextDanger()) {
+					// 다음 스테이지 위험들이 합류 (enterDangerStage가 turnsSinceLastDanger=0 + settle 리셋)
+					enterDangerStage();
+				}
+			}
+		}
+
 		// 4) 카운트 0 도달 처리 (활성 위험만)
 		for (const d of ds.dangers) {
 			if (d.resolved) continue;
@@ -1189,6 +1249,8 @@ export function createBlockBlasterGame() {
 				}
 				cellMeta = nextMeta;
 				d.resolved = true; // 만료 처리(보너스 없음)
+				resolvedDangerCount++;
+				checkStageClearByCount();
 			}
 			if (d.type === 'spreading' && d.countdown === 0) {
 				// 증식 활성화 — 인접 빈 셀 1곳으로 증식 후 카운트 리셋
@@ -1196,6 +1258,50 @@ export function createBlockBlasterGame() {
 				d.countdown = d.initialCountdown;
 			}
 		}
+	}
+
+	/**
+	 * 누적 해결 카운트 기반 스테이지 클리어 판정 — resolvedDangerCount가
+	 * 다음 스테이지의 dangerCount 임계에 도달할 때마다 stagesCleared++ + 보상.
+	 * 한 번에 여러 스테이지가 동시 클리어될 수도 있음(while 루프).
+	 */
+	function checkStageClearByCount() {
+		while (stagesCleared < MAX_STAGE) {
+			const nextStage = stagesCleared + 1;
+			const need = dangerCountForStage(nextStage);
+			if (resolvedDangerCount < need) break;
+			// 스테이지 nextStage 클리어
+			resolvedDangerCount -= need;
+			stagesCleared = nextStage;
+
+			// 9~10 스테이지 보너스 드래프트
+			if (nextStage >= 9) bonusDraftsRemaining += 1;
+
+			// 클리어 배너 (가장 마지막 클리어 정보로 갱신)
+			pendingDangerClear = { stageNumber: nextStage, dangerCount: need };
+			setTimeout(() => { pendingDangerClear = null; }, 1500);
+
+			// 게임 클리어 체크
+			if (stagesCleared >= MAX_STAGE) {
+				setTimeout(() => handleGameClear(), 1200);
+				return;
+			}
+
+			// 드래프트 모달 (배너 후)
+			setTimeout(() => openAbilityDraft(), 1500);
+		}
+	}
+
+	/**
+	 * 위험 스테이지 종료(=평시 복귀) — 모든 dangers가 resolved되면 호출.
+	 * 스테이지 클리어 보상은 이미 checkStageClearByCount에서 처리됨.
+	 */
+	function endDangerStage() {
+		currentDangerStage = null;
+		postDangerSettleTurns = 0;
+		dangerCountdownActive = false;
+		// turnsSinceLastDanger는 그대로 — 평시 진입 카운트가 위험 중에도 흘렀다면 유지
+		saveGame();
 	}
 
 	/**
@@ -1235,38 +1341,6 @@ export function createBlockBlasterGame() {
 			...cellMeta,
 			[cellKey(nr, nc)]: { spreadParent: origin }
 		};
-	}
-
-	/**
-	 * 위험 스테이지 종료 — 클리어 보상 + 다음 평시로 복귀.
-	 */
-	function finishDangerStage() {
-		if (!currentDangerStage) return;
-		const stageNumber = currentDangerStage.stageNumber;
-		const dangerCount = currentDangerStage.dangers.length;
-		stagesCleared = stageNumber;
-
-		// 9~10 스테이지 보너스 드래프트
-		if (stageNumber >= 9) {
-			bonusDraftsRemaining += 1;
-		}
-
-		// 위험 종료 — 트레이 잠금 해제, currentDangerStage null
-		currentDangerStage = null;
-
-		// 클리어 배너 표시
-		pendingDangerClear = { stageNumber, dangerCount };
-		setTimeout(() => { pendingDangerClear = null; }, 1500);
-
-		// 게임 클리어 체크
-		if (stagesCleared >= MAX_STAGE) {
-			// 클리어 배너 보여주고 약간 후에 결과 모달 표시
-			setTimeout(() => handleGameClear(), 1200);
-			return;
-		}
-
-		// 배너가 사라지는 시점에 드래프트 모달 표시 (배너와 겹치지 않도록)
-		setTimeout(() => openAbilityDraft(), 1500);
 	}
 
 	function openAbilityDraft() {
@@ -1891,6 +1965,10 @@ export function createBlockBlasterGame() {
 		get bonusDraftsRemaining() { return bonusDraftsRemaining; },
 		get turnsUntilNextDanger() {
 			return Math.max(0, turnsToNextDanger() - turnsSinceLastDanger);
+		},
+		get dangerCountdownActive() { return dangerCountdownActive; },
+		get postDangerSettleRemaining() {
+			return Math.max(0, POST_DANGER_SETTLE_TURNS - postDangerSettleTurns);
 		},
 		get abilityFx() { return abilityFx; },
 		get isSpecialMode() { return isSpecialMode(); },
