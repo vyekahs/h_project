@@ -287,7 +287,14 @@
 					<span class="score-label">
 						SCORE
 						{#if game.isSpecialMode}
-							<span class="mode-tag">특수능력 · STAGE {game.stage}/{game.maxStage} · {game.linesClearedSinceLastDraft}/{game.nextThreshold}</span>
+							{@const ds = game.currentDangerStage}
+							<span class="mode-tag" class:danger={ds !== null}>
+								{#if ds}
+									STAGE {ds.stageNumber}/{game.maxStage} · 위험 {ds.dangers.filter((d) => !d.resolved).length}/{ds.dangers.length}
+								{:else}
+									STAGE {game.stagesCleared}/{game.maxStage} · 다음 위험까지 {game.linesUntilNextDanger}줄
+								{/if}
+							</span>
 						{/if}
 					</span>
 					<span class="score-value">{game.score.toLocaleString()}</span>
@@ -346,7 +353,6 @@
 					clearingRows={game.clearingRows}
 					clearingCols={game.clearingCols}
 					isAnimating={game.isAnimating}
-					hazardCells={game.hazardCells}
 					abilityFx={game.abilityFx}
 					abilityPreviewCells={abilityPreviewCells}
 				/>

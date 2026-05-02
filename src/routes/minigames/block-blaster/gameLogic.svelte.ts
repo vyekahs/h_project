@@ -10,7 +10,11 @@ import {
 	canPlaceAnyBlock
 } from '$lib/games/block-blaster/gameLogic';
 import { generateBlockSet } from '$lib/games/block-blaster/blocks';
-import { applyStageHazard } from '$lib/games/block-blaster/hazard';
+import {
+	generateDangerStage,
+	isDangerResolved,
+	isDoomTriggered
+} from '$lib/games/block-blaster/danger';
 import {
 	ABILITY_POOL,
 	drawAbilities,
@@ -19,13 +23,10 @@ import {
 	getLevelOf,
 	hasOwned,
 	isPassive,
-	nextDraftThreshold,
 	INVENTORY_SLOTS,
 	MAX_LEVEL,
 	MAX_STAGE,
-	hazardInterval,
 	reviveCooldown,
-	scoreMultiplier,
 	type Ability,
 	type OwnedAbility
 } from '$lib/games/block-blaster/abilities';
@@ -33,7 +34,9 @@ import {
 	GRID_SIZE,
 	type BoardGrid,
 	type BlockShape,
-	type CellColor
+	type CellColor,
+	type Danger,
+	type DangerStage
 } from '$lib/games/block-blaster/types';
 import { formatTime, trackGameStart } from '$lib/games/utils';
 import { rankUpStore } from '$lib/stores/rankUpStore.svelte';
@@ -184,16 +187,25 @@ export function createBlockBlasterGame() {
 
 	// Special mode
 	let inventory: OwnedAbility[] = $state([]);
-	let linesClearedSinceLastDraft = $state(0);
+	let linesClearedSinceLastDraft = $state(0); // 평시에서 다음 위험 스테이지까지 누적 라인 수
 	let draftCount = $state(0);
+	/** 위험 스테이지 진행 카운터 — 0 시작, 클리어할 때마다 +1, MAX_STAGE 도달 시 게임 클리어 */
+	let stagesCleared = $state(0);
+	/** 다음 위험 스테이지 번호 (1~10). 평시일 때 = 다음에 진입할 번호, 위험 중일 때 = 진행 중 번호 */
 	let stage = $state(1);
-	let turnsSinceLastHazard = $state(0); // 마지막 헤이저드 발동 이후 누적 턴 수
+	/** 평시 ↔ 위험 사이클 — null이면 평시, 객체이면 위험 스테이지 진행 중 */
+	let currentDangerStage: DangerStage | null = $state(null);
+	/** 막 인트로 표시용 — 'act-1' ... 'act-4' 또는 null. 표시 후 자동 클리어 */
+	let pendingActIntro: number | null = $state(null);
+	/** 위험 스테이지 인트로 표시용 — 표시 직후 자동 클리어 */
+	let pendingDangerIntro = $state(false);
 	let pendingDraftOptions: Ability[] | null = $state(null);
 	let pendingAbilitySlot: number | null = $state(null); // 타겟 대기 중인 액티브 슬롯
 	let pendingDiscardForAbility: Ability | null = $state(null); // 슬롯 풀일 때 새 능력 등록 대기
 	let lastSnapshots: GridSnapshot[] = $state([]); // undo 스택, 최대 3
 	let nextBlocksQueue: BlockShape[][] = $state([]); // peek-next용 큐
-	let hazardCells: [number, number][] = $state([]); // 헤이저드 페이드인 마커
+	/** 위험 클리어 시 보너스 드래프트 횟수 (9~10 스테이지 추가 보너스용) */
+	let bonusDraftsRemaining = $state(0);
 
 	// rotate-block 변형 선택 모달 상태
 	let pendingTransform: {
@@ -433,7 +445,9 @@ export function createBlockBlasterGame() {
 				linesClearedSinceLastDraft,
 				draftCount,
 				stage,
-				turnsSinceLastHazard,
+				stagesCleared,
+				currentDangerStage,
+				bonusDraftsRemaining,
 				lastSnapshots,
 				nextBlocksQueue,
 				// pending modal/action states — 새로고침 후에도 진행 가능하도록
@@ -479,7 +493,9 @@ export function createBlockBlasterGame() {
 			linesClearedSinceLastDraft = data.linesClearedSinceLastDraft || 0;
 			draftCount = data.draftCount || 0;
 			stage = data.stage || 1;
-			turnsSinceLastHazard = data.turnsSinceLastHazard || 0;
+			stagesCleared = data.stagesCleared || 0;
+			currentDangerStage = data.currentDangerStage || null;
+			bonusDraftsRemaining = data.bonusDraftsRemaining || 0;
 			lastSnapshots = data.lastSnapshots || [];
 			nextBlocksQueue = data.nextBlocksQueue || [];
 
@@ -495,9 +511,10 @@ export function createBlockBlasterGame() {
 			lastPlacedCells = [];
 			clearingRows = [];
 			clearingCols = [];
-			hazardCells = [];
 			isAnimating = false;
 			pendingAbilitySlot = null;
+			pendingActIntro = null;
+			pendingDangerIntro = false;
 
 			// 진행 중이던 능력 모달이 있으면 paused가 아닌 playing으로 복귀 (모달 우선 표시)
 			const hasPendingAction = pendingDraftOptions !== null
@@ -537,7 +554,6 @@ export function createBlockBlasterGame() {
 		lastPlacedCells = [];
 		clearingRows = [];
 		clearingCols = [];
-		hazardCells = [];
 		isAnimating = false;
 
 		// Reset special-mode state (must come before generating tray so getTraySize works)
@@ -545,7 +561,11 @@ export function createBlockBlasterGame() {
 		linesClearedSinceLastDraft = 0;
 		draftCount = 0;
 		stage = 1;
-		turnsSinceLastHazard = 0;
+		stagesCleared = 0;
+		currentDangerStage = null;
+		bonusDraftsRemaining = 0;
+		pendingActIntro = null;
+		pendingDangerIntro = false;
 		lastSnapshots = [];
 		nextBlocksQueue = [];
 		pendingDraftOptions = null;
@@ -619,10 +639,7 @@ export function createBlockBlasterGame() {
 			combo++;
 			if (combo > maxCombo) maxCombo = combo;
 
-			let points = calculateScore(block.cells.length, totalLines, combo);
-			if (isSpecialMode()) {
-				points = Math.round(points * scoreMultiplier(stage));
-			}
+			const points = calculateScore(block.cells.length, totalLines, combo);
 			score += points;
 			linesCleared += totalLines;
 
@@ -636,21 +653,33 @@ export function createBlockBlasterGame() {
 				clearingCols = [];
 				isAnimating = false;
 
-				if (isSpecialMode() && shouldOpenDraft()) {
-					saveGame();
-					openAbilityDraft();
-				} else {
-					applyTurnHazard();
-					saveGame();
-					afterPlace();
+				if (isSpecialMode()) {
+					handleSpecialTurnEnd();
 				}
+				saveGame();
+				afterPlace();
 			}, 300);
 		} else {
 			score += block.cells.length;
 			combo = 0;
-			applyTurnHazard();
+			if (isSpecialMode()) {
+				handleSpecialTurnEnd();
+			}
 			saveGame();
 			afterPlace();
+		}
+	}
+
+	/**
+	 * 특수능력 모드 — 매 턴 종료 시 호출.
+	 * 1) 위험 진행 중이면: 카운트다운 -1, 해결 판정, 게임오버 트리거 체크, 모두 해결되면 보상
+	 * 2) 평시이면: 다음 위험 스테이지 진입 조건 체크
+	 */
+	function handleSpecialTurnEnd() {
+		if (currentDangerStage) {
+			tickAndResolveDangers();
+		} else {
+			tryEnterNextDangerStage();
 		}
 	}
 
@@ -783,22 +812,126 @@ export function createBlockBlasterGame() {
 	// Special Mode — Draft / Abilities
 	// =========================================================================
 
-	function shouldOpenDraft(): boolean {
-		return linesClearedSinceLastDraft >= nextDraftThreshold(draftCount, stage);
+	// =========================================================================
+	// Special Mode — 위험 사이클 시스템 (1단계: doom-row/doom-col)
+	// =========================================================================
+
+	/** 평시에서 다음 위험 스테이지 진입을 위해 필요한 라인 클리어 수 */
+	const LINES_TO_NEXT_DANGER = 5;
+
+	/** 큰 막(act) 결정 — stage 기반 */
+	function getActForStage(s: number): number {
+		if (s <= 2) return 1; // 기
+		if (s <= 5) return 2; // 승
+		if (s <= 8) return 3; // 전
+		return 4; // 결
+	}
+
+	/**
+	 * 평시에서 라인 누적이 임계값에 도달하면 다음 위험 스테이지로 진입 시도.
+	 */
+	function tryEnterNextDangerStage() {
+		if (linesClearedSinceLastDraft < LINES_TO_NEXT_DANGER) return;
+		linesClearedSinceLastDraft = 0;
+		enterDangerStage();
+	}
+
+	/**
+	 * 위험 스테이지 진입 — 보드에 위험 등장, 트레이 잠금, 인트로 표시.
+	 */
+	function enterDangerStage() {
+		const stageNumber = stagesCleared + 1;
+		// 막 인트로는 새 막이 시작되는 첫 위험 스테이지(1, 3, 6, 9)에서만
+		const newAct = getActForStage(stageNumber);
+		const prevAct = stageNumber === 1 ? 0 : getActForStage(stageNumber - 1);
+		if (newAct !== prevAct) {
+			pendingActIntro = newAct;
+			setTimeout(() => { pendingActIntro = null; }, 800);
+		}
+
+		stage = stageNumber;
+		currentDangerStage = generateDangerStage(stageNumber, grid);
+		pendingDangerIntro = true;
+		setTimeout(() => { pendingDangerIntro = false; }, 600);
+		saveGame();
+	}
+
+	/**
+	 * 위험 진행 중 매 턴 — 카운트다운 -1 + 해결 판정 + 게임오버 트리거 체크 + 모두 해결 시 보상.
+	 */
+	function tickAndResolveDangers() {
+		if (!currentDangerStage) return;
+		const ds = currentDangerStage;
+
+		// 1) 해결 판정 (블록 배치/라인 클리어로 자연 해결됐는지)
+		for (const d of ds.dangers) {
+			if (!d.resolved && isDangerResolved(d, grid)) {
+				d.resolved = true;
+				score += 200; // 위험 1개 해결 보너스
+				// 카운트가 1 이상 남았는데 해결 = 긴박 보너스
+				if (d.countdown > 1) score += 100;
+				// 트레이 잠금 1개 해제 (가장 우측부터)
+				if (ds.lockedTraySlots > 0) ds.lockedTraySlots--;
+			}
+		}
+
+		// 2) 모두 해결됐으면 보상 (드래프트 + 평시 복귀)
+		if (ds.dangers.every(d => d.resolved)) {
+			finishDangerStage();
+			return;
+		}
+
+		// 3) 카운트다운 -1 (해결 안 된 위험만)
+		for (const d of ds.dangers) {
+			if (!d.resolved) d.countdown = Math.max(0, d.countdown - 1);
+		}
+
+		// 4) 카운트 0 도달 — 게임오버 줄이면 즉시 게임오버
+		for (const d of ds.dangers) {
+			if (isDoomTriggered(d, grid)) {
+				// 즉시 게임오버 처리
+				setTimeout(() => handleGameOver(), 400);
+				return;
+			}
+		}
+	}
+
+	/**
+	 * 위험 스테이지 종료 — 클리어 보상 + 다음 평시로 복귀.
+	 */
+	function finishDangerStage() {
+		if (!currentDangerStage) return;
+		const stageNumber = currentDangerStage.stageNumber;
+		stagesCleared = stageNumber;
+
+		// 9~10 스테이지 보너스 드래프트
+		if (stageNumber >= 9) {
+			bonusDraftsRemaining += 1;
+		}
+
+		// 위험 종료 — 트레이 잠금 해제, currentDangerStage null
+		currentDangerStage = null;
+
+		// 게임 클리어 체크
+		if (stagesCleared >= MAX_STAGE) {
+			handleGameClear();
+			return;
+		}
+
+		// 스킬 드래프트 모달 자동 표시
+		openAbilityDraft();
 	}
 
 	function openAbilityDraft() {
-		const threshold = nextDraftThreshold(draftCount, stage);
-		linesClearedSinceLastDraft -= threshold;
-
 		const options = drawAbilities(ABILITY_POOL, inventory, 3, stage);
 		if (options.length === 0) {
-			// 후보 없음 — 드래프트 스킵, 헤이저드만 적용
-			finishDraftAndHazard();
+			// 후보 없음 — 보너스 카운터 소진하고 그냥 평시 복귀
+			if (bonusDraftsRemaining > 0) bonusDraftsRemaining--;
+			saveGame();
 			return;
 		}
 		pendingDraftOptions = options;
-		saveGame(); // 드래프트 상태도 저장 (새로고침 후 복원)
+		saveGame();
 	}
 
 	function pickAbility(ability: Ability) {
@@ -812,9 +945,7 @@ export function createBlockBlasterGame() {
 					existing.cooldownRemaining = Math.max(0, existing.cooldownRemaining - 1);
 				}
 			}
-			pendingDraftOptions = null;
-			refillNextBlocksQueue();
-			finishDraftAndHazard();
+			afterDraftPick();
 			return;
 		}
 
@@ -825,9 +956,7 @@ export function createBlockBlasterGame() {
 				level: 1,
 				cooldownRemaining: 0
 			});
-			pendingDraftOptions = null;
-			refillNextBlocksQueue();
-			finishDraftAndHazard();
+			afterDraftPick();
 			return;
 		}
 
@@ -846,27 +975,28 @@ export function createBlockBlasterGame() {
 		next.push({ ability, level: 1, cooldownRemaining: 0 });
 		inventory = next;
 		pendingDiscardForAbility = null;
-		refillNextBlocksQueue();
-		finishDraftAndHazard();
+		afterDraftPick();
 	}
 
 	function cancelDiscard() {
 		// 사용자가 디스카드를 취소하면 새 능력 자체를 포기
 		pendingDiscardForAbility = null;
-		finishDraftAndHazard();
+		afterDraftPick();
 	}
 
-	function finishDraftAndHazard() {
+	/** 드래프트 선택 후 처리 — 보너스 드래프트 남았으면 다시 모달, 아니면 평시 복귀 */
+	function afterDraftPick() {
 		draftCount++;
-		stage++;
-		turnsSinceLastHazard = 0; // 새 stage 진입 시 헤이저드 카운터 리셋
-		saveGame();
-		// stage가 MAX_STAGE를 초과하면 게임 클리어 처리
-		if (stage > MAX_STAGE) {
-			handleGameClear();
+		pendingDraftOptions = null;
+		refillNextBlocksQueue();
+
+		if (bonusDraftsRemaining > 0) {
+			bonusDraftsRemaining--;
+			openAbilityDraft();
 			return;
 		}
-		afterPlace();
+
+		saveGame();
 	}
 
 	function handleGameClear() {
@@ -877,25 +1007,6 @@ export function createBlockBlasterGame() {
 		if (!hasRestarted) {
 			submitScore();
 		}
-	}
-
-	/**
-	 * 블록 배치 후 헤이저드 — stage에 따라 N턴마다 1셀 추가.
-	 * stage 1: 12턴마다, stage 12: 매 턴.
-	 * 라인이 완성될 위치는 hazard.ts에서 자동으로 회피.
-	 */
-	function applyTurnHazard() {
-		if (!isSpecialMode()) return;
-		const interval = hazardInterval(stage);
-		if (interval <= 0) return; // 0이면 헤이저드 비활성 (1막)
-		turnsSinceLastHazard++;
-		if (turnsSinceLastHazard < interval) return;
-
-		turnsSinceLastHazard = 0;
-		const result = applyStageHazard(grid, stage);
-		grid = result.grid;
-		hazardCells = result.addedCells;
-		setTimeout(() => { hazardCells = []; }, 600);
 	}
 
 	// ----- Active ability use -----
@@ -1240,13 +1351,15 @@ export function createBlockBlasterGame() {
 				const fxCells = collectFilledCells(() => true);
 				if (fxCells.length > 0) triggerAbilityFx('nuke', fxCells);
 				grid = createEmptyGrid();
-				// Lv2: 트레이도 새로 생성, Lv3: 다음 헤이저드 1회 스킵
+				// Lv2: 트레이도 새로 생성, Lv3: 진행 중 위험 모두 카운트다운 +1
 				if (level >= 2) {
 					currentBlocks = generateTraySet();
 					selectedBlockIndex = null;
 				}
-				if (level >= 3) {
-					turnsSinceLastHazard = -hazardInterval(stage); // 다음 헤이저드 1주기 미룸
+				if (level >= 3 && currentDangerStage) {
+					for (const d of currentDangerStage.dangers) {
+						if (!d.resolved) d.countdown += 1;
+					}
 				}
 				return true;
 			}
@@ -1383,12 +1496,18 @@ export function createBlockBlasterGame() {
 		get pendingColorChoose() { return pendingColorChoose; },
 		get nextBlocksQueue() { return nextBlocksQueue; },
 		get peekBlocks() { return getPeekBlocks(); },
-		get isCleared() { return stage > MAX_STAGE; },
+		get isCleared() { return stagesCleared >= MAX_STAGE; },
 		get maxStage() { return MAX_STAGE; },
-		get hazardCells() { return hazardCells; },
+		get stagesCleared() { return stagesCleared; },
+		get currentDangerStage() { return currentDangerStage; },
+		get pendingActIntro() { return pendingActIntro; },
+		get pendingDangerIntro() { return pendingDangerIntro; },
+		get bonusDraftsRemaining() { return bonusDraftsRemaining; },
+		get linesUntilNextDanger() {
+			return Math.max(0, LINES_TO_NEXT_DANGER - linesClearedSinceLastDraft);
+		},
 		get abilityFx() { return abilityFx; },
 		get isSpecialMode() { return isSpecialMode(); },
-		get nextThreshold() { return nextDraftThreshold(draftCount, stage); },
 		hasAbility: (id: string) => hasOwned(inventory, id),
 		getAbilityLevel: (id: string) => getLevelOf(inventory, id),
 

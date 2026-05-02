@@ -44,10 +44,6 @@ export const MAX_OWNED_KINDS = 6;
 export const MAX_EPIC_OWNED = 1;
 export const MAX_RARE_OWNED = 3;
 
-// 첫 드래프트는 5라인, 이후 stage별 분기
-export const FIRST_DRAFT_THRESHOLD = 5;
-export const DRAFT_THRESHOLD = 7; // 기본값 (1~2막)
-export const DRAFT_THRESHOLD_ACT3 = 5; // 3막은 5라인마다
 
 // 추첨 가중치
 const RARITY_WEIGHT: Record<AbilityRarity, number> = {
@@ -239,18 +235,6 @@ export function computeCooldown(ability: Ability, level: number): number {
 	return Math.max(1, baseCooldown(ability) - drop);
 }
 
-/**
- * 막별 점수 배수
- * - 1막 (Stage 1~3): 1.0배
- * - 2막 (Stage 4~7): 1.5배
- * - 3막 (Stage 8~10): 2.5배
- */
-export function scoreMultiplier(stage: number): number {
-	if (stage <= 3) return 1.0;
-	if (stage <= 7) return 1.5;
-	return 2.5;
-}
-
 /** revive 전용 쿨다운 — 발동 후 재충전까지 N턴 (Lv1: 90, Lv2: 80, Lv3: 70) */
 export function reviveCooldown(level: number): number {
 	if (level >= 3) return 70;
@@ -382,35 +366,4 @@ export function drawAbilities(
 	return picked;
 }
 
-/** 다음 드래프트까지 필요한 라인 수 — stage에 따라 분기 */
-export function nextDraftThreshold(draftCount: number, stage: number = 1): number {
-	if (draftCount === 0) return FIRST_DRAFT_THRESHOLD;
-	// 3막(Stage 8+)은 더 자주 드래프트
-	return stage >= 8 ? DRAFT_THRESHOLD_ACT3 : DRAFT_THRESHOLD;
-}
-
 export const MAX_STAGE = 10;
-
-/**
- * 3막 구조 헤이저드 발동 간격 — N턴마다 1회 발동.
- * - 1막 Stage 1~3: 헤이저드 없음 (간격 0 = 비활성)
- * - 2막 Stage 4~7: 4턴마다
- * - 3막 Stage 8~10: 2턴마다
- */
-export function hazardInterval(stage: number): number {
-	if (stage <= 3) return 0; // 0이면 비활성
-	if (stage <= 7) return 4;
-	return 2;
-}
-
-/**
- * 헤이저드 1회당 추가될 셀 수
- * - 1막은 발동 안 됨 (interval 0)
- * - 2막 (Stage 4~7): 1셀
- * - 3막 (Stage 8~9): 1셀
- * - Stage 10 (보스): 2셀
- */
-export function hazardCellCount(stage: number): number {
-	if (stage >= 10) return 2;
-	return 1;
-}
