@@ -171,29 +171,77 @@ export { formatTime };
 
 /**
  * 플러스 모드 시작용 — 보드의 약 25%를 무작위로 채운 시작 그리드 생성.
- * 두세 턴이면 자연스럽게 정리되도록:
- * - 완성된 줄/열이 있으면 안 됨
- * - 어느 줄/열도 7칸 이상 차있으면 안 됨 (라인 완성 직전 회피)
- * - 트레이의 모든 블록이 적어도 한 자리에는 놓일 수 있어야 함
+ * 단독 셀 없이 모든 채워진 셀이 2개 이상 인접해 모이도록 작은 덩어리(2~4셀 폴리오미노)
+ * 단위로 배치한다.
+ * - 완성된 줄/열 X
+ * - 어느 줄/열도 7칸 이상 차있으면 X (라인 완성 직전 회피)
+ * - 시작 트레이로 한 수도 못 두면 재생성
  */
 function generateSeededGrid(blocks: (BlockShape | null)[]): BoardGrid {
 	const TARGET_FILL = Math.round(GRID_SIZE * GRID_SIZE * 0.25); // 16칸
-	const MAX_ATTEMPTS = 30;
+	const MAX_ATTEMPTS = 40;
+	const DIRS: [number, number][] = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+
+	const placeCluster = (g: BoardGrid, size: number): boolean => {
+		// 빈 셀 중 무작위 시작점 선택 후 BFS로 인접 빈 셀까지 확장
+		const empty: [number, number][] = [];
+		for (let r = 0; r < GRID_SIZE; r++)
+			for (let c = 0; c < GRID_SIZE; c++) if (g[r][c] === 0) empty.push([r, c]);
+		if (empty.length === 0) return false;
+
+		// 후보 시작점을 여러 번 시도
+		for (let tryStart = 0; tryStart < 10; tryStart++) {
+			const [sr, sc] = empty[Math.floor(Math.random() * empty.length)];
+			const cluster: [number, number][] = [[sr, sc]];
+			const used = new Set<string>([`${sr},${sc}`]);
+			while (cluster.length < size) {
+				// 클러스터에 인접한 빈 셀 후보
+				const frontier: [number, number][] = [];
+				for (const [r, c] of cluster) {
+					for (const [dr, dc] of DIRS) {
+						const nr = r + dr;
+						const nc = c + dc;
+						if (nr < 0 || nr >= GRID_SIZE || nc < 0 || nc >= GRID_SIZE) continue;
+						if (g[nr][nc] !== 0) continue;
+						const key = `${nr},${nc}`;
+						if (used.has(key)) continue;
+						frontier.push([nr, nc]);
+						used.add(key);
+					}
+				}
+				if (frontier.length === 0) break;
+				cluster.push(frontier[Math.floor(Math.random() * frontier.length)]);
+			}
+			if (cluster.length >= 2) {
+				// 한 덩어리는 같은 색으로 (시각적 일관성, 라인 클리어가 너무 쉬워지진 않음)
+				const color = ((Math.floor(Math.random() * 5) + 1) as CellColor);
+				for (const [r, c] of cluster) g[r][c] = color;
+				return true;
+			}
+		}
+		return false;
+	};
 
 	for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
 		const g = createEmptyGrid();
-		const positions: [number, number][] = [];
-		for (let r = 0; r < GRID_SIZE; r++)
-			for (let c = 0; c < GRID_SIZE; c++) positions.push([r, c]);
-		for (let i = positions.length - 1; i > 0; i--) {
-			const j = Math.floor(Math.random() * (i + 1));
-			[positions[i], positions[j]] = [positions[j], positions[i]];
-		}
-		for (let i = 0; i < TARGET_FILL; i++) {
-			const [r, c] = positions[i];
-			g[r][c] = ((Math.floor(Math.random() * 5) + 1) as CellColor);
+		let filled = 0;
+		let stuck = 0;
+		while (filled < TARGET_FILL && stuck < 8) {
+			const remaining = TARGET_FILL - filled;
+			const size = Math.min(remaining, 2 + Math.floor(Math.random() * 3)); // 2~4
+			const beforeEmpty = g.flat().filter(v => v === 0).length;
+			placeCluster(g, size);
+			const afterEmpty = g.flat().filter(v => v === 0).length;
+			const placed = beforeEmpty - afterEmpty;
+			if (placed === 0) {
+				stuck++;
+			} else {
+				stuck = 0;
+				filled += placed;
+			}
 		}
 
+		// 라인 7칸 이상 채워졌는지 검증
 		let bad = false;
 		for (let r = 0; r < GRID_SIZE && !bad; r++) {
 			let n = 0;
