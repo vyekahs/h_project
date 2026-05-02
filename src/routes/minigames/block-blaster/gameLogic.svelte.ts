@@ -1244,6 +1244,7 @@ export function createBlockBlasterGame() {
 			const ok = executeAbility(slot.ability, slot.level, null);
 			if (!ok) return; // 발동 실패 시 쿨다운도 적용 X
 			slot.cooldownRemaining = computeCooldown(slot.ability, slot.level);
+			handleSpecialTurnEnd();
 			saveGame();
 			// 능력 사용 후 게임오버 가능성 체크
 			if (!canPlaceAnyBlock(grid, currentBlocks)) {
@@ -1276,6 +1277,7 @@ export function createBlockBlasterGame() {
 
 		inventory[slotIndex].cooldownRemaining = computeCooldown(slot.ability, slot.level);
 		pendingTransform = null;
+		handleSpecialTurnEnd();
 		saveGame();
 
 		if (!canPlaceAnyBlock(grid, currentBlocks)) {
@@ -1302,6 +1304,7 @@ export function createBlockBlasterGame() {
 
 		inventory[slotIndex].cooldownRemaining = computeCooldown(slot.ability, slot.level);
 		pendingSwap = null;
+		handleSpecialTurnEnd();
 		saveGame();
 		if (!canPlaceAnyBlock(grid, currentBlocks)) {
 			afterPlace();
@@ -1324,6 +1327,7 @@ export function createBlockBlasterGame() {
 		inventory[slotIndex].cooldownRemaining = computeCooldown(slot.ability, slot.level);
 		pendingDraw = null;
 		selectedBlockIndex = null;
+		handleSpecialTurnEnd();
 		saveGame();
 		if (!canPlaceAnyBlock(grid, currentBlocks)) {
 			afterPlace();
@@ -1360,6 +1364,7 @@ export function createBlockBlasterGame() {
 		inventory[slotIndex].cooldownRemaining = computeCooldown(slot.ability, slot.level);
 		pendingColorChoose = null;
 		selectedBlockIndex = null;
+		handleSpecialTurnEnd();
 		saveGame();
 		if (!canPlaceAnyBlock(grid, currentBlocks)) {
 			afterPlace();
@@ -1454,6 +1459,7 @@ export function createBlockBlasterGame() {
 		inventory[slotIndex].cooldownRemaining = computeCooldown(ability, level);
 		pendingAbilitySlot = null;
 		selectedBlockIndex = null;
+		handleSpecialTurnEnd();
 		saveGame();
 
 		// 능력 사용 후 게임오버 가능성 체크
