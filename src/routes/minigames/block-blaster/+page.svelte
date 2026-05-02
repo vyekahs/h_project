@@ -12,6 +12,7 @@
 	import AbilityIcon from './AbilityIcon.svelte';
 	import DangerOverlay from './DangerOverlay.svelte';
 	import DangerStageIntro from './DangerStageIntro.svelte';
+	import DangerClearBanner from './DangerClearBanner.svelte';
 	import GamePauseModal from '$lib/components/games/GamePauseModal.svelte';
 	import GameResultModal from '$lib/components/games/GameResultModal.svelte';
 	import { goto, replaceState } from '$app/navigation';
@@ -462,7 +463,11 @@
 				title={game.isCleared ? `🏆 STAGE ${game.maxStage} 클리어!` : 'GAME OVER'}
 				message={game.isCleared
 					? `${game.maxStage}스테이지를 모두 클리어했습니다!`
-					: undefined}
+					: game.gameOverReason === 'doom'
+						? '게임오버 줄을 제때 비우지 못했습니다.'
+						: game.gameOverReason === 'no-blocks'
+							? '배치할 수 있는 자리가 없습니다.'
+							: undefined}
 				stats={[
 					{
 						label: '점수',
@@ -527,6 +532,14 @@
 			stageNumber={game.currentDangerStage.stageNumber}
 			dangerCount={game.currentDangerStage.dangers.length}
 			act={game.pendingActIntro}
+		/>
+	{/if}
+
+	<!-- 위험 스테이지 클리어 배너 (작은 결) -->
+	{#if game.isSpecialMode && game.pendingDangerClear}
+		<DangerClearBanner
+			stageNumber={game.pendingDangerClear.stageNumber}
+			dangerCount={game.pendingDangerClear.dangerCount}
 		/>
 	{/if}
 

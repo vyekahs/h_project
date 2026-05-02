@@ -36,7 +36,7 @@
 		-webkit-backdrop-filter: blur(4px);
 		z-index: 270;
 		pointer-events: none;
-		animation: introIn 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), introOut 0.3s ease-out 0.45s forwards;
+		animation: introIn 0.3s cubic-bezier(0.2, 0.8, 0.2, 1), introOut 0.4s ease-out 1.5s forwards;
 	}
 
 	.act-tag {

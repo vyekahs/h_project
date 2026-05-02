@@ -200,6 +200,10 @@ export function createBlockBlasterGame() {
 	let pendingActIntro: number | null = $state(null);
 	/** 위험 스테이지 인트로 표시용 — 표시 직후 자동 클리어 */
 	let pendingDangerIntro = $state(false);
+	/** 위험 스테이지 클리어 배너 — { stageNumber, dangerCount } 또는 null */
+	let pendingDangerClear: { stageNumber: number; dangerCount: number } | null = $state(null);
+	/** 게임오버 사유 — 'doom' (게임오버 줄로 끝남) | 'no-blocks' (배치 불가) | null */
+	let gameOverReason: 'doom' | 'no-blocks' | null = $state(null);
 	let pendingDraftOptions: Ability[] | null = $state(null);
 	let pendingAbilitySlot: number | null = $state(null); // 타겟 대기 중인 액티브 슬롯
 	let pendingDiscardForAbility: Ability | null = $state(null); // 슬롯 풀일 때 새 능력 등록 대기
@@ -520,6 +524,8 @@ export function createBlockBlasterGame() {
 			pendingAbilitySlot = null;
 			pendingActIntro = null;
 			pendingDangerIntro = false;
+			pendingDangerClear = null;
+			gameOverReason = null;
 
 			// 진행 중이던 능력 모달이 있으면 paused가 아닌 playing으로 복귀 (모달 우선 표시)
 			const hasPendingAction = pendingDraftOptions !== null
@@ -570,6 +576,8 @@ export function createBlockBlasterGame() {
 		currentDangerStage = null;
 		bonusDraftsRemaining = 0;
 		cellMeta = {};
+		pendingDangerClear = null;
+		gameOverReason = null;
 		pendingActIntro = null;
 		pendingDangerIntro = false;
 		lastSnapshots = [];
@@ -754,6 +762,7 @@ export function createBlockBlasterGame() {
 				// 능력으로 탈출 가능 — 게임오버 보류 (안내 모달 없음)
 				return;
 			}
+			gameOverReason = 'no-blocks';
 			isAnimating = true;
 			setTimeout(() => {
 				handleGameOver();
@@ -904,7 +913,7 @@ export function createBlockBlasterGame() {
 		const prevAct = stageNumber === 1 ? 0 : getActForStage(stageNumber - 1);
 		if (newAct !== prevAct) {
 			pendingActIntro = newAct;
-			setTimeout(() => { pendingActIntro = null; }, 800);
+			setTimeout(() => { pendingActIntro = null; }, 2000);
 		}
 
 		stage = stageNumber;
@@ -934,7 +943,7 @@ export function createBlockBlasterGame() {
 		cellMeta = nextMeta;
 
 		pendingDangerIntro = true;
-		setTimeout(() => { pendingDangerIntro = false; }, 600);
+		setTimeout(() => { pendingDangerIntro = false; }, 2000);
 		saveGame();
 	}
 
@@ -990,8 +999,9 @@ export function createBlockBlasterGame() {
 		for (const d of ds.dangers) {
 			if (d.resolved) continue;
 			if (isDoomTriggered(d, grid)) {
-				// 게임오버 줄 — 즉시 게임오버
-				setTimeout(() => handleGameOver(), 400);
+				// 게임오버 줄 — 사유 기록 + 잠시 후 게임오버 (위험 강조 표시 시간 확보)
+				gameOverReason = 'doom';
+				setTimeout(() => handleGameOver(), 800);
 				return;
 			}
 			if (d.type === 'hazard-zone' && d.countdown === 0) {
@@ -1058,6 +1068,7 @@ export function createBlockBlasterGame() {
 	function finishDangerStage() {
 		if (!currentDangerStage) return;
 		const stageNumber = currentDangerStage.stageNumber;
+		const dangerCount = currentDangerStage.dangers.length;
 		stagesCleared = stageNumber;
 
 		// 9~10 스테이지 보너스 드래프트
@@ -1068,14 +1079,19 @@ export function createBlockBlasterGame() {
 		// 위험 종료 — 트레이 잠금 해제, currentDangerStage null
 		currentDangerStage = null;
 
+		// 클리어 배너 표시
+		pendingDangerClear = { stageNumber, dangerCount };
+		setTimeout(() => { pendingDangerClear = null; }, 1500);
+
 		// 게임 클리어 체크
 		if (stagesCleared >= MAX_STAGE) {
-			handleGameClear();
+			// 클리어 배너 보여주고 약간 후에 결과 모달 표시
+			setTimeout(() => handleGameClear(), 1200);
 			return;
 		}
 
-		// 스킬 드래프트 모달 자동 표시
-		openAbilityDraft();
+		// 배너가 사라지는 시점에 드래프트 모달 표시 (배너와 겹치지 않도록)
+		setTimeout(() => openAbilityDraft(), 1500);
 	}
 
 	function openAbilityDraft() {
@@ -1659,6 +1675,8 @@ export function createBlockBlasterGame() {
 		get cellMeta() { return cellMeta; },
 		get pendingActIntro() { return pendingActIntro; },
 		get pendingDangerIntro() { return pendingDangerIntro; },
+		get pendingDangerClear() { return pendingDangerClear; },
+		get gameOverReason() { return gameOverReason; },
 		get bonusDraftsRemaining() { return bonusDraftsRemaining; },
 		get linesUntilNextDanger() {
 			return Math.max(0, LINES_TO_NEXT_DANGER - linesClearedSinceLastDraft);
