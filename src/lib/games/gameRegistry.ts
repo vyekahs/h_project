@@ -167,9 +167,10 @@ export const GAME_REGISTRY: Record<string, GameConfig> = {
 		name: '블럭블라스터',
 		displayTitle: 'Block Blaster',
 		gameUrl: '/minigames/block-blaster',
-		difficulties: ['classic'],
+		difficulties: ['classic', 'special'],
 		difficultyLabels: {
-			classic: '클래식'
+			classic: '클래식',
+			special: '특수능력'
 		},
 		localStorageSaveKey: 'block_blaster_save',
 		hasTutorials: false

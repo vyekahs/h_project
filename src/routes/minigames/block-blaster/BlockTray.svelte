@@ -70,15 +70,18 @@
 	.tray {
 		display: flex;
 		justify-content: center;
-		gap: 0.75rem;
-		padding: 0.75rem 0;
+		gap: 0.5rem;
+		padding: 0.25rem 0.25rem;
 		width: 100%;
 		flex-shrink: 0;
+		box-sizing: border-box;
 	}
 
 	.tray-slot {
-		width: 100px;
-		height: 100px;
+		flex: 1 1 0;
+		min-width: 0;
+		max-width: 100px;
+		aspect-ratio: 1;
 		display: flex;
 		align-items: center;
 		justify-content: center;
@@ -87,15 +90,14 @@
 		border-radius: 12px;
 		cursor: pointer;
 		transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
-		padding: 10px;
-		flex-shrink: 0;
+		padding: 8px;
+		box-sizing: border-box;
 		touch-action: none;
 	}
 
 	.tray-slot.selected {
-		transform: scale(1.05);
 		border-color: var(--accent, #8b5cf6);
-		box-shadow: 0 0 12px rgba(139, 92, 246, 0.3);
+		box-shadow: 0 0 12px rgba(139, 92, 246, 0.4);
 	}
 
 	.tray-slot.empty {
@@ -107,7 +109,8 @@
 	.mini-grid {
 		display: grid;
 		gap: 2px;
-		--cell-size: 14px;
+		/* 화면 폭에 비례하여 자동 조정 */
+		--cell-size: clamp(8px, 3vw, 14px);
 	}
 
 	.mini-cell {

@@ -1,13 +1,22 @@
 <script lang="ts">
 	import Board from './Board.svelte';
 	import BlockTray from './BlockTray.svelte';
+	import AbilityInventory from './AbilityInventory.svelte';
+	import AbilityDraftModal from './AbilityDraftModal.svelte';
+	import SlotDiscardModal from './SlotDiscardModal.svelte';
+	import TransformModal from './TransformModal.svelte';
+	import SwapBlockModal from './SwapBlockModal.svelte';
+	import DrawBlockModal from './DrawBlockModal.svelte';
+	import ColorChooseModal from './ColorChooseModal.svelte';
+	import PeekStrip from './PeekStrip.svelte';
+	import AbilityIcon from './AbilityIcon.svelte';
 	import GamePauseModal from '$lib/components/games/GamePauseModal.svelte';
 	import GameResultModal from '$lib/components/games/GameResultModal.svelte';
 	import { goto, replaceState } from '$app/navigation';
 	import { browser } from '$app/environment';
 	import { onMount } from 'svelte';
 	import { user } from '$lib/stores/user';
-	import { createBlockBlasterGame, formatTime } from './gameLogic.svelte';
+	import { createBlockBlasterGame, formatTime, computeAbilityPreview, type GameMode } from './gameLogic.svelte';
 	import type { BlockShape } from '$lib/games/block-blaster/types';
 
 	const game = createBlockBlasterGame();
@@ -31,12 +40,26 @@
 	const DRAG_THRESHOLD = 8;
 	const FINGER_OFFSET = 80;
 
+	// 능력 드래그 상태
+	let abilityDragSlot: number | null = $state(null);
+	let isAbilityDragging = $state(false);
+	let abilityDragStartX = 0;
+	let abilityDragStartY = 0;
+	let abilityHasMoved = false;
+	let abilityPreviewCells: [number, number][] = $state([]);
+
 	let boardRef: Board | null = $state(null);
 
 	function handleDragStart(index: number, e: PointerEvent) {
 		if (game.gameState !== 'playing' || game.isAnimating) return;
 		const block = game.currentBlocks[index];
 		if (!block) return;
+
+		// block 타겟형 능력 발동 대기 중이면 트레이 블록 클릭 = 타겟 적용
+		if (game.pendingAbilitySlot !== null) {
+			game.applyAbilityToTarget({ kind: 'block', index });
+			return;
+		}
 
 		dragBlockIndex = index;
 		dragStartX = e.clientX;
@@ -49,6 +72,23 @@
 	}
 
 	function handlePointerMove(e: PointerEvent) {
+		// 능력 드래그 우선 처리
+		if (abilityDragSlot !== null) {
+			const dx = e.clientX - abilityDragStartX;
+			const dy = e.clientY - abilityDragStartY;
+			if (!isAbilityDragging && (Math.abs(dx) > DRAG_THRESHOLD || Math.abs(dy) > DRAG_THRESHOLD)) {
+				isAbilityDragging = true;
+				abilityHasMoved = true;
+			}
+			if (isAbilityDragging) {
+				// 능력 드래그는 손가락 위치 그대로 사용 (블록처럼 위로 보정 X)
+				dragX = e.clientX;
+				dragY = e.clientY;
+				updateAbilityPreview(e.clientX, e.clientY);
+			}
+			return;
+		}
+
 		if (dragBlockIndex === null) return;
 
 		const dx = e.clientX - dragStartX;
@@ -72,6 +112,29 @@
 	}
 
 	function handlePointerUp(e: PointerEvent) {
+		// 능력 드래그 종료
+		if (abilityDragSlot !== null) {
+			const slot = abilityDragSlot;
+			if (isAbilityDragging && boardRef) {
+				const cell = boardRef.getCellFromXY(dragX, dragY);
+				if (cell) {
+					// pending 상태로 전환 후 타겟 적용
+					game.useAbility(slot);
+					if (game.pendingAbilitySlot !== null) {
+						game.applyAbilityToTarget({ kind: 'cell', row: cell.row, col: cell.col });
+					}
+				}
+			}
+			// 탭(드래그 없음)은 onclick에서 처리됨 — 여기서는 호출하지 않음
+			abilityDragSlot = null;
+			isAbilityDragging = false;
+			// abilityHasMoved는 onclick 핸들러가 무시 여부 결정에 쓰므로 그대로 전달
+			abilityPreviewCells = [];
+			dragX = 0;
+			dragY = 0;
+			return;
+		}
+
 		if (dragBlockIndex === null) return;
 
 		if (isDragging && dragBlock && boardRef) {
@@ -94,6 +157,58 @@
 		dragY = 0;
 	}
 
+	function handleAbilityPointerDown(slotIndex: number, e: PointerEvent) {
+		const owned = game.inventory[slotIndex];
+		if (!owned) return;
+		const t = owned.ability.targetType;
+		if (t === 'passive') return;
+		if (owned.cooldownRemaining > 0) return;
+
+		// instant: pointerdown에서 즉시 발동 (onclick에 의존하지 않음)
+		if (t === 'instant') {
+			game.useAbility(slotIndex);
+			return;
+		}
+
+		// block: pointerdown에서 pending 모드만 진입 (트레이 블록 클릭으로 타겟)
+		if (t === 'block') {
+			game.useAbility(slotIndex);
+			return;
+		}
+
+		// cell/row/col — 드래그로 보드 타겟
+		abilityDragSlot = slotIndex;
+		abilityDragStartX = e.clientX;
+		abilityDragStartY = e.clientY;
+		abilityHasMoved = false;
+		isAbilityDragging = false;
+		(e.currentTarget as HTMLElement)?.setPointerCapture?.(e.pointerId);
+	}
+
+	function updateAbilityPreview(px: number, py: number) {
+		if (abilityDragSlot === null || !boardRef) {
+			abilityPreviewCells = [];
+			return;
+		}
+		const cell = boardRef.getCellFromXY(px, py);
+		if (!cell) {
+			abilityPreviewCells = [];
+			return;
+		}
+		const owned = game.inventory[abilityDragSlot];
+		if (!owned) {
+			abilityPreviewCells = [];
+			return;
+		}
+		abilityPreviewCells = computeAbilityPreview(
+			game.grid,
+			owned.ability,
+			owned.level,
+			cell.row,
+			cell.col
+		);
+	}
+
 	function getFloatingBounds(block: BlockShape) {
 		let maxR = 0, maxC = 0;
 		for (const [r, c] of block.cells) {
@@ -106,9 +221,12 @@
 	onMount(() => {
 		if (!browser) return;
 		const params = new URLSearchParams(window.location.search);
+		const diffParam = params.get('difficulty');
+		const mode: GameMode = diffParam === 'special' ? 'special' : 'classic';
+
 		if (params.get('autostart') === 'true') {
 			replaceState(window.location.pathname, {});
-			user.refresh().then(() => game.startGame());
+			user.refresh().then(() => game.startGame(mode));
 		} else if (params.get('resume') === 'true') {
 			replaceState(window.location.pathname, {});
 			game.loadGame();
@@ -166,7 +284,12 @@
 		>
 			<header>
 				<div class="header-info">
-					<span class="score-label">SCORE</span>
+					<span class="score-label">
+						SCORE
+						{#if game.isSpecialMode}
+							<span class="mode-tag">특수능력 · STAGE {game.stage}/{game.maxStage} · {game.linesClearedSinceLastDraft}/{game.nextThreshold}</span>
+						{/if}
+					</span>
 					<span class="score-value">{game.score.toLocaleString()}</span>
 				</div>
 				<div class="header-right">
@@ -192,6 +315,23 @@
 				</div>
 			</header>
 
+			<div class="center-group">
+			{#if game.isSpecialMode}
+				<AbilityInventory
+					inventory={game.inventory}
+					pendingSlot={game.pendingAbilitySlot}
+					onSlotClick={(i: number) => {
+						if (abilityHasMoved) return;
+						const owned = game.inventory[i];
+						if (!owned) return;
+						const t = owned.ability.targetType;
+						if (t === 'instant' || t === 'block') return;
+						game.useAbility(i);
+					}}
+					onSlotPointerDown={handleAbilityPointerDown}
+				/>
+			{/if}
+
 			<div class="game-area">
 				<Board
 					bind:this={boardRef}
@@ -206,16 +346,81 @@
 					clearingRows={game.clearingRows}
 					clearingCols={game.clearingCols}
 					isAnimating={game.isAnimating}
+					hazardCells={game.hazardCells}
+					abilityFx={game.abilityFx}
+					abilityPreviewCells={abilityPreviewCells}
 				/>
 			</div>
 
 			<BlockTray
 				blocks={game.currentBlocks}
 				selectedIndex={isDragging ? null : game.selectedBlockIndex}
-				onSelect={game.selectBlock}
+				onSelect={(i: number) => {
+					if (game.pendingAbilitySlot !== null) {
+						game.applyAbilityToTarget({ kind: 'block', index: i });
+					} else {
+						game.selectBlock(i);
+					}
+				}}
 				onDragStart={handleDragStart}
 			/>
+
+			{#if game.isSpecialMode && game.peekBlocks.length > 0}
+				<PeekStrip blocks={game.peekBlocks} />
+			{/if}
+			</div>
 		</div>
+
+		{#if game.pendingDraftOptions}
+			<AbilityDraftModal
+				options={game.pendingDraftOptions}
+				owned={game.inventory}
+				stage={game.stage}
+				onPick={game.pickAbility}
+			/>
+		{/if}
+
+		{#if game.pendingDiscardForAbility}
+			<SlotDiscardModal
+				ability={game.pendingDiscardForAbility}
+				inventory={game.inventory}
+				onDiscard={game.discardSlotForAbility}
+				onCancel={game.cancelDiscard}
+			/>
+		{/if}
+
+		{#if game.pendingTransform}
+			<TransformModal
+				options={game.pendingTransform.options}
+				onPick={game.pickTransform}
+				onCancel={game.cancelTransform}
+			/>
+		{/if}
+
+		{#if game.pendingSwap}
+			<SwapBlockModal
+				options={game.pendingSwap.options}
+				onPick={game.pickSwap}
+				onCancel={game.cancelSwap}
+			/>
+		{/if}
+
+		{#if game.pendingDraw}
+			<DrawBlockModal
+				cellCount={game.pendingDraw.cellCount}
+				onConfirm={game.confirmDrawnBlock}
+				onCancel={game.cancelDrawnBlock}
+			/>
+		{/if}
+
+		{#if game.pendingColorChoose}
+			<ColorChooseModal
+				availableColors={game.pendingColorChoose.availableColors}
+				level={game.pendingColorChoose.level}
+				onConfirm={game.confirmClearColor}
+				onCancel={game.cancelClearColor}
+			/>
+		{/if}
 
 		{#if game.gameState === 'paused'}
 			<GamePauseModal
@@ -236,16 +441,16 @@
 
 		{#if game.gameState === 'finished'}
 			<GameResultModal
-				isWon={false}
-				title="GAME OVER"
-				message={game.hasRestarted
-					? '다시시작한 게임은 랭킹에 반영되지 않습니다'
+				isWon={game.isCleared}
+				title={game.isCleared ? `🏆 STAGE ${game.maxStage} 클리어!` : 'GAME OVER'}
+				message={game.isCleared
+					? `${game.maxStage}스테이지를 모두 클리어했습니다!`
 					: undefined}
 				stats={[
 					{
 						label: '점수',
 						value: game.score.toLocaleString(),
-						highlight: !game.hasRestarted
+						highlight: true
 					},
 					{ label: '줄 제거', value: `${game.linesCleared}줄` },
 					{ label: '최대 콤보', value: `×${game.maxCombo}` },
@@ -253,7 +458,7 @@
 				]}
 				newTitleName={game.newTitleName}
 				showVisitPrompt={game.showVisitPrompt}
-				primaryAction={{ label: '다시 도전', onclick: game.startGame }}
+				primaryAction={{ label: '다시 도전', onclick: () => game.startGame(game.gameMode) }}
 				secondaryAction={{
 					label: '나가기',
 					onclick: () => goto('/minigames/start/block-blaster')
@@ -300,6 +505,13 @@
 	{/if}
 
 	<!-- 드래그 중인 플로팅 블록 -->
+	{#if isAbilityDragging && abilityDragSlot !== null && game.inventory[abilityDragSlot]}
+		{@const owned = game.inventory[abilityDragSlot]}
+		<div class="floating-ability" style="left: {dragX}px; top: {dragY}px;">
+			<span class="fab-icon"><AbilityIcon id={owned.ability.id} size={28} /></span>
+		</div>
+	{/if}
+
 	{#if isDragging && dragBlock}
 		{@const bounds = getFloatingBounds(dragBlock)}
 		<div
@@ -370,6 +582,18 @@
 		color: var(--text-tertiary);
 		text-transform: uppercase;
 		letter-spacing: 1px;
+		display: flex;
+		align-items: center;
+		gap: 0.5rem;
+		flex-wrap: wrap;
+	}
+
+	.mode-tag {
+		text-transform: none;
+		letter-spacing: 0;
+		color: #f59e0b;
+		font-size: 0.65rem;
+		font-weight: 700;
 	}
 
 	.score-value {
@@ -433,14 +657,42 @@
 		align-items: center;
 		justify-content: flex-start;
 		width: 100%;
-		max-width: 500px;
+		max-width: 400px;
+		margin: 0 auto;
 		flex: 1;
-		gap: 0.5rem;
 		transition:
 			filter 0.3s,
 			opacity 0.3s;
 		overflow: hidden;
 		touch-action: none;
+	}
+
+	.game-play-area > :global(header) {
+		flex-shrink: 0;
+		width: 100%;
+	}
+
+	/* 스킬+보드+트레이+NEXT 그룹: 헤더 아래 남는 공간에서 세로 중앙 정렬 */
+	.center-group {
+		flex: 1;
+		min-height: 0;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		width: 100%;
+	}
+
+	.center-group > :global(.inventory),
+	.center-group > :global(.tray),
+	.center-group > :global(.peek-strip) {
+		max-width: 100%;
+		align-self: center;
+	}
+
+	/* 스킬창 ↔ 보드 */
+	.center-group > :global(.inventory) {
+		margin-bottom: 0.85rem;
 	}
 
 	.game-play-area.blurred {
@@ -451,11 +703,47 @@
 
 	.game-area {
 		width: 100%;
-		flex: 1;
+		flex: 0 1 auto;
 		min-height: 0;
 		display: flex;
 		align-items: center;
 		justify-content: center;
+		/* 보드 ↔ 트레이 */
+		margin-bottom: 0.85rem;
+	}
+
+	/* 트레이 ↔ NEXT 미리보기 */
+	.center-group > :global(.peek-strip) {
+		margin-top: 0.85rem;
+	}
+
+	.floating-ability {
+		position: fixed;
+		pointer-events: none;
+		z-index: 200;
+		transform: translate(-50%, -50%);
+		width: 56px;
+		height: 56px;
+		border-radius: 14px;
+		background: linear-gradient(135deg, rgba(245, 158, 11, 0.95), rgba(239, 68, 68, 0.95));
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		box-shadow: 0 8px 24px rgba(245, 158, 11, 0.5), 0 0 16px rgba(251, 191, 36, 0.6);
+		animation: fabPulse 1s ease-in-out infinite;
+	}
+
+	.fab-icon {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		color: #fff;
+		filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.4));
+	}
+
+	@keyframes fabPulse {
+		0%, 100% { transform: translate(-50%, -50%) scale(1); }
+		50% { transform: translate(-50%, -50%) scale(1.08); }
 	}
 
 	/* 플로팅 블록 (드래그 중) */
