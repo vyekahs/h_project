@@ -582,9 +582,22 @@ export function createBlockBlasterGame() {
 		saveGame();
 	}
 
+	/**
+	 * 트레이 슬롯이 잠겼는지 (위험 스테이지에서 가장 우측부터 N개 잠김).
+	 * 다른 모달이나 능력 발동에는 영향 없음 — 일반 블록 선택만 차단.
+	 */
+	function isSlotLocked(index: number): boolean {
+		if (!currentDangerStage) return false;
+		const lockCount = currentDangerStage.lockedTraySlots;
+		if (lockCount <= 0) return false;
+		const traySize = currentBlocks.length;
+		return index >= traySize - lockCount;
+	}
+
 	function selectBlock(index: number) {
 		if (gameState !== 'playing' || isAnimating) return;
 		if (pendingAbilitySlot !== null || pendingDraftOptions || pendingDiscardForAbility) return;
+		if (isSlotLocked(index)) return;
 		if (index < 0 || !currentBlocks[index]) {
 			selectedBlockIndex = null;
 			return;
@@ -1510,6 +1523,7 @@ export function createBlockBlasterGame() {
 		get isSpecialMode() { return isSpecialMode(); },
 		hasAbility: (id: string) => hasOwned(inventory, id),
 		getAbilityLevel: (id: string) => getLevelOf(inventory, id),
+		isSlotLocked: (index: number) => isSlotLocked(index),
 
 		// Functions
 		showAlert,

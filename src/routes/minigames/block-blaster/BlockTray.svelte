@@ -5,12 +5,14 @@
 		blocks,
 		selectedIndex,
 		onSelect,
-		onDragStart
+		onDragStart,
+		isLocked = () => false
 	} = $props<{
 		blocks: (BlockShape | null)[];
 		selectedIndex: number | null;
 		onSelect: (index: number) => void;
 		onDragStart: (index: number, e: PointerEvent) => void;
+		isLocked?: (index: number) => boolean;
 	}>();
 
 	function getShapeBounds(cells: [number, number][]) {
@@ -25,23 +27,31 @@
 
 	function handlePointerDown(i: number, e: PointerEvent) {
 		if (!blocks[i]) return;
+		if (isLocked(i)) return;
 		onDragStart(i, e);
 	}
 </script>
 
 <div class="tray">
 	{#each blocks as block, i}
+		{@const locked = isLocked(i)}
 		<!-- svelte-ignore a11y_no_static_element_interactions -->
 		<div
 			class="tray-slot"
 			class:selected={selectedIndex === i && block !== null}
-			class:empty={block === null}
+			class:empty={block === null && !locked}
+			class:locked
 			onpointerdown={(e) => handlePointerDown(i, e)}
 			role="button"
-			tabindex={block ? 0 : -1}
-			aria-label={block ? `블록 ${i + 1} 선택` : `빈 슬롯`}
+			tabindex={block && !locked ? 0 : -1}
+			aria-label={locked ? '잠긴 슬롯' : block ? `블록 ${i + 1} 선택` : `빈 슬롯`}
 		>
-			{#if block}
+			{#if locked}
+				<svg class="lock-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+					<rect x="5" y="11" width="14" height="10" rx="2" />
+					<path d="M8 11V7a4 4 0 0 1 8 0v4" />
+				</svg>
+			{:else if block}
 				{@const bounds = getShapeBounds(block.cells)}
 				<div
 					class="mini-grid"
@@ -104,6 +114,21 @@
 		opacity: 0.2;
 		cursor: default;
 		pointer-events: none;
+	}
+
+	.tray-slot.locked {
+		background: rgba(0, 0, 0, 0.3);
+		border-color: rgba(239, 68, 68, 0.5);
+		cursor: not-allowed;
+		pointer-events: none;
+		color: rgba(239, 68, 68, 0.85);
+	}
+
+	.lock-icon {
+		width: 60%;
+		height: 60%;
+		opacity: 0.8;
+		filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5));
 	}
 
 	.mini-grid {

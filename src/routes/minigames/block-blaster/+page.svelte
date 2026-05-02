@@ -63,6 +63,9 @@
 			return;
 		}
 
+		// 위험 스테이지에서 잠긴 슬롯은 드래그/탭 차단
+		if (game.isSpecialMode && game.isSlotLocked(index)) return;
+
 		dragBlockIndex = index;
 		dragStartX = e.clientX;
 		dragStartY = e.clientY;
@@ -375,6 +378,7 @@
 					}
 				}}
 				onDragStart={handleDragStart}
+				isLocked={(i: number) => game.isSpecialMode && game.isSlotLocked(i)}
 			/>
 
 			{#if game.isSpecialMode && game.peekBlocks.length > 0}

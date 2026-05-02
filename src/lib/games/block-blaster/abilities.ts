@@ -38,11 +38,11 @@ export interface OwnedAbility {
 export const MAX_LEVEL = 3;
 export const INVENTORY_SLOTS = 5;
 
-// 게임당 최대 능력 종류 수
-export const MAX_OWNED_KINDS = 6;
+// 게임당 최대 능력 종류 수 (위험 시스템에서 5종 + 보너스 드래프트로 깊이 강화)
+export const MAX_OWNED_KINDS = 5;
 // 희귀도별 등장 상한
 export const MAX_EPIC_OWNED = 1;
-export const MAX_RARE_OWNED = 3;
+export const MAX_RARE_OWNED = 2;
 
 
 // 추첨 가중치
