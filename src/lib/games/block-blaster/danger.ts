@@ -29,13 +29,14 @@ export function dangerCountForStage(stage: number): number {
 
 /**
  * 위험 스테이지 카운트다운 — 큰 막 기준 (해당 위험에 주어지는 턴 수)
- * 기: 6~7턴 / 승: 5~6턴 / 전: 4~5턴 / 결: 3~4턴
+ * 기: 6~7턴 / 승: 6~7턴 / 전: 5~6턴 / 결: 4~5턴
+ * (능력 사용 시에는 카운트 -1 안 함 — 능력은 위기 탈출 도구)
  */
 export function countdownForStage(stage: number): number {
 	if (stage <= 2) return 6 + Math.floor(Math.random() * 2); // 6~7
-	if (stage <= 5) return 5 + Math.floor(Math.random() * 2); // 5~6
-	if (stage <= 8) return 4 + Math.floor(Math.random() * 2); // 4~5
-	return 3 + Math.floor(Math.random() * 2); // 3~4
+	if (stage <= 5) return 6 + Math.floor(Math.random() * 2); // 6~7
+	if (stage <= 8) return 5 + Math.floor(Math.random() * 2); // 5~6
+	return 4 + Math.floor(Math.random() * 2); // 4~5
 }
 
 /**
