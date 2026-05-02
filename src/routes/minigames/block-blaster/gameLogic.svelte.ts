@@ -799,7 +799,11 @@ export function createBlockBlasterGame() {
 	 * - petrified 셀: 라인 클리어로 자연 사라짐 (meta 제거)
 	 * - 일반 셀: meta 제거(있다면)
 	 */
-	function clearLinesWithMeta(rows: number[], cols: number[]) {
+	/**
+	 * @param lineCompletion true=실제 보드 라인 완성으로 인한 호출(petrified 제거 가능),
+	 *                       false=능력(clear-row/col)으로 인한 호출(petrified 면역).
+	 */
+	function clearLinesWithMeta(rows: number[], cols: number[], lineCompletion: boolean = true) {
 		const affected = new Set<string>();
 		for (const r of rows) {
 			for (let c = 0; c < GRID_SIZE; c++) affected.add(cellKey(r, c));
@@ -823,6 +827,9 @@ export function createBlockBlasterGame() {
 				continue;
 			}
 
+			// 검은 돌(petrified)은 능력 호출 경로(lineCompletion=false)에서는 보존
+			if (!lineCompletion && meta?.petrified) continue;
+
 			// 일반 셀 또는 강화 HP 0 도달 → 비움
 			newGrid[r][c] = 0;
 			delete newMeta[key];
@@ -837,10 +844,15 @@ export function createBlockBlasterGame() {
 	 * 1) 위험 진행 중이면: 카운트다운 -1, 해결 판정, 게임오버 트리거 체크, 모두 해결되면 보상
 	 * 2) 평시이면: 다음 위험 스테이지 진입 조건 체크
 	 */
-	function handleSpecialTurnEnd() {
+	/**
+	 * @param opts.tickCountdowns 위험 카운트다운을 -1 할지 여부.
+	 *   블록 배치(true)는 턴을 소비, 능력 사용(false)은 위기 탈출 도구로 카운트 영향 X.
+	 */
+	function handleSpecialTurnEnd(opts: { tickCountdowns?: boolean } = {}) {
+		const tick = opts.tickCountdowns ?? true;
 		if (currentDangerStage) {
-			tickAndResolveDangers();
-		} else {
+			tickAndResolveDangers(tick);
+		} else if (tick) {
 			tryEnterNextDangerStage();
 		}
 	}
@@ -1056,16 +1068,24 @@ export function createBlockBlasterGame() {
 	}
 
 	/**
-	 * 위험 진행 중 매 턴 — 카운트다운 -1 + 해결 판정 + 게임오버 트리거 체크 + 모두 해결 시 보상.
+	 * 위험 진행 중 매 턴 — 해결 판정 + (옵션) 카운트다운 -1 + 게임오버 트리거 체크 + 모두 해결 시 보상.
+	 * @param tickCountdowns false면 카운트다운 감소와 카운트 0 처리 모두 건너뜀 (능력 사용 경로).
 	 */
-	function tickAndResolveDangers() {
+	function tickAndResolveDangers(tickCountdowns: boolean = true) {
 		if (!currentDangerStage) return;
 		const ds = currentDangerStage;
 
-		// 1) 해결 판정 (블록 배치/라인 클리어로 자연 해결됐는지)
-		for (const d of ds.dangers) {
-			if (!d.resolved && isDangerResolved(d, grid)) {
+		// 1) 해결 판정 — 변화가 없을 때까지 반복 (fixpoint).
+		//    spreading 자식 cascade로 grid가 비워지면 같은 tick의 다른 doom-row/zone도
+		//    함께 해결될 수 있도록.
+		let changed = true;
+		while (changed) {
+			changed = false;
+			for (const d of ds.dangers) {
+				if (d.resolved) continue;
+				if (!isDangerResolved(d, grid)) continue;
 				d.resolved = true;
+				changed = true;
 				score += 200; // 위험 1개 해결 보너스
 				// 카운트가 1 이상 남았는데 해결 = 긴박 보너스 (reinforced는 카운트 의미 없음)
 				if (d.type !== 'reinforced' && d.type !== 'spreading' && d.countdown > 1) score += 100;
@@ -1095,6 +1115,9 @@ export function createBlockBlasterGame() {
 			finishDangerStage();
 			return;
 		}
+
+		// 능력 사용 경로 — 카운트다운 진행 없이 종료 (위험은 해결 판정만)
+		if (!tickCountdowns) return;
 
 		// 3) 카운트다운 -1 (해결 안 된 위험만)
 		for (const d of ds.dangers) {
@@ -1344,7 +1367,7 @@ export function createBlockBlasterGame() {
 			const ok = executeAbility(slot.ability, slot.level, null);
 			if (!ok) return; // 발동 실패 시 쿨다운도 적용 X
 			slot.cooldownRemaining = computeCooldown(slot.ability, slot.level);
-			handleSpecialTurnEnd();
+			handleSpecialTurnEnd({ tickCountdowns: false });
 			saveGame();
 			// 능력 사용 후 게임오버 가능성 체크
 			if (!canPlaceAnyBlock(grid, currentBlocks)) {
@@ -1377,7 +1400,7 @@ export function createBlockBlasterGame() {
 
 		inventory[slotIndex].cooldownRemaining = computeCooldown(slot.ability, slot.level);
 		pendingTransform = null;
-		handleSpecialTurnEnd();
+		handleSpecialTurnEnd({ tickCountdowns: false });
 		saveGame();
 
 		if (!canPlaceAnyBlock(grid, currentBlocks)) {
@@ -1404,7 +1427,7 @@ export function createBlockBlasterGame() {
 
 		inventory[slotIndex].cooldownRemaining = computeCooldown(slot.ability, slot.level);
 		pendingSwap = null;
-		handleSpecialTurnEnd();
+		handleSpecialTurnEnd({ tickCountdowns: false });
 		saveGame();
 		if (!canPlaceAnyBlock(grid, currentBlocks)) {
 			afterPlace();
@@ -1427,7 +1450,7 @@ export function createBlockBlasterGame() {
 		inventory[slotIndex].cooldownRemaining = computeCooldown(slot.ability, slot.level);
 		pendingDraw = null;
 		selectedBlockIndex = null;
-		handleSpecialTurnEnd();
+		handleSpecialTurnEnd({ tickCountdowns: false });
 		saveGame();
 		if (!canPlaceAnyBlock(grid, currentBlocks)) {
 			afterPlace();
@@ -1451,20 +1474,29 @@ export function createBlockBlasterGame() {
 		// 레벨 한도 내로 제한 (Lv1=1, Lv2=2, Lv3=3)
 		const colorsToClear = chosenColors.slice(0, level);
 
-		const fxCells = collectFilledCells((r, c) => colorsToClear.includes(grid[r][c]));
+		const isPetrified = (r: number, c: number) => cellMeta[cellKey(r, c)]?.petrified === true;
+		const fxCells = collectFilledCells(
+			(r, c) => !isPetrified(r, c) && colorsToClear.includes(grid[r][c])
+		);
 		if (fxCells.length > 0) triggerAbilityFx('color', fxCells);
 		const next = cloneGrid(grid);
+		const nextMeta = { ...cellMeta };
 		for (let r = 0; r < GRID_SIZE; r++) {
 			for (let c = 0; c < GRID_SIZE; c++) {
-				if (colorsToClear.includes(next[r][c])) next[r][c] = 0;
+				if (isPetrified(r, c)) continue; // 검은 돌 면역
+				if (colorsToClear.includes(next[r][c])) {
+					next[r][c] = 0;
+					delete nextMeta[cellKey(r, c)];
+				}
 			}
 		}
 		grid = next;
+		cellMeta = nextMeta;
 
 		inventory[slotIndex].cooldownRemaining = computeCooldown(slot.ability, slot.level);
 		pendingColorChoose = null;
 		selectedBlockIndex = null;
-		handleSpecialTurnEnd();
+		handleSpecialTurnEnd({ tickCountdowns: false });
 		saveGame();
 		if (!canPlaceAnyBlock(grid, currentBlocks)) {
 			afterPlace();
@@ -1559,7 +1591,7 @@ export function createBlockBlasterGame() {
 		inventory[slotIndex].cooldownRemaining = computeCooldown(ability, level);
 		pendingAbilitySlot = null;
 		selectedBlockIndex = null;
-		handleSpecialTurnEnd();
+		handleSpecialTurnEnd({ tickCountdowns: false });
 		saveGame();
 
 		// 능력 사용 후 게임오버 가능성 체크
@@ -1587,7 +1619,7 @@ export function createBlockBlasterGame() {
 				}
 				const fxCells = collectFilledCells((r) => rows.includes(r));
 				if (fxCells.length > 0) triggerAbilityFx('beam-row', fxCells, [target.row, target.col]);
-				clearLinesWithMeta(rows, []);
+				clearLinesWithMeta(rows, [], false);
 				return true;
 			}
 			case 'clear-col': {
@@ -1600,14 +1632,16 @@ export function createBlockBlasterGame() {
 				}
 				const fxCells = collectFilledCells((_, c) => cols.includes(c));
 				if (fxCells.length > 0) triggerAbilityFx('beam-col', fxCells, [target.row, target.col]);
-				clearLinesWithMeta([], cols);
+				clearLinesWithMeta([], cols, false);
 				return true;
 			}
 			case 'bomb-3x3': {
 				if (!target || target.kind !== 'cell') return false;
 				const size = 2 + level; // Lv1=3, Lv2=4, Lv3=5
 				const half = Math.floor((size - 1) / 2);
+				const isPetrified = (r: number, c: number) => cellMeta[cellKey(r, c)]?.petrified === true;
 				const fxCells = collectFilledCells((r, c) => {
+					if (isPetrified(r, c)) return false;
 					return (
 						r >= target.row - half &&
 						r < target.row + size - half &&
@@ -1617,16 +1651,19 @@ export function createBlockBlasterGame() {
 				});
 				if (fxCells.length > 0) triggerAbilityFx('bomb', fxCells, [target.row, target.col]);
 				const next = cloneGrid(grid);
+				const nextMeta = { ...cellMeta };
 				for (let dr = -half; dr < size - half; dr++) {
 					for (let dc = -half; dc < size - half; dc++) {
 						const r = target.row + dr;
 						const c = target.col + dc;
-						if (r >= 0 && r < GRID_SIZE && c >= 0 && c < GRID_SIZE) {
-							next[r][c] = 0;
-						}
+						if (r < 0 || r >= GRID_SIZE || c < 0 || c >= GRID_SIZE) continue;
+						if (isPetrified(r, c)) continue; // 검은 돌 면역
+						next[r][c] = 0;
+						delete nextMeta[cellKey(r, c)];
 					}
 				}
 				grid = next;
+				cellMeta = nextMeta;
 				return true;
 			}
 			case 'clear-color': {
@@ -1634,9 +1671,22 @@ export function createBlockBlasterGame() {
 				return false;
 			}
 			case 'nuke': {
-				const fxCells = collectFilledCells(() => true);
+				const isPetrified = (r: number, c: number) => cellMeta[cellKey(r, c)]?.petrified === true;
+				const fxCells = collectFilledCells((r, c) => !isPetrified(r, c));
 				if (fxCells.length > 0) triggerAbilityFx('nuke', fxCells);
-				grid = createEmptyGrid();
+				// petrified 셀과 메타는 보존, 나머지만 비움
+				const next = createEmptyGrid();
+				const nextMeta: CellMetaMap = {};
+				for (let r = 0; r < GRID_SIZE; r++) {
+					for (let c = 0; c < GRID_SIZE; c++) {
+						if (isPetrified(r, c)) {
+							next[r][c] = grid[r][c];
+							nextMeta[cellKey(r, c)] = cellMeta[cellKey(r, c)];
+						}
+					}
+				}
+				grid = next;
+				cellMeta = nextMeta;
 				// Lv2: 트레이도 새로 생성, Lv3: 진행 중 위험 모두 카운트다운 +1
 				if (level >= 2) {
 					currentBlocks = generateTraySet();
