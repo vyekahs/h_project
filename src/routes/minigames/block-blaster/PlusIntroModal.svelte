@@ -11,11 +11,10 @@
 			<h2>플러스 모드</h2>
 		</div>
 
-		<ul class="points">
-			<li>라인 5개 클리어 시 <strong>위험 스테이지</strong> 진입</li>
-			<li>위험을 모두 해결하면 <strong>능력 카드</strong> 획득</li>
-			<li>위험 스테이지 <strong>10개 클리어</strong>로 승리</li>
-		</ul>
+		<p class="lede">
+			총 <strong>10스테이지</strong>를 클리어하면 승리! 스테이지마다 얻는 스킬로 위기를 뒤집고,
+			같은 스킬을 레벨업시키며 더 다이내믹한 한 판을 즐겨보세요.
+		</p>
 
 		<button class="confirm-btn" onclick={onClose}>시작하기</button>
 	</div>
@@ -75,25 +74,17 @@
 		letter-spacing: -0.3px;
 	}
 
-	.points {
-		list-style: none;
-		margin: 0 0 1.2rem;
-		padding: 0;
-		display: flex;
-		flex-direction: column;
-		gap: 0.55rem;
-	}
-
-	.points li {
-		font-size: 0.85rem;
-		line-height: 1.45;
-		color: rgba(255, 255, 255, 0.88);
-		padding: 0.7rem 0.9rem;
+	.lede {
+		margin: 0 0 1.3rem;
+		padding: 0.95rem 1rem;
+		font-size: 0.9rem;
+		line-height: 1.6;
+		color: rgba(255, 255, 255, 0.9);
 		background: rgba(255, 255, 255, 0.05);
-		border-radius: 10px;
+		border-radius: 12px;
 	}
 
-	.points li strong {
+	.lede strong {
 		color: #fbbf24;
 		font-weight: 700;
 	}
