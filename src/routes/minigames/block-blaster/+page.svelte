@@ -530,7 +530,7 @@
 	{#if game.isSpecialMode && game.pendingDangerIntro && game.currentDangerStage}
 		<DangerStageIntro
 			stageNumber={game.currentDangerStage.stageNumber}
-			dangerCount={game.currentDangerStage.dangers.length}
+			dangers={game.currentDangerStage.dangers}
 			act={game.pendingActIntro}
 		/>
 	{/if}

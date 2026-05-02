@@ -943,7 +943,7 @@ export function createBlockBlasterGame() {
 		cellMeta = nextMeta;
 
 		pendingDangerIntro = true;
-		setTimeout(() => { pendingDangerIntro = false; }, 2000);
+		setTimeout(() => { pendingDangerIntro = false; }, 3000);
 		saveGame();
 	}
 

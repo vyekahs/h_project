@@ -248,6 +248,38 @@ export function isDangerResolved(danger: Danger, grid: BoardGrid): boolean {
 	}
 }
 
+/** 위험 종류별 사용자 친화적 표시명 */
+export function dangerLabel(type: DangerType): string {
+	switch (type) {
+		case 'doom-row':
+			return '게임오버 줄';
+		case 'doom-col':
+			return '게임오버 열';
+		case 'hazard-zone':
+			return '위험 구역';
+		case 'reinforced':
+			return '강화 블록';
+		case 'spreading':
+			return '증식 블록';
+	}
+}
+
+/** 위험 종류별 짧은 한 줄 설명 */
+export function dangerDescription(type: DangerType): string {
+	switch (type) {
+		case 'doom-row':
+			return '카운트 종료 전에 해당 가로줄을 비우거나 라인 완성하세요. 실패 시 게임오버!';
+		case 'doom-col':
+			return '카운트 종료 전에 해당 세로열을 비우거나 라인 완성하세요. 실패 시 게임오버!';
+		case 'hazard-zone':
+			return '카운트 종료 전에 영역의 셀을 모두 비우세요. 남은 셀은 위험 셀(검은 돌)로 변환됩니다.';
+		case 'reinforced':
+			return '회색 강화 블록은 라인 클리어 시 HP가 1씩 감소합니다. HP 0으로 만들면 사라집니다.';
+		case 'spreading':
+			return '★ 표시된 근원 셀이 주기마다 인접 빈 셀로 증식합니다. 근원을 라인 클리어로 제거하면 자식까지 모두 사라집니다.';
+	}
+}
+
 /**
  * doom-row / doom-col이 카운트 0에 도달했는데 해결 못 한 경우 게임오버.
  */
