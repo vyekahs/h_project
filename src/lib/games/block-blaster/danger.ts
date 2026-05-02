@@ -110,6 +110,9 @@ function createDanger(
 	ctx: CreateDangerCtx
 ): Danger | null {
 	const cd = countdownForStage(stageNumber);
+	// 첫 위험(스테이지 1)의 doom-row/col은 트레이 운에 따라 무력하게 패배하는 일이
+	// 없도록 카운트다운 +2턴 완화 (학습 단계 보호).
+	const doomCd = stageNumber === 1 ? cd + 2 : cd;
 	switch (type) {
 		case 'doom-row': {
 			// 블록이 1개 이상 있는 가로줄에서만 후보
@@ -122,8 +125,8 @@ function createDanger(
 				id: generateId('doom-row'),
 				type: 'doom-row',
 				cells,
-				countdown: cd,
-				initialCountdown: cd,
+				countdown: doomCd,
+				initialCountdown: doomCd,
 				resolved: false
 			};
 		}
@@ -138,8 +141,8 @@ function createDanger(
 				id: generateId('doom-col'),
 				type: 'doom-col',
 				cells,
-				countdown: cd,
-				initialCountdown: cd,
+				countdown: doomCd,
+				initialCountdown: doomCd,
 				resolved: false
 			};
 		}
