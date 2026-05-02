@@ -237,6 +237,8 @@
 					class:clearing
 					class:petrified={meta?.petrified}
 					class:reinforced={meta?.hp != null && meta.hp > 0}
+					class:spreading={meta?.spreadOrigin || meta?.spreadParent}
+					class:spread-origin={meta?.spreadOrigin}
 					class:ability-preview={previewing}
 					class:ability-preview-empty={previewing && color === 0}
 					class:ghost-valid={ghost?.valid === true}
@@ -247,6 +249,9 @@
 				>
 					{#if meta?.hp != null && meta.hp > 0}
 						<span class="hp-badge">{meta.hp}</span>
+					{/if}
+					{#if meta?.spreadOrigin}
+						<span class="origin-mark">★</span>
 					{/if}
 					{#if fx}
 						<div
@@ -323,6 +328,35 @@
 		font-weight: 800;
 		color: #fbbf24;
 		text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
+		pointer-events: none;
+	}
+
+	/* 증식 블록 — 보라색 */
+	.cell.spreading {
+		background: #a855f7 !important;
+		box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.2), 0 0 6px rgba(168, 85, 247, 0.4);
+	}
+
+	.cell.spread-origin {
+		box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.45), 0 0 12px rgba(168, 85, 247, 0.7);
+		animation: originPulse 1.2s ease-in-out infinite;
+	}
+
+	@keyframes originPulse {
+		0%, 100% { box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.45), 0 0 8px rgba(168, 85, 247, 0.6); }
+		50% { box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.55), 0 0 18px rgba(168, 85, 247, 0.95); }
+	}
+
+	.origin-mark {
+		position: absolute;
+		inset: 0;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		font-size: 1rem;
+		font-weight: 800;
+		color: #fff;
+		text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
 		pointer-events: none;
 	}
 

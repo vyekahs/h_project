@@ -30,6 +30,10 @@ export interface CellMeta {
 	petrified?: boolean;
 	/** 강화 블록 잔여 HP (>0이면 라인 클리어 영향 시 -1, 0 되면 사라짐) */
 	hp?: number;
+	/** 증식 블록 — 근원 셀이면 true. 자식 셀은 spreadParent 보유 */
+	spreadOrigin?: boolean;
+	/** 자식 셀의 부모 좌표 (근원 셀 좌표). 부모 셀이 사라지면 모든 자식도 함께 사라짐 */
+	spreadParent?: [number, number];
 }
 
 export type CellMetaMap = Record<string, CellMeta>;

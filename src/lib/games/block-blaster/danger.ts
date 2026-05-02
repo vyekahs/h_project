@@ -59,13 +59,17 @@ export function lockedSlotsForStage(stage: number): number {
  * 3단계: + spreading
  */
 function availableDangerTypes(stageNumber: number): DangerType[] {
-	// 2단계 적용 — hazard-zone, reinforced도 풀에 추가
-	// 큰 막에 따라 점진 해금 가능하지만, 단순화를 위해 모든 스테이지에서 등장 허용
+	// 큰 막에 따라 점진 해금
 	if (stageNumber <= 2) {
-		// 1막은 doom-row/col 위주로 학습
+		// 1막(기): doom-row/col 위주로 학습
 		return ['doom-row', 'doom-col'];
 	}
-	return ['doom-row', 'doom-col', 'hazard-zone', 'reinforced'];
+	if (stageNumber <= 5) {
+		// 2막(승): + hazard-zone, reinforced
+		return ['doom-row', 'doom-col', 'hazard-zone', 'reinforced'];
+	}
+	// 3~4막(전/결): + spreading
+	return ['doom-row', 'doom-col', 'hazard-zone', 'reinforced', 'spreading'];
 }
 
 export function generateDangerStage(stageNumber: number, grid: BoardGrid): DangerStage {
@@ -178,6 +182,27 @@ function createDanger(
 				resolved: false
 			};
 		}
+		case 'spreading': {
+			// 1셀 근원. 빈 셀 무작위 선택
+			const empty: [number, number][] = [];
+			for (let r = 0; r < GRID_SIZE; r++) {
+				for (let c = 0; c < GRID_SIZE; c++) {
+					if (grid[r][c] === 0) empty.push([r, c]);
+				}
+			}
+			if (empty.length === 0) return null;
+			const [r, c] = empty[Math.floor(Math.random() * empty.length)];
+			// countdown은 활성화 주기 (예: 매 2턴마다 증식). 0 도달 시 증식 후 다시 주기로 리셋
+			const interval = stageNumber <= 7 ? 3 : 2;
+			return {
+				id: generateId('spreading'),
+				type: 'spreading',
+				cells: [[r, c]],
+				countdown: interval,
+				initialCountdown: interval,
+				resolved: false
+			};
+		}
 		default:
 			return null;
 	}
@@ -210,6 +235,11 @@ export function isDangerResolved(danger: Danger, grid: BoardGrid): boolean {
 			return true;
 		}
 		case 'reinforced': {
+			const [r, c] = danger.cells[0];
+			return grid[r][c] === 0;
+		}
+		case 'spreading': {
+			// 근원(첫 셀)이 비어있으면 해결
 			const [r, c] = danger.cells[0];
 			return grid[r][c] === 0;
 		}

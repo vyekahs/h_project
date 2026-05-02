@@ -910,17 +910,23 @@ export function createBlockBlasterGame() {
 		stage = stageNumber;
 		currentDangerStage = generateDangerStage(stageNumber, grid);
 
-		// reinforced 위험은 즉시 보드에 강화 블록 배치 + cellMeta에 HP 설정
+		// 위험 진입 시 보드에 즉시 배치되는 위험 처리
+		// - reinforced: 강화 블록 (회색 + HP)
+		// - spreading: 근원 셀 (보라/특수 색 + spreadOrigin 마커)
 		const next = cloneGrid(grid);
 		const nextMeta = { ...cellMeta };
 		for (const d of currentDangerStage.dangers) {
 			if (d.type === 'reinforced') {
 				const [r, c] = d.cells[0];
 				if (next[r][c] === 0) {
-					// 보이도록 어두운 색(임시: 색 번호 사용 안하고 회색 톤은 시각에서 처리)
-					// 회색 표현 위해 색 번호 5 사용하고 cellMeta로 reinforced 표시
 					next[r][c] = 5 as CellColor;
 					nextMeta[cellKey(r, c)] = { hp: stageNumber <= 5 ? 2 : 3 };
+				}
+			} else if (d.type === 'spreading') {
+				const [r, c] = d.cells[0];
+				if (next[r][c] === 0) {
+					next[r][c] = 5 as CellColor;
+					nextMeta[cellKey(r, c)] = { spreadOrigin: true };
 				}
 			}
 		}
@@ -945,9 +951,25 @@ export function createBlockBlasterGame() {
 				d.resolved = true;
 				score += 200; // 위험 1개 해결 보너스
 				// 카운트가 1 이상 남았는데 해결 = 긴박 보너스 (reinforced는 카운트 의미 없음)
-				if (d.type !== 'reinforced' && d.countdown > 1) score += 100;
+				if (d.type !== 'reinforced' && d.type !== 'spreading' && d.countdown > 1) score += 100;
 				// 트레이 잠금 1개 해제 (가장 우측부터)
 				if (ds.lockedTraySlots > 0) ds.lockedTraySlots--;
+
+				// spreading 해결 시 — 자식 셀들도 모두 함께 사라짐
+				if (d.type === 'spreading') {
+					const origin = d.cells[0];
+					const next = cloneGrid(grid);
+					const nextMeta = { ...cellMeta };
+					for (const [k, m] of Object.entries(nextMeta)) {
+						if (m.spreadParent && m.spreadParent[0] === origin[0] && m.spreadParent[1] === origin[1]) {
+							const [r, c] = k.split(',').map(Number);
+							next[r][c] = 0;
+							delete nextMeta[k];
+						}
+					}
+					grid = next;
+					cellMeta = nextMeta;
+				}
 			}
 		}
 
@@ -957,10 +979,10 @@ export function createBlockBlasterGame() {
 			return;
 		}
 
-		// 3) 카운트다운 -1 (해결 안 된 위험만, reinforced 제외)
+		// 3) 카운트다운 -1 (해결 안 된 위험만)
 		for (const d of ds.dangers) {
 			if (d.resolved) continue;
-			if (d.type === 'reinforced') continue; // reinforced는 카운트다운 X (HP로 해결)
+			if (d.type === 'reinforced') continue; // reinforced는 HP로 해결
 			d.countdown = Math.max(0, d.countdown - 1);
 		}
 
@@ -983,7 +1005,51 @@ export function createBlockBlasterGame() {
 				cellMeta = nextMeta;
 				d.resolved = true; // 만료 처리(보너스 없음)
 			}
+			if (d.type === 'spreading' && d.countdown === 0) {
+				// 증식 활성화 — 인접 빈 셀 1곳으로 증식 후 카운트 리셋
+				spreadOnce(d);
+				d.countdown = d.initialCountdown;
+			}
 		}
+	}
+
+	/**
+	 * 증식 블록 — 모든 spreading 자식 셀을 포함해 인접 빈 셀 1곳으로 증식.
+	 * 더 이상 증식 가능한 자리가 없으면 아무 작업 안 함.
+	 */
+	function spreadOnce(d: Danger) {
+		const origin: [number, number] = d.cells[0];
+		// 자식 셀 좌표 모음 (cellMeta에서 이 origin을 부모로 가진 셀들)
+		const family: [number, number][] = [origin];
+		for (const [k, m] of Object.entries(cellMeta)) {
+			if (m.spreadParent && m.spreadParent[0] === origin[0] && m.spreadParent[1] === origin[1]) {
+				const [r, c] = k.split(',').map(Number);
+				family.push([r, c]);
+			}
+		}
+
+		// 가족 셀들의 인접 빈 셀 후보 수집
+		const candidates: [number, number][] = [];
+		const dirs = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+		for (const [r, c] of family) {
+			for (const [dr, dc] of dirs) {
+				const nr = r + dr;
+				const nc = c + dc;
+				if (nr < 0 || nr >= GRID_SIZE || nc < 0 || nc >= GRID_SIZE) continue;
+				if (grid[nr][nc] !== 0) continue;
+				candidates.push([nr, nc]);
+			}
+		}
+		if (candidates.length === 0) return;
+
+		const [nr, nc] = candidates[Math.floor(Math.random() * candidates.length)];
+		const next = cloneGrid(grid);
+		next[nr][nc] = 5 as CellColor;
+		grid = next;
+		cellMeta = {
+			...cellMeta,
+			[cellKey(nr, nc)]: { spreadParent: origin }
+		};
 	}
 
 	/**
