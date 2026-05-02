@@ -746,14 +746,18 @@ export function createBlockBlasterGame() {
 	}
 
 	function afterPlace() {
-		// Refill tray if all blocks are used
-		const remaining = currentBlocks.filter(b => b !== null);
-		if (remaining.length === 0) {
-			currentBlocks = popOrGenerateNextSet();
+		// 사용 가능한(잠기지 않은) 슬롯에 블록이 하나도 없으면 새 세트 생성
+		// — 잠긴 슬롯은 무시
+		const usableBlocks = currentBlocks.filter((b, i) => b !== null && !isSlotLocked(i));
+		if (usableBlocks.length === 0) {
+			refillUnlockedSlots();
 		}
 
+		// canPlaceAnyBlock 체크 시 잠긴 슬롯은 제외
+		const placeableBlocks = currentBlocks.map((b, i) => isSlotLocked(i) ? null : b);
+
 		// Check game over — special 모드에서는 사용 가능한 액티브 스킬이 있으면 보류
-		if (!canPlaceAnyBlock(grid, currentBlocks)) {
+		if (!canPlaceAnyBlock(grid, placeableBlocks)) {
 			if (hasUsableActiveAbility()) {
 				// 능력으로 탈출 가능 — 게임오버 보류 (안내 모달 없음)
 				return;
@@ -764,6 +768,26 @@ export function createBlockBlasterGame() {
 				handleGameOver();
 			}, 800);
 		}
+	}
+
+	/**
+	 * 트레이의 잠기지 않은 빈 슬롯에만 새 블록을 채움.
+	 * 잠긴 슬롯은 그대로 null 유지 (BlockTray가 잠금 아이콘 표시).
+	 */
+	function refillUnlockedSlots() {
+		const newSet = popOrGenerateNextSet();
+		const next: (BlockShape | null)[] = [];
+		let setIdx = 0;
+		for (let i = 0; i < currentBlocks.length; i++) {
+			if (isSlotLocked(i)) {
+				next.push(null);
+			} else {
+				next.push(newSet[setIdx] ?? null);
+				setIdx++;
+			}
+		}
+		// 새 세트 크기가 트레이보다 크면 잘림 — 사용 가능한 슬롯 수에 맞춰 자연스럽게 처리됨
+		currentBlocks = next;
 	}
 
 	function hasUsableActiveAbility(): boolean {
