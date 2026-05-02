@@ -110,7 +110,15 @@ export const actions: Actions = {
             if (dow === 1) endDate.setDate(endDate.getDate() + 2);
             else if (dow === 2) endDate.setDate(endDate.getDate() + 1);
 
-            await db.execute(sql`UPDATE attendees SET season_pass_expires_at = ${endDate.toISOString()} WHERE id = ${attendeeId}`);
+            // 만료일 당일 23:59:59.999 (KST) 까지 유효하도록 시각 보정
+            const endOfDayKst = new Date(Date.UTC(
+                endDate.getUTCFullYear(),
+                endDate.getUTCMonth(),
+                endDate.getUTCDate(),
+                14, 59, 59, 999
+            ));
+
+            await db.execute(sql`UPDATE attendees SET season_pass_expires_at = ${endOfDayKst.toISOString()} WHERE id = ${attendeeId}`);
             return { success: true, message: '정기권이 발급되었습니다.' };
         } catch (err) {
             console.error(err);
