@@ -19,7 +19,6 @@
 		abilityFx = null,
 		abilityPreviewCells = [],
 		cellMeta = {},
-		reinforcedHpById = {},
 		children
 	} = $props<{
 		grid: BoardGrid;
@@ -36,7 +35,6 @@
 		abilityFx?: AbilityFx | null;
 		abilityPreviewCells?: [number, number][];
 		cellMeta?: CellMetaMap;
-		reinforcedHpById?: Record<string, number>;
 		children?: Snippet;
 	}>();
 
@@ -249,9 +247,7 @@
 						ghost?.valid ? `--block-color: var(--block-color-${activeBlock?.color ?? 1})` : ''
 					)}
 				>
-					{#if meta?.reinforcedDangerId != null && reinforcedHpById[meta.reinforcedDangerId] > 0}
-						<span class="hp-badge">{reinforcedHpById[meta.reinforcedDangerId]}</span>
-					{:else if meta?.hp != null && meta.hp > 0}
+					{#if meta?.hp != null && meta.hp > 0}
 						<span class="hp-badge">{meta.hp}</span>
 					{/if}
 					{#if meta?.spreadOrigin}

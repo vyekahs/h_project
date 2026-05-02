@@ -393,7 +393,6 @@
 					abilityFx={game.abilityFx}
 					abilityPreviewCells={abilityPreviewCells}
 					cellMeta={game.cellMeta}
-					reinforcedHpById={game.reinforcedHpById}
 				>
 					{#if game.isSpecialMode && game.currentDangerStage}
 						<DangerOverlay dangers={game.currentDangerStage.dangers} />

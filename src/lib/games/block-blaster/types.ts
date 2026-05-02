@@ -28,9 +28,9 @@ export type DangerType = 'doom-row' | 'doom-col' | 'hazard-zone' | 'reinforced' 
 export interface CellMeta {
 	/** 위험 셀(petrified) — 라인 클리어 외에는 제거 불가 */
 	petrified?: boolean;
-	/** (legacy, 셀별 hp) 강화 블록 잔여 HP — 폴리오미노 모델에서는 Danger.hp 사용 */
+	/** 강화 셀의 잔여 HP — 셀별 독립. 라인 클리어 영향 시 -1, 0이면 셀 비워짐 */
 	hp?: number;
-	/** 강화 블록 가족 마커 — 어느 Danger 소속인지 추적해서 가족 공유 hp 갱신 */
+	/** 강화 블록 가족 마커 — isDangerResolved에서 가족 단위 판정용 */
 	reinforcedDangerId?: string;
 	/** 증식 블록 가족 마커 — 모든 셀이 동등한 근원으로 취급 */
 	spreadOrigin?: boolean;
@@ -67,8 +67,6 @@ export interface Danger {
 	 * 0이 되는 순간 활성화되며 reinforced/spreading은 그때 보드에 셀 배치.
 	 */
 	delayTurns: number;
-	/** reinforced 전용 — 가족 공유 잔여 HP. 라인 클리어로 가족 셀 영향받으면 -1, 0 도달 시 가족 전체 제거 */
-	hp?: number;
 }
 
 /** 위험 스테이지 활성 상태 */

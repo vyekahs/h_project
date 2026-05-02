@@ -211,19 +211,17 @@ function createDanger(
 			};
 		}
 		case 'reinforced': {
-			// 2~3셀 폴리오미노 강화 블록. 가족 공유 hp.
+			// 2~3셀 폴리오미노 강화 블록. 셀별 독립 hp는 activateDangerOnBoard에서 부여.
 			const cells = pickPolyomino(grid, 2 + Math.floor(Math.random() * 2));
 			if (cells.length === 0) return null;
-			const hp = stageNumber <= 5 ? 2 : 3;
 			return {
 				id: generateId('reinforced'),
 				type: 'reinforced',
 				cells,
-				countdown: 999, // 카운트다운 의미 없음 (hp로 해결)
+				countdown: 999, // 카운트다운 의미 없음 (셀별 hp로 해결)
 				initialCountdown: 999,
 				resolved: false,
-				delayTurns: 0,
-				hp
+				delayTurns: 0
 			};
 		}
 		case 'spreading': {
@@ -365,7 +363,7 @@ export function dangerDescription(type: DangerType): string {
 		case 'hazard-zone':
 			return '카운트 종료 전에 영역의 셀을 모두 비우세요. 남은 셀은 위험 셀(검은 돌)로 변환됩니다.';
 		case 'reinforced':
-			return '회색 강화 블록 가족은 공유 HP를 가집니다. 라인 클리어로 가족 셀이 영향받을 때마다 HP -1, 0이 되면 가족 전체가 사라집니다.';
+			return '회색 강화 블록은 셀마다 HP를 가집니다. 라인 클리어로 영향받은 셀의 HP가 1씩 감소하고, HP 0이 되면 그 셀이 사라집니다.';
 		case 'spreading':
 			return '★ 표시된 증식 블록 가족은 주기마다 인접 빈 셀로 1칸씩 늘어납니다. 라인 클리어로 가족 셀을 모두 비워야 사라집니다.';
 	}
