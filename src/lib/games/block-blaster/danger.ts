@@ -60,17 +60,22 @@ export function lockedSlotsForStage(stage: number): number {
  * 3단계: + spreading
  */
 function availableDangerTypes(stageNumber: number): DangerType[] {
-	// 큰 막에 따라 점진 해금
+	// 큰 막에 따라 점진 해금 — 게임오버를 일으키지 않는 위험부터 학습 후
+	// 후반부에 doom-row/col로 진짜 게임오버 위협 등장.
 	if (stageNumber <= 2) {
-		// 1막(기): doom-row/col 위주로 학습
-		return ['doom-row', 'doom-col'];
+		// 1막(기): 보드 관리 학습 — reinforced + hazard-zone
+		return ['reinforced', 'hazard-zone'];
 	}
 	if (stageNumber <= 5) {
-		// 2막(승): + hazard-zone, reinforced
-		return ['doom-row', 'doom-col', 'hazard-zone', 'reinforced'];
+		// 2막(승): + spreading (보드 복잡도 ↑)
+		return ['reinforced', 'hazard-zone', 'spreading'];
 	}
-	// 3~4막(전/결): + spreading
-	return ['doom-row', 'doom-col', 'hazard-zone', 'reinforced', 'spreading'];
+	if (stageNumber <= 8) {
+		// 3막(전): + doom-row/col (진짜 게임오버 위협 등장)
+		return ['reinforced', 'hazard-zone', 'spreading', 'doom-row', 'doom-col'];
+	}
+	// 4막(결): 전체
+	return ['reinforced', 'hazard-zone', 'spreading', 'doom-row', 'doom-col'];
 }
 
 /**
