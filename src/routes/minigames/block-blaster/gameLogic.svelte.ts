@@ -827,11 +827,11 @@ export function createBlockBlasterGame() {
 
 	/**
 	 * 라인 클리어 + cellMeta 후처리.
-	 * - 강화 블록(hp): 영향 받으면 hp -1. hp가 남아있으면 같은 색으로 grid에 다시 채움.
-	 * - petrified 셀: 라인 클리어로 자연 사라짐 (meta 제거)
-	 * - 일반 셀: meta 제거(있다면)
-	 */
-	/**
+	 * - 강화 가족(reinforcedDangerId): 영향받은 가족마다 Danger.hp -1.
+	 *   hp가 남아있으면 가족 셀들은 그대로 보존, hp=0이면 가족 전체 제거.
+	 * - 검은 돌(petrified): 라인 완성으로는 제거, 능력 경로(lineCompletion=false)는 보존.
+	 * - 일반 셀: 비움 + meta 정리.
+	 *
 	 * @param lineCompletion true=실제 보드 라인 완성으로 인한 호출(petrified 제거 가능),
 	 *                       false=능력(clear-row/col)으로 인한 호출(petrified 면역).
 	 */
@@ -847,24 +847,48 @@ export function createBlockBlasterGame() {
 		const newGrid = cloneGrid(grid);
 		const newMeta = { ...cellMeta };
 
+		// 1) 영향받은 강화 가족 ID 수집 + 가족별 hp -1
+		const hitReinforcedIds = new Set<string>();
+		for (const key of affected) {
+			const id = newMeta[key]?.reinforcedDangerId;
+			if (id) hitReinforcedIds.add(id);
+		}
+		const dyingReinforcedIds = new Set<string>();
+		if (hitReinforcedIds.size > 0 && currentDangerStage) {
+			for (const d of currentDangerStage.dangers) {
+				if (d.type !== 'reinforced') continue;
+				if (!hitReinforcedIds.has(d.id)) continue;
+				if (d.hp === undefined) continue;
+				d.hp -= 1;
+				if (d.hp <= 0) dyingReinforcedIds.add(d.id);
+			}
+		}
+
+		// 2) 라인 클리어 적용 — 강화 가족 셀은 hp 남아있으면 보존, 사망 가족은 라인 밖 셀까지 모두 제거
 		for (const key of affected) {
 			const [r, c] = key.split(',').map(Number);
 			const meta = newMeta[key];
-			const color = newGrid[r][c];
 
-			if (meta?.hp && meta.hp > 1 && color !== 0) {
-				// 강화 블록 — HP 차감하고 다시 채움
-				newMeta[key] = { ...meta, hp: meta.hp - 1 };
-				// grid는 그대로 유지 (라인 클리어 X 효과)
+			if (meta?.reinforcedDangerId && !dyingReinforcedIds.has(meta.reinforcedDangerId)) {
+				// 가족 hp 남음 — 셀 보존
 				continue;
 			}
+			if (!lineCompletion && meta?.petrified) continue; // 능력 면역
 
-			// 검은 돌(petrified)은 능력 호출 경로(lineCompletion=false)에서는 보존
-			if (!lineCompletion && meta?.petrified) continue;
-
-			// 일반 셀 또는 강화 HP 0 도달 → 비움
 			newGrid[r][c] = 0;
 			delete newMeta[key];
+		}
+
+		// 3) hp 0 도달한 강화 가족의 라인 밖 잔여 셀 제거 (가족 전체가 함께 사라짐)
+		if (dyingReinforcedIds.size > 0) {
+			for (const k of Object.keys(newMeta)) {
+				const id = newMeta[k]?.reinforcedDangerId;
+				if (id && dyingReinforcedIds.has(id)) {
+					const [r, c] = k.split(',').map(Number);
+					newGrid[r][c] = 0;
+					delete newMeta[k];
+				}
+			}
 		}
 
 		grid = newGrid;
@@ -1118,24 +1142,21 @@ export function createBlockBlasterGame() {
 	 * 위험을 보드에 활성화 — reinforced/spreading은 셀을 그리드에 배치.
 	 * doom-row/col, hazard-zone은 영역 표시만 — DangerOverlay가 cells 좌표로 그림.
 	 */
-	function activateDangerOnBoard(d: Danger, stageNumber: number) {
-		if (d.type === 'reinforced') {
-			const [r, c] = d.cells[0];
-			if (grid[r][c] === 0) {
-				const next = cloneGrid(grid);
-				next[r][c] = 5 as CellColor;
-				grid = next;
-				cellMeta = { ...cellMeta, [cellKey(r, c)]: { hp: stageNumber <= 5 ? 2 : 3 } };
-			}
-		} else if (d.type === 'spreading') {
-			const [r, c] = d.cells[0];
-			if (grid[r][c] === 0) {
-				const next = cloneGrid(grid);
-				next[r][c] = 5 as CellColor;
-				grid = next;
-				cellMeta = { ...cellMeta, [cellKey(r, c)]: { spreadOrigin: true } };
+	function activateDangerOnBoard(d: Danger, _stageNumber: number) {
+		if (d.type !== 'reinforced' && d.type !== 'spreading') return;
+		const next = cloneGrid(grid);
+		const nextMeta = { ...cellMeta };
+		for (const [r, c] of d.cells) {
+			if (next[r][c] !== 0) continue; // 이미 채워진 칸은 건너뜀(드물게 발생)
+			next[r][c] = 5 as CellColor;
+			if (d.type === 'reinforced') {
+				nextMeta[cellKey(r, c)] = { reinforcedDangerId: d.id };
+			} else {
+				nextMeta[cellKey(r, c)] = { spreadOrigin: true, spreadingDangerId: d.id };
 			}
 		}
+		grid = next;
+		cellMeta = nextMeta;
 	}
 
 	/**
@@ -1167,22 +1188,8 @@ export function createBlockBlasterGame() {
 				// 해결 누적 카운트 → 임계 도달 시 스테이지 클리어 처리
 				resolvedDangerCount++;
 				checkStageClearByCount();
-
-				// spreading 해결 시 — 자식 셀들도 모두 함께 사라짐
-				if (d.type === 'spreading') {
-					const origin = d.cells[0];
-					const next = cloneGrid(grid);
-					const nextMeta = { ...cellMeta };
-					for (const [k, m] of Object.entries(nextMeta)) {
-						if (m.spreadParent && m.spreadParent[0] === origin[0] && m.spreadParent[1] === origin[1]) {
-							const [r, c] = k.split(',').map(Number);
-							next[r][c] = 0;
-							delete nextMeta[k];
-						}
-					}
-					grid = next;
-					cellMeta = nextMeta;
-				}
+				// spreading은 가족 셀이 모두 비워져야 resolved되므로 cascade 없음.
+				// reinforced도 hp 0으로 가족 전체가 함께 비워졌으므로 추가 처리 없음.
 			}
 		}
 
@@ -1305,24 +1312,17 @@ export function createBlockBlasterGame() {
 	}
 
 	/**
-	 * 증식 블록 — 모든 spreading 자식 셀을 포함해 인접 빈 셀 1곳으로 증식.
+	 * 증식 블록 — 가족 셀(d.cells)들의 인접 빈 셀 중 1곳으로 1칸 증식.
+	 * 새 셀도 동등한 근원(spreadOrigin)으로 처리 — 가족 동등 모델.
+	 * 가족 좌표는 d.cells에 추가되어 isDangerResolved에서 함께 판정.
 	 * 더 이상 증식 가능한 자리가 없으면 아무 작업 안 함.
 	 */
 	function spreadOnce(d: Danger) {
-		const origin: [number, number] = d.cells[0];
-		// 자식 셀 좌표 모음 (cellMeta에서 이 origin을 부모로 가진 셀들)
-		const family: [number, number][] = [origin];
-		for (const [k, m] of Object.entries(cellMeta)) {
-			if (m.spreadParent && m.spreadParent[0] === origin[0] && m.spreadParent[1] === origin[1]) {
-				const [r, c] = k.split(',').map(Number);
-				family.push([r, c]);
-			}
-		}
-
-		// 가족 셀들의 인접 빈 셀 후보 수집
 		const candidates: [number, number][] = [];
 		const dirs = [[-1, 0], [1, 0], [0, -1], [0, 1]];
-		for (const [r, c] of family) {
+		// d.cells 중 grid에 실제 살아있는 가족 셀에서만 증식 (라인 클리어로 일부 비워졌을 수 있음)
+		for (const [r, c] of d.cells) {
+			if (grid[r][c] === 0) continue;
 			for (const [dr, dc] of dirs) {
 				const nr = r + dr;
 				const nc = c + dc;
@@ -1339,8 +1339,9 @@ export function createBlockBlasterGame() {
 		grid = next;
 		cellMeta = {
 			...cellMeta,
-			[cellKey(nr, nc)]: { spreadParent: origin }
+			[cellKey(nr, nc)]: { spreadOrigin: true, spreadingDangerId: d.id }
 		};
+		d.cells.push([nr, nc]);
 	}
 
 	function openAbilityDraft() {
@@ -1959,6 +1960,15 @@ export function createBlockBlasterGame() {
 		get stagesCleared() { return stagesCleared; },
 		get currentDangerStage() { return currentDangerStage; },
 		get cellMeta() { return cellMeta; },
+		get reinforcedHpById() {
+			const m: Record<string, number> = {};
+			if (currentDangerStage) {
+				for (const d of currentDangerStage.dangers) {
+					if (d.type === 'reinforced' && d.hp != null) m[d.id] = d.hp;
+				}
+			}
+			return m;
+		},
 		get pendingDangerIntro() { return pendingDangerIntro; },
 		get pendingDangerClear() { return pendingDangerClear; },
 		get gameOverReason() { return gameOverReason; },

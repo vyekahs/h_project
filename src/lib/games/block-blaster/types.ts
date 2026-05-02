@@ -28,12 +28,14 @@ export type DangerType = 'doom-row' | 'doom-col' | 'hazard-zone' | 'reinforced' 
 export interface CellMeta {
 	/** 위험 셀(petrified) — 라인 클리어 외에는 제거 불가 */
 	petrified?: boolean;
-	/** 강화 블록 잔여 HP (>0이면 라인 클리어 영향 시 -1, 0 되면 사라짐) */
+	/** (legacy, 셀별 hp) 강화 블록 잔여 HP — 폴리오미노 모델에서는 Danger.hp 사용 */
 	hp?: number;
-	/** 증식 블록 — 근원 셀이면 true. 자식 셀은 spreadParent 보유 */
+	/** 강화 블록 가족 마커 — 어느 Danger 소속인지 추적해서 가족 공유 hp 갱신 */
+	reinforcedDangerId?: string;
+	/** 증식 블록 가족 마커 — 모든 셀이 동등한 근원으로 취급 */
 	spreadOrigin?: boolean;
-	/** 자식 셀의 부모 좌표 (근원 셀 좌표). 부모 셀이 사라지면 모든 자식도 함께 사라짐 */
-	spreadParent?: [number, number];
+	/** 증식 블록 가족 마커 — 어느 Danger 소속인지 추적 */
+	spreadingDangerId?: string;
 }
 
 export type CellMetaMap = Record<string, CellMeta>;
@@ -46,7 +48,12 @@ export function cellKey(r: number, c: number): string {
 export interface Danger {
 	id: string;
 	type: DangerType;
-	/** 영향 받는 셀 좌표 — doom-row의 경우 줄 전체 셀, doom-col은 열 전체 */
+	/**
+	 * 영향 받는 셀 좌표.
+	 * - doom-row: 줄 전체 셀, doom-col: 열 전체
+	 * - hazard-zone: 3×3 영역
+	 * - reinforced/spreading: 가족 폴리오미노 (2~3셀, 첫 셀이 시작점이지만 동등 처리)
+	 */
 	cells: [number, number][];
 	/** 남은 카운트다운 턴 (블록 배치 단위) */
 	countdown: number;
@@ -60,6 +67,8 @@ export interface Danger {
 	 * 0이 되는 순간 활성화되며 reinforced/spreading은 그때 보드에 셀 배치.
 	 */
 	delayTurns: number;
+	/** reinforced 전용 — 가족 공유 잔여 HP. 라인 클리어로 가족 셀 영향받으면 -1, 0 도달 시 가족 전체 제거 */
+	hp?: number;
 }
 
 /** 위험 스테이지 활성 상태 */

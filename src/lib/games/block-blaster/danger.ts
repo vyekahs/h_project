@@ -211,41 +211,31 @@ function createDanger(
 			};
 		}
 		case 'reinforced': {
-			// 1셀 강화 블록 — 빈 셀 무작위 선택
-			const empty: [number, number][] = [];
-			for (let r = 0; r < GRID_SIZE; r++) {
-				for (let c = 0; c < GRID_SIZE; c++) {
-					if (grid[r][c] === 0) empty.push([r, c]);
-				}
-			}
-			if (empty.length === 0) return null;
-			const [r, c] = empty[Math.floor(Math.random() * empty.length)];
+			// 2~3셀 폴리오미노 강화 블록. 가족 공유 hp.
+			const cells = pickPolyomino(grid, 2 + Math.floor(Math.random() * 2));
+			if (cells.length === 0) return null;
+			const hp = stageNumber <= 5 ? 2 : 3;
 			return {
 				id: generateId('reinforced'),
 				type: 'reinforced',
-				cells: [[r, c]],
-				countdown: 999, // 카운트다운 의미 없음 (HP로 해결)
+				cells,
+				countdown: 999, // 카운트다운 의미 없음 (hp로 해결)
 				initialCountdown: 999,
 				resolved: false,
-				delayTurns: 0
+				delayTurns: 0,
+				hp
 			};
 		}
 		case 'spreading': {
-			// 1셀 근원. 빈 셀 무작위 선택
-			const empty: [number, number][] = [];
-			for (let r = 0; r < GRID_SIZE; r++) {
-				for (let c = 0; c < GRID_SIZE; c++) {
-					if (grid[r][c] === 0) empty.push([r, c]);
-				}
-			}
-			if (empty.length === 0) return null;
-			const [r, c] = empty[Math.floor(Math.random() * empty.length)];
-			// countdown은 활성화 주기 (예: 매 2턴마다 증식). 0 도달 시 증식 후 다시 주기로 리셋
+			// 2~3셀 폴리오미노 증식 블록. 모든 셀이 동등한 근원.
+			const cells = pickPolyomino(grid, 2 + Math.floor(Math.random() * 2));
+			if (cells.length === 0) return null;
+			// countdown은 활성화 주기. 0 도달 시 증식 후 다시 주기로 리셋
 			const interval = stageNumber <= 7 ? 3 : 2;
 			return {
 				id: generateId('spreading'),
 				type: 'spreading',
-				cells: [[r, c]],
+				cells,
 				countdown: interval,
 				initialCountdown: interval,
 				resolved: false,
@@ -255,6 +245,48 @@ function createDanger(
 		default:
 			return null;
 	}
+}
+
+/**
+ * 빈 셀 중 무작위 시작점을 잡고 BFS로 인접 빈 셀까지 확장해 폴리오미노(연결된 N셀) 생성.
+ * 빈 셀이 부족하거나 시작점에서 확장 안 되면 가능한 만큼만 반환 (최소 1셀).
+ * 빈 셀이 0개면 빈 배열 반환.
+ */
+function pickPolyomino(grid: BoardGrid, size: number): [number, number][] {
+	const empty: [number, number][] = [];
+	for (let r = 0; r < GRID_SIZE; r++) {
+		for (let c = 0; c < GRID_SIZE; c++) {
+			if (grid[r][c] === 0) empty.push([r, c]);
+		}
+	}
+	if (empty.length === 0) return [];
+	const dirs: [number, number][] = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+
+	for (let attempt = 0; attempt < 8; attempt++) {
+		const [sr, sc] = empty[Math.floor(Math.random() * empty.length)];
+		const cluster: [number, number][] = [[sr, sc]];
+		const used = new Set<string>([`${sr},${sc}`]);
+		while (cluster.length < size) {
+			const frontier: [number, number][] = [];
+			for (const [r, c] of cluster) {
+				for (const [dr, dc] of dirs) {
+					const nr = r + dr;
+					const nc = c + dc;
+					if (nr < 0 || nr >= GRID_SIZE || nc < 0 || nc >= GRID_SIZE) continue;
+					if (grid[nr][nc] !== 0) continue;
+					const key = `${nr},${nc}`;
+					if (used.has(key)) continue;
+					frontier.push([nr, nc]);
+					used.add(key);
+				}
+			}
+			if (frontier.length === 0) break;
+			cluster.push(frontier[Math.floor(Math.random() * frontier.length)]);
+		}
+		if (cluster.length >= 2 || empty.length < 2) return cluster;
+	}
+	// 최후 폴백 — 1셀이라도
+	return [empty[Math.floor(Math.random() * empty.length)]];
 }
 
 function pickAvailableLine(used: Set<number>, max: number): number | null {
@@ -296,31 +328,15 @@ function pickFilledLine(axis: 'row' | 'col', grid: BoardGrid, used: Set<number>)
  * 위험이 해결되었는지 판정.
  * doom-row/col: 해당 줄/열의 모든 셀이 비어있으면 해결
  * hazard-zone: 영역의 모든 셀이 비어있으면 해결
- * reinforced: 강화 블록 셀이 비어있으면 해결 (HP 0 도달)
+ * reinforced: 강화 가족 셀이 모두 비어있으면 해결 (가족 hp 0 도달)
+ * spreading: 가족 셀이 모두 비어있으면 해결 (cascade 없음, 라인 클리어로만 정리)
  */
 export function isDangerResolved(danger: Danger, grid: BoardGrid): boolean {
 	if (danger.resolved) return true;
-	switch (danger.type) {
-		case 'doom-row':
-		case 'doom-col':
-		case 'hazard-zone': {
-			for (const [r, c] of danger.cells) {
-				if (grid[r][c] !== 0) return false;
-			}
-			return true;
-		}
-		case 'reinforced': {
-			const [r, c] = danger.cells[0];
-			return grid[r][c] === 0;
-		}
-		case 'spreading': {
-			// 근원(첫 셀)이 비어있으면 해결
-			const [r, c] = danger.cells[0];
-			return grid[r][c] === 0;
-		}
-		default:
-			return false;
+	for (const [r, c] of danger.cells) {
+		if (grid[r][c] !== 0) return false;
 	}
+	return true;
 }
 
 /** 위험 종류별 사용자 친화적 표시명 */
@@ -349,9 +365,9 @@ export function dangerDescription(type: DangerType): string {
 		case 'hazard-zone':
 			return '카운트 종료 전에 영역의 셀을 모두 비우세요. 남은 셀은 위험 셀(검은 돌)로 변환됩니다.';
 		case 'reinforced':
-			return '회색 강화 블록은 라인 클리어 시 HP가 1씩 감소합니다. HP 0으로 만들면 사라집니다.';
+			return '회색 강화 블록 가족은 공유 HP를 가집니다. 라인 클리어로 가족 셀이 영향받을 때마다 HP -1, 0이 되면 가족 전체가 사라집니다.';
 		case 'spreading':
-			return '★ 표시된 근원 셀이 주기마다 인접 빈 셀로 증식합니다. 근원을 라인 클리어로 제거하면 자식까지 모두 사라집니다.';
+			return '★ 표시된 증식 블록 가족은 주기마다 인접 빈 셀로 1칸씩 늘어납니다. 라인 클리어로 가족 셀을 모두 비워야 사라집니다.';
 	}
 }
 
