@@ -112,7 +112,8 @@ function createDanger(
 	const cd = countdownForStage(stageNumber);
 	switch (type) {
 		case 'doom-row': {
-			const row = pickAvailableLine(ctx.usedRows, GRID_SIZE);
+			// 블록이 1개 이상 있는 가로줄에서만 후보
+			const row = pickFilledLine('row', grid, ctx.usedRows);
 			if (row === null) return null;
 			ctx.usedRows.add(row);
 			const cells: [number, number][] = [];
@@ -127,7 +128,8 @@ function createDanger(
 			};
 		}
 		case 'doom-col': {
-			const col = pickAvailableLine(ctx.usedCols, GRID_SIZE);
+			// 블록이 1개 이상 있는 세로열에서만 후보
+			const col = pickFilledLine('col', grid, ctx.usedCols);
 			if (col === null) return null;
 			ctx.usedCols.add(col);
 			const cells: [number, number][] = [];
@@ -218,6 +220,32 @@ function pickAvailableLine(used: Set<number>, max: number): number | null {
 }
 
 /**
+ * 보드에 블록이 1개 이상 있는 줄/열만 후보로 무작위 선택.
+ * 후보가 없으면(보드가 비어있는 등) pickAvailableLine으로 폴백.
+ */
+function pickFilledLine(axis: 'row' | 'col', grid: BoardGrid, used: Set<number>): number | null {
+	const filled: number[] = [];
+	for (let i = 0; i < GRID_SIZE; i++) {
+		if (used.has(i)) continue;
+		let hasBlock = false;
+		for (let j = 0; j < GRID_SIZE; j++) {
+			const r = axis === 'row' ? i : j;
+			const c = axis === 'row' ? j : i;
+			if (grid[r][c] !== 0) {
+				hasBlock = true;
+				break;
+			}
+		}
+		if (hasBlock) filled.push(i);
+	}
+	if (filled.length > 0) {
+		return filled[Math.floor(Math.random() * filled.length)];
+	}
+	// 후보 없음 — 빈 줄에서라도 선택 (게임 시작 직후 보드가 비어있는 경우)
+	return pickAvailableLine(used, GRID_SIZE);
+}
+
+/**
  * 위험이 해결되었는지 판정.
  * doom-row/col: 해당 줄/열의 모든 셀이 비어있으면 해결
  * hazard-zone: 영역의 모든 셀이 비어있으면 해결
@@ -268,9 +296,9 @@ export function dangerLabel(type: DangerType): string {
 export function dangerDescription(type: DangerType): string {
 	switch (type) {
 		case 'doom-row':
-			return '카운트 종료 전에 해당 가로줄을 비우거나 라인 완성하세요. 실패 시 게임오버!';
+			return '해당 가로줄을 라인 완성하세요. 실패 시 게임오버!';
 		case 'doom-col':
-			return '카운트 종료 전에 해당 세로열을 비우거나 라인 완성하세요. 실패 시 게임오버!';
+			return '해당 세로열을 라인 완성하세요. 실패 시 게임오버!';
 		case 'hazard-zone':
 			return '카운트 종료 전에 영역의 셀을 모두 비우세요. 남은 셀은 위험 셀(검은 돌)로 변환됩니다.';
 		case 'reinforced':
