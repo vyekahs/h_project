@@ -424,6 +424,24 @@ export function createBlockBlasterGame() {
 		return 3 + getExtraSlotLevel();
 	}
 
+	/**
+	 * extra-slot 획득/레벨업 직후 호출 — 트레이 길이를 늘리고 새 블록으로 즉시 채움.
+	 * 새 슬롯에 블록이 바로 보여야 사용자가 "트레이가 늘어났다"는 보상감을 느낌.
+	 * (이미 트레이가 충분히 크면 no-op)
+	 */
+	function syncTraySizeToInventory() {
+		const target = getTraySize();
+		if (currentBlocks.length >= target) return;
+		const next = [...currentBlocks];
+		const fresh = generateBlockSet();
+		let i = 0;
+		while (next.length < target) {
+			next.push(fresh[i % fresh.length]);
+			i++;
+		}
+		currentBlocks = next;
+	}
+
 	function generateTraySet(): BlockShape[] {
 		// generateBlockSet은 항상 3개 반환 → 트레이 크기에 맞춰 보충
 		const target = getTraySize();
@@ -1273,6 +1291,8 @@ export function createBlockBlasterGame() {
 				if (!isPassive(ability) && existing.cooldownRemaining > 0) {
 					existing.cooldownRemaining = Math.max(0, existing.cooldownRemaining - 1);
 				}
+				// extra-slot 레벨업 시 트레이 길이 동기화
+				if (ability.id === 'extra-slot') syncTraySizeToInventory();
 			}
 			afterDraftPick();
 			return;
@@ -1285,6 +1305,7 @@ export function createBlockBlasterGame() {
 				level: 1,
 				cooldownRemaining: 0
 			});
+			if (ability.id === 'extra-slot') syncTraySizeToInventory();
 			afterDraftPick();
 			return;
 		}
@@ -1304,6 +1325,7 @@ export function createBlockBlasterGame() {
 		next.push({ ability, level: 1, cooldownRemaining: 0 });
 		inventory = next;
 		pendingDiscardForAbility = null;
+		if (ability.id === 'extra-slot') syncTraySizeToInventory();
 		afterDraftPick();
 	}
 
