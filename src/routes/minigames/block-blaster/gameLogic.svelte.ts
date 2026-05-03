@@ -1231,6 +1231,10 @@ export function createBlockBlasterGame() {
 				// resolved 마킹 후 다시 산정하면 다음 위험이 자동으로 매칭에 들어감.
 				if (ds.lockedTraySlots > 0 && isMatchedToLock(d, ds)) {
 					ds.lockedTraySlots--;
+					// 잠금 해제로 새로 사용 가능해진 슬롯이 빈 상태면 즉시 새 블록으로 채움
+					// — 사용자가 다음 수에 즉시 활용할 수 있도록
+					const usable = currentBlocks.filter((b, i) => b !== null && !isSlotLocked(i));
+					if (usable.length === 0) refillUnlockedSlots();
 				}
 
 				// 해결 누적 카운트 → 임계 도달 시 스테이지 클리어 처리
