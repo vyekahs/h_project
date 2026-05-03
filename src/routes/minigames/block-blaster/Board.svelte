@@ -19,6 +19,8 @@
 		abilityFx = null,
 		abilityPreviewCells = [],
 		cellMeta = {},
+		spreadingCountdownById = {},
+		dangerIdToColorIdx = {},
 		children
 	} = $props<{
 		grid: BoardGrid;
@@ -35,8 +37,21 @@
 		abilityFx?: AbilityFx | null;
 		abilityPreviewCells?: [number, number][];
 		cellMeta?: CellMetaMap;
+		spreadingCountdownById?: Record<string, number>;
+		dangerIdToColorIdx?: Record<string, number>;
 		children?: Snippet;
 	}>();
+
+	const LOCK_COLORS = ['#ef4444', '#3b82f6', '#10b981'];
+
+	function lockColorOf(meta: { reinforcedDangerId?: string; spreadingDangerId?: string } | undefined): string | null {
+		if (!meta) return null;
+		const id = meta.reinforcedDangerId ?? meta.spreadingDangerId;
+		if (!id) return null;
+		const idx = dangerIdToColorIdx[id];
+		if (idx == null) return null;
+		return LOCK_COLORS[idx % LOCK_COLORS.length];
+	}
 
 	let boardEl = $state<HTMLDivElement | null>(null);
 
@@ -251,7 +266,11 @@
 						<span class="hp-badge">{meta.hp}</span>
 					{/if}
 					{#if meta?.spreadOrigin}
-						<span class="origin-mark">★</span>
+						{@const spreadCd = meta.spreadingDangerId ? spreadingCountdownById[meta.spreadingDangerId] : undefined}
+						<span class="origin-mark">★{#if spreadCd != null}<span class="spread-cd">{spreadCd}</span>{/if}</span>
+					{/if}
+					{#if lockColorOf(meta)}
+						<span class="lock-dot" style="background: {lockColorOf(meta)}"></span>
 					{/if}
 					{#if fx}
 						<div
@@ -331,6 +350,19 @@
 		pointer-events: none;
 	}
 
+	/* 잠금 매칭 색 점 — 셀 우상단에 작게 (BlockTray의 잠금 슬롯과 같은 색) */
+	.lock-dot {
+		position: absolute;
+		top: 2px;
+		right: 2px;
+		width: 6px;
+		height: 6px;
+		border-radius: 50%;
+		box-shadow: 0 0 3px rgba(0, 0, 0, 0.6), inset 0 0 0 1px rgba(255, 255, 255, 0.5);
+		pointer-events: none;
+		z-index: 5;
+	}
+
 	/* 증식 블록 — 보라색 */
 	.cell.spreading {
 		background: #a855f7 !important;
@@ -353,11 +385,18 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		font-size: 1rem;
+		gap: 1px;
+		font-size: 0.85rem;
 		font-weight: 800;
 		color: #fff;
-		text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
+		text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
 		pointer-events: none;
+	}
+
+	.spread-cd {
+		font-size: 0.7rem;
+		font-weight: 800;
+		color: #fef3c7;
 	}
 
 	.cell.placed {

@@ -1,7 +1,13 @@
 <script lang="ts">
 	import type { Danger } from '$lib/games/block-blaster/types';
 
-	let { dangers } = $props<{ dangers: Danger[] }>();
+	let { dangers, dangerIdToColorIdx = {} } = $props<{
+		dangers: Danger[];
+		/** 위험 ID → 잠금 매칭 색 인덱스 (있으면 작은 점 오버레이 표시) */
+		dangerIdToColorIdx?: Record<string, number>;
+	}>();
+
+	const LOCK_COLORS = ['#ef4444', '#3b82f6', '#10b981']; // red, blue, green
 
 	// 대기 중(delayTurns>0) 위험은 보드에 표시하지 않음 — 활성된 시점에만 등장
 	const activeDangers = $derived(dangers.filter((d: Danger) => !d.resolved && d.delayTurns === 0));
@@ -26,12 +32,14 @@
 <div class="danger-overlay">
 	{#each activeDangers as d (d.id)}
 		{@const sev = severity(d)}
+		{@const lockColor = dangerIdToColorIdx[d.id] != null ? LOCK_COLORS[dangerIdToColorIdx[d.id] % LOCK_COLORS.length] : null}
 		{#if d.type === 'doom-row'}
 			{@const idx = lineIndex(d)}
 			<div class="doom doom-row sev-{sev}" style="--idx: {idx}">
 				<div class="doom-content">
 					<span class="doom-label">DOOM</span>
 					<span class="doom-cd">{d.countdown}</span>
+					{#if lockColor}<span class="lock-dot" style="background: {lockColor}"></span>{/if}
 				</div>
 			</div>
 		{:else if d.type === 'doom-col'}
@@ -40,6 +48,7 @@
 				<div class="doom-content vertical">
 					<span class="doom-label">DOOM</span>
 					<span class="doom-cd">{d.countdown}</span>
+					{#if lockColor}<span class="lock-dot" style="background: {lockColor}"></span>{/if}
 				</div>
 			</div>
 		{:else if d.type === 'hazard-zone'}
@@ -48,6 +57,7 @@
 			<div class="zone sev-{sev}" style="--ar: {ar}; --ac: {ac};">
 				<span class="zone-label">ZONE</span>
 				<span class="zone-cd">{d.countdown}</span>
+				{#if lockColor}<span class="lock-dot" style="background: {lockColor}"></span>{/if}
 			</div>
 		{/if}
 	{/each}
@@ -233,5 +243,15 @@
 	@keyframes zonePulse {
 		0%, 100% { opacity: 1; }
 		50% { opacity: 0.7; }
+	}
+
+	/* 잠금 매칭 색 점 — 위험 라벨 옆에 작게 */
+	.lock-dot {
+		width: 8px;
+		height: 8px;
+		border-radius: 50%;
+		display: inline-block;
+		box-shadow: 0 0 4px rgba(0, 0, 0, 0.5), inset 0 0 0 1px rgba(255, 255, 255, 0.4);
+		flex-shrink: 0;
 	}
 </style>

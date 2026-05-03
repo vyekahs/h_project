@@ -25,6 +25,9 @@
 
 	const game = createBlockBlasterGame();
 
+	/** 잠금 매칭 색 — Board, BlockTray, DangerOverlay에서 동일 인덱스→동일 색 */
+	const LOCK_COLORS = ['#ef4444', '#3b82f6', '#10b981'];
+
 	const PLUS_INTRO_SEEN_KEY = 'block_blaster_plus_intro_seen';
 	let showPlusIntro = $state(false);
 	let pendingPlusStart: (() => void) | null = null;
@@ -393,9 +396,14 @@
 					abilityFx={game.abilityFx}
 					abilityPreviewCells={abilityPreviewCells}
 					cellMeta={game.cellMeta}
+					spreadingCountdownById={game.spreadingCountdownById}
+					dangerIdToColorIdx={game.slotLockMatching.dangerIdToColorIdx}
 				>
 					{#if game.isSpecialMode && game.currentDangerStage}
-						<DangerOverlay dangers={game.currentDangerStage.dangers} />
+						<DangerOverlay
+							dangers={game.currentDangerStage.dangers}
+							dangerIdToColorIdx={game.slotLockMatching.dangerIdToColorIdx}
+						/>
 					{/if}
 				</Board>
 			</div>
@@ -412,6 +420,11 @@
 				}}
 				onDragStart={handleDragStart}
 				isLocked={(i: number) => game.isSpecialMode && game.isSlotLocked(i)}
+				slotLockColor={(i: number) => {
+					const idx = game.slotLockMatching.slotIdxToColorIdx[i];
+					if (idx == null) return null;
+					return LOCK_COLORS[idx % LOCK_COLORS.length];
+				}}
 			/>
 
 			{#if game.isSpecialMode && game.peekBlocks.length > 0}

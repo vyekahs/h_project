@@ -6,13 +6,16 @@
 		selectedIndex,
 		onSelect,
 		onDragStart,
-		isLocked = () => false
+		isLocked = () => false,
+		slotLockColor = () => null
 	} = $props<{
 		blocks: (BlockShape | null)[];
 		selectedIndex: number | null;
 		onSelect: (index: number) => void;
 		onDragStart: (index: number, e: PointerEvent) => void;
 		isLocked?: (index: number) => boolean;
+		/** 잠긴 슬롯에 표시할 매칭 색 (없으면 null). 색 매칭은 위험 셀과 동일. */
+		slotLockColor?: (index: number) => string | null;
 	}>();
 
 	function getShapeBounds(cells: [number, number][]) {
@@ -51,6 +54,10 @@
 					<rect x="5" y="11" width="14" height="10" rx="2" />
 					<path d="M8 11V7a4 4 0 0 1 8 0v4" />
 				</svg>
+				{@const lockColor = slotLockColor(i)}
+				{#if lockColor}
+					<span class="slot-lock-dot" style="background: {lockColor}"></span>
+				{/if}
 			{:else if block}
 				{@const bounds = getShapeBounds(block.cells)}
 				<div
@@ -99,6 +106,7 @@
 		border: 2px solid transparent;
 		border-radius: 12px;
 		cursor: pointer;
+		position: relative;
 		transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
 		padding: 8px;
 		box-sizing: border-box;
@@ -129,6 +137,17 @@
 		height: 60%;
 		opacity: 0.8;
 		filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5));
+	}
+
+	/* 매칭 색 점 — 잠긴 슬롯 우상단에 작게 (Board 위험 셀과 동일 색) */
+	.slot-lock-dot {
+		position: absolute;
+		top: 4px;
+		right: 4px;
+		width: 8px;
+		height: 8px;
+		border-radius: 50%;
+		box-shadow: 0 0 4px rgba(0, 0, 0, 0.5), inset 0 0 0 1px rgba(255, 255, 255, 0.5);
 	}
 
 	.mini-grid {

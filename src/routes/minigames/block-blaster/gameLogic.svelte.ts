@@ -1109,20 +1109,7 @@ export function createBlockBlasterGame() {
 			currentDangerStage.lockedTraySlots += fresh.lockedTraySlots;
 		}
 
-		// 인트로 — 사용자가 처음 보는 위험 종류만 추려서 안내. 모두 본 종류면 모달 안 띄움.
-		const newKindDangers: Danger[] = [];
-		const seenInThisIntro = new Set<DangerType>();
-		for (const d of fresh.dangers) {
-			if (seenDangerTypes.has(d.type)) continue;
-			if (seenInThisIntro.has(d.type)) continue; // 같은 종류 중복 카드 X
-			seenInThisIntro.add(d.type);
-			newKindDangers.push(d);
-		}
-		if (newKindDangers.length > 0) {
-			pendingDangerIntro = { stageNumber, dangers: newKindDangers };
-		}
-		// 본 적 있는 종류로 마킹은 인트로 닫힐 때(또는 모달 안 뜨면 즉시) 처리
-		for (const d of fresh.dangers) seenDangerTypes.add(d.type);
+		// 인트로는 위험이 실제 보드에 활성화되는 시점에 표시 (아래 활성화 루프 참고)
 
 		// settle/카운트 리셋 — 새 위험이 합류했으니 다시 처음부터
 		postDangerSettleTurns = 0;
@@ -1130,15 +1117,57 @@ export function createBlockBlasterGame() {
 		turnsSinceLastDanger = 0;
 
 		// 활성(delayTurns=0) 위험을 보드에 배치. 대기 중 위험은 활성화 시점에 배치.
+		const justActivated: Danger[] = [];
 		for (const d of fresh.dangers) {
-			if (d.delayTurns === 0) activateDangerOnBoard(d, stageNumber);
+			if (d.delayTurns === 0) {
+				activateDangerOnBoard(d, stageNumber);
+				justActivated.push(d);
+			}
 		}
+		showIntroForNewKinds(justActivated, stageNumber);
 
 		saveGame();
 	}
 
+	/**
+	 * 활성화된 위험 목록 중 사용자가 처음 보는 종류만 추려 인트로 모달에 띄움.
+	 * 모두 본 종류면 모달 X. 본 종류로 마킹은 여기서 처리.
+	 */
+	function showIntroForNewKinds(activated: Danger[], stageNumber: number) {
+		if (activated.length === 0) return;
+		const newKindDangers: Danger[] = [];
+		const seenInThisIntro = new Set<DangerType>();
+		for (const d of activated) {
+			if (seenDangerTypes.has(d.type)) continue;
+			if (seenInThisIntro.has(d.type)) continue;
+			seenInThisIntro.add(d.type);
+			newKindDangers.push(d);
+		}
+		// 본 적 있는 종류로 마킹 (모달 표시 여부와 무관하게 한 번 활성화되면 본 것으로)
+		for (const d of activated) seenDangerTypes.add(d.type);
+
+		if (newKindDangers.length > 0) {
+			pendingDangerIntro = { stageNumber, dangers: newKindDangers };
+		}
+	}
+
 	function dismissDangerIntro() {
 		pendingDangerIntro = null;
+	}
+
+	/**
+	 * 방금 해결된 위험 d가 잠금 슬롯과 매칭된 위험인지 판정.
+	 * 매칭 = d 포함 미해결(=d.resolved 마킹 직전) 위험을 등장 순서(delayTurns)로 정렬했을 때 처음 lockCount개.
+	 * d.resolved는 이미 true이므로 미해결 목록에 d를 다시 포함시켜 판정.
+	 */
+	function isMatchedToLock(d: Danger, ds: DangerStage): boolean {
+		const lockCount = ds.lockedTraySlots;
+		if (lockCount <= 0) return false;
+		const candidates = ds.dangers
+			.filter(x => x === d || !x.resolved)
+			.sort((a, b) => a.delayTurns - b.delayTurns)
+			.slice(0, lockCount);
+		return candidates.includes(d);
 	}
 
 	/**
@@ -1186,8 +1215,12 @@ export function createBlockBlasterGame() {
 				score += 200; // 위험 1개 해결 보너스
 				// 카운트가 1 이상 남았는데 해결 = 긴박 보너스 (reinforced는 카운트 의미 없음)
 				if (d.type !== 'reinforced' && d.type !== 'spreading' && d.countdown > 1) score += 100;
-				// 트레이 잠금 1개 해제 (가장 우측부터)
-				if (ds.lockedTraySlots > 0) ds.lockedTraySlots--;
+				// 트레이 잠금 — 이 위험이 슬롯과 매칭된 위험(가장 먼저 등장한 lockCount개) 중 하나면 슬롯 1개 해제.
+				// 매칭은 d.resolved=true가 되기 직전 시점의 미해결 위험 등장 순서 기준이므로
+				// resolved 마킹 후 다시 산정하면 다음 위험이 자동으로 매칭에 들어감.
+				if (ds.lockedTraySlots > 0 && isMatchedToLock(d, ds)) {
+					ds.lockedTraySlots--;
+				}
 
 				// 해결 누적 카운트 → 임계 도달 시 스테이지 클리어 처리
 				resolvedDangerCount++;
@@ -1206,13 +1239,18 @@ export function createBlockBlasterGame() {
 		// 능력 사용 경로 — 카운트다운 진행 없이 종료 (위험은 해결 판정만)
 		if (!tickCountdowns) return;
 
-		// 3a) 대기 중 위험 delay -1 → 0 도달 시 활성화 (보드에 셀 배치)
+		// 3a) 대기 중 위험 delay -1 → 0 도달 시 활성화 (보드에 셀 배치 + 신규 종류 인트로)
+		const justActivated: Danger[] = [];
 		for (const d of ds.dangers) {
 			if (d.resolved) continue;
 			if (d.delayTurns <= 0) continue;
 			d.delayTurns--;
-			if (d.delayTurns === 0) activateDangerOnBoard(d, ds.stageNumber);
+			if (d.delayTurns === 0) {
+				activateDangerOnBoard(d, ds.stageNumber);
+				justActivated.push(d);
+			}
 		}
+		showIntroForNewKinds(justActivated, ds.stageNumber);
 
 		// 3b) 카운트다운 -1 (활성 + 미해결 위험만)
 		for (const d of ds.dangers) {
@@ -1322,30 +1360,69 @@ export function createBlockBlasterGame() {
 	 * 가족 좌표는 d.cells에 추가되어 isDangerResolved에서 함께 판정.
 	 * 더 이상 증식 가능한 자리가 없으면 아무 작업 안 함.
 	 */
+	/**
+	 * 증식 — 가족 셀의 인접 셀 중 1곳을 감염.
+	 * 우선순위: 일반 블록 > 빈 셀 > 검은 돌(petrified). 자기 가족/다른 증식 가족/강화 가족은 제외.
+	 * 강화 셀 감염 시 spreading 마커가 추가되어 이중 마커(강화 + 증식)로 처리.
+	 * 감염된 셀의 색은 보존 (시각적 정체성 유지), 증식 가족 마커만 추가.
+	 */
 	function spreadOnce(d: Danger) {
-		const candidates: [number, number][] = [];
 		const dirs = [[-1, 0], [1, 0], [0, -1], [0, 1]];
-		// d.cells 중 grid에 실제 살아있는 가족 셀에서만 증식 (라인 클리어로 일부 비워졌을 수 있음)
+		const generalCandidates: [number, number][] = []; // 일반 블록(메타 없음)
+		const emptyCandidates: [number, number][] = [];
+		const petrifiedCandidates: [number, number][] = [];
+
+		const consideredKeys = new Set<string>();
 		for (const [r, c] of d.cells) {
-			if (grid[r][c] === 0) continue;
+			if (grid[r][c] === 0) continue; // 라인 클리어로 사라진 가족 셀
 			for (const [dr, dc] of dirs) {
 				const nr = r + dr;
 				const nc = c + dc;
 				if (nr < 0 || nr >= GRID_SIZE || nc < 0 || nc >= GRID_SIZE) continue;
-				if (grid[nr][nc] !== 0) continue;
-				candidates.push([nr, nc]);
+				const k = cellKey(nr, nc);
+				if (consideredKeys.has(k)) continue;
+				consideredKeys.add(k);
+				const meta = cellMeta[k];
+				// 자기 가족 또는 다른 증식 가족은 제외
+				if (meta?.spreadingDangerId) continue;
+				if (grid[nr][nc] === 0) {
+					emptyCandidates.push([nr, nc]);
+					continue;
+				}
+				if (meta?.petrified) {
+					petrifiedCandidates.push([nr, nc]);
+					continue;
+				}
+				// 일반 블록 또는 강화 셀(reinforcedDangerId 있음) — 모두 일반 후보로
+				generalCandidates.push([nr, nc]);
 			}
 		}
-		if (candidates.length === 0) return;
 
-		const [nr, nc] = candidates[Math.floor(Math.random() * candidates.length)];
+		// 우선순위 적용
+		const pool = generalCandidates.length > 0
+			? generalCandidates
+			: emptyCandidates.length > 0
+				? emptyCandidates
+				: petrifiedCandidates;
+		if (pool.length === 0) return;
+
+		const [nr, nc] = pool[Math.floor(Math.random() * pool.length)];
+		const k = cellKey(nr, nc);
 		const next = cloneGrid(grid);
-		next[nr][nc] = 5 as CellColor;
+		const nextMeta = { ...cellMeta };
+		const existingMeta = nextMeta[k] ?? {};
+
+		if (next[nr][nc] === 0) {
+			// 빈 셀 감염 — 새로 채움
+			next[nr][nc] = 5 as CellColor;
+			nextMeta[k] = { ...existingMeta, spreadOrigin: true, spreadingDangerId: d.id };
+		} else {
+			// 일반/강화/검은 돌 감염 — 색은 보존, 증식 마커만 추가 (이중 마커 가능)
+			nextMeta[k] = { ...existingMeta, spreadOrigin: true, spreadingDangerId: d.id };
+		}
+
 		grid = next;
-		cellMeta = {
-			...cellMeta,
-			[cellKey(nr, nc)]: { spreadOrigin: true, spreadingDangerId: d.id }
-		};
+		cellMeta = nextMeta;
 		d.cells.push([nr, nc]);
 	}
 
@@ -1970,6 +2047,43 @@ export function createBlockBlasterGame() {
 		get stagesCleared() { return stagesCleared; },
 		get currentDangerStage() { return currentDangerStage; },
 		get cellMeta() { return cellMeta; },
+		/**
+		 * 잠긴 슬롯과 매칭된 위험 ID → 색 인덱스 (0~N-1).
+		 * lockedTraySlots개의 잠긴 슬롯은 가장 먼저 등장한(delayTurns 작은) 미해결 위험과 1:1 매칭.
+		 * 잠긴 슬롯 색 = 매칭된 위험 색.
+		 */
+		get slotLockMatching(): { dangerIdToColorIdx: Record<string, number>; slotIdxToColorIdx: Record<number, number> } {
+			const dangerIdToColorIdx: Record<string, number> = {};
+			const slotIdxToColorIdx: Record<number, number> = {};
+			if (!currentDangerStage || currentDangerStage.lockedTraySlots <= 0) {
+				return { dangerIdToColorIdx, slotIdxToColorIdx };
+			}
+			const lockCount = currentDangerStage.lockedTraySlots;
+			// 미해결 위험을 등장 순서(delayTurns 오름차순, 같으면 배열 순서)로 정렬
+			const candidates = currentDangerStage.dangers
+				.filter(d => !d.resolved)
+				.sort((a, b) => a.delayTurns - b.delayTurns)
+				.slice(0, lockCount);
+			candidates.forEach((d, i) => { dangerIdToColorIdx[d.id] = i; });
+			// 잠긴 슬롯은 우측 N개 — 색 인덱스는 좌측에서 우측으로 0,1,2... (위험 등장 순서와 동일)
+			const traySize = currentBlocks.length;
+			for (let i = 0; i < lockCount; i++) {
+				slotIdxToColorIdx[traySize - lockCount + i] = i;
+			}
+			return { dangerIdToColorIdx, slotIdxToColorIdx };
+		},
+		/** 증식 위험 ID → 다음 증식까지 남은 턴 수 (Board에서 셀에 표시) */
+		get spreadingCountdownById() {
+			const m: Record<string, number> = {};
+			if (currentDangerStage) {
+				for (const d of currentDangerStage.dangers) {
+					if (d.type === 'spreading' && !d.resolved && d.delayTurns === 0) {
+						m[d.id] = d.countdown;
+					}
+				}
+			}
+			return m;
+		},
 		get pendingDangerIntro() { return pendingDangerIntro; },
 		get pendingDangerClear() { return pendingDangerClear; },
 		get gameOverReason() { return gameOverReason; },
