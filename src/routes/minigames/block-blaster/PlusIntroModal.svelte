@@ -14,6 +14,7 @@
 		<p class="lede">
 			총 <strong>10 WAVE</strong>를 정복하면 승리! WAVE마다 얻는 스킬로 위기를 뒤집고,
 			같은 스킬을 레벨업시키며 더 다이내믹한 한 판을 즐겨보세요.
+			(오류가 있으면 제보해 주세요)
 		</p>
 
 		<button class="confirm-btn" onclick={onClose}>시작하기</button>

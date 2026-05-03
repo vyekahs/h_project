@@ -112,15 +112,15 @@
             releasedAt: '2026-04-15',
             forceNew: true
         },
-        {
-            id: 'match-crash',
-            name: '매치크래쉬',
-            tagline: '3개를 맞춰 터뜨려라!',
-            url: '/minigames/start/match-crash',
-            accentColor: '#e74c3c',
-            releasedAt: '2026-04-21',
-            forceNew: true
-        }
+        // {
+        //     id: 'match-crash',
+        //     name: '매치크래쉬',
+        //     tagline: '3개를 맞춰 터뜨려라!',
+        //     url: '/minigames/start/match-crash',
+        //     accentColor: '#e74c3c',
+        //     releasedAt: '2026-04-21',
+        //     forceNew: true
+        // }
     ];
 
     const TWO_WEEKS = 14 * 24 * 60 * 60 * 1000;
