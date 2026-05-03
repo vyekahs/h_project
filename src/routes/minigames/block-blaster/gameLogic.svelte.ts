@@ -744,10 +744,21 @@ export function createBlockBlasterGame() {
 	 */
 	function isSlotLocked(index: number): boolean {
 		if (!currentDangerStage) return false;
-		const lockCount = currentDangerStage.lockedTraySlots;
+		const lockCount = effectiveLockCount();
 		if (lockCount <= 0) return false;
 		const traySize = currentBlocks.length;
 		return index >= traySize - lockCount;
+	}
+
+	/**
+	 * 실제로 잠기는 슬롯 수 — 위험 누적으로 lockedTraySlots가 트레이 크기 이상으로
+	 * 늘어나도 최소 1개는 항상 사용 가능하도록 traySize-1로 캡.
+	 * (lockedTraySlots 자체는 그대로 두어 매칭 색 점 표시는 정확히 유지)
+	 */
+	function effectiveLockCount(): number {
+		if (!currentDangerStage) return 0;
+		const traySize = currentBlocks.length;
+		return Math.max(0, Math.min(currentDangerStage.lockedTraySlots, traySize - 1));
 	}
 
 	function selectBlock(index: number) {
@@ -2055,17 +2066,15 @@ export function createBlockBlasterGame() {
 		get slotLockMatching(): { dangerIdToColorIdx: Record<string, number>; slotIdxToColorIdx: Record<number, number> } {
 			const dangerIdToColorIdx: Record<string, number> = {};
 			const slotIdxToColorIdx: Record<number, number> = {};
-			if (!currentDangerStage || currentDangerStage.lockedTraySlots <= 0) {
-				return { dangerIdToColorIdx, slotIdxToColorIdx };
-			}
-			const lockCount = currentDangerStage.lockedTraySlots;
-			// 미해결 위험을 등장 순서(delayTurns 오름차순, 같으면 배열 순서)로 정렬
+			if (!currentDangerStage) return { dangerIdToColorIdx, slotIdxToColorIdx };
+			// 시각 매칭은 실제 잠기는 슬롯 수에 맞춤 (최소 1슬롯 보장으로 캡됨)
+			const lockCount = effectiveLockCount();
+			if (lockCount <= 0) return { dangerIdToColorIdx, slotIdxToColorIdx };
 			const candidates = currentDangerStage.dangers
 				.filter(d => !d.resolved)
 				.sort((a, b) => a.delayTurns - b.delayTurns)
 				.slice(0, lockCount);
 			candidates.forEach((d, i) => { dangerIdToColorIdx[d.id] = i; });
-			// 잠긴 슬롯은 우측 N개 — 색 인덱스는 좌측에서 우측으로 0,1,2... (위험 등장 순서와 동일)
 			const traySize = currentBlocks.length;
 			for (let i = 0; i < lockCount; i++) {
 				slotIdxToColorIdx[traySize - lockCount + i] = i;
