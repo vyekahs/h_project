@@ -262,12 +262,13 @@
 						ghost?.valid ? `--block-color: var(--block-color-${activeBlock?.color ?? 1})` : ''
 					)}
 				>
-					{#if meta?.hp != null && meta.hp > 0}
-						<span class="hp-badge">{meta.hp}</span>
-					{/if}
-					{#if meta?.spreadOrigin}
+					{#if meta && (meta.spreadOrigin || meta.reinforcedDangerId != null || (meta.hp != null && meta.hp > 0))}
 						{@const spreadCd = meta.spreadingDangerId ? spreadingCountdownById[meta.spreadingDangerId] : undefined}
-						<span class="origin-mark">★{#if spreadCd != null}<span class="spread-cd">{spreadCd}</span>{/if}</span>
+						<div class="danger-marker">
+							<span class="dm-left">{spreadCd != null ? spreadCd : ''}</span>
+							<span class="dm-center">{meta.spreadOrigin ? '★' : (meta.reinforcedDangerId != null || (meta.hp != null && meta.hp > 0)) ? '◆' : ''}</span>
+							<span class="dm-right">{meta.hp != null && meta.hp > 0 ? meta.hp : ''}</span>
+						</div>
 					{/if}
 					{#if lockColorOf(meta)}
 						<span class="lock-dot" style="background: {lockColorOf(meta)}"></span>
@@ -337,17 +338,36 @@
 		position: relative;
 	}
 
-	.hp-badge {
+	/* 위험 마커 — 좌(카운트) | 가운데(문양) | 우(체력) 한 줄 배치 */
+	.danger-marker {
 		position: absolute;
 		inset: 0;
-		display: flex;
+		display: grid;
+		grid-template-columns: 1fr auto 1fr;
 		align-items: center;
-		justify-content: center;
-		font-size: 0.85rem;
+		gap: 2px;
+		padding: 0 2px;
 		font-weight: 800;
-		color: #fbbf24;
-		text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
+		color: #fff;
+		text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
 		pointer-events: none;
+	}
+
+	.dm-left {
+		font-size: 0.7rem;
+		text-align: right;
+		color: #fef3c7;
+	}
+
+	.dm-center {
+		font-size: 0.85rem;
+		text-align: center;
+	}
+
+	.dm-right {
+		font-size: 0.7rem;
+		text-align: left;
+		color: #fbbf24;
 	}
 
 	/* 잠금 매칭 색 점 — 셀 우상단에 작게 (BlockTray의 잠금 슬롯과 같은 색) */
@@ -377,26 +397,6 @@
 	@keyframes originPulse {
 		0%, 100% { box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.45), 0 0 8px rgba(168, 85, 247, 0.6); }
 		50% { box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.55), 0 0 18px rgba(168, 85, 247, 0.95); }
-	}
-
-	.origin-mark {
-		position: absolute;
-		inset: 0;
-		display: flex;
-		align-items: center;
-		justify-content: center;
-		gap: 1px;
-		font-size: 0.85rem;
-		font-weight: 800;
-		color: #fff;
-		text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
-		pointer-events: none;
-	}
-
-	.spread-cd {
-		font-size: 0.7rem;
-		font-weight: 800;
-		color: #fef3c7;
 	}
 
 	.cell.placed {
