@@ -365,7 +365,7 @@ export function dangerDescription(type: DangerType): string {
 		case 'reinforced':
 			return '회색 강화 블록은 HP 0이 되면 사라집니다.';
 		case 'spreading':
-			return '★ 표시된 증식 블록 가족은 주기마다 인접 빈 셀로 1칸씩 늘어납니다.';
+			return '★ 표시된 증식 블록은 주기마다 인접 빈 셀로 1칸씩 늘어납니다.';
 	}
 }
 

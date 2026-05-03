@@ -9,12 +9,10 @@
 	let {
 		options,
 		owned,
-		stage,
 		onPick
 	} = $props<{
 		options: Ability[];
 		owned: OwnedAbility[];
-		stage: number;
 		onPick: (a: Ability) => void;
 	}>();
 
@@ -30,9 +28,8 @@
 <div class="overlay" role="dialog" aria-modal="true">
 	<div class="modal">
 		<div class="header">
-			<div class="stage-pill">STAGE {stage} CLEAR</div>
-			<h2>능력을 선택하세요</h2>
-			<p class="subtitle">선택 후 보드에 압박 셀이 추가됩니다</p>
+			<div class="stage-pill">WAVE 클리어</div>
+			<h2>스킬 획득</h2>
 		</div>
 
 		<div class="cards">

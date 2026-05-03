@@ -424,7 +424,6 @@
 			<AbilityDraftModal
 				options={game.pendingDraftOptions}
 				owned={game.inventory}
-				stage={game.stage}
 				onPick={game.pickAbility}
 			/>
 		{/if}
