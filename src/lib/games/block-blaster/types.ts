@@ -73,6 +73,11 @@ export interface Danger {
 export interface DangerStage {
 	stageNumber: number;
 	dangers: Danger[];
-	lockedTraySlots: number;
+	/**
+	 * 잠긴 슬롯 → 묶인 위험 ID 배열. 길이 = 잠긴 슬롯 수.
+	 * 위험 합류 시 같이 나온 위험 N개의 ID가 잠금에 매칭됨.
+	 * 매칭된 위험을 해결할 때 해당 ID가 배열에서 제거되며 슬롯이 풀림.
+	 */
+	lockedSlotDangerIds: string[];
 }
 

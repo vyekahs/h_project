@@ -298,38 +298,22 @@ function countOwnedByRarity(owned: OwnedAbility[]): RarityCounts {
  *
  * 후보 0개면 빈 배열 반환 → 호출부에서 드래프트 스킵 처리.
  */
-/** 스테이지에 따라 드래프트에 등장 가능한 최대 희귀도 */
-function maxRarityForStage(stage: number): AbilityRarity {
-	if (stage <= 3) return 'common'; // 1막: Common만
-	if (stage <= 7) return 'rare'; // 2막: Common + Rare
-	return 'epic'; // 3막: 전체
-}
-
-const RARITY_RANK: Record<AbilityRarity, number> = {
-	common: 0,
-	rare: 1,
-	epic: 2
-};
-
 export function drawAbilities(
 	pool: Ability[],
 	owned: OwnedAbility[],
 	n = 3,
-	stage: number = 1
+	_stage: number = 1
 ): Ability[] {
+	void _stage; // 진행도 게이트 제거 — 처음부터 모든 희귀도 등장(60/30/10 가중치)
 	const ownedKinds = owned.length;
 	const rarityCounts = countOwnedByRarity(owned);
 	const ownedSet = new Set(owned.map(o => o.ability.id));
-	const maxRank = RARITY_RANK[maxRarityForStage(stage)];
 
 	const candidates = pool.filter(ab => {
 		const ownedRecord = findOwned(owned, ab.id);
 
 		// 1. Lv3 만렙 제외
 		if (ownedRecord && ownedRecord.level >= MAX_LEVEL) return false;
-
-		// 1.5 스테이지에 따른 희귀도 제한 (이미 보유한 능력은 강화 가능)
-		if (!ownedRecord && RARITY_RANK[ab.rarity] > maxRank) return false;
 
 		const isOwned = ownedSet.has(ab.id);
 

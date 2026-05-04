@@ -59,23 +59,28 @@ export function lockedSlotsForStage(stage: number): number {
  * 2단계: + hazard-zone, reinforced
  * 3단계: + spreading
  */
-function availableDangerTypes(stageNumber: number): DangerType[] {
-	// 큰 막에 따라 점진 해금 — 게임오버를 일으키지 않는 위험부터 학습 후
-	// 후반부에 doom-row/col로 진짜 게임오버 위협 등장.
-	if (stageNumber <= 2) {
-		// 1막(기): 보드 관리 학습 — reinforced + hazard-zone
-		return ['reinforced', 'hazard-zone'];
+/**
+ * 위험 종류별 출현 가중치 — WAVE와 무관하게 처음부터 5종 모두 등장.
+ * 강도가 낮을수록 자주, 게임오버 위협(doom)이 가장 드물게.
+ */
+const DANGER_WEIGHTS: Record<DangerType, number> = {
+	reinforced: 35,
+	spreading: 25,
+	'hazard-zone': 20,
+	'doom-row': 10,
+	'doom-col': 10
+};
+
+/** 가중 무작위 — 한 가지 위험 종류 뽑기 */
+function pickWeightedDangerType(): DangerType {
+	const types = Object.keys(DANGER_WEIGHTS) as DangerType[];
+	const total = types.reduce((sum, t) => sum + DANGER_WEIGHTS[t], 0);
+	let roll = Math.random() * total;
+	for (const t of types) {
+		roll -= DANGER_WEIGHTS[t];
+		if (roll <= 0) return t;
 	}
-	if (stageNumber <= 5) {
-		// 2막(승): + spreading (보드 복잡도 ↑)
-		return ['reinforced', 'hazard-zone', 'spreading'];
-	}
-	if (stageNumber <= 8) {
-		// 3막(전): + doom-row/col (진짜 게임오버 위협 등장)
-		return ['reinforced', 'hazard-zone', 'spreading', 'doom-row', 'doom-col'];
-	}
-	// 4막(결): 전체
-	return ['reinforced', 'hazard-zone', 'spreading', 'doom-row', 'doom-col'];
+	return types[types.length - 1];
 }
 
 /**
@@ -96,10 +101,9 @@ export function generateDangerStage(stageNumber: number, grid: BoardGrid): Dange
 	const usedRows = new Set<number>();
 	const usedCols = new Set<number>();
 	const usedZoneAnchors = new Set<string>(); // 영역 중복 방지
-	const types = availableDangerTypes(stageNumber);
 
 	for (let i = 0; i < dangerCount; i++) {
-		const type: DangerType = types[Math.floor(Math.random() * types.length)];
+		const type: DangerType = pickWeightedDangerType();
 		const danger = createDanger(type, stageNumber, grid, {
 			usedRows,
 			usedCols,
@@ -129,10 +133,15 @@ export function generateDangerStage(stageNumber: number, grid: BoardGrid): Dange
 		dangers[i].delayTurns = cumulativeDelay;
 	}
 
+	// 잠금 슬롯 → 위험 ID 1:1 매칭. 함께 나온 위험들 중 등장 순서대로.
+	// 잠금 수가 dangers 수보다 많으면 dangers 수만큼만(잠금이 dangers와 함께 풀리도록).
+	const lockTarget = Math.min(lockedSlotsForStage(stageNumber), dangers.length);
+	const lockedSlotDangerIds = dangers.slice(0, lockTarget).map(d => d.id);
+
 	return {
 		stageNumber,
 		dangers,
-		lockedTraySlots: lockedSlotsForStage(stageNumber)
+		lockedSlotDangerIds
 	};
 }
 
