@@ -826,6 +826,11 @@ export function createBlockBlasterGame() {
 		// special 모드: 블록 배치 성공 시 쿨다운 진행
 		if (isSpecialMode()) tickCooldowns();
 
+		// PORTAL 발동 — 사용자 블록이 portal 마커 셀과 겹쳤다면 짝꿍 위치에 자동 셀 추가 + 두 포털 이동
+		if (isSpecialMode() && currentDangerStage) {
+			triggerPortalsAt(placedCells, block.color);
+		}
+
 		// Check for completed lines
 		const { rows, cols } = findCompletedLines(grid);
 		const totalLines = rows.length + cols.length;
@@ -1230,7 +1235,7 @@ export function createBlockBlasterGame() {
 	 * doom-row/col, hazard-zone은 영역 표시만 — DangerOverlay가 cells 좌표로 그림.
 	 */
 	function activateDangerOnBoard(d: Danger, stageNumber: number) {
-		if (d.type !== 'reinforced' && d.type !== 'spreading' && d.type !== 'storm') return;
+		if (d.type !== 'reinforced' && d.type !== 'spreading' && d.type !== 'storm' && d.type !== 'portal') return;
 		const next = cloneGrid(grid);
 		const nextMeta = { ...cellMeta };
 		const reinforcedHp = stageNumber <= 5 ? 2 : 3;
@@ -1244,6 +1249,21 @@ export function createBlockBlasterGame() {
 			next[r][c] = 5 as CellColor;
 			nextMeta[cellKey(r, c)] = { stormOrigin: true, stormDangerId: d.id };
 			grid = next;
+			cellMeta = nextMeta;
+			return;
+		}
+		// PORTAL은 grid에 색을 채우지 않음 — 사용자가 그 빈 셀에 블록을 놓아야 발동
+		if (d.type === 'portal') {
+			// 활성화 시점에 두 셀이 모두 비어있는지 확인. 한쪽이라도 막혔으면 silent 종료
+			for (const [r, c] of d.cells) {
+				if (next[r][c] !== 0) {
+					d.resolved = true;
+					return;
+				}
+			}
+			for (const [r, c] of d.cells) {
+				nextMeta[cellKey(r, c)] = { portalMark: true, portalDangerId: d.id };
+			}
 			cellMeta = nextMeta;
 			return;
 		}
@@ -1277,7 +1297,7 @@ export function createBlockBlasterGame() {
 			for (const d of ds.dangers) {
 				if (d.resolved) continue;
 				if (d.delayTurns > 0) continue;
-				if (!isDangerResolved(d, grid)) continue;
+				if (!isDangerResolved(d, grid, cellMeta)) continue;
 				d.resolved = true;
 				changed = true;
 				score += 200; // 위험 1개 해결 보너스
@@ -1375,6 +1395,21 @@ export function createBlockBlasterGame() {
 				spreadOnce(d);
 				d.countdown = d.initialCountdown;
 			}
+			if (d.type === 'portal' && d.countdown === 0) {
+				// 카운트 만료 — 포털 마커 제거 + 자연 종료 (보너스 X)
+				const nextMeta = { ...cellMeta };
+				for (const [r, c] of d.cells) {
+					const k = cellKey(r, c);
+					if (nextMeta[k]?.portalMark) delete nextMeta[k];
+				}
+				cellMeta = nextMeta;
+				d.resolved = true;
+				resolvedDangerCount++;
+				checkStageClearByCount();
+				if (isMatchedToLock(d, ds)) {
+					ds.lockedSlotDangerIds = ds.lockedSlotDangerIds.filter(id => id !== d.id);
+				}
+			}
 			if (d.type === 'storm') {
 				// 매 N턴마다 보드의 무작위 빈 셀에 검은 돌 추가
 				// (스테이지 1~5: 매 2턴, 6~10: 매 1턴)
@@ -1398,6 +1433,81 @@ export function createBlockBlasterGame() {
 						ds.lockedSlotDangerIds = ds.lockedSlotDangerIds.filter(id => id !== d.id);
 					}
 				}
+			}
+		}
+	}
+
+	/**
+	 * PORTAL 발동 — 사용자가 방금 배치한 셀들 중 portal 마커와 겹친 게 있으면
+	 * 해당 portal 위험들에 대해: 짝꿍 위치에 같은 색 1셀 자동 추가 + 두 portal 모두
+	 * 새 빈 셀로 이동.
+	 *
+	 * 한 블록이 두 포털 셀을 동시에 덮은 경우(같은 위험의 양쪽 셀에 모두 닿음):
+	 * 자동 추가는 한 번만, 위치 이동도 한 번 시도.
+	 */
+	function triggerPortalsAt(placed: [number, number][], color: CellColor) {
+		if (!currentDangerStage) return;
+		// placed 셀 좌표 → key set
+		const placedKeys = new Set(placed.map(([r, c]) => cellKey(r, c)));
+		// 영향받은 portal 위험 ID 수집 (한 위험이 양쪽 다 덮였어도 한 번만)
+		const triggered = new Set<string>();
+		for (const key of placedKeys) {
+			const id = cellMeta[key]?.portalDangerId;
+			if (id) triggered.add(id);
+		}
+		if (triggered.size === 0) return;
+
+		for (const id of triggered) {
+			const d = currentDangerStage.dangers.find(x => x.id === id);
+			if (!d || d.resolved) continue;
+			// 짝꿍 셀 찾기 — d.cells 두 개 중 placed에 포함되지 않은 쪽
+			// (양쪽 다 placed면 첫 번째를 짝꿍으로 처리해 한 번 추가)
+			const [a, b] = d.cells;
+			const aPlaced = placedKeys.has(cellKey(a[0], a[1]));
+			const bPlaced = placedKeys.has(cellKey(b[0], b[1]));
+			let partner: [number, number] | null = null;
+			if (aPlaced && !bPlaced) partner = b;
+			else if (bPlaced && !aPlaced) partner = a;
+			else if (aPlaced && bPlaced) partner = b; // 둘 다 덮임 — b를 짝꿍으로
+			if (!partner) continue;
+
+			// 짝꿍 위치에 같은 색 1셀 자동 추가 (이미 다른 셀이 있으면 추가 안 함)
+			const next = cloneGrid(grid);
+			const nextMeta = { ...cellMeta };
+			if (next[partner[0]][partner[1]] === 0) {
+				next[partner[0]][partner[1]] = color;
+			}
+			// 두 포털 마커 제거 (placed로 덮인 쪽은 사용자 블록 색이 들어와 있고, 짝꿍은 자동 셀)
+			delete nextMeta[cellKey(a[0], a[1])];
+			delete nextMeta[cellKey(b[0], b[1])];
+			grid = next;
+			cellMeta = nextMeta;
+
+			// 빈 셀 2개 새로 찾아서 포털 이동
+			const empty: [number, number][] = [];
+			for (let r = 0; r < GRID_SIZE; r++) {
+				for (let c = 0; c < GRID_SIZE; c++) {
+					if (grid[r][c] === 0 && !cellMeta[cellKey(r, c)]?.portalMark) {
+						empty.push([r, c]);
+					}
+				}
+			}
+			if (empty.length >= 2) {
+				const i1 = Math.floor(Math.random() * empty.length);
+				let i2 = Math.floor(Math.random() * (empty.length - 1));
+				if (i2 >= i1) i2++;
+				const newA = empty[i1];
+				const newB = empty[i2];
+				d.cells = [newA, newB];
+				const movedMeta = { ...cellMeta };
+				movedMeta[cellKey(newA[0], newA[1])] = { portalMark: true, portalDangerId: d.id };
+				movedMeta[cellKey(newB[0], newB[1])] = { portalMark: true, portalDangerId: d.id };
+				cellMeta = movedMeta;
+			} else if (empty.length === 1) {
+				// 한 자리만 가능 — 이동 못함, 위험은 그대로 종료 처리 (보드가 거의 막힘)
+				d.resolved = true;
+			} else {
+				d.resolved = true;
 			}
 		}
 	}
@@ -1499,6 +1609,8 @@ export function createBlockBlasterGame() {
 				if (meta?.spreadingDangerId) continue;
 				// STORM 중심 셀은 별도 위험으로 보존 (감염 시 마커 중첩 + 시각 혼란)
 				if (meta?.stormOrigin) continue;
+				// PORTAL 셀은 빈 셀이지만 마커 보존 — 감염 X
+				if (meta?.portalMark) continue;
 				if (grid[nr][nc] === 0) {
 					emptyCandidates.push([nr, nc]);
 					continue;

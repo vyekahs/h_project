@@ -46,9 +46,9 @@
 
 	const LOCK_COLORS = ['#ef4444', '#3b82f6', '#10b981'];
 
-	function lockColorOf(meta: { reinforcedDangerId?: string; spreadingDangerId?: string; stormDangerId?: string } | undefined): string | null {
+	function lockColorOf(meta: { reinforcedDangerId?: string; spreadingDangerId?: string; stormDangerId?: string; portalDangerId?: string } | undefined): string | null {
 		if (!meta) return null;
-		const id = meta.reinforcedDangerId ?? meta.spreadingDangerId ?? meta.stormDangerId;
+		const id = meta.reinforcedDangerId ?? meta.spreadingDangerId ?? meta.stormDangerId ?? meta.portalDangerId;
 		if (!id) return null;
 		const idx = dangerIdToColorIdx[id];
 		if (idx == null) return null;
@@ -256,6 +256,7 @@
 					class:reinforced={meta?.reinforcedDangerId != null || (meta?.hp != null && meta.hp > 0)}
 					class:spreading={meta?.spreadOrigin}
 					class:spread-origin={meta?.spreadOrigin}
+					class:portal-cell={meta?.portalMark}
 					class:ability-preview={previewing}
 					class:ability-preview-empty={previewing && color === 0}
 					class:ghost-valid={ghost?.valid === true}
@@ -264,12 +265,12 @@
 						ghost?.valid ? `--block-color: var(--block-color-${activeBlock?.color ?? 1})` : ''
 					)}
 				>
-					{#if meta && (meta.spreadOrigin || meta.reinforcedDangerId != null || meta.stormOrigin || (meta.hp != null && meta.hp > 0))}
+					{#if meta && (meta.spreadOrigin || meta.reinforcedDangerId != null || meta.stormOrigin || meta.portalMark || (meta.hp != null && meta.hp > 0))}
 						{@const spreadCd = meta.spreadingDangerId ? spreadingCountdownById[meta.spreadingDangerId] : undefined}
 						{@const stormCd = meta.stormDangerId ? stormCountdownById[meta.stormDangerId] : undefined}
 						<div class="danger-marker">
 							<span class="dm-left">{spreadCd != null ? spreadCd : stormCd != null ? stormCd : ''}</span>
-							<span class="dm-center">{meta.spreadOrigin ? '★' : meta.stormOrigin ? '☁' : (meta.reinforcedDangerId != null || (meta.hp != null && meta.hp > 0)) ? '◆' : ''}</span>
+							<span class="dm-center">{meta.spreadOrigin ? '★' : meta.stormOrigin ? '☁' : meta.portalMark ? '◎' : (meta.reinforcedDangerId != null || (meta.hp != null && meta.hp > 0)) ? '◆' : ''}</span>
 							<span class="dm-right">{meta.hp != null && meta.hp > 0 ? meta.hp : ''}</span>
 						</div>
 					{/if}
@@ -400,6 +401,17 @@
 	@keyframes originPulse {
 		0%, 100% { box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.45), 0 0 8px rgba(168, 85, 247, 0.6); }
 		50% { box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.55), 0 0 18px rgba(168, 85, 247, 0.95); }
+	}
+
+	/* 포털 — 빈 셀에 청록 글로우 + 깜빡임 (사용자가 놓을 수 있는 자리임을 강조) */
+	.cell.portal-cell {
+		box-shadow: inset 0 0 0 2px rgba(34, 211, 238, 0.6), 0 0 10px rgba(34, 211, 238, 0.5);
+		animation: portalPulse 1.5s ease-in-out infinite;
+	}
+
+	@keyframes portalPulse {
+		0%, 100% { box-shadow: inset 0 0 0 2px rgba(34, 211, 238, 0.55), 0 0 8px rgba(34, 211, 238, 0.4); }
+		50% { box-shadow: inset 0 0 0 2px rgba(34, 211, 238, 0.85), 0 0 16px rgba(34, 211, 238, 0.85); }
 	}
 
 	.cell.placed {

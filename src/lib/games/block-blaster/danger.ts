@@ -6,7 +6,7 @@
  * 3단계: spreading + 트레이 잠금 추가 잠금 정책
  */
 
-import { GRID_SIZE, type BoardGrid, type Danger, type DangerStage, type DangerType } from './types';
+import { GRID_SIZE, type BoardGrid, type CellMetaMap, type Danger, type DangerStage, type DangerType } from './types';
 
 let nextId = 1;
 function generateId(prefix: string): string {
@@ -68,6 +68,7 @@ const DANGER_WEIGHTS: Record<DangerType, number> = {
 	spreading: 25,
 	'hazard-zone': 20,
 	storm: 15,
+	portal: 15,
 	'doom-row': 10,
 	'doom-col': 10
 };
@@ -119,7 +120,8 @@ export function generateDangerStage(stageNumber: number, grid: BoardGrid): Dange
 	const dangerOrderRank = (t: DangerType): number => {
 		switch (t) {
 			case 'reinforced': return 0;
-			case 'spreading': return 1;
+			case 'spreading':
+			case 'portal': return 1;
 			case 'hazard-zone':
 			case 'storm': return 2;
 			case 'doom-row':
@@ -271,6 +273,29 @@ function createDanger(
 				delayTurns: 0
 			};
 		}
+		case 'portal': {
+			// 포털 — 빈 셀 2개를 짝지어 선택 (◎ 마커). 카운트는 일반 위험과 동일.
+			const empty: [number, number][] = [];
+			for (let r = 0; r < GRID_SIZE; r++) {
+				for (let c = 0; c < GRID_SIZE; c++) {
+					if (grid[r][c] === 0) empty.push([r, c]);
+				}
+			}
+			if (empty.length < 2) return null;
+			// 무작위 두 칸 선택 (서로 달라야 함)
+			const i1 = Math.floor(Math.random() * empty.length);
+			let i2 = Math.floor(Math.random() * (empty.length - 1));
+			if (i2 >= i1) i2++;
+			return {
+				id: generateId('portal'),
+				type: 'portal',
+				cells: [empty[i1], empty[i2]],
+				countdown: cd,
+				initialCountdown: cd,
+				resolved: false,
+				delayTurns: 0
+			};
+		}
 		default:
 			return null;
 	}
@@ -359,9 +384,19 @@ function pickFilledLine(axis: 'row' | 'col', grid: BoardGrid, used: Set<number>)
  * hazard-zone: 영역의 모든 셀이 비어있으면 해결
  * reinforced: 강화 가족 셀이 모두 비어있으면 해결 (가족 hp 0 도달)
  * spreading: 가족 셀이 모두 비어있으면 해결 (cascade 없음, 라인 클리어로만 정리)
+ * storm: 중심 셀이 비워지면 해결
+ * portal: 두 셀의 portal 마커가 cellMeta에서 모두 사라지면 해결 (능력 등으로 마커 제거 시)
  */
-export function isDangerResolved(danger: Danger, grid: BoardGrid): boolean {
+export function isDangerResolved(danger: Danger, grid: BoardGrid, cellMeta?: CellMetaMap): boolean {
 	if (danger.resolved) return true;
+	if (danger.type === 'portal') {
+		// portal은 빈 셀에 마커만 있는 형태 — grid가 0이라도 마커가 살아있으면 미해결
+		if (!cellMeta) return false;
+		for (const [r, c] of danger.cells) {
+			if (cellMeta[`${r},${c}`]?.portalMark) return false;
+		}
+		return true;
+	}
 	for (const [r, c] of danger.cells) {
 		if (grid[r][c] !== 0) return false;
 	}
@@ -383,6 +418,8 @@ export function dangerLabel(type: DangerType): string {
 			return '증식 블록';
 		case 'storm':
 			return '폭풍';
+		case 'portal':
+			return '포털';
 	}
 }
 
@@ -401,6 +438,8 @@ export function dangerDescription(type: DangerType): string {
 			return '★ 표시된 증식 블록은 주기마다 인접 빈 셀로 1칸씩 늘어납니다.';
 		case 'storm':
 			return '☁ 폭풍 셀이 살아있는 동안 매 턴 보드에 검은 돌이 추가됩니다. ☁ 셀을 라인 클리어로 제거하거나 카운트가 끝날 때까지 견디세요.';
+		case 'portal':
+			return '◎ 포털 두 칸. 한쪽에 블록을 놓으면 다른 쪽 위치에 같은 색 셀이 자동 추가되고 두 포털이 새 빈 칸으로 이동합니다. 카운트가 끝나면 사라집니다.';
 	}
 }
 
