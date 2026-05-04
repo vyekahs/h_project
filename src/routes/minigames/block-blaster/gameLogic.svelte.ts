@@ -500,12 +500,21 @@ export function createBlockBlasterGame() {
 		return generateTraySet();
 	}
 
-	/** 트레이에 블록 추가 — 빈 슬롯이 있으면 거기에, 없으면 끝에 push (트레이 확장) */
+	/**
+	 * 트레이에 블록 추가 — 잠기지 않은 빈 슬롯에 우선 배치, 없으면 끝에 push.
+	 * 잠긴 슬롯에는 절대 블록을 넣지 않음 (사용자가 못 쓰는 자리에 낭비 방지).
+	 */
 	function addBlockToTray(block: BlockShape) {
 		const next = [...currentBlocks];
-		const emptyIdx = next.findIndex(b => b === null);
-		if (emptyIdx !== -1) {
-			next[emptyIdx] = block;
+		let target = -1;
+		for (let i = 0; i < next.length; i++) {
+			if (next[i] === null && !isSlotLocked(i)) {
+				target = i;
+				break;
+			}
+		}
+		if (target !== -1) {
+			next[target] = block;
 		} else {
 			next.push(block);
 		}
@@ -746,8 +755,16 @@ export function createBlockBlasterGame() {
 		if (!currentDangerStage) return false;
 		const lockCount = effectiveLockCount();
 		if (lockCount <= 0) return false;
-		const traySize = currentBlocks.length;
-		return index >= traySize - lockCount;
+		// 잠금은 우측에서부터 N개 빈 슬롯에만 적용 (블록이 있는 슬롯은 건너뜀).
+		// 능력으로 추가된 블록이 다음 잠금에 덮이지 않도록.
+		let remaining = lockCount;
+		for (let i = currentBlocks.length - 1; i >= 0; i--) {
+			if (currentBlocks[i] !== null) continue; // 블록 있는 슬롯은 잠금 대상 X
+			if (remaining <= 0) break;
+			remaining--;
+			if (i === index) return true;
+		}
+		return false;
 	}
 
 	/**
@@ -1559,8 +1576,11 @@ export function createBlockBlasterGame() {
 			return;
 		}
 
-		// 이미 같은 슬롯이 pending이면 무시
-		if (pendingAbilitySlot === slotIndex) return;
+		// 같은 슬롯을 다시 누르면 pending 취소 (사용자 의도: 잘못 눌렀을 때 되돌리기)
+		if (pendingAbilitySlot === slotIndex) {
+			pendingAbilitySlot = null;
+			return;
+		}
 
 		// single-cell Lv2/Lv3 — 그리기 모달 표시
 		if (slot.ability.id === 'single-cell' && slot.level >= 2) {
@@ -2079,10 +2099,16 @@ export function createBlockBlasterGame() {
 				.sort((a, b) => a.delayTurns - b.delayTurns)
 				.slice(0, lockCount);
 			candidates.forEach((d, i) => { dangerIdToColorIdx[d.id] = i; });
-			const traySize = currentBlocks.length;
-			for (let i = 0; i < lockCount; i++) {
-				slotIdxToColorIdx[traySize - lockCount + i] = i;
+			// 잠긴 슬롯 위치 = 우측에서 빈 슬롯부터 lockCount개 (isSlotLocked와 동일 정책).
+			// 매칭 색 인덱스는 좌→우 순서로 0,1,2... (위험 등장 순서와 일치)
+			const lockedSlotIndices: number[] = [];
+			let remaining = lockCount;
+			for (let i = currentBlocks.length - 1; i >= 0 && remaining > 0; i--) {
+				if (currentBlocks[i] !== null) continue;
+				lockedSlotIndices.unshift(i);
+				remaining--;
 			}
+			lockedSlotIndices.forEach((slotIdx, i) => { slotIdxToColorIdx[slotIdx] = i; });
 			return { dangerIdToColorIdx, slotIdxToColorIdx };
 		},
 		/** 증식 위험 ID → 다음 증식까지 남은 턴 수 (Board에서 셀에 표시) */
