@@ -46,9 +46,9 @@
 
 	const LOCK_COLORS = ['#ef4444', '#3b82f6', '#10b981'];
 
-	function lockColorOf(meta: { reinforcedDangerId?: string; spreadingDangerId?: string; stormDangerId?: string; portalDangerId?: string } | undefined): string | null {
+	function lockColorOf(meta: { reinforcedDangerId?: string; spreadingDangerId?: string; stormDangerId?: string; portalDangerId?: string; rustDangerId?: string } | undefined): string | null {
 		if (!meta) return null;
-		const id = meta.reinforcedDangerId ?? meta.spreadingDangerId ?? meta.stormDangerId ?? meta.portalDangerId;
+		const id = meta.reinforcedDangerId ?? meta.spreadingDangerId ?? meta.stormDangerId ?? meta.portalDangerId ?? meta.rustDangerId;
 		if (!id) return null;
 		const idx = dangerIdToColorIdx[id];
 		if (idx == null) return null;
@@ -257,6 +257,7 @@
 					class:spreading={meta?.spreadOrigin}
 					class:spread-origin={meta?.spreadOrigin}
 					class:portal-cell={meta?.portalMark}
+					class:rust-cell={meta?.rustMark}
 					class:ability-preview={previewing}
 					class:ability-preview-empty={previewing && color === 0}
 					class:ghost-valid={ghost?.valid === true}
@@ -265,12 +266,12 @@
 						ghost?.valid ? `--block-color: var(--block-color-${activeBlock?.color ?? 1})` : ''
 					)}
 				>
-					{#if meta && (meta.spreadOrigin || meta.reinforcedDangerId != null || meta.stormOrigin || meta.portalMark || (meta.hp != null && meta.hp > 0))}
+					{#if meta && (meta.spreadOrigin || meta.reinforcedDangerId != null || meta.stormOrigin || meta.portalMark || meta.rustMark || (meta.hp != null && meta.hp > 0))}
 						{@const spreadCd = meta.spreadingDangerId ? spreadingCountdownById[meta.spreadingDangerId] : undefined}
 						{@const stormCd = meta.stormDangerId ? stormCountdownById[meta.stormDangerId] : undefined}
 						<div class="danger-marker">
 							<span class="dm-left">{spreadCd != null ? spreadCd : stormCd != null ? stormCd : ''}</span>
-							<span class="dm-center">{meta.spreadOrigin ? '★' : meta.stormOrigin ? '☁' : meta.portalMark ? '◎' : (meta.reinforcedDangerId != null || (meta.hp != null && meta.hp > 0)) ? '◆' : ''}</span>
+							<span class="dm-center">{meta.spreadOrigin ? '★' : meta.stormOrigin ? '☁' : meta.portalMark ? '◎' : meta.rustMark ? '⚠' : (meta.reinforcedDangerId != null || (meta.hp != null && meta.hp > 0)) ? '◆' : ''}</span>
 							<span class="dm-right">{meta.hp != null && meta.hp > 0 ? meta.hp : ''}</span>
 						</div>
 					{/if}
@@ -412,6 +413,12 @@
 	@keyframes portalPulse {
 		0%, 100% { box-shadow: inset 0 0 0 2px rgba(34, 211, 238, 0.55), 0 0 8px rgba(34, 211, 238, 0.4); }
 		50% { box-shadow: inset 0 0 0 2px rgba(34, 211, 238, 0.85), 0 0 16px rgba(34, 211, 238, 0.85); }
+	}
+
+	/* 부식 — 녹슨 갈색/주황 톤 (자체 색상 5 위에 덮어씀) */
+	.cell.rust-cell {
+		background: #92400e !important;
+		box-shadow: inset 0 0 0 1.5px rgba(180, 83, 9, 0.7), inset 0 -2px 0 rgba(0, 0, 0, 0.3);
 	}
 
 	.cell.placed {

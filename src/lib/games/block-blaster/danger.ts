@@ -69,6 +69,7 @@ const DANGER_WEIGHTS: Record<DangerType, number> = {
 	'hazard-zone': 20,
 	storm: 15,
 	portal: 15,
+	rust: 20,
 	'doom-row': 10,
 	'doom-col': 10
 };
@@ -125,7 +126,8 @@ export function generateDangerStage(stageNumber: number, grid: BoardGrid): Dange
 		switch (t) {
 			case 'reinforced': return 0;
 			case 'spreading':
-			case 'portal': return 1;
+			case 'portal':
+			case 'rust': return 1;
 			case 'hazard-zone':
 			case 'storm': return 2;
 			case 'doom-row':
@@ -306,6 +308,29 @@ function createDanger(
 				delayTurns: 0
 			};
 		}
+		case 'rust': {
+			// 부식 — 빈 셀 1개에서 시작. 카운트는 "수명" — 0 도달 시 위험 종료(부식 셀 모두 사라짐).
+			// 확산은 매 RUST_SPREAD_INTERVAL턴마다 (gameLogic에서 처리).
+			const empty: [number, number][] = [];
+			for (let r = 0; r < GRID_SIZE; r++) {
+				for (let c = 0; c < GRID_SIZE; c++) {
+					if (grid[r][c] !== 0) continue;
+					if (ctx.usedCells.has(`${r},${c}`)) continue;
+					empty.push([r, c]);
+				}
+			}
+			if (empty.length === 0) return null;
+			const [r, c] = empty[Math.floor(Math.random() * empty.length)];
+			return {
+				id: generateId('rust'),
+				type: 'rust',
+				cells: [[r, c]],
+				countdown: cd,
+				initialCountdown: cd,
+				resolved: false,
+				delayTurns: 0
+			};
+		}
 		default:
 			return null;
 	}
@@ -434,6 +459,8 @@ export function dangerLabel(type: DangerType): string {
 			return '폭풍';
 		case 'portal':
 			return '포털';
+		case 'rust':
+			return '부식';
 	}
 }
 
@@ -454,6 +481,8 @@ export function dangerDescription(type: DangerType): string {
 			return '☁ 폭풍 셀이 살아있는 동안 매 턴 보드에 검은 돌이 추가됩니다. ☁ 셀을 라인 클리어로 제거하거나 카운트가 끝날 때까지 견디세요.';
 		case 'portal':
 			return '◎ 포털 두 칸. 한쪽에 블록을 놓으면 다른 쪽 위치에 같은 색 셀이 자동 추가되고 두 포털이 새 빈 칸으로 이동합니다. 카운트가 끝나면 사라집니다.';
+		case 'rust':
+			return '⚠ 부식 셀이 주기마다 인접 빈 칸으로 확산됩니다. 부식 셀이 라인 클리어에 포함되면 그 라인 점수가 절반으로 줄어듭니다. 부식 가족을 모두 라인 클리어로 비우거나 카운트 종료까지 견디세요.';
 	}
 }
 

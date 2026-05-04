@@ -843,7 +843,17 @@ export function createBlockBlasterGame() {
 			combo++;
 			if (combo > maxCombo) maxCombo = combo;
 
-			const points = calculateScore(block.cells.length, totalLines, combo);
+			let points = calculateScore(block.cells.length, totalLines, combo);
+			// RUST 페널티 — 부식 셀이 포함된 라인 수만큼 라인 점수 절반 (콤보 보너스는 유지)
+			if (isSpecialMode()) {
+				const rustyLines = countRustyLines(rows, cols);
+				if (rustyLines > 0) {
+					// 라인 점수 = totalLines² × 10. rusty 라인 비중만큼 절반 깎음.
+					const linePoints = totalLines * totalLines * 10;
+					const penalty = Math.floor((linePoints * rustyLines) / (totalLines * 2));
+					points -= penalty;
+				}
+			}
 			score += points;
 			linesCleared += totalLines;
 
@@ -1235,7 +1245,13 @@ export function createBlockBlasterGame() {
 	 * doom-row/col, hazard-zone은 영역 표시만 — DangerOverlay가 cells 좌표로 그림.
 	 */
 	function activateDangerOnBoard(d: Danger, stageNumber: number) {
-		if (d.type !== 'reinforced' && d.type !== 'spreading' && d.type !== 'storm' && d.type !== 'portal') return;
+		if (
+			d.type !== 'reinforced' &&
+			d.type !== 'spreading' &&
+			d.type !== 'storm' &&
+			d.type !== 'portal' &&
+			d.type !== 'rust'
+		) return;
 		const next = cloneGrid(grid);
 		const nextMeta = { ...cellMeta };
 		const reinforcedHp = stageNumber <= 5 ? 2 : 3;
@@ -1264,6 +1280,19 @@ export function createBlockBlasterGame() {
 			for (const [r, c] of d.cells) {
 				nextMeta[cellKey(r, c)] = { portalMark: true, portalDangerId: d.id };
 			}
+			cellMeta = nextMeta;
+			return;
+		}
+		// RUST는 색을 채우고 (자체 색상 5) rustMark + rustDangerId 마커
+		if (d.type === 'rust') {
+			const [r, c] = d.cells[0];
+			if (next[r][c] !== 0) {
+				d.resolved = true;
+				return;
+			}
+			next[r][c] = 5 as CellColor;
+			nextMeta[cellKey(r, c)] = { rustMark: true, rustDangerId: d.id };
+			grid = next;
 			cellMeta = nextMeta;
 			return;
 		}
@@ -1434,6 +1463,33 @@ export function createBlockBlasterGame() {
 					}
 				}
 			}
+			if (d.type === 'rust') {
+				// 매 N턴마다 인접 빈 셀로 확산 (스테이지 1~7: 매 3턴, 8~10: 매 2턴)
+				const interval = ds.stageNumber <= 7 ? 3 : 2;
+				const elapsed = d.initialCountdown - d.countdown;
+				if (d.countdown > 0 && elapsed > 0 && elapsed % interval === 0) {
+					rustSpreadOnce(d);
+				}
+				if (d.countdown === 0) {
+					// 카운트 만료 — 부식 가족 셀 모두 제거 + 자연 종료 (보너스 X)
+					const next = cloneGrid(grid);
+					const nextMeta = { ...cellMeta };
+					for (const [r, c] of d.cells) {
+						if (nextMeta[cellKey(r, c)]?.rustDangerId === d.id) {
+							next[r][c] = 0;
+							delete nextMeta[cellKey(r, c)];
+						}
+					}
+					grid = next;
+					cellMeta = nextMeta;
+					d.resolved = true;
+					resolvedDangerCount++;
+					checkStageClearByCount();
+					if (isMatchedToLock(d, ds)) {
+						ds.lockedSlotDangerIds = ds.lockedSlotDangerIds.filter(id => id !== d.id);
+					}
+				}
+			}
 		}
 	}
 
@@ -1516,6 +1572,35 @@ export function createBlockBlasterGame() {
 	 * 보드의 무작위 빈 셀 1개에 검은 돌(petrified) 셀을 추가.
 	 * STORM이 매 턴 호출. 빈 셀이 없으면 아무 작업 안 함.
 	 */
+	/**
+	 * 라인 클리어 시 부식(rustMark) 셀이 포함된 라인 수를 셈.
+	 * 점수 페널티 계산용 — rustyLines / totalLines 비중만큼 라인 점수 -50%.
+	 */
+	function countRustyLines(rows: number[], cols: number[]): number {
+		let n = 0;
+		for (const r of rows) {
+			let hit = false;
+			for (let c = 0; c < GRID_SIZE; c++) {
+				if (cellMeta[cellKey(r, c)]?.rustMark) {
+					hit = true;
+					break;
+				}
+			}
+			if (hit) n++;
+		}
+		for (const c of cols) {
+			let hit = false;
+			for (let r = 0; r < GRID_SIZE; r++) {
+				if (cellMeta[cellKey(r, c)]?.rustMark) {
+					hit = true;
+					break;
+				}
+			}
+			if (hit) n++;
+		}
+		return n;
+	}
+
 	function addRandomBlackStone() {
 		const empty: [number, number][] = [];
 		for (let r = 0; r < GRID_SIZE; r++) {
@@ -1530,6 +1615,47 @@ export function createBlockBlasterGame() {
 		next[r][c] = 5 as CellColor;
 		grid = next;
 		cellMeta = { ...cellMeta, [cellKey(r, c)]: { ...cellMeta[cellKey(r, c)], petrified: true } };
+	}
+
+	/**
+	 * RUST 확산 — 부식 가족 셀 중 살아있는(grid≠0) 셀의 인접 빈 셀로 1칸 확장.
+	 * 인접 후보는 일반 빈 셀만 (다른 위험 마커 셀, portal 마커 셀 제외).
+	 * d.cells에 새 좌표 push, cellMeta에 rustMark + rustDangerId 부여.
+	 * 확산 가능 후보 0개면 아무 작업 X (확산 중지, 카운트는 계속 진행).
+	 */
+	function rustSpreadOnce(d: Danger) {
+		const dirs = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+		const candidates: [number, number][] = [];
+		const consideredKeys = new Set<string>();
+		for (const [r, c] of d.cells) {
+			if (grid[r][c] === 0) continue; // 라인 클리어로 사라진 가족 셀
+			for (const [dr, dc] of dirs) {
+				const nr = r + dr;
+				const nc = c + dc;
+				if (nr < 0 || nr >= GRID_SIZE || nc < 0 || nc >= GRID_SIZE) continue;
+				if (grid[nr][nc] !== 0) continue; // 빈 셀만
+				const k = cellKey(nr, nc);
+				if (consideredKeys.has(k)) continue;
+				consideredKeys.add(k);
+				const meta = cellMeta[k];
+				// 다른 위험 마커 셀은 제외 (portal/storm origin/rust 본인 가족도 제외)
+				if (meta?.portalMark) continue;
+				if (meta?.stormOrigin) continue;
+				if (meta?.rustMark) continue;
+				candidates.push([nr, nc]);
+			}
+		}
+		if (candidates.length === 0) return;
+
+		const [nr, nc] = candidates[Math.floor(Math.random() * candidates.length)];
+		const next = cloneGrid(grid);
+		next[nr][nc] = 5 as CellColor;
+		grid = next;
+		cellMeta = {
+			...cellMeta,
+			[cellKey(nr, nc)]: { rustMark: true, rustDangerId: d.id }
+		};
+		d.cells.push([nr, nc]);
 	}
 
 	/**
@@ -1612,6 +1738,8 @@ export function createBlockBlasterGame() {
 				if (meta?.stormOrigin) continue;
 				// PORTAL 셀은 빈 셀이지만 마커 보존 — 감염 X
 				if (meta?.portalMark) continue;
+				// RUST 셀은 자체 위험 — 감염 X (격리)
+				if (meta?.rustMark) continue;
 				if (grid[nr][nc] === 0) {
 					emptyCandidates.push([nr, nc]);
 					continue;

@@ -19,7 +19,7 @@ export type BoardGrid = CellColor[][];
 // ===========================================================================
 
 /** 위험 종류 */
-export type DangerType = 'doom-row' | 'doom-col' | 'hazard-zone' | 'reinforced' | 'spreading' | 'storm' | 'portal';
+export type DangerType = 'doom-row' | 'doom-col' | 'hazard-zone' | 'reinforced' | 'spreading' | 'storm' | 'portal' | 'rust';
 
 /**
  * 셀별 메타데이터 — `BoardGrid`(색상 0~5)와 분리된 추가 정보.
@@ -44,6 +44,10 @@ export interface CellMeta {
 	portalMark?: boolean;
 	/** PORTAL 위험 ID (셀 → 위험 매핑) */
 	portalDangerId?: string;
+	/** RUST 부식 셀 마커 — 라인 클리어에 포함되면 그 라인 점수 -50% */
+	rustMark?: boolean;
+	/** RUST 위험 ID (셀 → 위험 매핑) */
+	rustDangerId?: string;
 }
 
 export type CellMetaMap = Record<string, CellMeta>;
