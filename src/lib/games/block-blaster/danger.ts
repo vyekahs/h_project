@@ -103,15 +103,19 @@ export function generateDangerStage(stageNumber: number, grid: BoardGrid): Dange
 	const usedRows = new Set<number>();
 	const usedCols = new Set<number>();
 	const usedZoneAnchors = new Set<string>(); // 영역 중복 방지
+	const usedCells = new Set<string>(); // 가족형 위험(reinforced/spreading/storm/portal)이 픽한 좌표
 
 	for (let i = 0; i < dangerCount; i++) {
 		const type: DangerType = pickWeightedDangerType();
 		const danger = createDanger(type, stageNumber, grid, {
 			usedRows,
 			usedCols,
-			usedZoneAnchors
+			usedZoneAnchors,
+			usedCells
 		});
 		if (!danger) continue;
+		// 활성화 시점에 좌표 충돌 방지 — 픽한 셀들을 누적 추적
+		for (const [r, c] of danger.cells) usedCells.add(`${r},${c}`);
 		dangers.push(danger);
 	}
 
@@ -153,6 +157,8 @@ interface CreateDangerCtx {
 	usedRows: Set<number>;
 	usedCols: Set<number>;
 	usedZoneAnchors: Set<string>;
+	/** 가족형 위험(reinforced/spreading/storm/portal)이 이미 픽한 좌표 — 다음 가족이 제외 */
+	usedCells: Set<string>;
 }
 
 function createDanger(
@@ -225,7 +231,7 @@ function createDanger(
 		}
 		case 'reinforced': {
 			// 2~3셀 폴리오미노 강화 블록. 셀별 독립 hp는 activateDangerOnBoard에서 부여.
-			const cells = pickPolyomino(grid, 2 + Math.floor(Math.random() * 2));
+			const cells = pickPolyomino(grid, 2 + Math.floor(Math.random() * 2), ctx.usedCells);
 			if (cells.length === 0) return null;
 			return {
 				id: generateId('reinforced'),
@@ -239,7 +245,7 @@ function createDanger(
 		}
 		case 'spreading': {
 			// 2~3셀 폴리오미노 증식 블록. 모든 셀이 동등한 근원.
-			const cells = pickPolyomino(grid, 2 + Math.floor(Math.random() * 2));
+			const cells = pickPolyomino(grid, 2 + Math.floor(Math.random() * 2), ctx.usedCells);
 			if (cells.length === 0) return null;
 			// countdown은 활성화 주기. 0 도달 시 증식 후 다시 주기로 리셋
 			const interval = stageNumber <= 7 ? 3 : 2;
@@ -258,7 +264,9 @@ function createDanger(
 			const empty: [number, number][] = [];
 			for (let r = 0; r < GRID_SIZE; r++) {
 				for (let c = 0; c < GRID_SIZE; c++) {
-					if (grid[r][c] === 0) empty.push([r, c]);
+					if (grid[r][c] !== 0) continue;
+					if (ctx.usedCells.has(`${r},${c}`)) continue;
+					empty.push([r, c]);
 				}
 			}
 			if (empty.length === 0) return null;
@@ -278,7 +286,9 @@ function createDanger(
 			const empty: [number, number][] = [];
 			for (let r = 0; r < GRID_SIZE; r++) {
 				for (let c = 0; c < GRID_SIZE; c++) {
-					if (grid[r][c] === 0) empty.push([r, c]);
+					if (grid[r][c] !== 0) continue;
+					if (ctx.usedCells.has(`${r},${c}`)) continue;
+					empty.push([r, c]);
 				}
 			}
 			if (empty.length < 2) return null;
@@ -305,12 +315,15 @@ function createDanger(
  * 빈 셀 중 무작위 시작점을 잡고 BFS로 인접 빈 셀까지 확장해 폴리오미노(연결된 N셀) 생성.
  * 빈 셀이 부족하거나 시작점에서 확장 안 되면 가능한 만큼만 반환 (최소 1셀).
  * 빈 셀이 0개면 빈 배열 반환.
+ * @param excludeCells 이미 다른 가족이 픽한 좌표 — 후보에서 제외해 충돌 방지
  */
-function pickPolyomino(grid: BoardGrid, size: number): [number, number][] {
+function pickPolyomino(grid: BoardGrid, size: number, excludeCells?: Set<string>): [number, number][] {
 	const empty: [number, number][] = [];
 	for (let r = 0; r < GRID_SIZE; r++) {
 		for (let c = 0; c < GRID_SIZE; c++) {
-			if (grid[r][c] === 0) empty.push([r, c]);
+			if (grid[r][c] !== 0) continue;
+			if (excludeCells?.has(`${r},${c}`)) continue;
+			empty.push([r, c]);
 		}
 	}
 	if (empty.length === 0) return [];
@@ -328,10 +341,11 @@ function pickPolyomino(grid: BoardGrid, size: number): [number, number][] {
 					const nc = c + dc;
 					if (nr < 0 || nr >= GRID_SIZE || nc < 0 || nc >= GRID_SIZE) continue;
 					if (grid[nr][nc] !== 0) continue;
-					const key = `${nr},${nc}`;
-					if (used.has(key)) continue;
+					const k = `${nr},${nc}`;
+					if (excludeCells?.has(k)) continue;
+					if (used.has(k)) continue;
 					frontier.push([nr, nc]);
-					used.add(key);
+					used.add(k);
 				}
 			}
 			if (frontier.length === 0) break;

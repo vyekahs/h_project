@@ -1254,9 +1254,9 @@ export function createBlockBlasterGame() {
 		}
 		// PORTAL은 grid에 색을 채우지 않음 — 사용자가 그 빈 셀에 블록을 놓아야 발동
 		if (d.type === 'portal') {
-			// 활성화 시점에 두 셀이 모두 비어있는지 확인. 한쪽이라도 막혔으면 silent 종료
+			// 활성화 시점에 두 셀 모두 빈 셀이고 다른 portal 마커도 없어야 함
 			for (const [r, c] of d.cells) {
-				if (next[r][c] !== 0) {
+				if (next[r][c] !== 0 || nextMeta[cellKey(r, c)]?.portalMark) {
 					d.resolved = true;
 					return;
 				}
@@ -1520,7 +1520,8 @@ export function createBlockBlasterGame() {
 		const empty: [number, number][] = [];
 		for (let r = 0; r < GRID_SIZE; r++) {
 			for (let c = 0; c < GRID_SIZE; c++) {
-				if (grid[r][c] === 0) empty.push([r, c]);
+				// PORTAL 마커 셀은 빈 셀이지만 사용자가 블록 놓아 발동해야 함 — 검은 돌로 막지 않음
+				if (grid[r][c] === 0 && !cellMeta[cellKey(r, c)]?.portalMark) empty.push([r, c]);
 			}
 		}
 		if (empty.length === 0) return;
