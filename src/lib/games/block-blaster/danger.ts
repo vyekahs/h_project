@@ -67,6 +67,7 @@ const DANGER_WEIGHTS: Record<DangerType, number> = {
 	reinforced: 35,
 	spreading: 25,
 	'hazard-zone': 20,
+	storm: 15,
 	'doom-row': 10,
 	'doom-col': 10
 };
@@ -119,7 +120,8 @@ export function generateDangerStage(stageNumber: number, grid: BoardGrid): Dange
 		switch (t) {
 			case 'reinforced': return 0;
 			case 'spreading': return 1;
-			case 'hazard-zone': return 2;
+			case 'hazard-zone':
+			case 'storm': return 2;
 			case 'doom-row':
 			case 'doom-col': return 3;
 		}
@@ -249,6 +251,26 @@ function createDanger(
 				delayTurns: 0
 			};
 		}
+		case 'storm': {
+			// 폭풍 — 빈 셀 1개를 중심으로 선택 (☁ 마커). 카운트는 일반 위험과 동일.
+			const empty: [number, number][] = [];
+			for (let r = 0; r < GRID_SIZE; r++) {
+				for (let c = 0; c < GRID_SIZE; c++) {
+					if (grid[r][c] === 0) empty.push([r, c]);
+				}
+			}
+			if (empty.length === 0) return null;
+			const [r, c] = empty[Math.floor(Math.random() * empty.length)];
+			return {
+				id: generateId('storm'),
+				type: 'storm',
+				cells: [[r, c]],
+				countdown: cd,
+				initialCountdown: cd,
+				resolved: false,
+				delayTurns: 0
+			};
+		}
 		default:
 			return null;
 	}
@@ -359,6 +381,8 @@ export function dangerLabel(type: DangerType): string {
 			return '강화 블록';
 		case 'spreading':
 			return '증식 블록';
+		case 'storm':
+			return '폭풍';
 	}
 }
 
@@ -375,6 +399,8 @@ export function dangerDescription(type: DangerType): string {
 			return '회색 강화 블록은 HP 0이 되면 사라집니다.';
 		case 'spreading':
 			return '★ 표시된 증식 블록은 주기마다 인접 빈 셀로 1칸씩 늘어납니다.';
+		case 'storm':
+			return '☁ 폭풍 셀이 살아있는 동안 매 턴 보드에 검은 돌이 추가됩니다. ☁ 셀을 라인 클리어로 제거하거나 카운트가 끝날 때까지 견디세요.';
 	}
 }
 

@@ -20,6 +20,7 @@
 		abilityPreviewCells = [],
 		cellMeta = {},
 		spreadingCountdownById = {},
+		stormCountdownById = {},
 		dangerIdToColorIdx = {},
 		children
 	} = $props<{
@@ -38,15 +39,16 @@
 		abilityPreviewCells?: [number, number][];
 		cellMeta?: CellMetaMap;
 		spreadingCountdownById?: Record<string, number>;
+		stormCountdownById?: Record<string, number>;
 		dangerIdToColorIdx?: Record<string, number>;
 		children?: Snippet;
 	}>();
 
 	const LOCK_COLORS = ['#ef4444', '#3b82f6', '#10b981'];
 
-	function lockColorOf(meta: { reinforcedDangerId?: string; spreadingDangerId?: string } | undefined): string | null {
+	function lockColorOf(meta: { reinforcedDangerId?: string; spreadingDangerId?: string; stormDangerId?: string } | undefined): string | null {
 		if (!meta) return null;
-		const id = meta.reinforcedDangerId ?? meta.spreadingDangerId;
+		const id = meta.reinforcedDangerId ?? meta.spreadingDangerId ?? meta.stormDangerId;
 		if (!id) return null;
 		const idx = dangerIdToColorIdx[id];
 		if (idx == null) return null;
@@ -262,11 +264,12 @@
 						ghost?.valid ? `--block-color: var(--block-color-${activeBlock?.color ?? 1})` : ''
 					)}
 				>
-					{#if meta && (meta.spreadOrigin || meta.reinforcedDangerId != null || (meta.hp != null && meta.hp > 0))}
+					{#if meta && (meta.spreadOrigin || meta.reinforcedDangerId != null || meta.stormOrigin || (meta.hp != null && meta.hp > 0))}
 						{@const spreadCd = meta.spreadingDangerId ? spreadingCountdownById[meta.spreadingDangerId] : undefined}
+						{@const stormCd = meta.stormDangerId ? stormCountdownById[meta.stormDangerId] : undefined}
 						<div class="danger-marker">
-							<span class="dm-left">{spreadCd != null ? spreadCd : ''}</span>
-							<span class="dm-center">{meta.spreadOrigin ? '★' : (meta.reinforcedDangerId != null || (meta.hp != null && meta.hp > 0)) ? '◆' : ''}</span>
+							<span class="dm-left">{spreadCd != null ? spreadCd : stormCd != null ? stormCd : ''}</span>
+							<span class="dm-center">{meta.spreadOrigin ? '★' : meta.stormOrigin ? '☁' : (meta.reinforcedDangerId != null || (meta.hp != null && meta.hp > 0)) ? '◆' : ''}</span>
 							<span class="dm-right">{meta.hp != null && meta.hp > 0 ? meta.hp : ''}</span>
 						</div>
 					{/if}

@@ -19,7 +19,7 @@ export type BoardGrid = CellColor[][];
 // ===========================================================================
 
 /** 위험 종류 */
-export type DangerType = 'doom-row' | 'doom-col' | 'hazard-zone' | 'reinforced' | 'spreading';
+export type DangerType = 'doom-row' | 'doom-col' | 'hazard-zone' | 'reinforced' | 'spreading' | 'storm';
 
 /**
  * 셀별 메타데이터 — `BoardGrid`(색상 0~5)와 분리된 추가 정보.
@@ -36,6 +36,10 @@ export interface CellMeta {
 	spreadOrigin?: boolean;
 	/** 증식 블록 가족 마커 — 어느 Danger 소속인지 추적 */
 	spreadingDangerId?: string;
+	/** STORM 중심 셀 마커 — 라인 클리어로 비워지면 위험 해결 */
+	stormOrigin?: boolean;
+	/** STORM 위험 ID (셀 → 위험 매핑) */
+	stormDangerId?: string;
 }
 
 export type CellMetaMap = Record<string, CellMeta>;

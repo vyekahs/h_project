@@ -1230,10 +1230,23 @@ export function createBlockBlasterGame() {
 	 * doom-row/col, hazard-zone은 영역 표시만 — DangerOverlay가 cells 좌표로 그림.
 	 */
 	function activateDangerOnBoard(d: Danger, stageNumber: number) {
-		if (d.type !== 'reinforced' && d.type !== 'spreading') return;
+		if (d.type !== 'reinforced' && d.type !== 'spreading' && d.type !== 'storm') return;
 		const next = cloneGrid(grid);
 		const nextMeta = { ...cellMeta };
 		const reinforcedHp = stageNumber <= 5 ? 2 : 3;
+		// STORM은 단일 셀이고 활성화 시 자리에 이미 셀이 있으면 silent 종료
+		if (d.type === 'storm') {
+			const [r, c] = d.cells[0];
+			if (next[r][c] !== 0) {
+				d.resolved = true; // 보너스 X, 그냥 사라짐
+				return;
+			}
+			next[r][c] = 5 as CellColor;
+			nextMeta[cellKey(r, c)] = { stormOrigin: true, stormDangerId: d.id };
+			grid = next;
+			cellMeta = nextMeta;
+			return;
+		}
 		for (const [r, c] of d.cells) {
 			if (next[r][c] !== 0) continue; // 이미 채워진 칸은 건너뜀(드물게 발생)
 			next[r][c] = 5 as CellColor;
@@ -1362,7 +1375,50 @@ export function createBlockBlasterGame() {
 				spreadOnce(d);
 				d.countdown = d.initialCountdown;
 			}
+			if (d.type === 'storm') {
+				// 매 N턴마다 보드의 무작위 빈 셀에 검은 돌 추가
+				// (스테이지 1~5: 매 2턴, 6~10: 매 1턴)
+				const interval = ds.stageNumber <= 5 ? 2 : 1;
+				const elapsed = d.initialCountdown - d.countdown;
+				if (d.countdown > 0 && elapsed > 0 && elapsed % interval === 0) {
+					addRandomBlackStone();
+				}
+				if (d.countdown === 0) {
+					// 카운트 만료 — 중심 셀을 검은 돌(petrified)로 변환 후 자연 종료 (보너스 없음)
+					const [r, c] = d.cells[0];
+					const meta = cellMeta[cellKey(r, c)] ?? {};
+					const { stormOrigin: _so, stormDangerId: _sid, ...rest } = meta;
+					void _so; void _sid;
+					cellMeta = { ...cellMeta, [cellKey(r, c)]: { ...rest, petrified: true } };
+					d.resolved = true;
+					resolvedDangerCount++;
+					checkStageClearByCount();
+					// 잠금 매칭 위험이면 슬롯 해제 (1단계 fixpoint와 별개로 명시 처리)
+					if (isMatchedToLock(d, ds)) {
+						ds.lockedSlotDangerIds = ds.lockedSlotDangerIds.filter(id => id !== d.id);
+					}
+				}
+			}
 		}
+	}
+
+	/**
+	 * 보드의 무작위 빈 셀 1개에 검은 돌(petrified) 셀을 추가.
+	 * STORM이 매 턴 호출. 빈 셀이 없으면 아무 작업 안 함.
+	 */
+	function addRandomBlackStone() {
+		const empty: [number, number][] = [];
+		for (let r = 0; r < GRID_SIZE; r++) {
+			for (let c = 0; c < GRID_SIZE; c++) {
+				if (grid[r][c] === 0) empty.push([r, c]);
+			}
+		}
+		if (empty.length === 0) return;
+		const [r, c] = empty[Math.floor(Math.random() * empty.length)];
+		const next = cloneGrid(grid);
+		next[r][c] = 5 as CellColor;
+		grid = next;
+		cellMeta = { ...cellMeta, [cellKey(r, c)]: { ...cellMeta[cellKey(r, c)], petrified: true } };
 	}
 
 	/**
@@ -1441,6 +1497,8 @@ export function createBlockBlasterGame() {
 				const meta = cellMeta[k];
 				// 자기 가족 또는 다른 증식 가족은 제외
 				if (meta?.spreadingDangerId) continue;
+				// STORM 중심 셀은 별도 위험으로 보존 (감염 시 마커 중첩 + 시각 혼란)
+				if (meta?.stormOrigin) continue;
 				if (grid[nr][nc] === 0) {
 					emptyCandidates.push([nr, nc]);
 					continue;
@@ -2134,6 +2192,18 @@ export function createBlockBlasterGame() {
 			if (currentDangerStage) {
 				for (const d of currentDangerStage.dangers) {
 					if (d.type === 'spreading' && !d.resolved && d.delayTurns === 0) {
+						m[d.id] = d.countdown;
+					}
+				}
+			}
+			return m;
+		},
+		/** STORM 위험 ID → 카운트 만료까지 남은 턴 수 */
+		get stormCountdownById() {
+			const m: Record<string, number> = {};
+			if (currentDangerStage) {
+				for (const d of currentDangerStage.dangers) {
+					if (d.type === 'storm' && !d.resolved && d.delayTurns === 0) {
 						m[d.id] = d.countdown;
 					}
 				}
