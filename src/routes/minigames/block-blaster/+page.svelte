@@ -208,7 +208,10 @@
 			return;
 		}
 
-		// cell/row/col — 드래그로 보드 타겟
+		// cell/row/col — 드래그로 보드 타겟.
+		// 선택된 블록이 있으면 해제 — 능력 드래그 종료 시 보드 onpointerup이 먼저 발동되어
+		// placeBlockAt이 의도치 않게 블록을 배치하고 턴 카운트를 -1하는 문제 방지.
+		game.selectBlock(-1);
 		abilityDragSlot = slotIndex;
 		abilityDragStartX = e.clientX;
 		abilityDragStartY = e.clientY;
@@ -387,7 +390,13 @@
 					{dragBlock}
 					{dragX}
 					{dragY}
-					onCellClick={game.placeBlockAt}
+					onCellClick={(row, col) => {
+						// 능력 드래그가 진행 중이면 보드 클릭 무시 — page handlePointerUp이
+						// 능력 적용을 책임지고, 보드 onpointerup이 먼저 발동돼 placeBlockAt이
+						// 잘못 호출되지 않도록 (선택된 블록이 함께 배치되며 카운트 -1되는 버그 방지).
+						if (abilityDragSlot !== null) return;
+						game.placeBlockAt(row, col);
+					}}
 					onDrop={game.placeBlockAt}
 					lastPlacedCells={game.lastPlacedCells}
 					clearingRows={game.clearingRows}
