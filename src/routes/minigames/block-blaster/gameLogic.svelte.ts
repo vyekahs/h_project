@@ -1461,7 +1461,10 @@ export function createBlockBlasterGame() {
 	function openAbilityDraft() {
 		// 모달이 열리는 순간 scheduled 신호 해제 — 이후엔 pendingDraftOptions가 보류 신호
 		pendingStageRewardScheduled = false;
-		const options = drawAbilities(ABILITY_POOL, inventory, 3, stage);
+		// 드래프트 풀의 희귀도 해금은 "지금까지 클리어한 WAVE 수" 기준 — stage 변수는
+		// "다음에 진입할" 번호라 누적 진입 모델에서 갱신이 늦을 수 있음. 클리어 횟수가
+		// 더 정확한 진행도 지표.
+		const options = drawAbilities(ABILITY_POOL, inventory, 3, stagesCleared);
 		if (options.length === 0) {
 			// 후보 없음 — 보너스 카운터 소진하고 그냥 평시 복귀 + 보류해뒀던 게임오버 재검사
 			if (bonusDraftsRemaining > 0) bonusDraftsRemaining--;
