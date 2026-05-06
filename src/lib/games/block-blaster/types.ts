@@ -19,7 +19,7 @@ export type BoardGrid = CellColor[][];
 // ===========================================================================
 
 /** 위험 종류 */
-export type DangerType = 'doom-row' | 'doom-col' | 'hazard-zone' | 'reinforced' | 'spreading' | 'storm' | 'portal' | 'rust';
+export type DangerType = 'doom-row' | 'doom-col' | 'hazard-zone' | 'reinforced' | 'spreading' | 'storm' | 'portal' | 'rust' | 'chaser';
 
 /**
  * 셀별 메타데이터 — `BoardGrid`(색상 0~5)와 분리된 추가 정보.
@@ -48,6 +48,10 @@ export interface CellMeta {
 	rustMark?: boolean;
 	/** RUST 위험 ID (셀 → 위험 매핑) */
 	rustDangerId?: string;
+	/** CHASER 추적 폭탄 마커 — 매 턴 인접 셀로 이동, 카운트 0 도달 시 3x3 폭발 */
+	chaserMark?: boolean;
+	/** CHASER 위험 ID (셀 → 위험 매핑) */
+	chaserDangerId?: string;
 }
 
 export type CellMetaMap = Record<string, CellMeta>;

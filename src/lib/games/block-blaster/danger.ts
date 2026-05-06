@@ -70,6 +70,7 @@ const DANGER_WEIGHTS: Record<DangerType, number> = {
 	storm: 15,
 	portal: 15,
 	rust: 20,
+	chaser: 15,
 	'doom-row': 10,
 	'doom-col': 10
 };
@@ -129,7 +130,8 @@ export function generateDangerStage(stageNumber: number, grid: BoardGrid): Dange
 			case 'portal':
 			case 'rust': return 1;
 			case 'hazard-zone':
-			case 'storm': return 2;
+			case 'storm':
+			case 'chaser': return 2;
 			case 'doom-row':
 			case 'doom-col': return 3;
 		}
@@ -331,6 +333,29 @@ function createDanger(
 				delayTurns: 0
 			};
 		}
+		case 'chaser': {
+			// 추적 폭탄 — 빈 셀 1개에서 시작. 카운트는 폭발까지 남은 턴.
+			// 매 턴 인접 셀 중 폭발 효율이 가장 높은 곳으로 이동 (gameLogic에서 처리).
+			const empty: [number, number][] = [];
+			for (let r = 0; r < GRID_SIZE; r++) {
+				for (let c = 0; c < GRID_SIZE; c++) {
+					if (grid[r][c] !== 0) continue;
+					if (ctx.usedCells.has(`${r},${c}`)) continue;
+					empty.push([r, c]);
+				}
+			}
+			if (empty.length === 0) return null;
+			const [r, c] = empty[Math.floor(Math.random() * empty.length)];
+			return {
+				id: generateId('chaser'),
+				type: 'chaser',
+				cells: [[r, c]],
+				countdown: cd,
+				initialCountdown: cd,
+				resolved: false,
+				delayTurns: 0
+			};
+		}
 		default:
 			return null;
 	}
@@ -461,6 +486,8 @@ export function dangerLabel(type: DangerType): string {
 			return '포털';
 		case 'rust':
 			return '부식';
+		case 'chaser':
+			return '추적 폭탄';
 	}
 }
 
@@ -483,6 +510,8 @@ export function dangerDescription(type: DangerType): string {
 			return '◎ 포털 두 칸. 한쪽에 블록을 놓으면 다른 쪽 위치에 같은 색 셀이 자동 추가되고 두 포털이 새 빈 칸으로 이동합니다. 카운트가 끝나면 사라집니다.';
 		case 'rust':
 			return '⚠ 부식 셀이 주기마다 인접 빈 칸으로 확산됩니다. 부식 셀이 라인 클리어에 포함되면 그 라인 점수가 절반으로 줄어듭니다. 부식 가족을 모두 라인 클리어로 비우거나 카운트 종료까지 견디세요.';
+		case 'chaser':
+			return '⚡ 추적 폭탄이 매 턴 가장 많은 셀을 폭파시킬 수 있는 인접 칸으로 이동합니다. 카운트가 끝나면 3×3 영역의 모든 셀이 검은 돌로 변환됩니다.';
 	}
 }
 

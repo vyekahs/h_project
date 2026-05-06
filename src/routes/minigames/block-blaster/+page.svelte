@@ -407,6 +407,7 @@
 					cellMeta={game.cellMeta}
 					spreadingCountdownById={game.spreadingCountdownById}
 					stormCountdownById={game.stormCountdownById}
+					chaserCountdownById={game.chaserCountdownById}
 					dangerIdToColorIdx={game.slotLockMatching.dangerIdToColorIdx}
 				>
 					{#if game.isSpecialMode && game.currentDangerStage}

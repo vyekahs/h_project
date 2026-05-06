@@ -21,6 +21,7 @@
 		cellMeta = {},
 		spreadingCountdownById = {},
 		stormCountdownById = {},
+		chaserCountdownById = {},
 		dangerIdToColorIdx = {},
 		children
 	} = $props<{
@@ -40,15 +41,16 @@
 		cellMeta?: CellMetaMap;
 		spreadingCountdownById?: Record<string, number>;
 		stormCountdownById?: Record<string, number>;
+		chaserCountdownById?: Record<string, number>;
 		dangerIdToColorIdx?: Record<string, number>;
 		children?: Snippet;
 	}>();
 
 	const LOCK_COLORS = ['#ef4444', '#3b82f6', '#10b981'];
 
-	function lockColorOf(meta: { reinforcedDangerId?: string; spreadingDangerId?: string; stormDangerId?: string; portalDangerId?: string; rustDangerId?: string } | undefined): string | null {
+	function lockColorOf(meta: { reinforcedDangerId?: string; spreadingDangerId?: string; stormDangerId?: string; portalDangerId?: string; rustDangerId?: string; chaserDangerId?: string } | undefined): string | null {
 		if (!meta) return null;
-		const id = meta.reinforcedDangerId ?? meta.spreadingDangerId ?? meta.stormDangerId ?? meta.portalDangerId ?? meta.rustDangerId;
+		const id = meta.reinforcedDangerId ?? meta.spreadingDangerId ?? meta.stormDangerId ?? meta.portalDangerId ?? meta.rustDangerId ?? meta.chaserDangerId;
 		if (!id) return null;
 		const idx = dangerIdToColorIdx[id];
 		if (idx == null) return null;
@@ -258,6 +260,7 @@
 					class:spread-origin={meta?.spreadOrigin}
 					class:portal-cell={meta?.portalMark}
 					class:rust-cell={meta?.rustMark}
+					class:chaser-cell={meta?.chaserMark}
 					class:ability-preview={previewing}
 					class:ability-preview-empty={previewing && color === 0}
 					class:ghost-valid={ghost?.valid === true}
@@ -266,12 +269,13 @@
 						ghost?.valid ? `--block-color: var(--block-color-${activeBlock?.color ?? 1})` : ''
 					)}
 				>
-					{#if meta && (meta.spreadOrigin || meta.reinforcedDangerId != null || meta.stormOrigin || meta.portalMark || meta.rustMark || (meta.hp != null && meta.hp > 0))}
+					{#if meta && (meta.spreadOrigin || meta.reinforcedDangerId != null || meta.stormOrigin || meta.portalMark || meta.rustMark || meta.chaserMark || (meta.hp != null && meta.hp > 0))}
 						{@const spreadCd = meta.spreadingDangerId ? spreadingCountdownById[meta.spreadingDangerId] : undefined}
 						{@const stormCd = meta.stormDangerId ? stormCountdownById[meta.stormDangerId] : undefined}
+						{@const chaserCd = meta.chaserDangerId ? chaserCountdownById[meta.chaserDangerId] : undefined}
 						<div class="danger-marker">
-							<span class="dm-left">{spreadCd != null ? spreadCd : stormCd != null ? stormCd : ''}</span>
-							<span class="dm-center">{meta.spreadOrigin ? '★' : meta.stormOrigin ? '☁' : meta.portalMark ? '◎' : meta.rustMark ? '⚠' : (meta.reinforcedDangerId != null || (meta.hp != null && meta.hp > 0)) ? '◆' : ''}</span>
+							<span class="dm-left">{spreadCd != null ? spreadCd : stormCd != null ? stormCd : chaserCd != null ? chaserCd : ''}</span>
+							<span class="dm-center">{meta.spreadOrigin ? '★' : meta.stormOrigin ? '☁' : meta.portalMark ? '◎' : meta.rustMark ? '⚠' : meta.chaserMark ? '⚡' : (meta.reinforcedDangerId != null || (meta.hp != null && meta.hp > 0)) ? '◆' : ''}</span>
 							<span class="dm-right">{meta.hp != null && meta.hp > 0 ? meta.hp : ''}</span>
 						</div>
 					{/if}
@@ -419,6 +423,18 @@
 	.cell.rust-cell {
 		background: #92400e !important;
 		box-shadow: inset 0 0 0 1.5px rgba(180, 83, 9, 0.7), inset 0 -2px 0 rgba(0, 0, 0, 0.3);
+	}
+
+	/* 추적 폭탄 — 진한 빨강 + 빠른 깜빡임 (긴박감) */
+	.cell.chaser-cell {
+		background: #b91c1c !important;
+		box-shadow: inset 0 0 0 2px rgba(254, 226, 226, 0.5), 0 0 12px rgba(220, 38, 38, 0.7);
+		animation: chaserPulse 0.8s ease-in-out infinite;
+	}
+
+	@keyframes chaserPulse {
+		0%, 100% { box-shadow: inset 0 0 0 2px rgba(254, 226, 226, 0.4), 0 0 8px rgba(220, 38, 38, 0.6); }
+		50% { box-shadow: inset 0 0 0 2px rgba(254, 226, 226, 0.85), 0 0 18px rgba(239, 68, 68, 0.95); }
 	}
 
 	.cell.placed {

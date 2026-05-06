@@ -1250,7 +1250,8 @@ export function createBlockBlasterGame() {
 			d.type !== 'spreading' &&
 			d.type !== 'storm' &&
 			d.type !== 'portal' &&
-			d.type !== 'rust'
+			d.type !== 'rust' &&
+			d.type !== 'chaser'
 		) return;
 		const next = cloneGrid(grid);
 		const nextMeta = { ...cellMeta };
@@ -1292,6 +1293,19 @@ export function createBlockBlasterGame() {
 			}
 			next[r][c] = 5 as CellColor;
 			nextMeta[cellKey(r, c)] = { rustMark: true, rustDangerId: d.id };
+			grid = next;
+			cellMeta = nextMeta;
+			return;
+		}
+		// CHASER는 색을 채우고 chaserMark + chaserDangerId 마커. 매 턴 인접 셀로 이동.
+		if (d.type === 'chaser') {
+			const [r, c] = d.cells[0];
+			if (next[r][c] !== 0) {
+				d.resolved = true;
+				return;
+			}
+			next[r][c] = 5 as CellColor;
+			nextMeta[cellKey(r, c)] = { chaserMark: true, chaserDangerId: d.id };
 			grid = next;
 			cellMeta = nextMeta;
 			return;
@@ -1490,6 +1504,22 @@ export function createBlockBlasterGame() {
 					}
 				}
 			}
+			if (d.type === 'chaser') {
+				// 매 턴 인접 셀 중 폭발 효율이 가장 높은 곳으로 이동 (이동 가능 후보 0이면 제자리)
+				if (d.countdown > 0) {
+					chaserMoveOnce(d);
+				}
+				if (d.countdown === 0) {
+					// 카운트 만료 — 3x3 폭발: 영역의 채워진 셀들을 petrified로 변환 후 자연 종료
+					chaserExplode(d);
+					d.resolved = true;
+					resolvedDangerCount++;
+					checkStageClearByCount();
+					if (isMatchedToLock(d, ds)) {
+						ds.lockedSlotDangerIds = ds.lockedSlotDangerIds.filter(id => id !== d.id);
+					}
+				}
+			}
 		}
 	}
 
@@ -1642,6 +1672,7 @@ export function createBlockBlasterGame() {
 				if (meta?.portalMark) continue;
 				if (meta?.stormOrigin) continue;
 				if (meta?.rustMark) continue;
+				if (meta?.chaserMark) continue;
 				candidates.push([nr, nc]);
 			}
 		}
@@ -1656,6 +1687,107 @@ export function createBlockBlasterGame() {
 			[cellKey(nr, nc)]: { rustMark: true, rustDangerId: d.id }
 		};
 		d.cells.push([nr, nc]);
+	}
+
+	/**
+	 * CHASER 이동 — 인접 4방향 후보 중 (위험 마커가 없는 빈 셀 또는 일반 블록 셀) 중에서
+	 * 이동 후 3x3 폭발 시 가장 많은 채워진 일반 셀(다른 위험 마커, petrified 제외)을
+	 * 폭파시킬 수 있는 자리로 이동. 동률이면 무작위. 후보 0이면 제자리.
+	 */
+	function chaserMoveOnce(d: Danger) {
+		const [cr, cc] = d.cells[0];
+		const dirs: [number, number][] = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+
+		const isOtherDangerMarker = (r: number, c: number): boolean => {
+			const m = cellMeta[cellKey(r, c)];
+			if (!m) return false;
+			return !!(
+				m.spreadingDangerId ||
+				m.stormOrigin ||
+				m.portalMark ||
+				m.rustMark ||
+				m.reinforcedDangerId ||
+				m.chaserMark
+			);
+		};
+
+		// 이동 후 폭발 효율 = 3x3 영역 안의 (채워진 일반 셀) 수
+		// (다른 위험 마커 셀, petrified 셀은 카운트 X)
+		const explosionScore = (cx: number, cy: number): number => {
+			let n = 0;
+			for (let dr = -1; dr <= 1; dr++) {
+				for (let dc = -1; dc <= 1; dc++) {
+					const nr = cx + dr;
+					const nc = cy + dc;
+					if (nr < 0 || nr >= GRID_SIZE || nc < 0 || nc >= GRID_SIZE) continue;
+					if (grid[nr][nc] === 0) continue; // 빈 셀 제외
+					const m = cellMeta[cellKey(nr, nc)];
+					if (m?.petrified) continue;
+					if (m && (m.spreadingDangerId || m.stormOrigin || m.rustMark || m.reinforcedDangerId)) continue;
+					// 일반 블록 또는 자기 자신(chaserMark) — 자기는 카운트 X
+					if (m?.chaserMark) continue;
+					n++;
+				}
+			}
+			return n;
+		};
+
+		const candidates: { pos: [number, number]; score: number }[] = [];
+		for (const [dr, dc] of dirs) {
+			const nr = cr + dr;
+			const nc = cc + dc;
+			if (nr < 0 || nr >= GRID_SIZE || nc < 0 || nc >= GRID_SIZE) continue;
+			if (isOtherDangerMarker(nr, nc)) continue;
+			// 빈 셀로만 이동 (사용자 블록을 덮어쓰지 않음)
+			if (grid[nr][nc] !== 0) continue;
+			candidates.push({ pos: [nr, nc], score: explosionScore(nr, nc) });
+		}
+		if (candidates.length === 0) return; // 제자리
+
+		const maxScore = Math.max(...candidates.map(x => x.score));
+		const best = candidates.filter(x => x.score === maxScore);
+		const pick = best[Math.floor(Math.random() * best.length)];
+		const [nr, nc] = pick.pos;
+
+		// 이동 — 기존 chaser 셀 비우고 새 빈 셀로 이동 (chaser 마커 부여)
+		const next = cloneGrid(grid);
+		const nextMeta = { ...cellMeta };
+		next[cr][cc] = 0;
+		delete nextMeta[cellKey(cr, cc)];
+		next[nr][nc] = 5 as CellColor;
+		nextMeta[cellKey(nr, nc)] = { chaserMark: true, chaserDangerId: d.id };
+		grid = next;
+		cellMeta = nextMeta;
+		d.cells = [[nr, nc]];
+	}
+
+	/**
+	 * CHASER 폭발 — 카운트 만료 시 chaser 위치 중심 3x3 영역의 채워진 셀들을 petrified로 변환.
+	 * 다른 위험 마커는 보존하면서 petrified 추가 (이중 마커). chaser 본인 셀은 비움.
+	 */
+	function chaserExplode(d: Danger) {
+		const [cr, cc] = d.cells[0];
+		const next = cloneGrid(grid);
+		const nextMeta = { ...cellMeta };
+
+		// 본인 셀 먼저 비우기
+		next[cr][cc] = 0;
+		delete nextMeta[cellKey(cr, cc)];
+
+		for (let dr = -1; dr <= 1; dr++) {
+			for (let dc = -1; dc <= 1; dc++) {
+				const nr = cr + dr;
+				const nc = cc + dc;
+				if (nr < 0 || nr >= GRID_SIZE || nc < 0 || nc >= GRID_SIZE) continue;
+				if (nr === cr && nc === cc) continue; // 본인 셀은 위에서 처리
+				if (next[nr][nc] === 0) continue; // 빈 셀은 폭발 효과 없음
+				// 채워진 셀 → petrified 추가 (다른 마커는 보존)
+				const k = cellKey(nr, nc);
+				nextMeta[k] = { ...nextMeta[k], petrified: true };
+			}
+		}
+		grid = next;
+		cellMeta = nextMeta;
 	}
 
 	/**
@@ -1740,6 +1872,8 @@ export function createBlockBlasterGame() {
 				if (meta?.portalMark) continue;
 				// RUST 셀은 자체 위험 — 감염 X (격리)
 				if (meta?.rustMark) continue;
+				// CHASER 셀은 매 턴 이동하는 추적자 — 감염 X (격리)
+				if (meta?.chaserMark) continue;
 				if (grid[nr][nc] === 0) {
 					emptyCandidates.push([nr, nc]);
 					continue;
@@ -2445,6 +2579,18 @@ export function createBlockBlasterGame() {
 			if (currentDangerStage) {
 				for (const d of currentDangerStage.dangers) {
 					if (d.type === 'storm' && !d.resolved && d.delayTurns === 0) {
+						m[d.id] = d.countdown;
+					}
+				}
+			}
+			return m;
+		},
+		/** CHASER 위험 ID → 폭발까지 남은 턴 수 */
+		get chaserCountdownById() {
+			const m: Record<string, number> = {};
+			if (currentDangerStage) {
+				for (const d of currentDangerStage.dangers) {
+					if (d.type === 'chaser' && !d.resolved && d.delayTurns === 0) {
 						m[d.id] = d.countdown;
 					}
 				}
