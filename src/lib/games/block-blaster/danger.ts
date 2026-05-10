@@ -334,8 +334,9 @@ function createDanger(
 			};
 		}
 		case 'chaser': {
-			// 추적 폭탄 — 빈 셀 1개에서 시작. 카운트는 폭발까지 남은 턴.
-			// 매 턴 인접 셀 중 폭발 효율이 가장 높은 곳으로 이동 (gameLogic에서 처리).
+			// 추적 폭탄 — 활성화 시 "목표 셀" 결정, 시작 위치는 목표에서 정확히 cd칸 떨어진 자리.
+			// 매 턴 목표를 향해 1칸 이동하여 카운트 0 도달 시 목표에 도착해 폭발.
+			// 목표는 폭발 효율(주변 채워진 일반 셀 수)이 가장 높은 빈 셀.
 			const empty: [number, number][] = [];
 			for (let r = 0; r < GRID_SIZE; r++) {
 				for (let c = 0; c < GRID_SIZE; c++) {
@@ -344,16 +345,57 @@ function createDanger(
 					empty.push([r, c]);
 				}
 			}
-			if (empty.length === 0) return null;
-			const [r, c] = empty[Math.floor(Math.random() * empty.length)];
+			if (empty.length < 2) return null; // 시작 + 목표 = 빈 셀 2개 이상 필요
+
+			// 폭발 효율 = 후보 셀 중심 3x3에 채워진 셀 수
+			const explosionScore = (r: number, c: number): number => {
+				let n = 0;
+				for (let dr = -1; dr <= 1; dr++) {
+					for (let dc = -1; dc <= 1; dc++) {
+						const nr = r + dr;
+						const nc = c + dc;
+						if (nr < 0 || nr >= GRID_SIZE || nc < 0 || nc >= GRID_SIZE) continue;
+						if (grid[nr][nc] !== 0) n++;
+					}
+				}
+				return n;
+			};
+
+			// 목표 후보: 효율 가장 높은 빈 셀 (효율 동률 시 무작위)
+			const scored = empty.map(([r, c]) => ({ pos: [r, c] as [number, number], s: explosionScore(r, c) }));
+			const maxS = Math.max(...scored.map(x => x.s));
+			const topTargets = scored.filter(x => x.s === maxS).map(x => x.pos);
+
+			// 시작 위치 — 목표에서 맨해튼 거리 정확히 cd 칸 떨어진 빈 셀.
+			// cd 거리 후보 없으면 cd-1, cd-2... 줄여가며 시도. 시작/목표는 다른 셀.
+			let target: [number, number] | null = null;
+			let start: [number, number] | null = null;
+			let actualCd = cd;
+			outer: for (let dist = cd; dist >= 1; dist--) {
+				for (const t of topTargets) {
+					const candidates = empty.filter(([r, c]) => {
+						if (r === t[0] && c === t[1]) return false;
+						return Math.abs(r - t[0]) + Math.abs(c - t[1]) === dist;
+					});
+					if (candidates.length > 0) {
+						target = t;
+						start = candidates[Math.floor(Math.random() * candidates.length)];
+						actualCd = dist;
+						break outer;
+					}
+				}
+			}
+			if (!target || !start) return null;
+
 			return {
 				id: generateId('chaser'),
 				type: 'chaser',
-				cells: [[r, c]],
-				countdown: cd,
-				initialCountdown: cd,
+				cells: [start],
+				countdown: actualCd,
+				initialCountdown: actualCd,
 				resolved: false,
-				delayTurns: 0
+				delayTurns: 0,
+				chaserTarget: target
 			};
 		}
 		default:

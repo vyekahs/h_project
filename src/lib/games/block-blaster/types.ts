@@ -83,6 +83,8 @@ export interface Danger {
 	 * 0이 되는 순간 활성화되며 reinforced/spreading은 그때 보드에 셀 배치.
 	 */
 	delayTurns: number;
+	/** CHASER 전용 — 폭발 목표 셀 좌표 (활성화 시 결정, 매 턴 이동으로 접근) */
+	chaserTarget?: [number, number];
 }
 
 /** 위험 스테이지 활성 상태 */

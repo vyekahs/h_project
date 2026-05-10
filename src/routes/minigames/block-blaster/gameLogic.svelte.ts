@@ -1690,15 +1690,20 @@ export function createBlockBlasterGame() {
 	}
 
 	/**
-	 * CHASER 이동 — 인접 4방향 후보 중 (위험 마커가 없는 빈 셀 또는 일반 블록 셀) 중에서
-	 * 이동 후 3x3 폭발 시 가장 많은 채워진 일반 셀(다른 위험 마커, petrified 제외)을
-	 * 폭파시킬 수 있는 자리로 이동. 동률이면 무작위. 후보 0이면 제자리.
+	 * CHASER 이동 — 활성화 시 정한 목표(d.chaserTarget)를 향해 매 턴 1칸 이동.
+	 * 4방향 후보 중 목표와의 맨해튼 거리가 가장 짧은 인접 빈 셀로 이동.
+	 * 다른 위험 마커 셀과 일반 블록 셀은 회피 (사용자 블록 보존). 후보 0이면 제자리.
+	 * 카운트와 거리가 정확히 맞으면 마지막 턴에 목표에 도착.
 	 */
 	function chaserMoveOnce(d: Danger) {
+		if (!d.chaserTarget) return;
 		const [cr, cc] = d.cells[0];
-		const dirs: [number, number][] = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+		const [tr, tc] = d.chaserTarget;
+		// 이미 목표에 있으면 이동 X
+		if (cr === tr && cc === tc) return;
 
-		const isOtherDangerMarker = (r: number, c: number): boolean => {
+		const dirs: [number, number][] = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+		const isBlocked = (r: number, c: number): boolean => {
 			const m = cellMeta[cellKey(r, c)];
 			if (!m) return false;
 			return !!(
@@ -1711,45 +1716,24 @@ export function createBlockBlasterGame() {
 			);
 		};
 
-		// 이동 후 폭발 효율 = 3x3 영역 안의 (채워진 일반 셀) 수
-		// (다른 위험 마커 셀, petrified 셀은 카운트 X)
-		const explosionScore = (cx: number, cy: number): number => {
-			let n = 0;
-			for (let dr = -1; dr <= 1; dr++) {
-				for (let dc = -1; dc <= 1; dc++) {
-					const nr = cx + dr;
-					const nc = cy + dc;
-					if (nr < 0 || nr >= GRID_SIZE || nc < 0 || nc >= GRID_SIZE) continue;
-					if (grid[nr][nc] === 0) continue; // 빈 셀 제외
-					const m = cellMeta[cellKey(nr, nc)];
-					if (m?.petrified) continue;
-					if (m && (m.spreadingDangerId || m.stormOrigin || m.rustMark || m.reinforcedDangerId)) continue;
-					// 일반 블록 또는 자기 자신(chaserMark) — 자기는 카운트 X
-					if (m?.chaserMark) continue;
-					n++;
-				}
-			}
-			return n;
-		};
-
-		const candidates: { pos: [number, number]; score: number }[] = [];
+		const currentDist = Math.abs(cr - tr) + Math.abs(cc - tc);
+		const candidates: [number, number][] = [];
 		for (const [dr, dc] of dirs) {
 			const nr = cr + dr;
 			const nc = cc + dc;
 			if (nr < 0 || nr >= GRID_SIZE || nc < 0 || nc >= GRID_SIZE) continue;
-			if (isOtherDangerMarker(nr, nc)) continue;
-			// 빈 셀로만 이동 (사용자 블록을 덮어쓰지 않음)
+			// 빈 셀로만 (사용자 블록 안 덮음)
 			if (grid[nr][nc] !== 0) continue;
-			candidates.push({ pos: [nr, nc], score: explosionScore(nr, nc) });
+			// 다른 위험 마커 회피
+			if (isBlocked(nr, nc)) continue;
+			// 목표와의 거리가 줄어드는 자리만 (왕복 방지)
+			const newDist = Math.abs(nr - tr) + Math.abs(nc - tc);
+			if (newDist >= currentDist) continue;
+			candidates.push([nr, nc]);
 		}
-		if (candidates.length === 0) return; // 제자리
+		if (candidates.length === 0) return; // 길이 막힘 — 제자리
 
-		const maxScore = Math.max(...candidates.map(x => x.score));
-		const best = candidates.filter(x => x.score === maxScore);
-		const pick = best[Math.floor(Math.random() * best.length)];
-		const [nr, nc] = pick.pos;
-
-		// 이동 — 기존 chaser 셀 비우고 새 빈 셀로 이동 (chaser 마커 부여)
+		const [nr, nc] = candidates[Math.floor(Math.random() * candidates.length)];
 		const next = cloneGrid(grid);
 		const nextMeta = { ...cellMeta };
 		next[cr][cc] = 0;
