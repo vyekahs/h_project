@@ -19,7 +19,10 @@ export type BoardGrid = CellColor[][];
 // ===========================================================================
 
 /** 위험 종류 */
-export type DangerType = 'doom-row' | 'doom-col' | 'hazard-zone' | 'reinforced' | 'spreading' | 'storm' | 'portal' | 'rust' | 'chaser';
+export type DangerType = 'doom-row' | 'doom-col' | 'hazard-zone' | 'reinforced' | 'spreading' | 'storm' | 'portal' | 'rust' | 'chaser' | 'quest';
+
+/** QUEST 패턴 종류 — 사용자가 카운트 동안 한 번 달성하면 위험 해결 */
+export type QuestPatternType = 'combo' | 'same-color-line' | 'cross';
 
 /**
  * 셀별 메타데이터 — `BoardGrid`(색상 0~5)와 분리된 추가 정보.
@@ -85,6 +88,10 @@ export interface Danger {
 	delayTurns: number;
 	/** CHASER 전용 — 폭발 목표 셀 좌표 (활성화 시 결정, 매 턴 이동으로 접근) */
 	chaserTarget?: [number, number];
+	/** QUEST 전용 — 달성해야 할 패턴 (활성화 시 1개 무작위 부여) */
+	questPattern?: QuestPatternType;
+	/** QUEST 전용 — 콤보 패턴의 목표 콤보 수 (예: 3) */
+	questThreshold?: number;
 }
 
 /** 위험 스테이지 활성 상태 */

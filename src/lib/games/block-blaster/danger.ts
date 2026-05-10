@@ -6,7 +6,7 @@
  * 3단계: spreading + 트레이 잠금 추가 잠금 정책
  */
 
-import { GRID_SIZE, type BoardGrid, type CellMetaMap, type Danger, type DangerStage, type DangerType } from './types';
+import { GRID_SIZE, type BoardGrid, type CellMetaMap, type Danger, type DangerStage, type DangerType, type QuestPatternType } from './types';
 
 let nextId = 1;
 function generateId(prefix: string): string {
@@ -71,6 +71,7 @@ const DANGER_WEIGHTS: Record<DangerType, number> = {
 	portal: 15,
 	rust: 20,
 	chaser: 15,
+	quest: 15,
 	'doom-row': 10,
 	'doom-col': 10
 };
@@ -128,7 +129,8 @@ export function generateDangerStage(stageNumber: number, grid: BoardGrid): Dange
 			case 'reinforced': return 0;
 			case 'spreading':
 			case 'portal':
-			case 'rust': return 1;
+			case 'rust':
+			case 'quest': return 1;
 			case 'hazard-zone':
 			case 'storm':
 			case 'chaser': return 2;
@@ -333,6 +335,26 @@ function createDanger(
 				delayTurns: 0
 			};
 		}
+		case 'quest': {
+			// 도전 과제 — 보드 셀 점거 X, cells는 빈 배열. 카운트 동안 패턴 달성하면 해결.
+			// 카운트는 일반 위험의 1.5배 (사용자 결정 — 시간 여유)
+			const questCd = Math.floor(cd * 1.5);
+			const patternPool: QuestPatternType[] = ['combo', 'same-color-line', 'cross'];
+			const pattern = patternPool[Math.floor(Math.random() * patternPool.length)];
+			// combo 임계값 — 스테이지 진행도에 따라 ≥3 (1~5) 또는 ≥4 (6~10)
+			const threshold = pattern === 'combo' ? (stageNumber <= 5 ? 3 : 4) : 0;
+			return {
+				id: generateId('quest'),
+				type: 'quest',
+				cells: [],
+				countdown: questCd,
+				initialCountdown: questCd,
+				resolved: false,
+				delayTurns: 0,
+				questPattern: pattern,
+				questThreshold: threshold
+			};
+		}
 		case 'chaser': {
 			// 추적 폭탄 — 활성화 시 "목표 셀" 결정, 시작 위치는 목표에서 정확히 cd칸 떨어진 자리.
 			// 매 턴 목표를 향해 1칸 이동하여 카운트 0 도달 시 목표에 도착해 폭발.
@@ -503,6 +525,10 @@ export function isDangerResolved(danger: Danger, grid: BoardGrid, cellMeta?: Cel
 		}
 		return true;
 	}
+	if (danger.type === 'quest') {
+		// quest는 cells가 빈 배열 — 패턴 달성 시 명시적으로 d.resolved=true 처리됨
+		return false;
+	}
 	for (const [r, c] of danger.cells) {
 		if (grid[r][c] !== 0) return false;
 	}
@@ -530,6 +556,20 @@ export function dangerLabel(type: DangerType): string {
 			return '부식';
 		case 'chaser':
 			return '추적 폭탄';
+		case 'quest':
+			return '도전 과제';
+	}
+}
+
+/** QUEST 패턴별 짧은 라벨 (헤더 표시용) */
+export function questPatternLabel(p: QuestPatternType, threshold?: number): string {
+	switch (p) {
+		case 'combo':
+			return `콤보 ${threshold ?? 3}+`;
+		case 'same-color-line':
+			return '같은 색 라인';
+		case 'cross':
+			return '가로+세로 동시';
 	}
 }
 
@@ -554,6 +594,8 @@ export function dangerDescription(type: DangerType): string {
 			return '⚠ 부식 셀이 주기마다 인접 빈 칸으로 확산됩니다. 부식 셀이 라인 클리어에 포함되면 그 라인 점수가 절반으로 줄어듭니다. 부식 가족을 모두 라인 클리어로 비우거나 카운트 종료까지 견디세요.';
 		case 'chaser':
 			return '⚡ 추적 폭탄이 매 턴 가장 많은 셀을 폭파시킬 수 있는 인접 칸으로 이동합니다. 카운트가 끝나면 3×3 영역의 모든 셀이 검은 돌로 변환됩니다.';
+		case 'quest':
+			return '🎯 도전 과제 — 카운트 안에 특정 패턴을 달성하면 해결. 능력 사용은 카운트되지 않고 사용자 블록 배치로 만든 라인 클리어만 인정됩니다. 실패해도 게임오버는 아닙니다.';
 	}
 }
 

@@ -22,6 +22,7 @@
 	import { user } from '$lib/stores/user';
 	import { createBlockBlasterGame, formatTime, computeAbilityPreview, type GameMode } from './gameLogic.svelte';
 	import type { BlockShape } from '$lib/games/block-blaster/types';
+	import { questPatternLabel } from '$lib/games/block-blaster/danger';
 
 	const game = createBlockBlasterGame();
 
@@ -338,6 +339,9 @@
 									WAVE {game.stagesCleared}/{game.maxStage} · 다음 WAVE까지 {game.turnsUntilNextDanger}턴
 								{/if}
 							</span>
+							{#each game.activeQuests as q (q.id)}
+								<span class="quest-tag">🎯 {q.questPattern ? questPatternLabel(q.questPattern, q.questThreshold) : ''} · {q.countdown}턴</span>
+							{/each}
 						{/if}
 					</span>
 					<span class="score-value">{game.score.toLocaleString()}</span>
@@ -690,6 +694,17 @@
 		text-transform: none;
 		letter-spacing: 0;
 		color: #f59e0b;
+		font-size: 0.65rem;
+		font-weight: 700;
+	}
+
+	.quest-tag {
+		text-transform: none;
+		letter-spacing: 0;
+		color: #22d3ee;
+		background: rgba(34, 211, 238, 0.12);
+		padding: 2px 6px;
+		border-radius: 6px;
 		font-size: 0.65rem;
 		font-weight: 700;
 	}

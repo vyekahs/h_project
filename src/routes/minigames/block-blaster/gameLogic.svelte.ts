@@ -857,6 +857,12 @@ export function createBlockBlasterGame() {
 			score += points;
 			linesCleared += totalLines;
 
+			// QUEST 패턴 감지 — clearLinesWithMeta 호출 전(grid에 라인 데이터 살아있을 때)
+			// 사용자 블록 배치로 만든 라인 클리어만 카운트 (능력 경로 X)
+			if (isSpecialMode() && currentDangerStage) {
+				detectQuestPatterns(rows, cols, combo);
+			}
+
 			setTimeout(() => {
 				clearLinesWithMeta(rows, cols);
 				clearingRows = [];
@@ -1520,6 +1526,15 @@ export function createBlockBlasterGame() {
 					}
 				}
 			}
+			if (d.type === 'quest' && d.countdown === 0) {
+				// 카운트 만료 — 패턴 미달성. 잠금 해제 + 자연 종료 (보너스 X, resolvedDangerCount는 +1)
+				d.resolved = true;
+				resolvedDangerCount++;
+				checkStageClearByCount();
+				if (isMatchedToLock(d, ds)) {
+					ds.lockedSlotDangerIds = ds.lockedSlotDangerIds.filter(id => id !== d.id);
+				}
+			}
 		}
 	}
 
@@ -1772,6 +1787,73 @@ export function createBlockBlasterGame() {
 		}
 		grid = next;
 		cellMeta = nextMeta;
+	}
+
+	/**
+	 * QUEST 패턴 감지 — 사용자 블록 배치로 라인 클리어가 발생한 시점에 호출.
+	 * 진행 중 quest들의 패턴이 충족되면 d.resolved=true로 마킹 (1단계 fixpoint가 잡지 않으므로 직접).
+	 *
+	 * @param rows 클리어된 가로줄 인덱스
+	 * @param cols 클리어된 세로열 인덱스
+	 * @param comboValue 이번 라인 클리어 후 콤보 값
+	 *
+	 * 패턴:
+	 * - 'combo': comboValue >= questThreshold
+	 * - 'same-color-line': 클리어된 라인 중 한 줄/열의 모든 셀 색이 동일
+	 * - 'cross': 가로 라인과 세로 라인이 같은 턴에 모두 클리어됨 (rows.length > 0 && cols.length > 0)
+	 */
+	function detectQuestPatterns(rows: number[], cols: number[], comboValue: number) {
+		if (!currentDangerStage) return;
+		const ds = currentDangerStage;
+
+		// 같은 색 라인 판정 — 클리어 직전 grid 상태에서 라인의 모든 셀이 같은 색이면 true
+		const hasSameColorLine = (): boolean => {
+			for (const r of rows) {
+				const first = grid[r][0];
+				if (first === 0) continue;
+				let same = true;
+				for (let c = 1; c < GRID_SIZE; c++) {
+					if (grid[r][c] !== first) { same = false; break; }
+				}
+				if (same) return true;
+			}
+			for (const c of cols) {
+				const first = grid[0][c];
+				if (first === 0) continue;
+				let same = true;
+				for (let r = 1; r < GRID_SIZE; r++) {
+					if (grid[r][c] !== first) { same = false; break; }
+				}
+				if (same) return true;
+			}
+			return false;
+		};
+		const isCross = rows.length > 0 && cols.length > 0;
+		// 같은 색 판정은 비싸니 lazy
+		let sameColorCached: boolean | null = null;
+		const sameColorMatched = (): boolean => {
+			if (sameColorCached === null) sameColorCached = hasSameColorLine();
+			return sameColorCached;
+		};
+
+		for (const d of ds.dangers) {
+			if (d.type !== 'quest') continue;
+			if (d.resolved) continue;
+			if (d.delayTurns > 0) continue;
+			let matched = false;
+			if (d.questPattern === 'combo' && d.questThreshold && comboValue >= d.questThreshold) matched = true;
+			else if (d.questPattern === 'cross' && isCross) matched = true;
+			else if (d.questPattern === 'same-color-line' && sameColorMatched()) matched = true;
+			if (matched) {
+				d.resolved = true;
+				score += 200; // 일반 위험 해결 보너스
+				resolvedDangerCount++;
+				checkStageClearByCount();
+				if (isMatchedToLock(d, ds)) {
+					ds.lockedSlotDangerIds = ds.lockedSlotDangerIds.filter(id => id !== d.id);
+				}
+			}
+		}
 	}
 
 	/**
@@ -2580,6 +2662,13 @@ export function createBlockBlasterGame() {
 				}
 			}
 			return m;
+		},
+		/** 활성 QUEST 목록 — 헤더에 진행 중 도전 과제 표시용 */
+		get activeQuests(): Danger[] {
+			if (!currentDangerStage) return [];
+			return currentDangerStage.dangers.filter(
+				d => d.type === 'quest' && !d.resolved && d.delayTurns === 0
+			);
 		},
 		get pendingDangerIntro() { return pendingDangerIntro; },
 		get pendingDangerClear() { return pendingDangerClear; },
