@@ -63,6 +63,8 @@
 	}
 
 	function connectSSE() {
+		// 기존 연결이 남아있으면 먼저 정리 (중복 연결 시 알림이 중복 수신됨)
+		if (eventSource) { eventSource.close(); eventSource = null; }
 		eventSource = new EventSource('/api/sse/notifications');
 
 		eventSource.addEventListener('notification', (e) => {
