@@ -7,7 +7,10 @@ damonpyo.mooo.com {
         reverse_proxy ble-server:3001
     }
     handle {
-        reverse_proxy app:3000
+        reverse_proxy app:3000 {
+            header_up X-Forwarded-Host {host}
+            header_up X-Forwarded-Proto {scheme}
+        }
     }
 }
 
@@ -16,17 +19,10 @@ honnol.org {
         reverse_proxy ble-server:3001
     }
     handle {
-        reverse_proxy app:3000
+        reverse_proxy app:3000 {
+            header_up X-Forwarded-Host {host}
+            header_up X-Forwarded-Proto {scheme}
+        }
     }
 }
-itemselector.mooo.com {                                                                      
-    basicauth {                                                                               
-        arang $2a$14$vtVgGA19Hk6RZLQnmiIiQeVCux./9u9Lnfes36OOInlasdSxpz6ji
-    }                                                         
-    handle /api/* {                                                                           
-        uri strip_prefix /api
-        reverse_proxy host.docker.internal:8001                                               
-    }                                                                                         
-    reverse_proxy host.docker.internal:3001
-}                                                                                             
-        
+   

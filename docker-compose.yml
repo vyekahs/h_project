@@ -5,7 +5,8 @@ services:
       - "3000:3000"
     environment:
       - DATABASE_URL=postgres://user:password@db:5432/boardgameclub
-      - ORIGIN=${ORIGIN:-https://damonpyo.mooo.com}
+      - PROTOCOL_HEADER=x-forwarded-proto
+      - HOST_HEADER=x-forwarded-host
       - BODY_SIZE_LIMIT=Infinity
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin1234}
       - SCANNER_API_KEY=${SCANNER_API_KEY:-hproject_scanner_secret_2026}

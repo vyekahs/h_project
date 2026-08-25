@@ -3,9 +3,8 @@ import { sql } from 'drizzle-orm';
 import type { PageServerLoad } from './$types';
 import QRCode from 'qrcode';
 import crypto from 'crypto';
-import { env } from '$env/dynamic/private';
 
-export const load: PageServerLoad = async () => {
+export const load: PageServerLoad = async ({ url }) => {
     // 1. Generate random token
     const token = crypto.randomBytes(32).toString('hex');
 
@@ -16,9 +15,8 @@ export const load: PageServerLoad = async () => {
     await db.execute(sql`INSERT INTO qr_tokens (token, expires_at) VALUES (${token}, ${expiresAt.toISOString()})`);
 
     // 4. Generate QR Code URL
-    // Use ORIGIN from env, fallback to localhost for dev
-    const origin = env.ORIGIN || 'http://localhost:3000';
-    const checkinUrl = `${origin}/open/${token}`;
+    // 접속한 도메인(url.origin) 기준으로 생성 — 여러 도메인을 동시에 서빙하므로 ORIGIN 고정값 사용 불가
+    const checkinUrl = `${url.origin}/open/${token}`;
 
     const qrCode = await QRCode.toDataURL(checkinUrl, {
         width: 400,
