@@ -146,6 +146,8 @@
 				goto(`/minigames/start/${parts[1]}?tab=ranking`);
 			} else if (parts[0] === 'party_chat' && parts[1]) {
 				goto(`/party/${parts[1]}/chat`);
+			} else if (parts[0] === 'wtp' && parts[1]) {
+				goto(`/?wtp=${parts[1]}`);
 			} else if (parts[0] === 'party_invite') {
 				goto('/mypage?tab=parties');
 			}

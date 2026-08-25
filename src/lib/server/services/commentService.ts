@@ -214,7 +214,7 @@ export const CommentService = {
 					type: 'wtp_message',
 					title: '같이하기 대화',
 					body: `${fromName}님이 "${gameName}" 대화방에 메시지를 보냈습니다`,
-					url: '/?tab=games',
+					url: `/?wtp=${wtpId}`,
 				},
 				fromUserId,
 				referenceId

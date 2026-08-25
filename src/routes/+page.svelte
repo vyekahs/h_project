@@ -2,7 +2,8 @@
     import type { PageData } from './$types';
     import { onMount, onDestroy } from 'svelte';
     import { enhance, applyAction } from '$app/forms';
-    import { invalidateAll } from '$app/navigation';
+    import { invalidateAll, goto } from '$app/navigation';
+    import { page } from '$app/state';
     import NotificationBell from '$lib/components/notifications/NotificationBell.svelte';
     import WantToPlayCard from '$lib/components/games/WantToPlayCard.svelte';
     import GameComments from '$lib/components/games/GameComments.svelte';
@@ -328,6 +329,20 @@
         selectedWtpPost = post;
         showWtpDetailModal = true;
     }
+
+    // 알림/푸시로 "?wtp={postId}" 링크를 타고 들어왔을 때 해당 같이 할래요 모달을 자동으로 오픈
+    $effect(() => {
+        const wtpParam = page.url.searchParams.get('wtp');
+        if (!wtpParam) return;
+        const post = (data.wantToPlayPosts || []).find((p: any) => String(p.id) === wtpParam);
+        if (post) {
+            openWtpDetail(post);
+            if (!isTablet) activeTab = 'games';
+        }
+        const url = new URL(window.location.href);
+        url.searchParams.delete('wtp');
+        goto(`${url.pathname}${url.search}`, { replaceState: true, noScroll: true, keepFocus: true });
+    });
 
     // Visit Plan Modal
     let showVisitPlanModal = $state(false);
