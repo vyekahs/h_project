@@ -44,7 +44,7 @@
 				<div class="wtp-game-img placeholder">🎲</div>
 			{/if}
 			<div class="wtp-title-area">
-				<h4 class="wtp-game-name">{post.game_name}</h4>
+				<h3 class="wtp-game-name">{post.game_name}</h3>
 				<span class="wtp-creator">
 					{#if post.creator_title}
 						<span class="wtp-creator-title">[ {post.creator_title} ]</span>
@@ -98,7 +98,6 @@
 		border-radius: 12px;
 		box-shadow: 0 2px 4px var(--overlay-light);
 		border: 1px solid var(--border-light);
-		border-left: 6px solid var(--color-blue, #3b82f6);
 		cursor: pointer;
 		transition: transform 0.2s, box-shadow 0.2s;
 	}
@@ -167,12 +166,12 @@
 	}
 	.wtp-tag-badge {
 		display: inline-block;
-		padding: 0.1rem 0.45rem;
+		padding: 0.15rem 0.5rem;
 		border-radius: 10px;
 		background: var(--color-blue-light, #dbeafe);
-		color: var(--color-blue, #3b82f6);
-		font-size: 0.65rem;
-		font-weight: 500;
+		color: var(--color-blue-deep, #1d4ed8);
+		font-size: 0.75rem;
+		font-weight: 600;
 	}
 
 	.wtp-footer {

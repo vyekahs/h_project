@@ -127,9 +127,9 @@
         /* Text */
         --text-primary: #333;
         --text-secondary: #666;
-        --text-tertiary: #888;
-        --text-muted: #999;
-        --text-hint: #adb5bd;
+        --text-tertiary: #4b5563;
+        --text-muted: #5f6b7a;
+        --text-hint: #5b6472;
         --text-dark: #495057;
         --text-darker: #555;
 
@@ -165,8 +165,8 @@
         --color-slate-dark: #64748b;
 
         /* Brand Colors */
-        --color-blue: #339af0;
-        --color-blue-bright: #007bff;
+        --color-blue: #1864ab;
+        --color-blue-bright: #0056b3;
         --color-amber: #fbbf24;
         --color-amber-dark: #f59e0b;
         --color-amber-darker: #d97706;
@@ -175,7 +175,7 @@
         --color-red: #ef4444;
         --color-red-dark: #d32f2f;
         --color-orange: #ff9800;
-        --color-orange-dark: #e67700;
+        --color-orange-dark: #c2410c;
 
         /* State Backgrounds */
         --color-success-bg: #e8f5e9;

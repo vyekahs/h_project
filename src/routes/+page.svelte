@@ -7,6 +7,8 @@
     import WantToPlayCard from '$lib/components/games/WantToPlayCard.svelte';
     import GameComments from '$lib/components/games/GameComments.svelte';
     let lastUpdated = $state(new Date());
+    let sseConnected = $state(false);
+    let nowTick = $state(new Date());
 
     // SSE 실시간 카운트
     let liveVisitorCount: number | null = $state(null);
@@ -14,6 +16,7 @@
     let eventSource: EventSource | null = null;
     let refreshTimer: ReturnType<typeof setTimeout> | null = null;
     let sseReconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let nowTickTimer: ReturnType<typeof setInterval> | null = null;
     let sseDestroyed = false;
     let sseReconnectDelay = 3000;
 
@@ -160,6 +163,13 @@
     function canJoinGame(game: any): boolean {
         if (!game.party_id) return true;
         return userPartyIds.has(game.party_id);
+    }
+
+    // 참여 버튼이 안 보이는 이유를 사용자에게 설명하기 위한 헬퍼 (버튼을 완전히 숨기지 않고 이유를 표시)
+    function joinBlockedReason(game: any, hasConflict: boolean): string | null {
+        if (hasConflict) return '다른 게임 예약 있음';
+        if (!canJoinGame(game)) return '고정팟 전용';
+        return null;
     }
 
     // 참석자 + 고정팟 미참석 멤버 병합 (고정팟 멤버 상단 정렬)
@@ -382,6 +392,7 @@
         tabletMq.addEventListener('change', (e) => { isTablet = e.matches; });
 
         connectSSE();
+        nowTickTimer = setInterval(() => { nowTick = new Date(); }, 15000);
     });
 
     function connectSSE() {
@@ -391,17 +402,20 @@
         eventSource = new EventSource('/api/sse/live');
         eventSource.addEventListener('visitors', (e: MessageEvent) => {
             sseReconnectDelay = 3000;
+            sseConnected = true;
             const d = JSON.parse(e.data);
             liveVisitorCount = d.count;
             scheduleRefresh();
         });
         eventSource.addEventListener('games', (e: MessageEvent) => {
             sseReconnectDelay = 3000;
+            sseConnected = true;
             const d = JSON.parse(e.data);
             liveGameCount = d.count;
             scheduleRefresh();
         });
         eventSource.onerror = () => {
+            sseConnected = false;
             if (eventSource) { eventSource.close(); eventSource = null; }
             if (!sseDestroyed) {
                 sseReconnectTimer = setTimeout(connectSSE, sseReconnectDelay);
@@ -418,11 +432,21 @@
         }, 1000);
     }
 
+    function formatFreshness(updated: Date, tick: Date): string {
+        const seconds = Math.max(0, Math.round((tick.getTime() - updated.getTime()) / 1000));
+        if (seconds < 30) return '방금 업데이트';
+        if (seconds < 60) return `${seconds}초 전 업데이트`;
+        const minutes = Math.round(seconds / 60);
+        if (minutes < 60) return `${minutes}분 전 업데이트`;
+        return `${Math.round(minutes / 60)}시간 전 업데이트`;
+    }
+
     onDestroy(() => {
         sseDestroyed = true;
         if (eventSource) { eventSource.close(); eventSource = null; }
         if (refreshTimer) clearTimeout(refreshTimer);
         if (sseReconnectTimer) clearTimeout(sseReconnectTimer);
+        if (nowTickTimer) clearInterval(nowTickTimer);
     });
 
     // Limit visible games
@@ -811,6 +835,12 @@
                                                     </button>
                                                 </form>
                                             </div>
+                                        {:else}
+                                            <div class="actions">
+                                                <span class="btn-join-blocked" title={joinBlockedReason(game, hasConflict)}>
+                                                    {joinBlockedReason(game, hasConflict)}
+                                                </span>
+                                            </div>
                                         {/if}
                                     {/if}
                                 </div>
@@ -1013,6 +1043,8 @@
                                                 <input type="hidden" name="sessionId" value={game.id}>
                                                 <button class="btn-reserve">참여 요청</button>
                                             </form>
+                                        {:else if !myReservation}
+                                            <span class="btn-join-blocked" title="고정팟 전용">고정팟 전용</span>
                                         {/if}
                                     </div>
                                 {/if}
@@ -1116,7 +1148,7 @@
         <!-- 보드게임 하고싶어요 -->
         <section class="tables-section">
             <div class="section-header">
-                <h2>want to play({(data.wantToPlayPosts || []).length})</h2>
+                <h2>🙋 같이 할래요 ({(data.wantToPlayPosts || []).length})</h2>
                 {#if data.user}
                     <button class="btn-create" onclick={openWtpCreateModal}>+게임 등록</button>
                 {/if}
@@ -1204,6 +1236,12 @@
                                                 </button>
                                             </form>
                                         </div>
+                                    {:else}
+                                        <div class="actions">
+                                            <span class="btn-join-blocked" title={joinBlockedReason(game, hasConflict)}>
+                                                {joinBlockedReason(game, hasConflict)}
+                                            </span>
+                                        </div>
                                     {/if}
                                 {/if}
                             </div>
@@ -1253,6 +1291,27 @@
     {/snippet}
 
     <main>
+        <section class="lounge-status" aria-label="지금 라운지 실시간 현황">
+            <div class="lounge-status-head">
+                <span class="lounge-live-dot" class:offline={!sseConnected} aria-hidden="true"></span>
+                <span class="lounge-live-label">지금 라운지</span>
+                <span class="lounge-freshness" class:offline={!sseConnected}>
+                    {sseConnected ? formatFreshness(lastUpdated, nowTick) : '실시간 연결 재시도 중…'}
+                </span>
+            </div>
+            <div class="lounge-status-body" aria-live="polite">
+                <div class="lounge-stat">
+                    <span class="lounge-stat-value">{liveVisitorCount ?? attendees.length}</span>
+                    <span class="lounge-stat-label">명 있음</span>
+                </div>
+                <div class="lounge-status-divider" aria-hidden="true"></div>
+                <div class="lounge-stat">
+                    <span class="lounge-stat-value">{liveGameCount ?? games.length}</span>
+                    <span class="lounge-stat-label">게임 진행중</span>
+                </div>
+            </div>
+        </section>
+
         {#if isTablet}
             <div class="main-panels">
                 <div class="panel">
@@ -2097,7 +2156,7 @@
 
     :global(body) {
         margin: 0;
-        font-family: 'Inter', system-ui, -apple-system, sans-serif;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
         background: var(--bg-elevated);
         color: var(--text-primary);
     }
@@ -2422,7 +2481,7 @@
     }
     .status-pill.closed {
         background: var(--color-error-bg);
-        color: var(--color-red);
+        color: var(--color-red-dark);
     }
     .status-pill.admin-panel {
         background: var(--color-info-bg);
@@ -2550,12 +2609,96 @@
         margin-bottom: 2rem;
     }
     h2 {
-        font-size: 1.2rem;
-        color: var(--text-darker);
-        border-bottom: 2px solid var(--border-default);
+        font-size: 0.95rem;
+        font-weight: 700;
+        color: var(--text-secondary);
+        letter-spacing: 0.01em;
+        border-bottom: 1px solid var(--border-light);
         padding-bottom: 0.5rem;
         margin: 0;
         margin-bottom: 1rem;
+    }
+
+    /* 지금 라운지 — 언제나 보이는 실시간 요약 (홈/게임 탭 어느 쪽이든 상단 고정) */
+    .lounge-status {
+        background: var(--bg-primary);
+        border: 1px solid var(--border-light);
+        border-radius: 16px;
+        padding: 1.1rem 1.4rem;
+        margin-bottom: 1.5rem;
+        box-shadow: 0 2px 10px var(--overlay-light);
+    }
+    .lounge-status-head {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        margin-bottom: 0.75rem;
+    }
+    .lounge-live-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--color-green);
+        box-shadow: 0 0 0 rgba(43, 138, 62, 0.4);
+        animation: pulse-ring 2s infinite;
+        flex-shrink: 0;
+    }
+    .lounge-live-dot.offline {
+        background: var(--color-amber-dark);
+        animation: none;
+    }
+    .lounge-live-label {
+        font-size: 0.85rem;
+        font-weight: 700;
+        color: var(--text-primary);
+    }
+    .lounge-freshness {
+        font-size: 0.75rem;
+        color: var(--text-tertiary);
+        margin-left: auto;
+    }
+    .lounge-freshness.offline {
+        color: var(--color-amber-dark);
+        font-weight: 600;
+    }
+    .lounge-status-body {
+        display: flex;
+        align-items: center;
+        gap: 1.5rem;
+    }
+    .lounge-stat {
+        display: flex;
+        align-items: baseline;
+        gap: 0.4rem;
+    }
+    .lounge-stat-value {
+        font-size: 2.1rem;
+        font-weight: 800;
+        line-height: 1;
+        color: var(--text-primary);
+        font-variant-numeric: tabular-nums;
+    }
+    .lounge-stat-label {
+        font-size: 0.85rem;
+        font-weight: 600;
+        color: var(--text-secondary);
+    }
+    .lounge-status-divider {
+        width: 1px;
+        height: 2rem;
+        background: var(--border-default);
+        flex-shrink: 0;
+    }
+    @media (max-width: 480px) {
+        .lounge-status {
+            padding: 1rem;
+        }
+        .lounge-status-body {
+            gap: 1rem;
+        }
+        .lounge-stat-value {
+            font-size: 1.7rem;
+        }
     }
     .attendee-grid {
         display: grid;
@@ -2608,7 +2751,7 @@
         padding: 1.25rem;
         border-radius: 12px;
         box-shadow: 0 2px 8px var(--overlay-light);
-        border-left: 5px solid var(--color-orange);
+        border: 1px solid var(--border-light);
     }
     .time-remaining {
         color: var(--color-orange-dark);
@@ -2668,7 +2811,7 @@
     }
     .closed-state {
         background: var(--bg-hover);
-        color: var(--color-slate-dark);
+        color: var(--text-tertiary);
         font-weight: bold;
         border: 1px solid var(--border-medium);
     }
@@ -2749,11 +2892,11 @@
         border-color: var(--color-error-bg);
     }
     .status-card.penalty-warning .value {
-        color: var(--color-red);
+        color: var(--color-red-dark);
     }
     .warning-text {
         font-size: 0.7rem;
-        color: var(--color-red);
+        color: var(--color-red-dark);
         margin: 0.25rem 0 0 0;
         font-weight: 600;
     }
@@ -2871,12 +3014,6 @@
         transform: translateY(-2px);
         box-shadow: 0 4px 12px var(--shadow-sm);
     }
-    .table-card.playing {
-        border-left: 6px solid var(--color-orange);
-    }
-    .table-card.available {
-        border-left: 6px solid var(--color-green);
-    }
     .table-header {
         display: flex;
         align-items: center;
@@ -2894,6 +3031,20 @@
         display: flex;
         align-items: center;
         gap: 0.3rem;
+    }
+    .table-card.playing .table-header h3::before,
+    .table-card.available .table-header h3::before {
+        content: '';
+        flex-shrink: 0;
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+    }
+    .table-card.playing .table-header h3::before {
+        background: var(--color-orange);
+    }
+    .table-card.available .table-header h3::before {
+        background: var(--color-green);
     }
     .game-title-text {
         white-space: nowrap;
@@ -3005,8 +3156,11 @@
         border: none;
         color: var(--text-hint);
         padding: 0;
-        width: 14px;
-        height: 14px;
+        width: 32px;
+        height: 32px;
+        min-width: 32px;
+        min-height: 32px;
+        font-size: 1rem;
         cursor: pointer;
         display: flex;
         align-items: center;
@@ -3070,7 +3224,20 @@
         white-space: nowrap;
         flex-shrink: 0;
     }
-    
+    .btn-join-blocked {
+        width: auto;
+        padding: 0.3rem 0.8rem;
+        font-size: 0.75rem;
+        font-weight: 600;
+        border-radius: 6px;
+        background: var(--bg-tertiary);
+        color: var(--text-tertiary);
+        border: 1px dashed var(--border-medium);
+        white-space: nowrap;
+        flex-shrink: 0;
+        cursor: default;
+    }
+
     @media (max-width: 768px) {
         .table-card {
             flex-direction: column;
@@ -4059,12 +4226,12 @@
     }
     .wtp-tag-badge {
         display: inline-block;
-        padding: 0.1rem 0.45rem;
+        padding: 0.15rem 0.5rem;
         border-radius: 10px;
         background: var(--color-blue-light, #dbeafe);
-        color: var(--color-blue, #3b82f6);
-        font-size: 0.7rem;
-        font-weight: 500;
+        color: var(--color-blue-deep, #1d4ed8);
+        font-size: 0.75rem;
+        font-weight: 600;
     }
 
     .wtp-detail-modal {
