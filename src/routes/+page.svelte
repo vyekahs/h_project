@@ -296,6 +296,32 @@
         } catch { showAlert('네트워크 오류'); }
     }
 
+    async function handleWtpCloseAndSchedule(post: any) {
+        if (!await showConfirm('마감하면 이 글은 삭제되고 예정 게임으로 등록됩니다. 계속할까요?')) return;
+        try {
+            const res = await fetch(`/api/wanttoplay/${post.id}`, { method: 'DELETE' });
+            const result = await res.json();
+            if (!res.ok) { showAlert(result.error || '마감 실패'); return; }
+            showWtpDetailModal = false;
+            selectedWtpPost = null;
+            await invalidateAll();
+            // 예정 게임 모달 초기화 후 게임명 프리필
+            dropdownOpen = false;
+            guestCount = 0;
+            showScheduledGuestInput = false;
+            scheduledSelectedPlayerIds = [];
+            scheduledPartyMembers = [];
+            scheduledSelectedPartyId = null;
+            scheduledGameName = post.game_name;
+            if (post.min_players) minPlayers = post.min_players;
+            if (post.max_players) maxPlayers = post.max_players;
+            const now = new Date();
+            now.setMinutes(Math.ceil((now.getMinutes() + 30) / 10) * 10);
+            scheduledAt = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}T${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+            showScheduledGameModal = true;
+        } catch { showAlert('네트워크 오류'); }
+    }
+
     function openWtpDetail(post: any) {
         selectedWtpPost = post;
         showWtpDetailModal = true;
@@ -1886,41 +1912,24 @@
                     {:else}
                         <button class="wtp-btn join" onclick={() => handleWtpJoin(selectedWtpPost.id)}>참여</button>
                     {/if}
-                    <button class="btn-create" onclick={async () => {
-                        // 마감 처리 후 예정 게임 등록 모달로 이동
-                        const postId = selectedWtpPost.id;
-                        const gameName = selectedWtpPost.game_name;
-                        const minP = selectedWtpPost.min_players;
-                        const maxP = selectedWtpPost.max_players;
-                        try {
-                            await fetch(`/api/wanttoplay/${postId}`, { method: 'DELETE' });
-                        } catch {}
-                        showWtpDetailModal = false;
-                        selectedWtpPost = null;
-                        await invalidateAll();
-                        // 예정 게임 모달 초기화 후 게임명 프리필
-                        dropdownOpen = false;
-                        guestCount = 0;
-                        showScheduledGuestInput = false;
-                        scheduledSelectedPlayerIds = [];
-                        scheduledPartyMembers = [];
-                        scheduledSelectedPartyId = null;
-                        scheduledGameName = gameName;
-                        if (minP) minPlayers = minP;
-                        if (maxP) maxPlayers = maxP;
-                        const now = new Date();
-                        now.setMinutes(Math.ceil((now.getMinutes() + 30) / 10) * 10);
-                        scheduledAt = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}T${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
-                        showScheduledGameModal = true;
-                    }}>예정 게임 등록</button>
                 {/if}
             </div>
 
+            {#if data.user && (data.isAdmin || selectedWtpPost.created_by === data.user.id)}
+                <div class="wtp-detail-owner-actions">
+                    <button class="wtp-btn close" onclick={() => handleWtpCloseAndSchedule(selectedWtpPost)}>마감하고 예정 게임 등록</button>
+                </div>
+            {/if}
+
             <div class="wtp-detail-comments">
                 <h3>대화</h3>
-                {#if data.user}
-                    <GameComments gameId={`wtp_${selectedWtpPost.id}`} userId={data.user.id} isAdmin={data.isAdmin} />
-                {/if}
+                <div class="wtp-detail-comments-body">
+                    {#if data.user}
+                        <GameComments gameId={`wtp_${selectedWtpPost.id}`} userId={data.user.id} isAdmin={data.isAdmin} />
+                    {:else}
+                        <p class="wtp-comments-login-hint">로그인 후 대화를 볼 수 있어요.</p>
+                    {/if}
+                </div>
             </div>
         </div>
     </div>
@@ -4235,14 +4244,17 @@
     }
 
     .wtp-detail-modal {
-        max-height: 85vh;
-        overflow-y: auto;
+        max-height: min(860px, 92vh);
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
     }
     .wtp-detail-header {
         display: flex;
         justify-content: space-between;
         align-items: flex-start;
         gap: 0.5rem;
+        flex-shrink: 0;
     }
     .wtp-detail-game {
         display: flex;
@@ -4273,8 +4285,12 @@
         padding: 0;
         line-height: 1;
     }
+    .wtp-detail-modal > .wtp-tags-display {
+        flex-shrink: 0;
+    }
     .wtp-detail-participants {
         margin: 1rem 0;
+        flex-shrink: 0;
     }
     .wtp-detail-participants h3 {
         font-size: 0.9rem;
@@ -4297,15 +4313,42 @@
         gap: 0.5rem;
         margin: 0.75rem 0;
         flex-wrap: wrap;
+        flex-shrink: 0;
+    }
+    .wtp-detail-owner-actions {
+        display: flex;
+        margin: 0 0 0.5rem;
+        padding-top: 0.5rem;
+        border-top: 1px dashed var(--border-medium);
+        flex-shrink: 0;
     }
     .wtp-detail-comments {
         margin-top: 1rem;
         border-top: 1px solid var(--border-light);
         padding-top: 0.75rem;
+        display: flex;
+        flex-direction: column;
+        flex: 1 1 auto;
+        min-height: 260px;
     }
     .wtp-detail-comments h3 {
         font-size: 0.9rem;
         margin: 0 0 0.5rem;
+        flex-shrink: 0;
+    }
+    .wtp-detail-comments-body {
+        flex: 1 1 auto;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+    }
+    .wtp-comments-login-hint {
+        margin: 0;
+        padding: 1rem 0;
+        text-align: center;
+        font-size: 0.85rem;
+        color: var(--text-tertiary);
     }
 
     .wtp-btn {
@@ -4329,5 +4372,6 @@
         background: var(--bg-secondary);
         color: var(--color-red, #ef4444);
         border: 1px solid var(--color-red, #ef4444);
+        width: 100%;
     }
 </style>
