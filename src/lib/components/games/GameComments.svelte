@@ -288,6 +288,7 @@
 	.comments-scroll {
 		flex: 1;
 		overflow-y: auto;
+		overscroll-behavior: contain;
 		padding: 0.5rem;
 		display: flex;
 		flex-direction: column;

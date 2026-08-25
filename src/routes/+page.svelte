@@ -305,16 +305,18 @@
             showWtpDetailModal = false;
             selectedWtpPost = null;
             await invalidateAll();
-            // 예정 게임 모달 초기화 후 게임명 프리필
+            // 예정 게임 모달 초기화 후 게임명 + 참여자 프리필
             dropdownOpen = false;
             guestCount = 0;
             showScheduledGuestInput = false;
-            scheduledSelectedPlayerIds = [];
-            scheduledPartyMembers = [];
+            const wtpParticipants = (post.participants || []) as { id: number; name: string }[];
+            scheduledSelectedPlayerIds = wtpParticipants.map(p => p.id);
+            scheduledPartyMembers = wtpParticipants.map(p => ({ id: p.id, name: p.name }));
             scheduledSelectedPartyId = null;
             scheduledGameName = post.game_name;
             if (post.min_players) minPlayers = post.min_players;
-            if (post.max_players) maxPlayers = post.max_players;
+            const floorMax = Math.max(post.max_players || 0, wtpParticipants.length, minPlayers);
+            if (floorMax > 0) maxPlayers = floorMax;
             const now = new Date();
             now.setMinutes(Math.ceil((now.getMinutes() + 30) / 10) * 10);
             scheduledAt = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}T${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
@@ -401,6 +403,31 @@
         confirmVisible = false;
         if (confirmResolve) { confirmResolve(result); confirmResolve = null; }
     }
+
+    // 모달이 떠 있는 동안 뒤에 있는 메인 페이지가 같이 스크롤/드래그되지 않도록 배경 스크롤 잠금
+    const anyModalOpen = $derived(
+        showModal || showScheduledGameModal || endGameModalVisible ||
+        showWtpCreateModal || showWtpDetailModal || showVisitPlanModal ||
+        alertVisible || confirmVisible
+    );
+    let lockedScrollY = 0;
+    $effect(() => {
+        if (anyModalOpen) {
+            lockedScrollY = window.scrollY;
+            document.body.style.position = 'fixed';
+            document.body.style.top = `-${lockedScrollY}px`;
+            document.body.style.left = '0';
+            document.body.style.right = '0';
+            document.body.style.overflow = 'hidden';
+        } else {
+            document.body.style.position = '';
+            document.body.style.top = '';
+            document.body.style.left = '';
+            document.body.style.right = '';
+            document.body.style.overflow = '';
+            window.scrollTo(0, lockedScrollY);
+        }
+    });
 
     // PWA Install Guide
     let showInstallGuide = $state(false);
@@ -3492,6 +3519,7 @@
         box-shadow: 0 4px 12px var(--shadow-lg);
         max-height: 90vh;
         overflow-y: auto;
+        overscroll-behavior: contain;
     }
     .modal-content h2 {
         margin-top: 0;
