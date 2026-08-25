@@ -1,9 +1,10 @@
 import os from 'os';
-import { db, pgClient } from '$lib/server/db/index';
+import { db } from '$lib/server/db/index';
 import { sql } from 'drizzle-orm';
 import { getSSEConnectionCount, incrementSSECount, decrementSSECount } from '$lib/server/liveEvents';
 import { verifyAdminSession } from '$lib/server/auth';
 import { getAutoCheckinLogs } from '$lib/server/ble';
+import { getDbConnectionStats } from '$lib/server/performance';
 
 // CPU snapshot for delta-based usage calculation
 let prevCpuIdle = 0;
@@ -53,6 +54,7 @@ interface MetricsSnapshot {
 	cpu: number;
 	memPercent: number;
 	sse: number;
+	db: number;
 	timestamp: number;
 }
 const metricsHistory: MetricsSnapshot[] = [];
@@ -65,11 +67,10 @@ async function collectMetrics() {
 		const dbStart = performance.now();
 		await queryWithTimeout();
 		dbLatency = Math.round(performance.now() - dbStart);
-		// postgres-js doesn't expose pool stats directly, use connection count
-		const conn = (pgClient as any).connections ?? {};
-		dbTotal = conn.open ?? 0;
-		dbIdle = conn.idle ?? 0;
-		dbWaiting = conn.busy ?? 0;
+		const stats = await getDbConnectionStats();
+		dbTotal = stats.total;
+		dbIdle = stats.idle;
+		dbWaiting = stats.waiting;
 	} catch {
 		dbLatency = -1;
 	}
@@ -83,7 +84,7 @@ async function collectMetrics() {
 	const memPercent = Math.round(((totalMem - freeMem) / totalMem) * 100);
 	const ts = Date.now();
 
-	metricsHistory.push({ cpu: cpuUsage, memPercent, sse: sseCount, timestamp: ts });
+	metricsHistory.push({ cpu: cpuUsage, memPercent, sse: sseCount, db: dbTotal, timestamp: ts });
 	if (metricsHistory.length > MAX_HISTORY) metricsHistory.shift();
 
 	return {

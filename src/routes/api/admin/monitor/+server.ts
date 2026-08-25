@@ -1,10 +1,11 @@
 import { json } from '@sveltejs/kit';
 import os from 'os';
-import { db, pgClient } from '$lib/server/db/index';
+import { db } from '$lib/server/db/index';
 import { sql } from 'drizzle-orm';
 import { getSSEConnectionCount } from '$lib/server/liveEvents';
 import { verifyAdminSession } from '$lib/server/auth';
 import { getAutoCheckinLogs } from '$lib/server/ble';
+import { getDbConnectionStats } from '$lib/server/performance';
 
 // CPU snapshot for delta-based usage calculation
 let prevCpuIdle = 0;
@@ -60,9 +61,10 @@ export async function GET({ cookies }: { cookies: any }) {
 			new Promise((_, reject) => setTimeout(() => reject(new Error('DB timeout')), 3000))
 		]);
 		dbLatency = Math.round(performance.now() - dbStart);
-		dbTotal = (pgClient as any).connections?.open ?? 0;
-		dbIdle = (pgClient as any).connections?.idle ?? 0;
-		dbWaiting = (pgClient as any).connections?.busy ?? 0;
+		const stats = await getDbConnectionStats();
+		dbTotal = stats.total;
+		dbIdle = stats.idle;
+		dbWaiting = stats.waiting;
 	} catch {
 		dbLatency = -1;
 	}

@@ -5,6 +5,7 @@
 		cpu: number;
 		memPercent: number;
 		sse: number;
+		db: number;
 		timestamp: number;
 	}
 
@@ -162,6 +163,8 @@
 	$: memData = history.map(h => h.memPercent);
 	$: sseData = history.map(h => h.sse);
 	$: sseMax = Math.max(5, ...sseData);
+	$: dbData = history.map(h => h.db);
+	$: dbMax = Math.max(5, ...dbData);
 
 	let pollTimer: ReturnType<typeof setInterval> | null = null;
 	let destroyed = false;
@@ -337,6 +340,24 @@
 					{#if sseData.length >= 2}
 						<path d={buildAreaPath(sseData, sseMax)} fill="rgba(255,152,0,0.1)" />
 						<path d={buildPath(sseData, sseMax)} fill="none" stroke="#ff9800" stroke-width="2" />
+					{/if}
+				</svg>
+			</button>
+
+			<!-- 4. DB 커넥션 (clickable) -->
+			<button class="chart-card clickable" on:click={() => showSseModal = true}>
+				<div class="chart-header">
+					<div class="chart-title">DB 커넥션 수 <span class="tap-hint">상세보기</span></div>
+					<div class="chart-value" style="color: {dbStatusColor(metrics)}">{metrics.db.totalCount}<span class="chart-unit">개</span></div>
+				</div>
+				<svg viewBox="0 0 {CHART_W} {CHART_H}" class="chart-svg">
+					{#each yLabels(dbMax) as yl}
+						<line x1={CHART_PAD} y1={yl.y} x2={CHART_W} y2={yl.y} stroke="#eee" stroke-width="1" />
+						<text x={CHART_PAD - 4} y={yl.y + 4} text-anchor="end" fill="#999" font-size="10">{yl.label}</text>
+					{/each}
+					{#if dbData.length >= 2}
+						<path d={buildAreaPath(dbData, dbMax)} fill="rgba(156,39,176,0.1)" />
+						<path d={buildPath(dbData, dbMax)} fill="none" stroke="#9c27b0" stroke-width="2" />
 					{/if}
 				</svg>
 			</button>

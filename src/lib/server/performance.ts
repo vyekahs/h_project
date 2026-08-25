@@ -252,6 +252,38 @@ export async function getActiveDbConnections(): Promise<number> {
 }
 
 /**
+ * DB 커넥션 풀 실사용 통계 (PostgreSQL pg_stat_activity 기반)
+ *
+ * postgres.js 클라이언트는 풀 내부 상태(open/idle/busy)를 공개 API로 노출하지 않는다
+ * (이전 코드가 참조하던 pgClient.connections는 존재하지 않는 속성이라 항상 0이었음).
+ * 대신 이 앱이 실제로 맺고 있는 커넥션을 DB 쪽 pg_stat_activity에서 직접 집계한다.
+ * waiting은 postgres.js 풀의 대기열이 아니라, 실제로 잠금/IO 등으로 블로킹 중인
+ * 백엔드 수(wait_event_type IS NOT NULL)로 정의한다 — 커넥션 풀 고갈보다
+ * 락 경합을 더 정확히 드러낸다.
+ */
+export async function getDbConnectionStats(): Promise<{ total: number; idle: number; waiting: number }> {
+	try {
+		const result = await db.execute(sql`
+			SELECT
+				count(*)::int AS total,
+				count(*) FILTER (WHERE state = 'idle')::int AS idle,
+				count(*) FILTER (WHERE wait_event_type IS NOT NULL)::int AS waiting
+			FROM pg_stat_activity
+			WHERE datname = current_database()
+		`);
+		const row = (result as any[])[0] || {};
+		return {
+			total: Number(row.total || 0),
+			idle: Number(row.idle || 0),
+			waiting: Number(row.waiting || 0)
+		};
+	} catch (error) {
+		console.error('[PERF] Failed to get DB connection stats:', error);
+		return { total: 0, idle: 0, waiting: 0 };
+	}
+}
+
+/**
  * 모니터링 데이터 초기화
  */
 export function clearMonitoringData() {

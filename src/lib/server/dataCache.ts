@@ -144,9 +144,10 @@ async function fetchSharedData(): Promise<SharedData> {
     };
 }
 
-export async function getSharedData(): Promise<SharedData> {
-    if (!isStale() && cache) return cache;
-
+// fetchSharedData()는 커넥션 10개를 동시에 사용하므로, staleness 갱신과
+// change 이벤트 갱신이 동시에 들어와도 항상 하나의 in-flight 요청만 공유한다.
+// (분리되어 있으면 두 트리거가 겹칠 때 커넥션 풀(max 20)이 순간적으로 바닥날 수 있음)
+function refreshSharedData(): Promise<SharedData> {
     if (cachePromise) return cachePromise;
 
     cachePromise = fetchSharedData().then(data => {
@@ -163,6 +164,11 @@ export async function getSharedData(): Promise<SharedData> {
     return cachePromise;
 }
 
+export async function getSharedData(): Promise<SharedData> {
+    if (!isStale() && cache) return cache;
+    return refreshSharedData();
+}
+
 export function invalidateSharedCache() {
     cache = null;
     cacheTime = 0;
@@ -171,9 +177,5 @@ export function invalidateSharedCache() {
 // change 이벤트: 캐시를 null로 날리지 않고 백그라운드에서 새 데이터로 교체
 // → 갱신 중 들어오는 요청도 stale 캐시로 즉시 응답
 getLiveEmitter().on('change', () => {
-    fetchSharedData().then(data => {
-        cache = data;
-        cacheTime = Date.now();
-        cachePromise = null;
-    }).catch(() => {});
+    refreshSharedData().catch(() => {});
 });
