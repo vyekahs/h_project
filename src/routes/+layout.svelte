@@ -67,8 +67,10 @@
     // 알림 SSE는 로그인 확인 후 레이아웃에서 세션당 한 번만 연결한다.
     // (NotificationBell이 레이아웃/홈/마이페이지에 각각 따로 마운트되기 때문에,
     //  컴포넌트 마운트에 연결을 묶으면 페이지 이동마다 재연결됨)
+    // $user.id는 세션이 없어도 dev/test용 폴백(1번 Guest)으로 채워지므로,
+    // 실제 세션 검증을 통과했는지는 authenticated 플래그로 따로 확인한다.
     $effect(() => {
-        if ($user.id) {
+        if ($user.authenticated) {
             initNotificationsSSE();
         }
     });

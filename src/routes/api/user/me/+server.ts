@@ -10,15 +10,17 @@ export const GET: RequestHandler = async ({ cookies }) => {
     const sessionToken = cookies.get('user_session');
     let userId = 1; // Fallback for dev/test if no session
     let name = 'Guest';
+    let authenticated = false;
 
     if (sessionToken) {
         const user = await verifyAttendeeSession(sessionToken);
         if (user) {
             userId = user.id;
             name = user.name;
+            authenticated = true;
         }
     }
-    
+
     try {
         const [points, inventory, title] = await Promise.all([
             PointService.getUserPoints(userId),
@@ -31,7 +33,8 @@ export const GET: RequestHandler = async ({ cookies }) => {
             points,
             inventory,
             title,
-            name
+            name,
+            authenticated
         });
     } catch (e) {
         console.error(e);
