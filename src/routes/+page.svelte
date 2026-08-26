@@ -542,7 +542,9 @@
     }
 
     function applyPartyToModal(party: Party) {
-        selectedGameName = party.game_name || party.resolved_game_name || '';
+        if (!selectedGameName.trim()) {
+            selectedGameName = party.game_name || party.resolved_game_name || '';
+        }
         selectedGameId = party.game_id?.toString() || '';
         selectedDuration = party.duration?.toString() || '';
         guestCount = party.guest_count || 0;
@@ -552,14 +554,48 @@
         selectedPartyId = party.id;
     }
 
+    function clearPartyFromModal() {
+        selectedPartyId = null;
+        selectedPlayerIds = [];
+        partyMembers = [];
+    }
+
     function applyPartyToScheduledModal(party: Party) {
-        scheduledGameName = party.game_name || party.resolved_game_name || '';
+        if (!scheduledGameName.trim()) {
+            scheduledGameName = party.game_name || party.resolved_game_name || '';
+        }
         guestCount = party.guest_count || 0;
         showScheduledGuestInput = guestCount > 0;
         scheduledPartyMembers = party.members;
         scheduledSelectedPlayerIds = party.members.map(m => m.id);
         scheduledSelectedPartyId = party.id;
+        if (party.members.length > 0) {
+            maxPlayers = Math.max(maxPlayers, party.members.length, minPlayers);
+        }
     }
+
+    function clearPartyFromScheduledModal() {
+        scheduledSelectedPartyId = null;
+        scheduledSelectedPlayerIds = [];
+        scheduledPartyMembers = [];
+    }
+
+    // 고정팟을 불러온 뒤 멤버를 전부 지우면(체크 해제 포함) 팟 연결도 함께 해제한다.
+    // 그렇지 않으면 화면은 "선택 안 함"처럼 보이는데 서버에는 party_id가 그대로 남아
+    // 의도치 않게 고정팟 전용(비공개) 게임이 생성된다.
+    $effect(() => {
+        if (selectedPartyId && selectedPlayerIds.length === 0) {
+            selectedPartyId = null;
+        }
+    });
+    $effect(() => {
+        if (scheduledSelectedPartyId && scheduledSelectedPlayerIds.length === 0) {
+            scheduledSelectedPartyId = null;
+        }
+    });
+
+    const selectedPartyName = $derived(parties.find((p: any) => p.id === selectedPartyId)?.name ?? null);
+    const scheduledSelectedPartyName = $derived(parties.find((p: any) => p.id === scheduledSelectedPartyId)?.name ?? null);
 
     function openScheduledGameModal() {
         showScheduledGameModal = true;
@@ -1427,17 +1463,28 @@
                 <div class="party-selector">
                     <span class="label-heading">고정팟 불러오기</span>
                     <div class="party-dropdown-wrapper" onclick={(e) => e.stopPropagation()} role="presentation">
-                        <button id="partyDropdown" type="button" class="party-dropdown-trigger" onclick={() => partyDropdownOpen = !partyDropdownOpen}>
-                            <span>고정팟 선택</span>
+                        <button id="partyDropdown" type="button" class="party-dropdown-trigger" aria-haspopup="listbox" aria-expanded={partyDropdownOpen} onclick={() => partyDropdownOpen = !partyDropdownOpen}>
+                            <span>{selectedPartyName ?? '고정팟 선택'}</span>
                             <span class="party-chevron" class:open={partyDropdownOpen}>&#9662;</span>
                         </button>
                         {#if partyDropdownOpen}
-                            <div class="party-dropdown-list">
+                            <div class="party-dropdown-list" role="listbox">
+                                {#if selectedPartyId}
+                                    <button type="button" class="party-dropdown-item party-dropdown-clear" onclick={() => {
+                                        clearPartyFromModal();
+                                        partyDropdownOpen = false;
+                                    }}>
+                                        <span class="party-item-name">고정팟 없음 (전체 공개)</span>
+                                    </button>
+                                {/if}
                                 {#each parties as party}
-                                    <button type="button" class="party-dropdown-item" onclick={() => {
+                                    <button type="button" class="party-dropdown-item" class:selected={party.id === selectedPartyId} role="option" aria-selected={party.id === selectedPartyId} onclick={() => {
                                         applyPartyToModal(party);
                                         partyDropdownOpen = false;
                                     }}>
+                                        {#if party.id === selectedPartyId}
+                                            <span class="party-item-check">&#10003;</span>
+                                        {/if}
                                         <span class="party-item-name">{party.name}</span>
                                         <span class="party-item-game">{party.game_name || party.resolved_game_name || '게임 미지정'}</span>
                                     </button>
@@ -1654,17 +1701,28 @@
                 <div class="party-selector">
                     <span class="label-heading">고정팟 불러오기</span>
                     <div class="party-dropdown-wrapper" onclick={(e) => e.stopPropagation()} role="presentation">
-                        <button id="scheduledPartyDropdown" type="button" class="party-dropdown-trigger" onclick={() => scheduledPartyDropdownOpen = !scheduledPartyDropdownOpen}>
-                            <span>고정팟 선택</span>
+                        <button id="scheduledPartyDropdown" type="button" class="party-dropdown-trigger" aria-haspopup="listbox" aria-expanded={scheduledPartyDropdownOpen} onclick={() => scheduledPartyDropdownOpen = !scheduledPartyDropdownOpen}>
+                            <span>{scheduledSelectedPartyName ?? '고정팟 선택'}</span>
                             <span class="party-chevron" class:open={scheduledPartyDropdownOpen}>&#9662;</span>
                         </button>
                         {#if scheduledPartyDropdownOpen}
-                            <div class="party-dropdown-list">
+                            <div class="party-dropdown-list" role="listbox">
+                                {#if scheduledSelectedPartyId}
+                                    <button type="button" class="party-dropdown-item party-dropdown-clear" onclick={() => {
+                                        clearPartyFromScheduledModal();
+                                        scheduledPartyDropdownOpen = false;
+                                    }}>
+                                        <span class="party-item-name">고정팟 없음 (전체 공개)</span>
+                                    </button>
+                                {/if}
                                 {#each parties as party}
-                                    <button type="button" class="party-dropdown-item" onclick={() => {
+                                    <button type="button" class="party-dropdown-item" class:selected={party.id === scheduledSelectedPartyId} role="option" aria-selected={party.id === scheduledSelectedPartyId} onclick={() => {
                                         applyPartyToScheduledModal(party);
                                         scheduledPartyDropdownOpen = false;
                                     }}>
+                                        {#if party.id === scheduledSelectedPartyId}
+                                            <span class="party-item-check">&#10003;</span>
+                                        {/if}
                                         <span class="party-item-name">{party.name}</span>
                                         <span class="party-item-game">{party.game_name || party.resolved_game_name || '게임 미지정'}</span>
                                     </button>
@@ -4123,6 +4181,18 @@
     }
     .party-dropdown-item:not(:last-child) {
         border-bottom: 1px solid var(--bg-tertiary);
+    }
+    .party-dropdown-item.selected {
+        background: var(--color-info-bg);
+    }
+    .party-item-check {
+        color: var(--color-blue-bright);
+        font-weight: 700;
+        flex-shrink: 0;
+    }
+    .party-dropdown-item.party-dropdown-clear {
+        color: var(--text-secondary);
+        font-style: italic;
     }
     .party-item-name {
         font-weight: 600;
