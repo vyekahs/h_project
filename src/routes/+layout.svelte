@@ -11,6 +11,7 @@
     import NotificationBell from '$lib/components/notifications/NotificationBell.svelte';
     import { themeStore } from '$lib/stores/theme.svelte';
     import { user } from '$lib/stores/user';
+    import { initNotificationsSSE } from '$lib/stores/notifications.svelte';
 
 	let { children } = $props();
 
@@ -60,6 +61,15 @@
             nav.style.bottom = '0px';
             void nav.offsetHeight; // 강제 리플로우
             nav.style.bottom = prevBottom;
+        }
+    });
+
+    // 알림 SSE는 로그인 확인 후 레이아웃에서 세션당 한 번만 연결한다.
+    // (NotificationBell이 레이아웃/홈/마이페이지에 각각 따로 마운트되기 때문에,
+    //  컴포넌트 마운트에 연결을 묶으면 페이지 이동마다 재연결됨)
+    $effect(() => {
+        if ($user.id) {
+            initNotificationsSSE();
         }
     });
 

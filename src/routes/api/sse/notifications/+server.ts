@@ -61,6 +61,13 @@ export function GET({ request, cookies }: { request: Request; cookies: any }) {
 			emitter.on('notification', onNotification);
 			emitter.on('party_chat', onPartyChat);
 
+			// 연결 직후 바로 한 바이트 보내서 즉시 flush시킨다.
+			// (첫 데이터가 올 때까지 브라우저의 EventSource가 open 상태로 전환되지 않고
+			//  30초 하트비트 전까지 통신이 없어 보여 연결이 불안정하게 끊기는 문제 방지)
+			try {
+				controller.enqueue(encoder.encode(`: connected\n\n`));
+			} catch {}
+
 			heartbeatTimer = setInterval(() => {
 				if (closed) return;
 				try {

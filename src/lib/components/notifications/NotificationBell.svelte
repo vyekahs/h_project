@@ -2,7 +2,7 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { user } from '$lib/stores/user';
-	import { showToast } from '$lib/stores/notifications.svelte';
+	import { getUnreadCount, setUnreadCount, decrementUnread } from '$lib/stores/notifications.svelte';
 
 	interface Notification {
 		id: number;
@@ -15,11 +15,10 @@
 		created_at: string;
 	}
 
-	let unreadCount = $state(0);
+	const unreadCount = $derived(getUnreadCount());
 	let notifications: Notification[] = $state([]);
 	let showDropdown = $state(false);
 	let loading = $state(false);
-	let eventSource: EventSource | null = null;
 	let dropdownRef: HTMLDivElement | undefined = $state();
 	let bellBtnRef: HTMLButtonElement | undefined = $state();
 	let dropdownStyle = $state('');
@@ -33,13 +32,11 @@
 
 	onMount(() => {
 		fetchUnreadCount();
-		connectSSE();
 		document.addEventListener('click', handleClickOutside);
 		window.addEventListener('notifications-read', fetchUnreadCount);
 	});
 
 	onDestroy(() => {
-		eventSource?.close();
 		if (typeof document !== 'undefined') {
 			document.removeEventListener('click', handleClickOutside);
 			window.removeEventListener('notifications-read', fetchUnreadCount);
@@ -57,28 +54,9 @@
 			const res = await fetch('/api/notifications/unread-count');
 			if (res.ok) {
 				const data = await res.json();
-				unreadCount = data.count ?? 0;
+				setUnreadCount(data.count ?? 0);
 			}
 		} catch {}
-	}
-
-	function connectSSE() {
-		// 기존 연결이 남아있으면 먼저 정리 (중복 연결 시 알림이 중복 수신됨)
-		if (eventSource) { eventSource.close(); eventSource = null; }
-		eventSource = new EventSource('/api/sse/notifications');
-
-		eventSource.addEventListener('notification', (e) => {
-			try {
-				const data = JSON.parse(e.data);
-				unreadCount++;
-				showToast({ title: data.title, body: data.body, url: data.url });
-			} catch {}
-		});
-
-		eventSource.addEventListener('error', () => {
-			eventSource?.close();
-			setTimeout(connectSSE, 5000);
-		});
 	}
 
 	async function toggleDropdown() {
@@ -128,7 +106,7 @@
 					body: JSON.stringify({ notificationIds: [n.id] }),
 				});
 				n.is_read = true;
-				unreadCount = Math.max(0, unreadCount - 1);
+				decrementUnread();
 			} catch {}
 		}
 
@@ -164,7 +142,7 @@
 				body: JSON.stringify({ all: true }),
 			});
 			notifications = notifications.map(n => ({ ...n, is_read: true }));
-			unreadCount = 0;
+			setUnreadCount(0);
 		} catch {}
 	}
 
@@ -231,7 +209,7 @@
 				body: JSON.stringify({ notificationId: id }),
 			});
 			if (n && !n.is_read) {
-				unreadCount = Math.max(0, unreadCount - 1);
+				decrementUnread();
 			}
 			notifications = notifications.filter(n => n.id !== id);
 			resetSwipe();
