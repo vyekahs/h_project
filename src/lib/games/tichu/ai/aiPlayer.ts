@@ -14,24 +14,31 @@ import {
 
 export class AiPlayer {
 	readonly seat: SeatIndex;
+	readonly strategy: AiStrategy;
 	readonly weights: PersonalityWeights;
 	readonly isPartner: boolean;
 	readonly behavior: PresetBehavior;
 	/** 교환 때 상대에게 준 카드 랭크 기록 (wish 결정에 사용) */
 	givenToOpponents: number[] = [];
 
-	static fromWeights(seat: SeatIndex, weights: PersonalityWeights, isPartner: boolean, behavior?: PresetBehavior): AiPlayer {
+	/**
+	 * 저장된 weights로부터 AiPlayer를 복원 (variance가 적용된 wild 등도 그대로 복원).
+	 * behavior는 항상 strategy 기준으로 다시 로드하여 프리셋 고유 행동을 보존한다.
+	 */
+	static fromWeights(seat: SeatIndex, strategy: AiStrategy, weights: PersonalityWeights, isPartner: boolean): AiPlayer {
 		const player = Object.create(AiPlayer.prototype) as AiPlayer;
 		(player as any).seat = seat;
+		(player as any).strategy = strategy;
 		(player as any).weights = weights;
 		(player as any).isPartner = isPartner;
-		(player as any).behavior = behavior ?? {};
+		(player as any).behavior = getBehaviorForStrategy(strategy);
 		(player as any).givenToOpponents = [];
 		return player;
 	}
 
 	constructor(seat: SeatIndex, strategy: AiStrategy, isPartner: boolean) {
 		this.seat = seat;
+		this.strategy = strategy;
 		this.isPartner = isPartner;
 		this.behavior = getBehaviorForStrategy(strategy);
 

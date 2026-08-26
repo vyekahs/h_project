@@ -165,6 +165,9 @@ function detectFourBomb(cards: Card[], normalCards: NormalCard[]): Combination |
 }
 
 function detectStairs(cards: Card[], normalCards: NormalCard[], hasPhoenix: boolean, mahjongCard: Card | undefined): Combination | null {
+	// 마작은 스트레이트에서만 rank 1로 쓰일 수 있고, 페어/스테어즈에는 참여할 수 없음
+	if (mahjongCard) return null;
+
 	// Stairs = consecutive pairs
 	const allRanks = getRanksWithSpecials(normalCards, mahjongCard);
 	const rankCounts = new Map<number, number>();

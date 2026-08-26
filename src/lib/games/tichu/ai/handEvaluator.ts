@@ -373,10 +373,10 @@ export function findAllStraights(hand: Card[]): Combination[] {
  */
 export function findAllStairs(hand: Card[]): Combination[] {
 	const results: Combination[] = [];
+	// 마작은 스트레이트에서만 rank 1로 쓰일 수 있고 스테어즈에는 참여할 수 없음
 	const normalCards = getNormalCards(hand);
 	const hasPhoenix = hand.some(isPhoenix);
 	const phoenixCard = hand.find(isPhoenix);
-	const mahjongCard = hand.find(isMahjong);
 
 	// Build rank → cards map
 	const rankCards = new Map<number, Card[]>();
@@ -385,15 +385,10 @@ export function findAllStairs(hand: Card[]): Combination[] {
 		group.push(card);
 		rankCards.set(card.rank, group);
 	}
-	if (mahjongCard) {
-		const group = rankCards.get(1) || [];
-		group.push(mahjongCard);
-		rankCards.set(1, group);
-	}
 
 	// Try all possible stair lengths (2+ pairs = 4+ cards) and starting ranks
 	for (let pairCount = 2; pairCount <= 7; pairCount++) {
-		for (let startRank = 1; startRank + pairCount - 1 <= 14; startRank++) {
+		for (let startRank = 2; startRank + pairCount - 1 <= 14; startRank++) {
 			const cards: Card[] = [];
 			let phoenixUsed = false;
 			let valid = true;

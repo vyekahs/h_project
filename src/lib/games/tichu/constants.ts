@@ -84,6 +84,20 @@ export function getRightSeat(seat: number): number {
 	return (seat + 3) % 4;
 }
 
+/**
+ * 이미 나간(finishOrder가 있는) 플레이어를 건너뛰고 다음으로 실제 플레이할 좌석을 찾음.
+ * 아무도 남지 않았으면 from을 그대로 반환.
+ */
+export function getNextActiveSeat(from: number, players: { finishOrder: number | null }[]): number {
+	for (let i = 1; i <= 4; i++) {
+		const next = (from + i) % 4;
+		if (players[next] && players[next].finishOrder === null) {
+			return next;
+		}
+	}
+	return from;
+}
+
 export function getTeam(seat: number): 'A' | 'B' {
 	return seat % 2 === 0 ? 'A' : 'B';
 }
