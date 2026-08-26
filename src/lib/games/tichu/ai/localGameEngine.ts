@@ -7,7 +7,7 @@ import { detectCombination, canBeat, isBomb, resolvePhoenixSingleRank } from '..
 import { findBombs } from './handEvaluator';
 import { calculateRoundResult, checkGameOver } from '../scoring';
 import { canFulfillWish, mustPlayWishedRank, playFulfillsWish, canPlayWishedCombo, createWishState, isValidWishRank } from '../wish';
-import { getTeam, getPartnerSeat, getLeftSeat, getRightSeat, DEFAULT_TARGET_SCORE } from '../constants';
+import { getTeam, getPartnerSeat, getLeftSeat, getRightSeat, getNextActiveSeat, DEFAULT_TARGET_SCORE } from '../constants';
 import type { AiStrategy, AiSpeed, AiDecisionContext, PersonalityWeights } from './types';
 import { AI_SPEED_DELAYS } from './types';
 import { getRandomStrategy, getNameForStrategy } from './presets';
@@ -44,6 +44,7 @@ export interface TichuSaveData {
 	savedAt: number;
 	state: TichuRoomState;
 	aiWeights: Record<number, PersonalityWeights>;
+	aiStrategies?: Record<number, AiStrategy>;
 	aiPartnerFlags: Record<number, boolean>;
 	grandTichuDecisions: (boolean | null)[];
 	exchangeSubmissions: (ExchangeCards | null)[];
@@ -191,6 +192,9 @@ export class LocalGameEngine {
 			aiWeights: Object.fromEntries(
 				[...this.aiPlayers.entries()].map(([seat, ai]) => [seat, ai.weights])
 			),
+			aiStrategies: Object.fromEntries(
+				[...this.aiPlayers.entries()].map(([seat, ai]) => [seat, ai.strategy])
+			),
 			aiPartnerFlags: Object.fromEntries(
 				[...this.aiPlayers.entries()].map(([seat, ai]) => [seat, ai.isPartner])
 			),
@@ -198,7 +202,7 @@ export class LocalGameEngine {
 			exchangeSubmissions: structuredClone(this.exchangeSubmissions),
 			remainingCards: structuredClone(this.remainingCards),
 			config: {
-				partnerStrategy: 'balanced',
+				partnerStrategy: this.aiPlayers.get(2 as SeatIndex)?.strategy ?? 'balanced',
 				targetScore: this.state.config.targetScore,
 				aiSpeed: this.aiSpeed,
 				playerName: this.state.players[0].name
@@ -232,7 +236,9 @@ export class LocalGameEngine {
 		for (const [seatStr, weights] of Object.entries(save.aiWeights)) {
 			const seat = Number(seatStr) as SeatIndex;
 			const isPartner = save.aiPartnerFlags[seat] ?? (seat === 2);
-			engine.aiPlayers.set(seat, AiPlayer.fromWeights(seat, weights, isPartner));
+			// aiStrategies가 없는 구버전 저장 데이터는 'balanced'로 폴백 (프리셋 고유 행동은 유실됨)
+			const strategy = save.aiStrategies?.[seat] ?? 'balanced';
+			engine.aiPlayers.set(seat, AiPlayer.fromWeights(seat, strategy, weights, isPartner));
 		}
 
 		return engine;
@@ -1022,6 +1028,7 @@ export class LocalGameEngine {
 						actionSucceeded = true;
 					} else {
 						// If can't pass (wish enforcement), try to find a valid play
+						console.warn(`[Engine] AI seat ${currentSeat} decidePlay() returned 'pass' but pass was rejected (${result.error}) — falling back to autoPlayForAi`);
 						const autoPlay = this.autoPlayForAi(currentSeat);
 						if (autoPlay) {
 							actionSucceeded = (await this.playCardsInternal(currentSeat, autoPlay, false)).success;
@@ -1033,6 +1040,7 @@ export class LocalGameEngine {
 						actionSucceeded = true;
 					} else {
 						// AI made an invalid play, try auto-play
+						console.warn(`[Engine] AI seat ${currentSeat} decidePlay() returned invalid combo [${decision.join(',')}] (${result.error}) — falling back to autoPlayForAi`);
 						const autoPlay = this.autoPlayForAi(currentSeat);
 						if (autoPlay) {
 							actionSucceeded = (await this.playCardsInternal(currentSeat, autoPlay, false)).success;
@@ -1438,13 +1446,7 @@ export class LocalGameEngine {
 	}
 
 	private nextActiveSeat(from: SeatIndex): SeatIndex {
-		for (let i = 1; i <= 4; i++) {
-			const next = ((from + i) % 4) as SeatIndex;
-			if (this.state.players[next].finishOrder === null) {
-				return next;
-			}
-		}
-		return from;
+		return getNextActiveSeat(from, this.state.players) as SeatIndex;
 	}
 
 	private setPhase(phase: GamePhase): void {

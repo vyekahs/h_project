@@ -1,7 +1,7 @@
 import type { Card, Combination, SeatIndex, ExchangeCards, WishState, NormalCard } from '../types';
 import type { AiDecisionContext, PersonalityWeights } from './types';
 import type { PresetBehavior } from './presets/types';
-import { getTeam, getPartnerSeat, getLeftSeat, getRightSeat } from '../constants';
+import { getTeam, getPartnerSeat, getLeftSeat, getRightSeat, getNextActiveSeat } from '../constants';
 import { canBeat, isBomb, detectCombination } from '../combinations';
 import { mustPlayWishedRank, playFulfillsWish, canPlayWishedCombo } from '../wish';
 import {
@@ -768,16 +768,45 @@ function decideLeadEndgame(
 		return allAtOnce.cards.map(c => c.id);
 	}
 
+	// === 위협 감지: 일반 리드 스코어링(playSearchGrid)에만 있던 방어 로직을
+	// 엔드게임 경로에서도 반영 ===
+	// 1) 다음 플레이어(상대)가 카드 1장만 남았으면, 쉽게 뺏길 약한 싱글 리드는 위험
+	// 2) 상대가 티츄를 선언한 상태면 확실히 이기는 리드를 선호
+	const myTeam = getTeam(context.currentSeat);
+	// 이미 나간 플레이어는 건너뛰고 실제로 다음에 낼 좌석을 찾음
+	const nextSeat = getNextActiveSeat(context.currentSeat, context.players) as SeatIndex;
+	const nextPlayer = context.players[nextSeat];
+	const nextPlayerCanFinish = getTeam(nextSeat) !== myTeam &&
+		nextPlayer.finishOrder === null && nextPlayer.hand.length === 1;
+	const opponentTichuThreat = context.players.some(p =>
+		getTeam(p.seat) !== myTeam &&
+		(p.grandTichu === true || p.smallTichu) &&
+		p.finishOrder === null
+	);
+	const leadThreatPenalty = (combo: Combination): number => {
+		if (!nextPlayerCanFinish && !opponentTichuThreat) return 0;
+		// 일반 싱글(특수카드 제외)만 위험 — 멀티카드 콤보는 카드 1장인 상대가 따라올 수 없음
+		if (combo.type !== 'single' || combo.cards[0].type === 'special') return 0;
+		const winProb = comboLikelyToWin(combo, tracker, hand);
+		if (winProb >= 0.5) return 0;
+		let penalty = 0;
+		if (nextPlayerCanFinish) penalty += 0.3;
+		if (opponentTichuThreat) penalty += 0.15;
+		return penalty;
+	};
+
 	// Find all valid 2-turn finishes and score them by win probability
 	const twoTurnFinishes = findAllTwoTurnFinishes(hand, plan, tracker);
 	if (twoTurnFinishes.length > 0) {
-		// Sort by combined win probability (lead * remainder)
-		twoTurnFinishes.sort((a, b) => b.score - a.score);
+		// Sort by combined win probability (lead * remainder), adjusted for threats
+		twoTurnFinishes.sort((a, b) =>
+			(b.score - leadThreatPenalty(b.lead)) - (a.score - leadThreatPenalty(a.lead))
+		);
 		return twoTurnFinishes[0].lead.cards.map(c => c.id);
 	}
 
 	// Try 3-turn finishes
-	const twoStepResult = findTwoStepFinishScored(hand, plan, tracker);
+	const twoStepResult = findTwoStepFinishScored(hand, plan, tracker, leadThreatPenalty);
 	if (twoStepResult) {
 		return twoStepResult.cards.map(c => c.id);
 	}
@@ -808,6 +837,8 @@ function decideLeadEndgame(
 				if (c.cards[0].special === 'dragon') score -= 20;
 				if (c.cards[0].special === 'phoenix') score -= 15;
 			}
+			// 상대 위협 페널티 (0~0.45 범위를 fallback 스코어 스케일에 맞게 확대)
+			score -= leadThreatPenalty(c) * 10;
 			return { combo: c, score };
 		});
 		scored.sort((a, b) => b.score - a.score);
@@ -858,7 +889,12 @@ function findAllTwoTurnFinishes(
 /**
  * Try 3-turn finishes with win probability scoring.
  */
-function findTwoStepFinishScored(hand: Card[], plan: HandPlan, tracker: CardTracker): Combination | null {
+function findTwoStepFinishScored(
+	hand: Card[],
+	plan: HandPlan,
+	tracker: CardTracker,
+	leadPenalty: (combo: Combination) => number = () => 0
+): Combination | null {
 	const candidates: { combo: Combination; score: number }[] = [];
 
 	for (const combo of plan.allCombos) {
@@ -867,7 +903,6 @@ function findTwoStepFinishScored(hand: Card[], plan: HandPlan, tracker: CardTrac
 
 		const remainingCards = hand.filter(c => !combo.cards.some(cc => cc.id === c.id));
 		if (remainingCards.length <= 1) continue;
-		if (remainingCards.length > 6) continue;
 
 		const remainingCombos = findAllPlayableCombinations(remainingCards);
 		let bestSubScore = -Infinity;
@@ -887,7 +922,7 @@ function findTwoStepFinishScored(hand: Card[], plan: HandPlan, tracker: CardTrac
 
 		if (bestSubScore > -Infinity) {
 			const leadScore = comboLikelyToWin(combo, tracker, hand);
-			candidates.push({ combo, score: leadScore * (1 + bestSubScore * 0.6) });
+			candidates.push({ combo, score: leadScore * (1 + bestSubScore * 0.6) - leadPenalty(combo) });
 		}
 	}
 
@@ -987,11 +1022,8 @@ export function decideWish(
 		}
 	}
 
-	// Strategy 3: 아무 높은 랭크라도 (A → K → Q → J)
-	for (const rank of highRanks) {
-		return rank;
-	}
-
+	// 여기까지 왔다면 A/K/Q/J가 전부 내 손패에 있거나 이미 소진된 상태 →
+	// 아무도 채울 수 없는 "죽은 소원"이 되므로 소원 생략
 	return null;
 }
 
@@ -1072,24 +1104,35 @@ export function shouldPlayBomb(
 	const bombs = findBombs(hand);
 	if (bombs.length === 0) return null;
 
-	// Behavior hook: 폭탄 사용 오버라이드
-	const bombOverride = behavior.shouldUseBomb?.(hand, bombs, context, lastPlay);
-	if (bombOverride === 'skip') return null;
-	if (bombOverride !== null && bombOverride !== undefined) return bombOverride;
-
 	const beatable = bombs.filter(b => canBeat(lastPlay.combination, b));
 	if (beatable.length === 0) return null;
 
 	beatable.sort((a, b) => a.rank - b.rank);
 
-	const tracker = buildCardTracker(context);
-
-	// Counter-bomb scenario
+	// === 필수 저지 로직: 프리셋의 shouldUseBomb 오버라이드보다 항상 우선 적용 ===
+	// (모든 프리셋이 shouldUseBomb에서 'skip'/콤보 중 하나를 반환해버리면
+	//  아래 공용 로직 전체가 죽은 코드가 되어버리는 문제를 방지)
 	if (isBomb(lastPlay.combination)) {
 		const attacker = players[lastPlay.seat];
 		if (attacker.hand.length <= 2) {
-			return beatable[0]; // Must stop them
+			return beatable[0]; // 상대가 폭탄으로 나가려는 중이면 반드시 저지
 		}
+	} else {
+		const player = players[lastPlay.seat];
+		if (player.hand.length <= 2) {
+			return beatable[0]; // 상대가 곧 나갈 것 같으면 반드시 저지
+		}
+	}
+
+	// Behavior hook: 폭탄 사용 오버라이드 (필수 저지 이후, 선택적 상황)
+	const bombOverride = behavior.shouldUseBomb?.(hand, bombs, context, lastPlay);
+	if (bombOverride === 'skip') return null;
+	if (bombOverride !== null && bombOverride !== undefined) return bombOverride;
+
+	const tracker = buildCardTracker(context);
+
+	// Counter-bomb scenario (이미 나간 폭탄에 카운터폭탄 칠지)
+	if (isBomb(lastPlay.combination)) {
 		// 카운터폭탄은 트릭 포인트가 충분할 때만 (10점 이상)
 		const counterTrickCards = context.trick?.plays.flatMap(p => p.combination.cards) || [];
 		const counterTrickPoints = getTrickPoints(counterTrickCards);
@@ -1109,12 +1152,6 @@ export function shouldPlayBomb(
 
 	// High bomb holding = reluctant to use bombs
 	if (weights.bombHolding > 0.8) return null;
-
-	// Opponent about to finish — always bomb
-	const player = players[lastPlay.seat];
-	if (player.hand.length <= 2) {
-		return beatable[0];
-	}
 
 	// 상대 티츄 선언 → 적극 폭탄 (카드 7장 이하)
 	if (hasOpponentDeclaredTichu(tracker)) {

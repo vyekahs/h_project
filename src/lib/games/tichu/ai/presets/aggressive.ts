@@ -3,6 +3,7 @@ import { selectBestPartnerCard } from './types';
 import type { Card, NormalCard, Combination, SeatIndex } from '../../types';
 import type { AiDecisionContext } from '../types';
 import { findAllPlayableCombinations, estimateSimpleTurns } from '../handEvaluator';
+import { buildCardTracker } from '../cardTracker';
 import { getTeam, getPartnerSeat } from '../../constants';
 import { canBeat, isBomb } from '../../combinations';
 
@@ -144,15 +145,18 @@ export const aggressiveBehavior: PresetBehavior = {
 			hand.filter(c => c.type === 'normal').map(c => (c as NormalCard).rank as number)
 		);
 
+		// 밖에 아직 남아있는(소진되지 않은) 랭크만 선언 — 다 소진됐으면 아무도 못 채우는 죽은 소원이 됨
+		const tracker = buildCardTracker(context);
+
 		// 내 손패에 없는 높은 랭크 (A → K → Q → J 순)
 		const highRanks = [14, 13, 12, 11];
 		for (const rank of highRanks) {
-			if (!myRanks.has(rank)) {
+			if (!myRanks.has(rank) && (tracker.remainingByRank.get(rank) || 0) >= 1) {
 				return rank;
 			}
 		}
 
-		// 내가 다 갖고 있으면 기본 로직
+		// 내가 다 갖고 있거나 남은 카드가 없으면 기본 로직
 		return 'default';
 	},
 

@@ -11,7 +11,7 @@ import type { CardTracker } from './cardTracker';
 import { comboLikelyToWin, rankStrengthInContext } from './cardTracker';
 import { findAllPlayableCombinations } from './handEvaluator';
 import { isBomb, detectCombination } from '../combinations';
-import { getTeam, getPartnerSeat, getLeftSeat } from '../constants';
+import { getTeam, getPartnerSeat, getNextActiveSeat } from '../constants';
 
 // ===== Types =====
 
@@ -346,7 +346,8 @@ function calcContextModifier(
 		}
 
 		// 다음 플레이어가 상대이고 1장 남았으면 → 이길 수 있는 리드 강제
-		const nextSeat = getLeftSeat(context.currentSeat) as SeatIndex;
+		// (이미 나간 플레이어는 건너뛰고 실제로 다음에 낼 좌석을 찾음)
+		const nextSeat = getNextActiveSeat(context.currentSeat, context.players) as SeatIndex;
 		const nextPlayer = context.players[nextSeat];
 		if (getTeam(nextSeat) !== myTeam && nextPlayer.finishOrder === null && nextPlayer.hand.length === 1) {
 			if (combo.type === 'single' && combo.cards[0].type !== 'special') {
@@ -485,9 +486,18 @@ function calcContextModifier(
 				}
 			} else {
 				if (afterCombo) {
-					mod += 0.25; // 1턴에 나갈 수 있음
+					// 1턴에 나갈 수 있음 — 그 콤보가 실제로 이길 확률만큼 가중치 부여
+					// (승률과 무관하게 고정 보너스를 주면, 이기기 힘든 애프터 콤보를 위해
+					//  드래곤 같은 강패를 낭비해 지금 트릭을 뺏으려는 유인이 생김)
+					const afterWinProb = comboLikelyToWin(afterCombo, tracker, remainingHand);
+					mod += 0.1 + afterWinProb * 0.2;
 				} else if (remainingHand.length === 1) {
-					mod += 0.2; // 1장만 남음
+					const lastCard = remainingHand[0];
+					const lastRank = lastCard.type === 'normal'
+						? lastCard.rank
+						: (lastCard.type === 'special' && lastCard.special === 'dragon') ? 15 : 1;
+					const winProb = rankStrengthInContext(lastRank, tracker);
+					mod += 0.05 + winProb * 0.15;
 				}
 			}
 		}
