@@ -148,7 +148,7 @@
 	.trick-combo {
 		font-size: 0.75rem;
 		font-weight: 700;
-		color: #fbbf24;
+		color: #e6d3a3;
 		background: rgba(0,0,0,0.6);
 		padding: 2px 10px;
 		border-radius: 10px;
@@ -156,7 +156,7 @@
 		z-index: 10;
 		backdrop-filter: blur(4px);
 		-webkit-backdrop-filter: blur(4px);
-		border: 1px solid rgba(251, 191, 36, 0.4);
+		border: 1px solid rgba(230, 211, 163, 0.4);
 		box-shadow: 0 4px 6px rgba(0,0,0,0.3);
 		animation: comboPop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 	}
@@ -175,10 +175,13 @@
 	}
 
 .trick-empty {
-		color: rgba(255, 255, 255, 0.3);
+		color: #cbd5e1;
 		font-size: 0.85rem;
 		font-weight: 500;
 		font-style: italic;
+		background: rgba(0, 0, 0, 0.35);
+		padding: 4px 14px;
+		border-radius: 12px;
 	}
 
 	@keyframes popIn {

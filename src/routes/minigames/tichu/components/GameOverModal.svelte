@@ -112,15 +112,15 @@
 	}
 
 	.modal-content.victory {
-		border: 1px solid rgba(251, 191, 36, 0.5);
-		box-shadow: 0 0 50px rgba(245, 158, 11, 0.2), inset 0 0 20px rgba(245, 158, 11, 0.1);
+		border: 1px solid rgba(230, 211, 163, 0.5);
+		box-shadow: 0 0 50px rgba(203, 170, 110, 0.2), inset 0 0 20px rgba(203, 170, 110, 0.1);
 	}
 	/* Shine effect for victory */
 	.modal-content.victory::before {
 		content: '';
 		position: absolute;
 		top: -50%; left: -50%; width: 200%; height: 200%;
-		background: radial-gradient(circle, rgba(251, 191, 36, 0.1) 0%, transparent 60%);
+		background: radial-gradient(circle, rgba(230, 211, 163, 0.1) 0%, transparent 60%);
 		animation: rotateShine 10s linear infinite;
 		pointer-events: none;
 	}
@@ -142,8 +142,8 @@
 		letter-spacing: -0.02em;
 	}
 	.modal-content.victory h2 {
-		color: #fbbf24;
-		text-shadow: 0 0 20px rgba(251, 191, 36, 0.5);
+		color: #e6d3a3;
+		text-shadow: 0 0 20px rgba(230, 211, 163, 0.5);
 	}
 
 	.winner-team {
@@ -182,7 +182,7 @@
 		text-shadow: 0 4px 8px rgba(0,0,0,0.3);
 	}
 	.modal-content.victory .final-team:first-child .final-score {
-		color: #fbbf24;
+		color: #e6d3a3;
 	}
 	.final-divider {
 		font-size: 1rem;
@@ -207,9 +207,9 @@
 	.ranking-points {
 		font-size: 1.2rem;
 		font-weight: 700;
-		color: #fbbf24;
+		color: #e6d3a3;
 		margin-top: 4px;
-		text-shadow: 0 0 12px rgba(251,191,36,0.4);
+		text-shadow: 0 0 12px rgba(230,211,163,0.4);
 	}
 
 	.btn-group {
@@ -224,15 +224,15 @@
 		padding: 14px 32px;
 		border-radius: 16px;
 		border: none;
-		background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
-		color: #fff;
+		background: linear-gradient(135deg, #e6d3a3 0%, #c9a668 100%);
+		color: #4a3820;
 		font-weight: 700;
 		font-size: 1.1rem;
 		cursor: pointer;
-		box-shadow: 0 4px 15px rgba(245, 158, 11, 0.4);
+		box-shadow: 0 4px 15px rgba(168, 130, 79, 0.4);
 		transition: all 0.2s;
 	}
-	.btn-ok:hover { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(245, 158, 11, 0.6); }
+	.btn-ok:hover { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(168, 130, 79, 0.6); }
 
 	.btn-review {
 		padding: 12px 32px;
@@ -265,8 +265,8 @@
 		margin-bottom: 24px;
 		padding: 20px 16px;
 		border-radius: 16px;
-		background: linear-gradient(135deg, rgba(245, 158, 11, 0.12) 0%, rgba(217, 119, 6, 0.08) 100%);
-		border: 1px solid rgba(245, 158, 11, 0.3);
+		background: linear-gradient(135deg, rgba(203, 170, 110, 0.12) 0%, rgba(168, 130, 79, 0.08) 100%);
+		border: 1px solid rgba(203, 170, 110, 0.3);
 		position: relative;
 		z-index: 10;
 		text-align: center;
@@ -287,12 +287,12 @@
 		margin-bottom: 24px;
 		padding: 20px 16px;
 		border-radius: 16px;
-		background: linear-gradient(135deg, rgba(251, 191, 36, 0.15) 0%, rgba(245, 158, 11, 0.1) 100%);
-		border: 1px solid rgba(251, 191, 36, 0.4);
+		background: linear-gradient(135deg, rgba(230, 211, 163, 0.15) 0%, rgba(203, 170, 110, 0.1) 100%);
+		border: 1px solid rgba(230, 211, 163, 0.4);
 		position: relative;
 		z-index: 10;
 		animation: titlePopIn 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) 0.5s both;
-		box-shadow: 0 0 30px rgba(251, 191, 36, 0.15), inset 0 0 20px rgba(251, 191, 36, 0.05);
+		box-shadow: 0 0 30px rgba(230, 211, 163, 0.15), inset 0 0 20px rgba(230, 211, 163, 0.05);
 	}
 	.title-sparkle-row {
 		display: flex;
@@ -302,9 +302,9 @@
 	}
 	.sparkle {
 		font-size: 1rem;
-		color: #fbbf24;
+		color: #e6d3a3;
 		animation: sparklePulse 1.5s ease-in-out infinite;
-		text-shadow: 0 0 8px rgba(251, 191, 36, 0.8);
+		text-shadow: 0 0 8px rgba(230, 211, 163, 0.8);
 	}
 	.sparkle:nth-child(2) { animation-delay: 0.3s; }
 	.sparkle:nth-child(3) { animation-delay: 0.6s; }
@@ -318,15 +318,11 @@
 		margin-bottom: 6px;
 	}
 	.title-name {
-		font-size: 1.3rem;
+		font-size: 1.5rem;
 		font-weight: 800;
-		background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 30%, #fcd34d 60%, #f59e0b 100%);
-		-webkit-background-clip: text;
-		-webkit-text-fill-color: transparent;
-		background-clip: text;
+		color: #e6d3a3;
 		letter-spacing: -0.02em;
-		text-shadow: none;
-		filter: drop-shadow(0 2px 4px rgba(251, 191, 36, 0.3));
+		text-shadow: 0 2px 12px rgba(230, 211, 163, 0.5);
 	}
 
 	@keyframes titlePopIn {

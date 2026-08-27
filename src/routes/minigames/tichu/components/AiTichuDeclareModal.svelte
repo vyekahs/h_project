@@ -46,11 +46,11 @@
 	}
 
 	.content.grand {
-		background: rgba(153, 27, 27, 0.92);
+		background: rgba(74, 58, 112, 0.92);
 		backdrop-filter: blur(16px);
 		-webkit-backdrop-filter: blur(16px);
-		border: 1px solid rgba(252, 165, 165, 0.4);
-		box-shadow: 0 10px 40px rgba(220, 38, 38, 0.5);
+		border: 1px solid rgba(196, 181, 253, 0.4);
+		box-shadow: 0 10px 40px rgba(139, 122, 184, 0.5);
 	}
 
 	.content.small {

@@ -93,8 +93,8 @@
 	/* Current Turn Styles */
 	.opponent.current-turn .opponent-card {
 		background: rgba(30, 41, 59, 0.8);
-		border-color: rgba(251, 191, 36, 0.6);
-		box-shadow: 0 0 25px rgba(251, 191, 36, 0.3), inset 0 0 10px rgba(251, 191, 36, 0.1);
+		border-color: rgba(230, 211, 163, 0.6);
+		box-shadow: 0 0 25px rgba(230, 211, 163, 0.3), inset 0 0 10px rgba(230, 211, 163, 0.1);
 		transform: scale(1.05);
 	}
 
@@ -120,8 +120,8 @@
 		text-shadow: 0 1px 2px rgba(0,0,0,0.5);
 		z-index: 2;
 	}
-	.avatar.team-A { background: linear-gradient(135deg, #ef4444, #991b1b); }
-	.avatar.team-B { background: linear-gradient(135deg, #3b82f6, #1e40af); }
+	.avatar.team-A { background: linear-gradient(135deg, #dc2626, #7f1d1d); }
+	.avatar.team-B { background: linear-gradient(135deg, #2563eb, #1e3a8a); }
 	.avatar.finished { background: linear-gradient(135deg, #22c55e, #166534); border-color: #86efac; }
 	.finish-badge { font-size: 0.75rem; }
 
@@ -129,7 +129,7 @@
 		position: absolute;
 		top: -4px; left: -4px; right: -4px; bottom: -4px;
 		border-radius: 50%;
-		border: 2px solid #fbbf24;
+		border: 2px solid #e6d3a3;
 		opacity: 0;
 		animation: thinkRing 1.5s infinite;
 		z-index: 1;
@@ -163,8 +163,8 @@
 	}
 	.partner-badge {
 		font-size: 0.6rem;
-		background: rgba(220, 38, 38, 0.4);
-		color: #fca5a5;
+		background: rgba(139, 122, 184, 0.4);
+		color: #d8cef0;
 		padding: 1px 4px;
 		border-radius: 4px;
 		font-weight: 700;
@@ -181,7 +181,7 @@
 	.count-num {
 		font-size: 0.9rem;
 		font-weight: 700;
-		color: #fbbf24;
+		color: #e6d3a3;
 	}
 	.count-label {
 		font-size: 0.7rem;
@@ -197,8 +197,8 @@
 		box-shadow: 0 2px 6px rgba(0,0,0,0.3);
 		margin-top: 2px;
 	}
-	.finish-banner.badge-1 { background: linear-gradient(135deg, #fbbf24, #d97706); color: #fff; border: 1px solid #fde68a; }
-	.finish-banner.badge-2 { background: linear-gradient(135deg, #94a3b8, #64748b); color: #fff; border: 1px solid #cbd5e1; }
+	.finish-banner.badge-1 { background: linear-gradient(135deg, #e6d3a3, #c9a668); color: #4a3820; border: 1px solid #f5ecd8; }
+	.finish-banner.badge-2 { background: linear-gradient(135deg, #64748b, #334155); color: #fff; border: 1px solid #cbd5e1; }
 	.finish-banner.badge-3 { background: linear-gradient(135deg, #b45309, #78350f); color: #fff; border: 1px solid #fcd34d; }
 	.finish-banner.badge-4 { background: rgba(0,0,0,0.5); color: #9ca3af; border: 1px solid #4b5563; }
 
@@ -228,8 +228,8 @@
 		animation: popIn 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 	}
 	.declaration.grand {
-		background: linear-gradient(135deg, #dc2626, #b91c1c);
-		border: 1px solid rgba(252, 165, 165, 0.4);
+		background: linear-gradient(135deg, #6b5a95, #4a3d6b);
+		border: 1px solid rgba(196, 181, 253, 0.4);
 	}
 	.declaration.small-tichu {
 		background: linear-gradient(135deg, #059669, #047857);

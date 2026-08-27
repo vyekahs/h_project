@@ -88,7 +88,7 @@
 
 	.lesson-card:hover {
 		background: rgba(255, 255, 255, 0.1);
-		border-color: rgba(251, 191, 36, 0.4);
+		border-color: rgba(230, 211, 163, 0.4);
 		transform: translateY(-2px);
 		box-shadow: 0 15px 40px -10px rgba(0, 0, 0, 0.4);
 	}
