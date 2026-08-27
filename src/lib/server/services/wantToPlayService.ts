@@ -45,34 +45,35 @@ export const WantToPlayService = {
 		if (postIds.length === 0) return [];
 
 		const idList = sql.join(postIds.map(id => sql`${id}`), sql`, `);
-		const participants = await db.execute(sql`
-			SELECT
-				wp.post_id,
-				wp.attendee_id as id,
-				a.name,
-				mt.title_name
-			FROM want_to_play_participants wp
-			LEFT JOIN attendees a ON wp.attendee_id = a.id
-			LEFT JOIN minigame_user_points mup ON wp.attendee_id = mup.user_id
-			LEFT JOIN minigame_titles mt ON mup.equipped_title_id = mt.id
-			WHERE wp.post_id IN (${idList})
-			ORDER BY wp.joined_at ASC
-		`);
+		// 둘 다 postIds에만 의존하고 서로 독립적이라 병렬로 조회
+		const [participants, tags] = await Promise.all([
+			db.execute(sql`
+				SELECT
+					wp.post_id,
+					wp.attendee_id as id,
+					a.name,
+					mt.title_name
+				FROM want_to_play_participants wp
+				LEFT JOIN attendees a ON wp.attendee_id = a.id
+				LEFT JOIN minigame_user_points mup ON wp.attendee_id = mup.user_id
+				LEFT JOIN minigame_titles mt ON mup.equipped_title_id = mt.id
+				WHERE wp.post_id IN (${idList})
+				ORDER BY wp.joined_at ASC
+			`),
+			db.execute(sql`
+				SELECT pt.post_id, t.id, t.name
+				FROM wtp_post_tags pt
+				JOIN wtp_tags t ON pt.tag_id = t.id
+				WHERE pt.post_id IN (${idList})
+				ORDER BY t.sort_order ASC
+			`),
+		]);
 
 		const participantsByPost = new Map<number, { id: number; name: string; title_name: string | null }[]>();
 		for (const p of participants as any[]) {
 			if (!participantsByPost.has(p.post_id)) participantsByPost.set(p.post_id, []);
 			participantsByPost.get(p.post_id)!.push({ id: p.id, name: p.name, title_name: p.title_name });
 		}
-
-		// 태그 조회
-		const tags = await db.execute(sql`
-			SELECT pt.post_id, t.id, t.name
-			FROM wtp_post_tags pt
-			JOIN wtp_tags t ON pt.tag_id = t.id
-			WHERE pt.post_id IN (${idList})
-			ORDER BY t.sort_order ASC
-		`);
 
 		const tagsByPost = new Map<number, WtpTag[]>();
 		for (const t of tags as any[]) {
