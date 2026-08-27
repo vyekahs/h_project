@@ -105,13 +105,13 @@
 		background: rgba(15, 23, 42, 0.88);
 		backdrop-filter: blur(24px);
 		-webkit-backdrop-filter: blur(24px);
-		border: 1px solid rgba(251, 191, 36, 0.3);
+		border: 1px solid rgba(230, 211, 163, 0.3);
 		border-radius: 24px;
 		padding: 20px 24px;
 		color: #f3f4f6;
 		box-shadow:
 			0 20px 50px rgba(0, 0, 0, 0.5),
-			0 0 30px rgba(251, 191, 36, 0.1),
+			0 0 30px rgba(230, 211, 163, 0.1),
 			inset 0 1px 0 rgba(255, 255, 255, 0.1);
 		animation: bubbleIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
 		pointer-events: auto;
@@ -133,7 +133,7 @@
 	}
 	.inline-progress-bar {
 		height: 100%;
-		background: linear-gradient(90deg, #fbbf24, #f59e0b);
+		background: linear-gradient(90deg, #e6d3a3, #c9a668);
 		transition: width 0.4s ease;
 		border-radius: 2px;
 	}
@@ -150,7 +150,7 @@
 		margin: 0 0 8px;
 		font-size: 1.05rem;
 		font-weight: 800;
-		color: #fbbf24;
+		color: #e6d3a3;
 		letter-spacing: -0.02em;
 	}
 
@@ -173,14 +173,14 @@
 		padding: 12px 0;
 		border-radius: 14px;
 		border: none;
-		background: linear-gradient(135deg, #fbbf24, #d97706);
-		color: #fff;
+		background: linear-gradient(135deg, #e6d3a3, #c9a668);
+		color: #4a3820;
 		font-weight: 700;
 		font-size: 0.95rem;
 		cursor: pointer;
 		transition: all 0.2s;
-		box-shadow: 0 4px 15px rgba(245, 158, 11, 0.3);
-		text-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+		box-shadow: 0 4px 15px rgba(168, 130, 79, 0.3);
+		text-shadow: 0 1px 0 rgba(255, 255, 255, 0.3);
 	}
 	.btn-next:active {
 		transform: scale(0.97);
@@ -202,7 +202,7 @@
 		width: 8px;
 		height: 8px;
 		border-radius: 50%;
-		background: #fbbf24;
+		background: #e6d3a3;
 		animation: dotPulse 1.2s ease-in-out infinite;
 	}
 	@keyframes dotPulse {

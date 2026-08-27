@@ -23,7 +23,7 @@
 	<title>티츄</title>
 </svelte:head>
 
-<div class="page-background"></div>
+<div class="page-background" class:is-playing={game.view !== 'setup'}></div>
 
 <div class="tichu-page">
 	{#if game.view === 'setup'}
@@ -81,6 +81,14 @@
 </div>
 
 <style>
+	/*
+	 * 옻칠(라커) 테이블 위 단일 조명 컨셉. 대칭 비네트+회전 원뿔+펄스 블롭 조합을
+	 * 걷어내고, 카드 위쪽에서 빛이 떨어지는 비대칭 단일 광원 + 검정·금 축으로 재구성.
+	 * (검정 유리 + 금색 단일 악센트인 실제 인터랙션 요소들과 팔레트를 맞춤 — 라벤더는
+	 * 그랜드 티츄 같은 희귀 이벤트에만 남겨두고 앰비언트 배경에서는 제거)
+	 * 앰비언트 강도는 실제 게임플레이(game/tutorial 뷰)에서만 최대로 — 설정 화면은
+	 * 빛이 거의 죽어 있는 차분한 라커 표면.
+	 */
 	.page-background {
 		position: fixed;
 		top: 0;
@@ -88,59 +96,49 @@
 		width: 100vw;
 		height: 100vh;
 		z-index: -1;
-		background: radial-gradient(circle at 50% 50%, #7f1d1d 0%, #450a0a 40%, #1a0505 100%);
+		background:
+			radial-gradient(ellipse 900px 500px at 50% -8%, rgba(203, 170, 110, 0.11) 0%, transparent 55%),
+			linear-gradient(180deg, #332818 0%, #211a10 55%, #140f0a 100%);
 		overflow: hidden;
+		transition: background 0.8s ease;
+	}
+	.page-background.is-playing {
+		background:
+			radial-gradient(ellipse 1000px 600px at 50% -8%, rgba(203, 170, 110, 0.22) 0%, transparent 55%),
+			linear-gradient(180deg, #423218 0%, #2a2010 55%, #1a140c 100%);
 	}
 
+	/* 단일 저작 모션: 상단 조명 하나만 아주 느리게 숨쉬듯 — 여러 개가 따로 도는 효과 없음 */
 	.page-background::before {
 		content: '';
 		position: absolute;
-		top: -50%;
-		left: -50%;
-		width: 200%;
-		height: 200%;
-		background: conic-gradient(
-			from 0deg at 50% 50%,
-			transparent 0deg,
-			rgba(245, 158, 11, 0.1) 60deg,
-			rgba(16, 185, 129, 0.05) 120deg,
-			transparent 180deg,
-			rgba(220, 38, 38, 0.1) 240deg,
-			rgba(251, 191, 36, 0.08) 300deg,
-			transparent 360deg
-		);
-		animation: rotate 80s linear infinite;
-		filter: blur(80px);
+		top: -12%;
+		left: 50%;
+		transform: translateX(-50%);
+		width: 70%;
+		height: 55%;
+		background: radial-gradient(ellipse at center, rgba(230, 211, 163, 0.18) 0%, transparent 70%);
+		filter: blur(70px);
+		opacity: 0.4;
+		animation: breathe 6s ease-in-out infinite;
+		animation-play-state: paused;
+		transition: opacity 0.8s ease;
+	}
+	.page-background.is-playing::before {
+		opacity: 1;
+		animation-play-state: running;
 	}
 
-	.page-background::after {
-		content: '';
-		position: absolute;
-		top: 0;
-		left: 0;
-		width: 100%;
-		height: 100%;
-		background: radial-gradient(circle at 85% 15%, rgba(251, 191, 36, 0.12) 0%, transparent 30%),
-					radial-gradient(circle at 15% 85%, rgba(16, 185, 129, 0.08) 0%, transparent 30%);
-		filter: blur(50px);
-		animation: pulse 12s ease-in-out infinite alternate;
-	}
-
-	@keyframes rotate {
-		from { transform: rotate(0deg); }
-		to { transform: rotate(360deg); }
-	}
-
-	@keyframes pulse {
-		0% { opacity: 0.6; transform: scale(1); }
-		100% { opacity: 0.9; transform: scale(1.05); }
+	@keyframes breathe {
+		0%, 100% { transform: translateX(-50%) scale(1); }
+		50% { transform: translateX(-50%) scale(1.06); }
 	}
 
 	.tichu-page {
 		position: fixed;
 		inset: 0;
 		background: transparent;
-		color: #fef2f2;
+		color: #f3efe8;
 		overflow: hidden;
 		overscroll-behavior: none;
 		font-family: 'Inter', system-ui, -apple-system, sans-serif;
@@ -176,7 +174,7 @@
 		color: #fff;
 		text-shadow: 0 1px 2px rgba(0,0,0,0.2);
 	}
-	/* Custom Toast Colors for Red Theme */
+	/* Toast 색상은 상태 의미(정보/성공/오류/경고)를 나타내는 고정 신호색 — 테마 색과 무관하게 유지 */
 	.toast-info { background: rgba(59, 130, 246, 0.25); border-color: rgba(147, 197, 253, 0.3); }
 	.toast-success { background: rgba(16, 185, 129, 0.25); border-color: rgba(110, 231, 183, 0.3); }
 	.toast-error { background: rgba(239, 68, 68, 0.3); border-color: rgba(252, 165, 165, 0.3); }

@@ -39,6 +39,11 @@
 		heart: '#dc2626'   // Red
 	};
 
+	// Per-suit scale so each glyph reads at a similar visual weight
+	const suitScale: Record<string, number> = {
+		club: 0.85
+	};
+
 	const specialDisplay: Record<string, { color: string; name: string; gradient: string }> = {
 		dragon: { 
 			color: '#ef4444', 
@@ -79,7 +84,7 @@
 				name: info.name,
 				isSpecial: true,
 				gradient: info.gradient,
-				isClub: false
+				scale: 1
 			};
 		}
 		
@@ -91,7 +96,7 @@
 			name: '',
 			isSpecial: false,
 			gradient: 'none',
-			isClub: mappedSuit === 'club'
+			scale: suitScale[mappedSuit] ?? 1
 		};
 	});
 </script>
@@ -122,27 +127,24 @@
 	{:else}
 		<div class="card-top-left">
 			<span class="rank-text" style="color: {displayInfo.color}">{displayInfo.rank}</span>
-			<div 
-				class="suit-icon-small" 
-				class:club-icon={displayInfo.isClub}
-				style="background-color: {displayInfo.color}; -webkit-mask-image: url('{displayInfo.imageSrc}'); mask-image: url('{displayInfo.imageSrc}')"
+			<div
+				class="suit-icon-small"
+				style="background-color: {displayInfo.color}; -webkit-mask-image: url('{displayInfo.imageSrc}'); mask-image: url('{displayInfo.imageSrc}'); transform: scale({displayInfo.scale})"
 			></div>
 		</div>
 		
 		<div class="card-center">
-			<div 
-				class="suit-icon-large" 
-				class:club-icon={displayInfo.isClub}
-				style="background-color: {displayInfo.color}; -webkit-mask-image: url('{displayInfo.imageSrc}'); mask-image: url('{displayInfo.imageSrc}')"
+			<div
+				class="suit-icon-large"
+				style="background-color: {displayInfo.color}; -webkit-mask-image: url('{displayInfo.imageSrc}'); mask-image: url('{displayInfo.imageSrc}'); transform: scale({displayInfo.scale})"
 			></div>
 		</div>
 
 		<div class="card-bottom-right">
 			<span class="rank-text" style="color: {displayInfo.color}">{displayInfo.rank}</span>
-			<div 
-				class="suit-icon-small" 
-				class:club-icon={displayInfo.isClub}
-				style="background-color: {displayInfo.color}; -webkit-mask-image: url('{displayInfo.imageSrc}'); mask-image: url('{displayInfo.imageSrc}')"
+			<div
+				class="suit-icon-small"
+				style="background-color: {displayInfo.color}; -webkit-mask-image: url('{displayInfo.imageSrc}'); mask-image: url('{displayInfo.imageSrc}'); transform: scale({displayInfo.scale})"
 			></div>
 		</div>
 	{/if}
@@ -185,8 +187,8 @@
 
 	.card.selected {
 		transform: translateY(-12px);
-		border: 2px solid #fbbf24;
-		box-shadow: 0 0 15px rgba(251, 191, 36, 0.5);
+		border: 2px solid #c9a668;
+		box-shadow: 0 0 15px rgba(201, 166, 104, 0.5);
 		z-index: 20;
 	}
 
@@ -197,7 +199,7 @@
 		background: linear-gradient(180deg, #ecfdf5 0%, #fff 40%);
 	}
 	.card.highlighted.selected {
-		border-color: #fbbf24;
+		border-color: #c9a668;
 		animation: none;
 	}
 	@keyframes highlightPulse {
@@ -303,9 +305,6 @@
 		mask-repeat: no-repeat;
 		-webkit-mask-position: center;
 		mask-position: center;
-	}
-	.club-icon {
-		transform: scale(0.85); /* Reduce clover size slightly */
 	}
 	/* Small Variant (e.g. for history, opponent hand count, etc if needed) */
 	.card.small {

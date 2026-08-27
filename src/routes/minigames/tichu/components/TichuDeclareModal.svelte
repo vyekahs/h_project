@@ -44,7 +44,7 @@
 		background: rgba(25, 25, 25, 0.9);
 		backdrop-filter: blur(16px);
 		-webkit-backdrop-filter: blur(16px);
-		border: 1px solid rgba(251, 191, 36, 0.3);
+		border: 1px solid rgba(230, 211, 163, 0.3);
 		border-radius: 24px;
 		padding: 32px 32px;
 		text-align: center;
@@ -57,12 +57,10 @@
 
 	h2 {
 		margin: 0 0 12px;
-		font-size: 1.5rem;
+		font-size: 1.6rem;
 		font-weight: 800;
-		background: linear-gradient(135deg, #f59e0b 0%, #ef4444 100%);
-		-webkit-background-clip: text;
-		background-clip: text;
-		-webkit-text-fill-color: transparent;
+		color: #e6d3a3;
+		text-shadow: 0 2px 12px rgba(168, 130, 79, 0.5);
 		letter-spacing: -0.02em;
 	}
 
@@ -82,18 +80,18 @@
 	.btn-declare {
 		padding: 14px 32px;
 		border-radius: 16px;
-		border: 1px solid rgba(220, 38, 38, 0.5);
-		background: linear-gradient(135deg, #dc2626 0%, #991b1b 100%);
+		border: 1px solid rgba(196, 181, 253, 0.5);
+		background: linear-gradient(135deg, #6b5a95 0%, #4a3d6b 100%);
 		color: #fff;
 		font-weight: 700;
 		font-size: 1.1rem;
 		cursor: pointer;
-		box-shadow: 0 4px 15px rgba(220, 38, 38, 0.4);
+		box-shadow: 0 4px 15px rgba(139, 122, 184, 0.4);
 		transition: all 0.2s;
 	}
 	.btn-declare:hover {
 		transform: translateY(-2px);
-		box-shadow: 0 8px 25px rgba(220, 38, 38, 0.6);
+		box-shadow: 0 8px 25px rgba(139, 122, 184, 0.6);
 	}
 
 	.btn-pass-declare {
