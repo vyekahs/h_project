@@ -2,7 +2,8 @@ import type {
 	TichuRoomState, TichuPlayer, GamePhase, SeatIndex, TeamId,
 	Card, Combination, RoundState, Trick, ExchangeCards, TichuRoundResult, RoomConfig
 } from '../types';
-import { createShuffledDeck, dealFirst8, dealRemaining6, hasMahjong, findCardById, removeCardById } from '../deck';
+import { dealFirst8, dealRemaining6, hasMahjong, findCardById, removeCardById } from '../deck';
+import { pickDirectedDeck } from '../dealDirector';
 import { detectCombination, canBeat, isBomb, resolvePhoenixSingleRank } from '../combinations';
 import { findBombs } from './handEvaluator';
 import { calculateRoundResult, checkGameOver } from '../scoring';
@@ -49,6 +50,7 @@ export interface TichuSaveData {
 	grandTichuDecisions: (boolean | null)[];
 	exchangeSubmissions: (ExchangeCards | null)[];
 	remainingCards?: Card[];
+	roundsSinceSpecialDeal?: number;
 	config: {
 		partnerStrategy: AiStrategy;
 		targetScore: number;
@@ -90,6 +92,8 @@ export class LocalGameEngine {
 	private exchangeSubmissions: (ExchangeCards | null)[] = [null, null, null, null];
 	private deck: Card[] = [];
 	private remainingCards: Card[] = [];
+	/** 마지막 "화끈한 패" 딜 이벤트 후 지난 라운드 수 (쿨다운용) — 크게 시작해 첫 라운드부터 발동 가능 */
+	private roundsSinceSpecialDeal = 99;
 	private onStateChange: () => void;
 	private onEvent: (event: GameEvent) => void;
 	private destroyed = false;
@@ -207,6 +211,7 @@ export class LocalGameEngine {
 			grandTichuDecisions: [...this.grandTichuDecisions],
 			exchangeSubmissions: structuredClone(this.exchangeSubmissions),
 			remainingCards: structuredClone(this.remainingCards),
+			roundsSinceSpecialDeal: this.roundsSinceSpecialDeal,
 			config: {
 				partnerStrategy: this.aiPlayers.get(2 as SeatIndex)?.strategy ?? 'balanced',
 				targetScore: this.state.config.targetScore,
@@ -238,6 +243,7 @@ export class LocalGameEngine {
 		engine.exchangeSubmissions = save.exchangeSubmissions;
 		engine.deck = [];
 		engine.remainingCards = save.remainingCards ?? [];
+		engine.roundsSinceSpecialDeal = save.roundsSinceSpecialDeal ?? 99;
 
 		engine.aiPlayers = new Map();
 		for (const [seatStr, weights] of Object.entries(save.aiWeights)) {
@@ -271,7 +277,11 @@ export class LocalGameEngine {
 	}
 
 	private startDealing(): void {
-		this.deck = createShuffledDeck();
+		// 딜 연출: 접전 유도 + 가끔 화끈한 패 이벤트 (dealDirector 참고)
+		const scoreGap = this.state.cumulativeScoreA - this.state.cumulativeScoreB;
+		const directed = pickDirectedDeck(scoreGap, this.roundsSinceSpecialDeal);
+		this.deck = directed.deck;
+		this.roundsSinceSpecialDeal = directed.special ? 0 : this.roundsSinceSpecialDeal + 1;
 		const { hands, remaining } = dealFirst8(this.deck);
 		this.remainingCards = remaining;
 
