@@ -329,7 +329,9 @@ export function createTichuGameState() {
 		partnerStrategy = validStrategies.includes(save.config.partnerStrategy)
 			? save.config.partnerStrategy
 			: 'balanced';
-		aiSpeed = save.config.aiSpeed;
+		// instant는 제거됨 — 이전 세이브 호환을 위해 fast로 폴백
+		const validSpeeds = ['fast', 'normal', 'slow', 'very_slow'];
+		aiSpeed = validSpeeds.includes(save.config.aiSpeed) ? save.config.aiSpeed : 'fast';
 		targetScore = save.config.targetScore;
 
 		engine = LocalGameEngine.restore(save, handleStateChange, handleEvent);

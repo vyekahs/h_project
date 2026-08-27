@@ -217,7 +217,8 @@ export class LocalGameEngine {
 	): LocalGameEngine {
 		const engine = Object.create(LocalGameEngine.prototype) as LocalGameEngine;
 		engine.state = save.state;
-		engine.aiSpeed = save.config.aiSpeed;
+		// instant는 제거됨 — 옛 세이브 호환: 정의되지 않은 속도면 fast로 폴백
+		engine.aiSpeed = save.config.aiSpeed in AI_SPEED_DELAYS ? save.config.aiSpeed : 'fast';
 		engine.onStateChange = onStateChange;
 		engine.onEvent = onEvent ?? (() => {});
 		engine.destroyed = false;
