@@ -719,6 +719,15 @@ function decideLead(
 	// Behavior hook: 드래곤 리드 사용 조건
 	const dragonLeadAllowed = behavior.shouldLeadDragon?.(hand, context);
 
+	// === 다음 플레이어가 상대이고 카드 1장 남았으면: 이길 확률 낮은 일반 싱글은 리드에서 원천 배제 ===
+	// (playSearchGrid의 소프트 페널티만으로는 "약한 카드부터 리드"라는 기본 성향에 밀려
+	//  실제로 걸러지지 않는 경우가 있어, 리드 후보 단계에서 하드 필터로 확실히 막음)
+	const myTeamForLead = getTeam(context.currentSeat);
+	const nextSeatForLead = getNextActiveSeat(context.currentSeat, context.players) as SeatIndex;
+	const nextPlayerForLead = context.players[nextSeatForLead];
+	const nextPlayerCanFinish = getTeam(nextSeatForLead) !== myTeamForLead &&
+		nextPlayerForLead.finishOrder === null && nextPlayerForLead.hand.length === 1;
+
 	// Get all lead candidates (exclude dog, handled above; exclude bombs unless aggressive)
 	const canFinishSoon = hand.length <= 5;
 	let candidates = plan.allCombos.filter(c => {
@@ -735,6 +744,10 @@ function decideLead(
 		if (c.type === 'single' &&
 			c.cards[0].type === 'special' &&
 			c.cards[0].special === 'phoenix') return false;
+		// 다음 상대가 1장 남았으면, 이길 확률 낮은 일반 싱글(예: 2)로 리드해서 바로 내주는 것 금지
+		if (nextPlayerCanFinish && c.type === 'single' && c.cards[0].type !== 'special') {
+			if (comboLikelyToWin(c, tracker, hand) < 0.5) return false;
+		}
 		return true;
 	});
 
@@ -790,8 +803,10 @@ function decideLeadEndgame(
 		const winProb = comboLikelyToWin(combo, tracker, hand);
 		if (winProb >= 0.5) return 0;
 		let penalty = 0;
-		if (nextPlayerCanFinish) penalty += 0.3;
-		if (opponentTichuThreat) penalty += 0.15;
+		// 상대가 1장 남은 상황은 이 리드 하나로 게임을 내줄 수 있는 치명적 위험이라
+		// "약한 카드부터 리드"라는 기본 성향(다른 스코어 요인)을 확실히 압도하도록 크게 잡음
+		if (nextPlayerCanFinish) penalty += 2.0;
+		if (opponentTichuThreat) penalty += 0.3;
 		return penalty;
 	};
 
