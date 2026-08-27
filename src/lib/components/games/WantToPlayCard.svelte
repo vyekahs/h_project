@@ -47,7 +47,7 @@
 				<h3 class="wtp-game-name">{post.game_name}</h3>
 				<span class="wtp-creator">
 					{#if post.creator_title}
-						<span class="wtp-creator-title">[ {post.creator_title} ]</span>
+						<span class="wtp-creator-title">{post.creator_title}</span>
 					{/if}
 					{post.creator_name}
 				</span>
@@ -70,7 +70,10 @@
 			<span class="wtp-count">{post.participant_count}명 참여</span>
 			<div class="wtp-names">
 				{#each post.participants.slice(0, 5) as p}
-					<span class="wtp-name-tag">{p.name}</span>
+					<span class="wtp-name-tag">
+						{#if p.title_name}<span class="wtp-creator-title">{p.title_name}</span>{/if}
+						{p.name}
+					</span>
 				{/each}
 				{#if post.participants.length > 5}
 					<span class="wtp-more">+{post.participants.length - 5}</span>
@@ -149,8 +152,16 @@
 		color: var(--text-secondary);
 	}
 	.wtp-creator-title {
-		color: var(--color-blue, #3b82f6);
-		font-size: 0.7rem;
+		display: inline-flex;
+		align-items: center;
+		padding: 1px 6px;
+		margin-right: 2px;
+		border-radius: 4px;
+		background: rgba(251, 191, 36, 0.18);
+		color: var(--color-amber-darker, #b45309);
+		font-size: 0.68rem;
+		font-weight: 700;
+		vertical-align: middle;
 	}
 	.wtp-message {
 		margin: 0.4rem 0;

@@ -1065,7 +1065,7 @@
                                                 {@const participant = p as any}
                                                 <span class="p-name" class:guest-name={participant.is_guest}>
                                                     {#if participant.title_name}
-                                                        <span class="p-title">[ {participant.title_name} ]</span>
+                                                        <span class="p-title">{participant.title_name}</span>
                                                     {/if}
                                                     {participant.name}
                                                     {#if participant.is_guest}
@@ -1289,7 +1289,7 @@
                                         {@const p = player as any}
                                         <div class="player-tag" class:guest-tag={p.is_guest}>
                                             {#if p.title_name}
-                                                <span class="tag-title">[ {p.title_name} ]</span>
+                                                <span class="tag-title">{p.title_name}</span>
                                             {/if}
                                             {p.name}
                                             {#if p.is_guest}
@@ -1488,7 +1488,7 @@
                                             {@const participant = p as any}
                                             <span class="p-name" class:guest-name={participant.is_guest}>
                                                 {#if participant.title_name}
-                                                    <span class="p-title">[ {participant.title_name} ]</span>
+                                                    <span class="p-title">{participant.title_name}</span>
                                                 {/if}
                                                 {participant.name}
                                                 {#if participant.is_guest}
@@ -2099,7 +2099,7 @@
                 <div class="wtp-detail-names">
                     {#each selectedWtpPost.participants as p}
                         <span class="wtp-participant-tag">
-                            {#if p.title_name}<span class="tag-title">[ {p.title_name} ]</span>{/if}
+                            {#if p.title_name}<span class="tag-title">{p.title_name}</span>{/if}
                             {p.name}
                         </span>
                     {/each}
@@ -4138,11 +4138,10 @@
     .mini-title {
         position: absolute;
         top: -9px;
-        left: 2px;
-        right: 2px;
-        display: block;
-        max-width: calc(100% - 4px);
-        margin: 0 auto;
+        left: 50%;
+        transform: translateX(-50%);
+        width: max-content;
+        max-width: 110px;
         padding: 1px 6px;
         border: 1px solid var(--color-amber);
         border-radius: 8px;
@@ -4157,32 +4156,15 @@
         line-height: 1.4;
         pointer-events: none;
     }
-    
-    .tag-title {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: fit-content;
-        /* padding: 2px 8px; */
- 
-        background: rgba(255, 255, 255, 0.5);
-        color: var(--color-amber-darker);
-        font-size: 0.75rem;
-        font-weight: 700;
-        vertical-align: middle;
-    }
     .player-tag {
         display: inline-flex;
         align-items: center;
         gap: 4px;
-        background: transparent;
         padding: 0.2rem 0.5rem;
-          border-radius: 6px;
+        border-radius: 6px;
         font-size: 0.9rem;
         font-weight: 500;
         color: var(--text-dark);
-        margin-right: 8px;
-        margin-bottom: 6px;
     }
 
     .p-name {
@@ -4190,18 +4172,20 @@
         align-items: center;
         gap: 2px;
     }
-    .p-title {
+    /* 참가자 태그 안 칭호는 배지로 빼지 않고 그냥 인라인으로 — 여기는 한 줄에 인원이
+       적어서 태그가 길어져도 보기 편하고, 칭호 있는 사람이 여럿 나란히 있는 경우도 흔하다 */
+    .p-title, .tag-title {
         display: inline-flex;
         align-items: center;
         justify-content: center;
         width: fit-content;
-        /* padding: 2px 8px; */
-
-        background: rgba(255, 255, 255, 0.5);
-        color: var(--color-amber-darker);
-        font-size: 0.75rem;
-        font-weight: 700;
+        padding: 1px 6px;
         margin-right: 4px;
+        border-radius: 4px;
+        background: rgba(251, 191, 36, 0.18);
+        color: var(--color-amber-darker);
+        font-size: 0.7rem;
+        font-weight: 700;
         vertical-align: middle;
     }
 
