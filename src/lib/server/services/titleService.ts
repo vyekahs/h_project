@@ -6,23 +6,37 @@ export const TitleService = {
     async checkAndAssignTitles(userId: number) {
         const assignedTitles: string[] = [];
 
-        // 1. Fetch User Stats & Rankings
-        const pointRes = await db.execute(sql`
-            SELECT
-                p.total_points,
-                a.arrival_time
-            FROM minigame_user_points p
-            RIGHT JOIN attendees a ON p.user_id = a.id
-            WHERE a.id = ${userId}
-        `);
+        // 1. Fetch User Stats & Titles & Owned (서로 독립적이라 병렬로)
+        const [pointRes, gameRes, titlesResult, ownedRes] = await Promise.all([
+            db.execute(sql`
+                SELECT
+                    p.total_points,
+                    a.arrival_time
+                FROM minigame_user_points p
+                RIGHT JOIN attendees a ON p.user_id = a.id
+                WHERE a.id = ${userId}
+            `),
+            db.execute(sql`SELECT COUNT(*) as play_count FROM minigame_rankings WHERE user_id = ${userId}`),
+            db
+                .select({
+                    id: minigameTitles.id,
+                    titleCode: minigameTitles.titleCode,
+                    conditionType: minigameTitles.conditionType,
+                    conditionValue: minigameTitles.conditionValue,
+                })
+                .from(minigameTitles),
+            db
+                .select({ titleId: minigameUserTitles.titleId })
+                .from(minigameUserTitles)
+                .where(eq(minigameUserTitles.userId, userId)),
+        ]);
 
         const totalPoints = (pointRes[0] as any)?.total_points || 0;
         const arrivalTime = new Date((pointRes[0] as any)?.arrival_time || Date.now());
-
-        const gameRes = await db.execute(sql`SELECT COUNT(*) as play_count FROM minigame_rankings WHERE user_id = ${userId}`);
         const playCount = parseInt(String((gameRes[0] as any)?.play_count || '0'));
+        const ownedTitleIds = new Set(ownedRes.map(r => r.titleId));
 
-        // 2. Fetch User Ranks
+        // 2. Fetch User Ranks (위 값들에 의존하므로 순차 실행)
         const rankRes = await db.execute(sql`
             SELECT
                 (SELECT COUNT(*) + 1 FROM minigame_user_points WHERE total_points > ${totalPoints}) as point_rank,
@@ -30,24 +44,71 @@ export const TitleService = {
         `);
         const myPointRank = parseInt(String((rankRes[0] as any).point_rank));
 
-        // 3. Fetch All Titles
-        const titlesResult = await db
-            .select({
-                id: minigameTitles.id,
-                titleCode: minigameTitles.titleCode,
-                conditionType: minigameTitles.conditionType,
-                conditionValue: minigameTitles.conditionValue,
-            })
-            .from(minigameTitles);
+        // 2.5. 게임별 순위 조건이 걸린 칭호들을 모아 한 번에 배치 조회
+        // (칭호 개수만큼 순차 쿼리를 날리면 칭호가 늘어날수록 매 기록 제출마다 느려짐)
+        const now = new Date();
+        const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 
-        // 4. Fetch Owned Titles
-        const ownedRes = await db
-            .select({ titleId: minigameUserTitles.titleId })
-            .from(minigameUserTitles)
-            .where(eq(minigameUserTitles.userId, userId));
-        const ownedTitleIds = new Set(ownedRes.map(r => r.titleId));
+        const allTimeRankKey = (gameId: string, difficulty: string) => `${gameId}::${difficulty}`;
+        const allTimeRankPairs = new Map<string, { gameId: string; difficulty: string }>();
+        const monthlyRankGameIds = new Set<string>();
 
-        // 5. Evaluate & Sync
+        for (const title of titlesResult) {
+            const cond: any = title.conditionValue;
+            if (cond?.rank === undefined || !cond.gameId) continue;
+            if (cond.difficulty) {
+                allTimeRankPairs.set(allTimeRankKey(cond.gameId, cond.difficulty), { gameId: cond.gameId, difficulty: cond.difficulty });
+            } else {
+                monthlyRankGameIds.add(cond.gameId);
+            }
+        }
+
+        const allTimeRankMap = new Map<string, number>();
+        const monthlyRankMap = new Map<string, number>();
+
+        try {
+            const [allTimeRows, monthlyRows] = await Promise.all([
+                allTimeRankPairs.size > 0
+                    ? db.execute(sql`
+                        SELECT game_id, difficulty, rnk FROM (
+                            SELECT user_id, game_id, difficulty,
+                                   RANK() OVER (PARTITION BY game_id, difficulty ORDER BY score DESC) as rnk
+                            FROM minigame_rankings
+                            WHERE (game_id, difficulty) IN (${sql.join(
+                                Array.from(allTimeRankPairs.values()).map(p => sql`(${p.gameId}, ${p.difficulty})`),
+                                sql`, `
+                            )})
+                        ) ranked
+                        WHERE user_id = ${userId}
+                    `)
+                    : Promise.resolve([]),
+                monthlyRankGameIds.size > 0
+                    ? db.execute(sql`
+                        SELECT game_id, rnk FROM (
+                            SELECT user_id, game_id,
+                                   RANK() OVER (PARTITION BY game_id ORDER BY total_score DESC) as rnk
+                            FROM minigame_monthly_rankings
+                            WHERE month_key = ${monthKey} AND game_id IN (${sql.join(
+                                Array.from(monthlyRankGameIds).map(g => sql`${g}`),
+                                sql`, `
+                            )})
+                        ) ranked
+                        WHERE user_id = ${userId}
+                    `)
+                    : Promise.resolve([]),
+            ]);
+
+            for (const row of allTimeRows as any[]) {
+                allTimeRankMap.set(allTimeRankKey(row.game_id, row.difficulty), parseInt(String(row.rnk)));
+            }
+            for (const row of monthlyRows as any[]) {
+                monthlyRankMap.set(row.game_id, parseInt(String(row.rnk)));
+            }
+        } catch (err) {
+            console.warn('Failed to batch-fetch game rank titles', err);
+        }
+
+        // 3. Evaluate & Sync
         for (const title of titlesResult) {
             let qualified = false;
             const cond: any = title.conditionValue;
@@ -65,31 +126,12 @@ export const TitleService = {
                 }
                 else if (cond.rank !== undefined) {
                     if (cond.gameId) {
-                        let rankCheckRes;
-                        if (cond.difficulty) {
-                            rankCheckRes = await db.execute(sql`
-                                SELECT 1 FROM (
-                                    SELECT user_id, RANK() OVER (ORDER BY score DESC) as rnk
-                                    FROM minigame_rankings
-                                    WHERE game_id = ${cond.gameId} AND difficulty = ${cond.difficulty}
-                                ) as ranked
-                                WHERE user_id = ${userId} AND rnk <= ${cond.rank}
-                            `);
-                        } else {
-                            // 월간 랭킹 기준으로 마스터 칭호 체크
-                            const now = new Date();
-                            const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-                            rankCheckRes = await db.execute(sql`
-                                SELECT 1 FROM (
-                                    SELECT user_id, RANK() OVER (ORDER BY total_score DESC) as rnk
-                                    FROM minigame_monthly_rankings
-                                    WHERE game_id = ${cond.gameId} AND month_key = ${monthKey}
-                                ) as ranked
-                                WHERE user_id = ${userId} AND rnk <= ${cond.rank}
-                            `);
-                        }
+                        // 위에서 배치 조회해둔 순위 맵에서 조회 (칭호별 개별 쿼리 제거)
+                        const rnk = cond.difficulty
+                            ? allTimeRankMap.get(allTimeRankKey(cond.gameId, cond.difficulty))
+                            : monthlyRankMap.get(cond.gameId);
 
-                        qualified = rankCheckRes.length > 0;
+                        qualified = rnk !== undefined && rnk <= cond.rank;
                     }
                     else if (cond.type === 'monthly_play_count') {
                          const monthlyRes = await db.execute(sql`

@@ -5,6 +5,7 @@ import type { PageServerLoad, Actions } from './$types';
 import { translate } from 'google-translate-api-x';
 import * as cheerio from 'cheerio';
 import { verifyAdminSession, verifyAttendeeSession } from '$lib/server/auth';
+import { searchBggGames } from '$lib/server/bgg';
 
 export const load: PageServerLoad = async ({ cookies, request }) => {
     const result = await db.execute(sql`SELECT * FROM games WHERE is_active = true ORDER BY name ASC`);
@@ -54,23 +55,11 @@ export const actions: Actions = {
         }
 
         try {
-            const response = await fetch(
-                `https://api.geekdo.com/api/geekitems?nosession=1&objecttype=thing&subtype=boardgame&search=${encodeURIComponent(queryStr)}&pagesize=20`
-            );
-            if (!response.ok) {
-                return fail(500, { error: `BGG API 오류 (${response.status})` });
-            }
-            const json = await response.json();
-            const games = (json.items || []).map((item: any) => ({
-                id: String(item.objectid),
-                name: item.name,
-                year: item.yearpublished || ''
-            }));
-
+            const games = await searchBggGames(queryStr);
             return { success: true, bggGames: games };
         } catch (err) {
             console.error('[BGG Search Error]', err);
-            return fail(500, { error: 'BGG 검색 중 오류가 발생했습니다.' });
+            return fail(500, { error: err instanceof Error ? err.message : 'BGG 검색 중 오류가 발생했습니다.' });
         }
     },
 

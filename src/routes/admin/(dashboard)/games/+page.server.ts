@@ -4,6 +4,7 @@ import { fail } from '@sveltejs/kit';
 import type { PageServerLoad, Actions } from './$types';
 import * as cheerio from 'cheerio';
 import { translate } from 'google-translate-api-x';
+import { searchBggGames } from '$lib/server/bgg';
 
 export const load: PageServerLoad = async () => {
     const result = await db.execute(sql`SELECT * FROM games ORDER BY name ASC`);
@@ -103,32 +104,16 @@ export const actions: Actions = {
         const data = await request.formData();
         const queryStr = data.get('query')?.toString();
 
-        console.log(`[BGG Search] Query: ${queryStr}`);
-
         if (!queryStr) {
             return fail(400, { error: '검색어를 입력해주세요.' });
         }
 
         try {
-            const url = `https://api.geekdo.com/api/geekitems?nosession=1&objecttype=thing&subtype=boardgame&search=${encodeURIComponent(queryStr)}&pagesize=20`;
-            console.log(`[BGG Search] Fetching: ${url}`);
-            const response = await fetch(url);
-            if (!response.ok) {
-                console.error(`[BGG Search] HTTP ${response.status}: ${response.statusText}`);
-                return fail(500, { error: `BGG API 오류 (${response.status})` });
-            }
-            const json = await response.json();
-            const games = (json.items || []).map((item: any) => ({
-                id: String(item.objectid),
-                name: item.name,
-                year: item.yearpublished || ''
-            }));
-
-            console.log(`[BGG Search] Found ${games.length} items`);
+            const games = await searchBggGames(queryStr);
             return { success: true, bggGames: games };
         } catch (err) {
             console.error('[BGG Search Error]', err);
-            return fail(500, { error: 'BGG 검색 중 오류가 발생했습니다.' });
+            return fail(500, { error: err instanceof Error ? err.message : 'BGG 검색 중 오류가 발생했습니다.' });
         }
     },
 

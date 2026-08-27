@@ -163,21 +163,25 @@ export const WantToPlayService = {
 		}
 
 		// 작성자에게 알림
+		// 참여 자체는 이미 완료됐으므로, 알림(DB 조회 + 웹 푸시 외부 호출)이
+		// 응답을 막지 않도록 백그라운드로 돌린다.
 		if (p.created_by !== userId) {
-			const joiner = await db.execute(sql`SELECT name FROM attendees WHERE id = ${userId}`);
-			const joinerName = (joiner[0] as any)?.name ?? '누군가';
+			(async () => {
+				const joiner = await db.execute(sql`SELECT name FROM attendees WHERE id = ${userId}`);
+				const joinerName = (joiner[0] as any)?.name ?? '누군가';
 
-			await NotificationService.notify(
-				p.created_by,
-				{
-					type: 'wtp_join',
-					title: '같이하기 알림',
-					body: `${joinerName}님이 "${p.game_name}" 같이하기에 참여했습니다`,
-					url: '/?tab=games',
-				},
-				userId,
-				`wtp:${postId}`
-			).catch(e => console.error('[WtpService] notification failed:', e));
+				await NotificationService.notify(
+					p.created_by,
+					{
+						type: 'wtp_join',
+						title: '같이하기 알림',
+						body: `${joinerName}님이 "${p.game_name}" 같이하기에 참여했습니다`,
+						url: '/?tab=games',
+					},
+					userId,
+					`wtp:${postId}`
+				);
+			})().catch(e => console.error('[WtpService] notification failed:', e));
 		}
 	},
 

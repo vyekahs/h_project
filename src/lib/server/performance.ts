@@ -257,9 +257,11 @@ export async function getActiveDbConnections(): Promise<number> {
  * postgres.js 클라이언트는 풀 내부 상태(open/idle/busy)를 공개 API로 노출하지 않는다
  * (이전 코드가 참조하던 pgClient.connections는 존재하지 않는 속성이라 항상 0이었음).
  * 대신 이 앱이 실제로 맺고 있는 커넥션을 DB 쪽 pg_stat_activity에서 직접 집계한다.
+ *
  * waiting은 postgres.js 풀의 대기열이 아니라, 실제로 잠금/IO 등으로 블로킹 중인
- * 백엔드 수(wait_event_type IS NOT NULL)로 정의한다 — 커넥션 풀 고갈보다
- * 락 경합을 더 정확히 드러낸다.
+ * 백엔드 수를 뜻한다. 주의: idle 커넥션도 클라이언트의 다음 쿼리를 기다리는 동안
+ * wait_event_type = 'Client'로 표시되므로, 이를 waiting으로 잘못 세지 않도록
+ * state = 'active'이면서 'Client'가 아닌 이벤트(Lock/IO/IPC 등)로 막힌 경우만 센다.
  */
 export async function getDbConnectionStats(): Promise<{ total: number; idle: number; waiting: number }> {
 	try {
@@ -267,7 +269,9 @@ export async function getDbConnectionStats(): Promise<{ total: number; idle: num
 			SELECT
 				count(*)::int AS total,
 				count(*) FILTER (WHERE state = 'idle')::int AS idle,
-				count(*) FILTER (WHERE wait_event_type IS NOT NULL)::int AS waiting
+				count(*) FILTER (
+					WHERE state = 'active' AND wait_event_type IS NOT NULL AND wait_event_type <> 'Client'
+				)::int AS waiting
 			FROM pg_stat_activity
 			WHERE datname = current_database()
 		`);
