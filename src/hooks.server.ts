@@ -32,8 +32,9 @@ import type { Handle } from '@sveltejs/kit';
 export const handle: Handle = async ({ event, resolve }) => {
 	const startTime = Date.now();
 
-	// API 키 인증 엔드포인트는 세션 검증 스킵 (DB 커넥션 절약)
-	const isApiKeyRoute = event.url.pathname.startsWith('/api/ble/') || event.url.pathname.startsWith('/api/wifi/') || event.url.pathname.startsWith('/api/internal/');
+	// API 키 인증 엔드포인트 + ping은 세션 검증 스킵 (DB 커넥션 절약)
+	// ping은 순수 네트워크 왕복 시간만 재야 하므로 DB 조회가 섞이면 안 됨
+	const isApiKeyRoute = event.url.pathname.startsWith('/api/ble/') || event.url.pathname.startsWith('/api/wifi/') || event.url.pathname.startsWith('/api/internal/') || event.url.pathname === '/api/ping';
 	if (!isApiKeyRoute) {
 		// 1+2. 인증 쿼리 순차 실행 (커넥션 1개씩만 사용)
 		const userSessionToken = event.cookies.get('user_session');

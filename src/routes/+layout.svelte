@@ -9,9 +9,11 @@
     import RankUpModal from '$lib/components/gamification/RankUpModal.svelte';
     import NotificationToast from '$lib/components/notifications/NotificationToast.svelte';
     import NotificationBell from '$lib/components/notifications/NotificationBell.svelte';
+    import NetworkStatusBanner from '$lib/components/NetworkStatusBanner.svelte';
     import { themeStore } from '$lib/stores/theme.svelte';
     import { user } from '$lib/stores/user';
     import { initNotificationsSSE } from '$lib/stores/notifications.svelte';
+    import { initNetworkHealthCheck } from '$lib/stores/networkHealth.svelte';
 
 	let { children } = $props();
 
@@ -78,6 +80,7 @@
     onMount(() => {
         themeStore.init();
         user.refresh();
+        initNetworkHealthCheck();
         versionCheckTimer = setInterval(async () => {
             try {
                 const res = await fetch(`/_app/version.json`, { cache: 'no-store' });
@@ -167,6 +170,7 @@
 
 	<RankUpModal />
 	<NotificationToast />
+	<NetworkStatusBanner />
 </div>
 
 <style>
