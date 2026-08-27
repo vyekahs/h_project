@@ -162,6 +162,12 @@ export class LocalGameEngine {
 	get isProcessingAi(): boolean { return this.processingAi; }
 
 	/** 교환 제출 상태 초기화 (튜토리얼용) */
+	/** 인간(seat 0)이 이번 라운드 교환에서 내보낸 카드 id들 — 위치를 아는 카드이므로 카운터에서 제외용 */
+	getHumanExchangeIds(): string[] {
+		const ex = this.exchangeSubmissions[HUMAN_SEAT];
+		return ex ? [ex.toPartner, ex.toLeft, ex.toRight] : [];
+	}
+
 	resetExchangeSubmissions(): void {
 		this.exchangeSubmissions = [null, null, null, null];
 	}

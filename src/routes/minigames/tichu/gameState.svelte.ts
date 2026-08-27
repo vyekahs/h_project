@@ -761,6 +761,7 @@ export function createTichuGameState() {
 		// Access stateVersion to subscribe to engine state changes in components
 		get stateVersion() { return stateVersion; },
 		get gameState() { return gameState; },
+		get humanExchangeIds() { return engine?.getHumanExchangeIds() ?? []; },
 		get phase() { return phase; },
 
 		// UI state
