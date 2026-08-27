@@ -1,6 +1,6 @@
 /**
- * BoardGameGeek 검색 — 외부 API 호출이라 응답이 느릴 수 있어
- * 짧은 캐시 + 타임아웃을 둔다.
+ * BoardGameGeek 검색/가져오기 — 외부 API(+번역) 호출이라 응답이 느릴 수 있어
+ * 캐시 + 타임아웃을 둔다.
  *
  * 실측 결과 search= 파라미터가 들어간 BGG geekitems API는 매번 6.5~7초가
  * 걸린다(코드/네트워크 문제가 아니라 BGG 서버 자체가 느림 — objectid로 직접
@@ -9,10 +9,26 @@
  * 타임아웃은 정상 응답(~7초)을 잘못 끊지 않도록 여유 있게 잡는다.
  */
 
+import * as cheerio from 'cheerio';
+import { translate } from 'google-translate-api-x';
+
 export interface BggSearchResult {
 	id: string;
 	name: string;
 	year: string;
+}
+
+export interface BggImportedGame {
+	name: string;
+	minPlayers: number;
+	maxPlayers: number;
+	playtimeMin: number;
+	playtimeMax: number;
+	minAge: number;
+	complexity: number;
+	bestPlayers: string;
+	description: string;
+	imageUrl: string;
 }
 
 const CACHE_TTL = 10 * 60 * 1000; // 10분: 같은 검색어 반복 시 외부 호출 생략
@@ -49,4 +65,87 @@ export async function searchBggGames(queryStr: string): Promise<BggSearchResult[
 	}
 
 	return games;
+}
+
+// objectid 직접 조회는 실측 0.2~0.5초로 빠르므로 넉넉히 잡아도 부담 없음
+const IMPORT_FETCH_TIMEOUT = 10000;
+// 번역(google-translate-api-x)은 실측 1~1.5초 내외
+const TRANSLATE_TIMEOUT = 8000;
+
+const hasKorean = (str: string) => /[ㄱ-ㅎ|ㅏ-ㅣ|가-힣]/.test(str);
+
+/**
+ * BGG에서 게임 정보를 가져와 필요하면 한국어로 번역까지 마친 데이터를 반환한다.
+ * BGG fetch → 번역 순서로 의존관계가 있어 두 단계를 합칠 수는 없지만,
+ * 각 단계 내부(item/dynamicinfo, 이름/설명 번역)는 이미 병렬로 처리한다.
+ */
+export async function fetchAndTranslateBggGame(bggId: string, searchName?: string): Promise<BggImportedGame> {
+	const [itemRes, dynamicRes] = await Promise.all([
+		fetch(`https://api.geekdo.com/api/geekitems?nosession=1&objecttype=thing&objectid=${bggId}`, {
+			signal: AbortSignal.timeout(IMPORT_FETCH_TIMEOUT)
+		}),
+		fetch(`https://api.geekdo.com/api/dynamicinfo?nosession=1&objecttype=thing&objectid=${bggId}`, {
+			signal: AbortSignal.timeout(IMPORT_FETCH_TIMEOUT)
+		})
+	]);
+	const itemJson = await itemRes.json();
+	const dynamicJson = await dynamicRes.json();
+	const item = itemJson.item;
+	const dynamic = dynamicJson.item;
+
+	if (!item) {
+		throw new Error('Could not find game data on BGG');
+	}
+
+	let name = item.name;
+	const minPlayers = parseInt(item.minplayers || '0');
+	const maxPlayers = parseInt(item.maxplayers || '0');
+	const playtimeMin = parseInt(item.minplaytime || '0');
+	const playtimeMax = parseInt(item.maxplaytime || '0');
+	const minAge = parseInt(item.minage || '0');
+
+	// Clean Description (remove HTML)
+	let description = item.description || '';
+	description = cheerio.load(description).text();
+
+	// Translate Name and Description
+	const translateOpts = { requestOptions: { signal: AbortSignal.timeout(TRANSLATE_TIMEOUT) } };
+	try {
+		if (searchName && hasKorean(searchName)) {
+			if (searchName.trim() !== name.trim()) {
+				name = `${searchName} (${name})`;
+			}
+			const descRes: any = await translate(description, { to: 'ko', ...translateOpts });
+			description = descRes.text;
+		} else {
+			const [nameRes, descRes]: any = await Promise.all([
+				translate(name, { to: 'ko', ...translateOpts }),
+				translate(description, { to: 'ko', ...translateOpts })
+			]);
+			const translatedName = nameRes.text;
+			if (translatedName && translatedName.trim() !== name.trim()) {
+				name = `${translatedName} (${name})`;
+			}
+			description = descRes.text;
+		}
+	} catch (tErr) {
+		console.error('[Translation Error]', tErr);
+	}
+
+	const imageUrl = item.imageurl || item.images?.medium || '';
+
+	let complexity = 0;
+	if (dynamic?.stats?.avgweight) {
+		complexity = parseFloat(dynamic.stats.avgweight);
+	}
+
+	let bestPlayers = '';
+	if (dynamic?.polls?.userplayers?.best) {
+		const best = dynamic.polls.userplayers.best;
+		bestPlayers = best
+			.map((b: any) => (b.min === b.max ? b.min : `${b.min}-${b.max}`))
+			.join(', ');
+	}
+
+	return { name, minPlayers, maxPlayers, playtimeMin, playtimeMax, minAge, complexity, bestPlayers, description, imageUrl };
 }
