@@ -152,15 +152,27 @@
     // 재서 "N줄까지만" 보이도록 자르는 액션. 개수가 아니라 줄 수 기준으로 접힘.
     function clipToRows(node: HTMLElement, opts: { rows: number; expanded: boolean; itemSelector: string; onOverflow: (v: boolean) => void }) {
         function measure() {
-            const first = node.querySelector(opts.itemSelector) as HTMLElement | null;
-            if (!first) { opts.onOverflow(false); node.style.maxHeight = ''; return; }
-            const cardHeight = first.getBoundingClientRect().height;
-            if (!cardHeight) return;
-            const gap = parseFloat(getComputedStyle(node).rowGap || '0') || 0;
-            const maxH = cardHeight * opts.rows + gap * (opts.rows - 1);
-            const overflows = node.scrollHeight > maxH + 1;
+            const items = Array.from(node.querySelectorAll(opts.itemSelector)) as HTMLElement[];
+            if (items.length === 0) { opts.onOverflow(false); node.style.maxHeight = ''; return; }
+            // 칭호(3~4줄) 카드가 섞이면 줄 높이가 균일하지 않으므로, 첫 카드 높이로 추정하지 않고
+            // 실제 각 카드의 top 위치를 재서 몇 번째 줄에 속하는지 판별한다.
+            const containerTop = node.getBoundingClientRect().top;
+            const rowTops: number[] = [];
+            for (const item of items) {
+                const top = Math.round(item.getBoundingClientRect().top - containerTop);
+                if (!rowTops.some(t => Math.abs(t - top) < 1)) rowTops.push(top);
+            }
+            if (rowTops.length === 0) return;
+            rowTops.sort((a, b) => a - b);
+            const overflows = rowTops.length > opts.rows;
             opts.onOverflow(overflows);
-            node.style.maxHeight = (!opts.expanded && overflows) ? `${maxH}px` : '';
+            if (!opts.expanded && overflows) {
+                const gap = parseFloat(getComputedStyle(node).rowGap || '0') || 0;
+                const cutTop = rowTops[opts.rows];
+                node.style.maxHeight = `${Math.max(0, cutTop - gap)}px`;
+            } else {
+                node.style.maxHeight = '';
+            }
         }
         measure();
         const onResize = () => measure();
@@ -760,6 +772,59 @@
 
         return { relative: relativeStr, absolute: fullTimeStr };
     }
+
+    // 1시간 이내로 임박한 예약인지 — 나의 예약 현황에서 가장 급한 카드를 강조하기 위함
+    function isUrgentSoon(dateString: string) {
+        const diffMs = new Date(dateString).getTime() - Date.now();
+        return diffMs >= 0 && diffMs < 60 * 60 * 1000;
+    }
+
+    // 나의 예약 현황 리스트용 — "3시간 뒤" 같은 상대 표현 대신 정확한 날짜/요일/시간
+    function formatExactSchedule(dateString: string) {
+        const date = new Date(dateString);
+        const weekday = ['일', '월', '화', '수', '목', '금', '토'][date.getDay()];
+        const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        return `${date.getMonth() + 1}/${date.getDate()}(${weekday}) ${timeStr}`;
+    }
+
+    // 나의 예약 현황 두 번째 줄용 — 항상 "N분/시간/일 뒤 · 날짜(요일) 시간"로 표시.
+    // relative는 강조 표시하고 exact는 부가 정보로 옅게 보여주기 위해 분리해서 반환한다.
+    function formatListSchedule(dateString: string): { relative: string | null; exact: string } {
+        const diffMs = new Date(dateString).getTime() - Date.now();
+        const exact = formatExactSchedule(dateString);
+        if (diffMs < 0) return { relative: null, exact };
+        const diffMins = Math.floor(diffMs / (1000 * 60));
+        const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+        const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+        let relative: string;
+        if (diffMins < 60) relative = `${diffMins}분 뒤`;
+        else if (diffHours < 24) relative = `${diffHours}시간 뒤`;
+        else relative = `${diffDays}일 뒤`;
+        return { relative, exact };
+    }
+
+    // 나의 예약 현황: 참여 예정/참여 중/예약 내역을 시간순 리스트 하나로 합치고,
+    // 가장 가까운 일정(진행 중인 게임은 항상 최우선)이 맨 위에 크게 나오도록 정렬한다.
+    const scheduleItems = $derived.by(() => {
+        const items: any[] = [];
+        if (data.userScheduledGames && data.userScheduledGames.length > 0) {
+            for (const game of data.userScheduledGames) {
+                const mergedRes = data.userReservation && data.userReservation.session_id === game.id ? data.userReservation : null;
+                items.push({ kind: 'scheduled', game, mergedRes, time: new Date(game.scheduled_at).getTime() });
+            }
+        } else if (data.userPlayingGame) {
+            items.push({ kind: 'playing', game: data.userPlayingGame, time: -Infinity });
+        }
+        if (data.userReservation && !(data.userScheduledGames || []).some((g: any) => g.id === data.userReservation.session_id)) {
+            items.push({
+                kind: 'reservation',
+                res: data.userReservation,
+                time: data.userReservation.scheduled_at ? new Date(data.userReservation.scheduled_at).getTime() : Infinity
+            });
+        }
+        items.sort((a, b) => a.time - b.time);
+        return items;
+    });
 </script>
 
 <div class="container">
@@ -1020,85 +1085,106 @@
         {#if data.user && ((data.userPenaltyInfo && data.userPenaltyInfo.penalty_points > 0) || (data.userScheduledGames && data.userScheduledGames.length > 0) || data.userPlayingGame || data.userReservation)}
             <section class="my-status-section">
                 <h2>나의 예약 현황</h2>
-                <div class="my-status-grid">
+                <div class="my-status-list">
                     {#if data.userPenaltyInfo && data.userPenaltyInfo.penalty_points > 0}
                         <div class="status-card penalty-warning">
-                            <span class="label">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px; margin-bottom:-2px;"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                                누적 페널티
-                            </span>
-                            <span class="value">{data.userPenaltyInfo.penalty_points} / 3</span>
+                            <div class="status-line1">
+                                <svg class="status-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                                <span class="status-name">누적 페널티</span>
+                            </div>
+                            <div class="status-line2">
+                                <span class="status-time">{data.userPenaltyInfo.penalty_points} / 3</span>
+                            </div>
                             {#if data.userPenaltyInfo.penalty_points >= 3}
                                 <p class="warning-text">예약이 제한되었습니다.</p>
                             {/if}
                         </div>
                     {/if}
 
-                    {#if data.userScheduledGames && data.userScheduledGames.length > 0}
-                        {#each data.userScheduledGames as game}
-                            {@const time = formatScheduledTime(game.scheduled_at)}
-                            <div class="status-card scheduled">
-                                <span class="label">
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px; margin-bottom:-2px;"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-                                    참여 예정 게임
-                                </span>
-                                <span class="value">{game.game_name}</span>
-                                <span class="sub-value"><span class="highlight-orange">{time.relative}</span> ({time.absolute} 시작)</span>
-                                <form method="POST" action="?/leaveScheduledGame"
-                                    use:enhance={async ({ cancel }) => {
-                                        const scheduledAt = new Date(game.scheduled_at).getTime();
-                                        const now = Date.now();
-                                        let msg = '정말 참여를 취소하시겠습니까?';
-                                        if (scheduledAt - now < 10 * 60 * 1000) {
-                                            msg = '시작 10분 전입니다. 지금 취소하면 페널티가 부여됩니다. 정말 취소하시겠습니까?';
-                                        }
-                                        const ok = await showConfirm(msg);
-                                        if (!ok) { cancel(); return; }
-                                        return async ({ result }) => {
-                                            await applyAction(result);
-                                            await invalidateAll();
-                                        };
-                                    }}>
-                                    <input type="hidden" name="sessionId" value={game.id}>
-                                    <button type="submit" class="btn-cancel-small">참여 취소</button>
-                                </form>
+                    {#each scheduleItems as item, i (item.kind + '-' + (item.game?.id ?? item.res?.id))}
+                        {#if item.kind === 'scheduled'}
+                            {@const listTime = formatListSchedule(item.game.scheduled_at)}
+                            {@const urgent = isUrgentSoon(item.game.scheduled_at)}
+                            <div class="status-card scheduled" class:urgent={urgent} class:primary={i === 0}>
+                                {#if urgent}<span class="urgent-flag">곧 시작</span>{/if}
+                                <div class="status-line1">
+                                    <svg class="status-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                                    <span class="status-name">{item.game.game_name}</span>
+                                </div>
+                                <div class="status-line2">
+                                    <span class="status-time">
+                                        {#if listTime.relative}<span class="status-relative">{listTime.relative}</span>{' · '}{/if}{listTime.exact}
+                                    </span>
+                                    {#if item.mergedRes}
+                                        <span class="status-tag {item.mergedRes.status}">
+                                            {item.mergedRes.status === 'pending' ? '대기 중' :
+                                             item.mergedRes.status === 'waitlisted' ? '대기 순번' : '확정'}
+                                        </span>
+                                    {/if}
+                                    <form method="POST" action="?/cancelMergedBooking"
+                                        use:enhance={async ({ cancel }) => {
+                                            const scheduledAt = new Date(item.game.scheduled_at).getTime();
+                                            const now = Date.now();
+                                            let msg = '정말 참여를 취소하시겠습니까?';
+                                            if (scheduledAt - now < 10 * 60 * 1000) {
+                                                msg = '시작 10분 전입니다. 지금 취소하면 페널티가 부여됩니다. 정말 취소하시겠습니까?';
+                                            }
+                                            const ok = await showConfirm(msg);
+                                            if (!ok) { cancel(); return; }
+                                            return async ({ result }) => {
+                                                await applyAction(result);
+                                                await invalidateAll();
+                                            };
+                                        }}>
+                                        <input type="hidden" name="sessionId" value={item.game.id}>
+                                        {#if item.mergedRes}<input type="hidden" name="reservationId" value={item.mergedRes.id}>{/if}
+                                        <button type="submit" class="btn-cancel-small">참여 취소</button>
+                                    </form>
+                                </div>
                             </div>
-                        {/each}
-                    {:else if data.userPlayingGame}
-                        <div class="status-card playing">
-                            <span class="label">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px; margin-bottom:-2px;"><line x1="6" y1="12" x2="10" y2="12"/><line x1="8" y1="10" x2="8" y2="14"/><line x1="15" y1="13" x2="15.01" y2="13"/><line x1="18" y1="11" x2="18.01" y2="11"/><rect x="2" y="6" width="20" height="12" rx="2"/></svg>
-                                참여 중인 게임
-                            </span>
-                            <span class="value">{data.userPlayingGame.game_name}</span>
-                        </div>
-                    {/if}
-
-                    {#if data.userReservation}
-                        <div class="status-card reservation">
-                            <span class="label">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px; margin-bottom:-2px;"><path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/><path d="M13 5v2"/><path d="M13 17v2"/><path d="M13 11v2"/></svg>
-                                예약 내역
-                            </span>
-                            <span class="value">{data.userReservation.game_name}</span>
-                            <span class="status-tag {data.userReservation.status}">
-                                {data.userReservation.status === 'pending' ? '대기 중' :
-                                 data.userReservation.status === 'waitlisted' ? '대기 순번' : '확정'}
-                            </span>
-                            <form method="POST" action="?/cancelReservation"
-                                use:enhance={async ({ cancel }) => {
-                                    const ok = await showConfirm('정말 예약을 취소하시겠습니까? (시작 10분 전 이내인 경우 페널티가 부여될 수 있습니다)');
-                                    if (!ok) { cancel(); return; }
-                                    return async ({ result }) => {
-                                        await applyAction(result);
-                                        await invalidateAll();
-                                    };
-                                }}>
-                                <input type="hidden" name="reservationId" value={data.userReservation.id}>
-                                <button type="submit" class="btn-cancel-small">예약 취소</button>
-                            </form>
-                        </div>
-                    {/if}
+                        {:else if item.kind === 'playing'}
+                            <div class="status-card playing" class:primary={i === 0}>
+                                <div class="status-line1">
+                                    <svg class="status-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="12" x2="10" y2="12"/><line x1="8" y1="10" x2="8" y2="14"/><line x1="15" y1="13" x2="15.01" y2="13"/><line x1="18" y1="11" x2="18.01" y2="11"/><rect x="2" y="6" width="20" height="12" rx="2"/></svg>
+                                    <span class="status-name">{item.game.game_name}</span>
+                                </div>
+                                <div class="status-line2">
+                                    <span class="status-time">진행 중</span>
+                                </div>
+                            </div>
+                        {:else if item.kind === 'reservation'}
+                            <div class="status-card reservation" class:primary={i === 0}>
+                                <div class="status-line1">
+                                    <svg class="status-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/><path d="M13 5v2"/><path d="M13 17v2"/><path d="M13 11v2"/></svg>
+                                    <span class="status-name">{item.res.game_name}</span>
+                                </div>
+                                <div class="status-line2">
+                                    {#if item.res.scheduled_at}
+                                        {@const resTime = formatListSchedule(item.res.scheduled_at)}
+                                        <span class="status-time">
+                                            {#if resTime.relative}<span class="status-relative">{resTime.relative}</span>{' · '}{/if}{resTime.exact}
+                                        </span>
+                                    {/if}
+                                    <span class="status-tag {item.res.status}">
+                                        {item.res.status === 'pending' ? '대기 중' :
+                                         item.res.status === 'waitlisted' ? '대기 순번' : '확정'}
+                                    </span>
+                                    <form method="POST" action="?/cancelReservation"
+                                        use:enhance={async ({ cancel }) => {
+                                            const ok = await showConfirm('정말 예약을 취소하시겠습니까? (시작 10분 전 이내인 경우 페널티가 부여될 수 있습니다)');
+                                            if (!ok) { cancel(); return; }
+                                            return async ({ result }) => {
+                                                await applyAction(result);
+                                                await invalidateAll();
+                                            };
+                                        }}>
+                                        <input type="hidden" name="reservationId" value={item.res.id}>
+                                        <button type="submit" class="btn-cancel-small">예약 취소</button>
+                                    </form>
+                                </div>
+                            </div>
+                        {/if}
+                    {/each}
                 </div>
             </section>
         {/if}
@@ -2217,6 +2303,12 @@
         width: 140px;
         outline: none;
     }
+    /* 게임 이름 입력창은 .custom-dropdown(원래 소요시간처럼 좁은 드롭다운용) 클래스를
+       자동완성 드롭다운 위치잡기 용도로만 같이 쓰는 것이라, 폭은 꽉 채워야 한다 */
+    .input-group.custom-dropdown {
+        display: flex;
+        width: 100%;
+    }
     .dropdown-selected {
         display: flex;
         justify-content: space-between;
@@ -2291,6 +2383,7 @@
     .visit-plan-grid {
         display: grid;
         grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+        align-items: start;
         gap: 0.5rem;
         overflow: hidden;
         transition: max-height 0.2s ease;
@@ -2768,6 +2861,7 @@
     .attendee-grid {
         display: grid;
         grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+        align-items: start;
         gap: 0.5rem;
         overflow: hidden;
         transition: max-height 0.2s ease;
@@ -2922,77 +3016,182 @@
         color: var(--text-primary);
     }
 
+    /* 이 섹션 자체가 하나의 패널이므로, 안의 항목들은 각자 박스를 만들지 않고
+       플랫한 리스트 행으로 흐른다 (박스 안에 박스가 되는 것을 피하기 위함).
+       유일한 예외는 가장 가까운 일정(.primary)과 페널티 경고 — 진짜로 눈에 띄어야 하는 것만. */
     .my-status-section {
-        background: var(--bg-primary);
+        background: linear-gradient(135deg, var(--color-warning-bg) 0%, var(--bg-primary) 60%);
         padding: 1.5rem;
-        border-radius: 16px;
-        box-shadow: 0 4px 12px var(--shadow-sm);
+        border-radius: 20px;
+        box-shadow: 0 4px 16px var(--shadow-md);
         margin-bottom: 2rem;
-        border: 1px solid var(--border-light);
+        border: 1px solid var(--border-warning);
     }
-    .my-status-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-        gap: 1rem;
-    }
-    .status-card {
+    .my-status-list {
         display: flex;
         flex-direction: column;
-        gap: 0.25rem;
-        padding: 1rem;
-        background: var(--bg-secondary);
-        border-radius: 12px;
-        border: 1px solid var(--bg-hover);
     }
-    .status-card .label {
-        font-size: 0.75rem;
+    .status-card {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        gap: 0.3rem;
+        padding: 0.7rem 0.15rem;
+        border-bottom: 1px solid var(--border-light);
+    }
+    /* 플랫 리스트 행에만 적용 — 박스 처리된 카드(.primary/.urgent)는 자기 padding을 그대로 써야
+       위/아래 여백이 한쪽만 눌리지 않는다 */
+    .my-status-list > .status-card:last-child:not(.primary):not(.urgent) {
+        border-bottom: none;
+        padding-bottom: 0.2rem;
+    }
+    .my-status-list > .status-card:first-child:not(.primary):not(.urgent) {
+        padding-top: 0.1rem;
+    }
+    /* 1번째 줄: 아이콘 + 이름 / 2번째 줄: 시간 + 상태 배지 + 취소 버튼 — 이름이 길든 짧든 항상 같은 2줄 구조 */
+    .status-line1 {
+        display: flex;
+        align-items: center;
+        gap: 0.45rem;
+    }
+    .status-line2 {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.4rem;
+        padding-left: calc(16px + 0.45rem);
+    }
+    .status-card form {
+        /* form 태그가 2번째 줄의 흐름을 끊지 않도록 — 버튼이 바로 flex 아이템이 된다 */
+        display: contents;
+    }
+    .status-icon {
+        flex-shrink: 0;
         color: var(--text-secondary);
-        font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
     }
-    .status-card .value {
-        font-size: 1rem;
+    .status-name {
+        font-size: 0.85rem;
         font-weight: 700;
         color: var(--text-primary);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        min-width: 0;
     }
-    .status-card .sub-value {
-        font-size: 0.8rem;
+    .status-time {
+        font-size: 0.72rem;
+        font-weight: 600;
         color: var(--text-secondary);
+        white-space: nowrap;
+    }
+    .status-relative {
+        color: var(--color-orange-dark);
+        font-weight: 800;
+    }
+    .status-line2 .status-tag {
+        flex-shrink: 0;
+    }
+    .status-line2 .btn-cancel-small {
+        flex-shrink: 0;
+        margin: 0 -0.3rem -0.3rem auto;
+        font-size: 0.68rem;
+        padding: 0.35rem 0.3rem;
+        min-height: 32px;
+    }
+    /* 가장 가까운 일정(.primary)이거나 임박한 일정(.urgent)이면 플랫 리스트에서 분리해
+       독립된 박스로 여백을 확보한다 — 급한데 작은 항목이면 다음 줄과 여백이 뒤엉켰던 문제 수정 */
+    .status-card.primary,
+    .status-card.scheduled.urgent {
+        padding: 1rem 1.1rem;
+        margin-bottom: 0.6rem;
+        border: 1px solid var(--bg-hover);
+        border-radius: 16px;
+        background: var(--bg-primary);
+        box-shadow: 0 4px 14px var(--shadow-sm);
+        gap: 0.4rem;
+    }
+    .status-card.primary {
+        padding: 1.1rem 1.1rem;
+    }
+    .status-card.primary .status-icon {
+        width: 20px;
+        height: 20px;
+    }
+    .status-card.primary .status-name {
+        font-size: 1.15rem;
+        font-weight: 800;
+    }
+    .status-card.primary .status-line2 {
+        padding-left: calc(20px + 0.45rem);
+    }
+    .status-card.primary .status-time {
+        font-size: 0.85rem;
+    }
+    .status-card.primary .status-tag {
+        font-size: 0.78rem;
+        padding: 0.18rem 0.55rem;
+    }
+    .status-card.primary .btn-cancel-small {
+        font-size: 0.85rem;
+        padding: 0.5rem 0.4rem;
+        min-height: 40px;
+        margin: 0 -0.4rem -0.3rem auto;
+    }
+    .status-card.scheduled.urgent {
+        border: 2px solid var(--color-orange);
+        box-shadow: 0 4px 16px rgba(255, 152, 0, 0.28);
+        animation: urgent-pulse 2s ease-in-out infinite;
+    }
+    @keyframes urgent-pulse {
+        0%, 100% { box-shadow: 0 4px 16px rgba(255, 152, 0, 0.28); }
+        50% { box-shadow: 0 4px 22px rgba(255, 152, 0, 0.5); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+        .status-card.scheduled.urgent { animation: none; }
+    }
+    .urgent-flag {
+        position: absolute;
+        top: -10px;
+        right: 12px;
+        background: var(--color-orange);
+        color: #fff;
+        font-size: 0.65rem;
+        font-weight: 700;
+        padding: 2px 8px;
+        border-radius: 10px;
+        letter-spacing: 0.02em;
     }
     .status-card.penalty-warning {
+        padding: 1rem 1.1rem;
+        margin-bottom: 0.6rem;
+        border: 1px solid var(--color-red-dark);
+        border-radius: 16px;
         background: var(--color-error-bg);
-        border-color: var(--color-error-bg);
+        box-shadow: 0 4px 14px var(--shadow-sm);
     }
-    .status-card.penalty-warning .value {
+    .status-card.penalty-warning .status-time {
         color: var(--color-red-dark);
+        font-weight: 700;
+        margin-left: auto;
     }
     .warning-text {
+        flex-basis: 100%;
         font-size: 0.7rem;
         color: var(--color-red-dark);
-        margin: 0.25rem 0 0 0;
+        margin: 0;
         font-weight: 600;
-    }
-    .status-card.scheduled {
-        background: var(--color-purple-bg);
-        border-color: var(--border-light);
-    }
-    .status-card.reservation {
-        background: var(--color-info-bg);
-        border-color: var(--color-info-bg);
     }
     .status-tag {
         display: inline-block;
-        font-size: 0.7rem;
+        font-size: 0.62rem;
         font-weight: 700;
-        padding: 0.1rem 0.4rem;
+        padding: 0.05rem 0.35rem;
         border-radius: 4px;
-        margin-top: 0.25rem;
         width: fit-content;
     }
     .status-tag.pending { background: var(--color-warning-bg); color: var(--color-orange-dark); }
     .status-tag.waitlisted { background: var(--bg-hover); color: var(--text-dark); }
-    .status-tag.confirmed { background: var(--color-success-bg); color: var(--color-green-dark); }
+    .status-tag.confirmed { background: var(--color-success-bg); color: var(--status-success-text); }
 
     .btn-action-text {
         background: none;
@@ -3027,18 +3226,23 @@
     .btn-cancel-small {
         background: none;
         border: none;
-        color: var(--text-hint);
-        font-size: 0.75rem;
+        color: var(--text-dark);
+        font-size: 0.78rem;
+        font-weight: 600;
         text-decoration: underline;
+        text-underline-offset: 2px;
         cursor: pointer;
-        padding: 0;
-        margin-top: 0.5rem;
+        padding: 0.5rem 0.4rem;
+        margin: 0.25rem -0.4rem -0.4rem -0.4rem;
+        min-height: 40px;
         text-align: left;
+        border-radius: 8px;
+        transition: background 0.15s, color 0.15s;
     }
     .btn-cancel-small:hover {
-        color: var(--text-dark);
+        color: var(--color-red-dark);
+        background: var(--color-error-bg);
     }
-
     .section-header {
         display: flex;
         justify-content: space-between;

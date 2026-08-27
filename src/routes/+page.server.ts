@@ -559,6 +559,54 @@ export const actions: Actions = {
         return { success: true };
     },
 
+    // 예약(reservations)과 참여 예정(session_participants)이 같은 세션을 동시에 가리킬 때
+    // 나의 예약 현황에서 카드 하나로 합쳐 보여주는데, 취소도 하나의 액션으로 둘 다 정리한다.
+    // (leaveScheduledGame + cancelReservation을 각각 호출하면 페널티가 중복 적용될 수 있어 통합)
+    cancelMergedBooking: async ({ request, cookies }) => {
+        const data = await request.formData();
+        const sessionId = data.get('sessionId');
+        const reservationId = data.get('reservationId');
+        const userSessionToken = cookies.get('user_session');
+
+        if (!userSessionToken) return fail(401, { error: '로그인이 필요합니다.' });
+        const user = await verifyAttendeeSession(userSessionToken);
+        if (!user) return fail(401, { error: 'Invalid session' });
+
+        const session = await db.execute(sql`SELECT scheduled_at FROM game_sessions WHERE id = ${sessionId}`);
+        if (session.length > 0) {
+            const { scheduled_at } = session[0] as any;
+            if (scheduled_at && new Date(scheduled_at).getTime() - Date.now() < 10 * 60 * 1000) {
+                const { applyPenalty } = await import('$lib/server/reservations');
+                await applyPenalty(user.id);
+            }
+        }
+
+        if (reservationId) {
+            await db.execute(sql`DELETE FROM reservations WHERE id = ${reservationId} AND attendee_id = ${user.id}`);
+        }
+        await db.execute(sql`DELETE FROM session_participants WHERE session_id = ${sessionId} AND attendee_id = ${user.id}`);
+
+        const { promoteWaitlist } = await import('$lib/server/reservations');
+        await promoteWaitlist(Number(sessionId));
+
+        // 다른 오늘 시작예정 게임에 참여 중이 아니면 갈 예정에서 제거
+        const otherScheduled = await db.execute(sql`
+            SELECT 1 FROM session_participants sp
+            JOIN game_sessions gs ON sp.session_id = gs.id
+            WHERE sp.attendee_id = ${user.id}
+            AND gs.status = 'scheduled'
+            AND gs.scheduled_at::date = CURRENT_DATE
+            AND gs.party_id IS NULL
+        `);
+        if (otherScheduled.length === 0) {
+            await db.execute(sql`DELETE FROM daily_visit_plans WHERE attendee_id = ${user.id} AND plan_date = CURRENT_DATE`);
+            emitLiveEvent('visitors');
+        }
+
+        emitLiveEvent('games');
+        return { success: true };
+    },
+
     leaveScheduledGame: async ({ request, cookies }) => {
         const data = await request.formData();
         const sessionId = data.get('sessionId');

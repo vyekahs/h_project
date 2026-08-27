@@ -240,6 +240,9 @@
         --nav-glass-bg: rgba(255, 255, 255, 0.6);
         --nav-glass-border: rgba(255, 255, 255, 0.7);
 
+        /* Status pill text (AA-contrast pairing for pale status backgrounds) */
+        --status-success-text: #1b5e20;
+
         color-scheme: light;
     }
 
@@ -312,6 +315,9 @@
         /* Bottom nav glass */
         --nav-glass-bg: rgba(37, 38, 43, 0.6);
         --nav-glass-border: rgba(255, 255, 255, 0.1);
+
+        /* Status pill text (AA-contrast pairing for pale status backgrounds) */
+        --status-success-text: #34d399;
 
         color-scheme: dark;
     }
