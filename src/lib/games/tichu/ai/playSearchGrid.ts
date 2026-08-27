@@ -522,23 +522,35 @@ function getTrickPoints(cards: Card[]): number {
 }
 
 /**
- * 풀하우스에서 강한 싱글톤을 페어로 낭비하는지 체크.
+ * 풀하우스에서 강한 카드를 페어 파트로 낭비하는지 체크.
+ * 풀하우스의 랭크는 트리플로만 정해지므로, 페어 파트에 쓴 높은 카드(K,K 등)는
+ * 조합 강도에 아무 기여 없이 버려지는 셈 — 그 페어를 따로 아끼면 트릭을 딸 수 있다.
  * 감점값을 반환 (항상 0 이하).
  */
 function applyFullHousePenalty(combo: Combination, hand: Card[]): number {
 	let penalty = 0;
-	// 풀하우스의 페어 파트 (rank !== combo.rank인 카드들)
+	// 풀하우스의 페어 파트 (rank !== combo.rank인 카드들 + 봉황)
 	const pairCards = combo.cards.filter(c => {
-		if (c.type !== 'normal') return false;
+		if (c.type === 'special') return true; // 페어 파트를 봉황으로 채운 경우
 		return (c as NormalCard).rank !== combo.rank;
 	});
+
+	// 페어 파트의 자연 랭크 (봉황 제외 카드 기준)
+	const naturalPair = pairCards.find(c => c.type === 'normal') as NormalCard | undefined;
+	const pRank = naturalPair?.rank ?? 0;
+
+	// 높은 자연 페어를 버리는 파트로 사용: 트리플 랭크보다 높을수록 명백한 낭비
+	// (예: 3-3-3 + K-K → 랭크 3짜리 풀하우스에 KK를 소모)
+	if (pRank === 14) penalty -= 0.35;
+	else if (pRank === 13) penalty -= 0.25;
+	else if (pRank === 12) penalty -= 0.15;
+	else if (pRank === 11) penalty -= 0.08;
+
+	// 싱글톤(봉황으로 페어를 완성한 경우) 추가 페널티: 봉황 자체도 낭비
 	for (const pc of pairCards) {
 		if (pc.type !== 'normal') continue;
-		const pRank = (pc as NormalCard).rank;
 		if (isSingletonInHand(pc, hand)) {
-			if (pRank === 14) penalty -= 0.25;        // A 싱글톤 페어: 강한 페널티
-			else if (pRank === 13) penalty -= 0.18;    // K 싱글톤 페어: 중간 페널티
-			else if (pRank >= 11) penalty -= 0.06;
+			penalty -= 0.1;
 		}
 	}
 	return penalty;
