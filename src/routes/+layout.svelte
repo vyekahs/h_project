@@ -3,7 +3,7 @@
     import { page } from '$app/stores';
     import { onMount, onDestroy } from 'svelte';
     import { afterNavigate } from '$app/navigation';
-    import { version } from '$app/environment';
+    import { version, dev } from '$app/environment';
     import PointDisplay from '$lib/components/gamification/PointDisplay.svelte';
     import AdBanner from '$lib/components/ads/AdBanner.svelte';
     import RankUpModal from '$lib/components/gamification/RankUpModal.svelte';
@@ -81,6 +81,10 @@
         themeStore.init();
         user.refresh();
         initNetworkHealthCheck();
+
+        // /_app/version.json은 프로덕션 빌드에만 생성됨 (vite dev에선 없어서 항상 404) — dev 모드에선 폴링 생략
+        if (dev) return;
+
         versionCheckTimer = setInterval(async () => {
             try {
                 const res = await fetch(`/_app/version.json`, { cache: 'no-store' });
