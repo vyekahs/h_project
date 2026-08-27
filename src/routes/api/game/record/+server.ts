@@ -64,7 +64,10 @@ export const POST: RequestHandler = async ({ request, locals, cookies }) => {
         }
 
         // Rank change notification for displaced users
-        try {
+        // 응답에 영향 없는 부수 효과라 백그라운드로 돌리고 응답을 막지 않는다.
+        // (알림 건당 DB 조회 + 웹 푸시 외부 호출이 있어 순서대로 기다리면 순위 변동자가
+        // 많을 때 응답이 크게 느려짐)
+        (async () => {
             if (result.currentRank !== null) {
                 const oldRank = result.previousRank;
                 const newRank = result.currentRank;
@@ -103,9 +106,7 @@ export const POST: RequestHandler = async ({ request, locals, cookies }) => {
                     }
                 }
             }
-        } catch (e) {
-            console.error('[API] Rank change notification failed:', e);
-        }
+        })().catch((e) => console.error('[API] Rank change notification failed:', e));
 
         return json({ ...result, newTitles });
     } catch (e: any) {

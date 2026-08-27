@@ -106,7 +106,34 @@ async function performCloseDay(businessDate: string) {
 }
 
 async function checkReservations() {
-    // 노쇼 처리 및 자동 시작 제거됨 — 예약 게임은 수동으로 관리
+    try {
+        // 예정 시간이 지난 'scheduled' 게임을 자동으로 시작 (수동 startScheduledGame과 동일한 전이)
+        const readyToStart = await db.execute(sql`
+            SELECT gs.id, gs.game_name, COALESCE(g.playtime_min, 60) as playtime_min
+            FROM game_sessions gs
+            LEFT JOIN games g ON gs.game_id = g.id
+            WHERE gs.status = 'scheduled' AND gs.scheduled_at <= NOW()
+        `);
+
+        for (const row of readyToStart as any[]) {
+            const duration = row.playtime_min || 60;
+            await db.transaction(async (tx) => {
+                await tx.execute(sql`
+                    UPDATE game_sessions
+                    SET status = 'playing', start_time = NOW(), end_time = NOW() + (${duration} || ' minutes')::interval
+                    WHERE id = ${row.id} AND status = 'scheduled'
+                `);
+                await tx.execute(sql`UPDATE reservations SET status = 'confirmed' WHERE session_id = ${row.id} AND status = 'pending'`);
+            });
+            console.log(`Auto-started session ${row.id} (${row.game_name}, ${duration}min)`);
+        }
+
+        if ((readyToStart as any[]).length > 0) {
+            emitLiveEvent('games');
+        }
+    } catch (error) {
+        console.error('Failed to check reservations:', error);
+    }
 }
 
 async function checkRecurringGames() {

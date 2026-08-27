@@ -2,8 +2,7 @@ import { db } from '$lib/server/db/index';
 import { sql } from 'drizzle-orm';
 import { fail } from '@sveltejs/kit';
 import type { PageServerLoad, Actions } from './$types';
-import * as cheerio from 'cheerio';
-import { translate } from 'google-translate-api-x';
+import { searchBggGames, fetchAndTranslateBggGame } from '$lib/server/bgg';
 
 export const load: PageServerLoad = async () => {
     const result = await db.execute(sql`SELECT * FROM games ORDER BY name ASC`);
@@ -103,120 +102,34 @@ export const actions: Actions = {
         const data = await request.formData();
         const queryStr = data.get('query')?.toString();
 
-        console.log(`[BGG Search] Query: ${queryStr}`);
-
         if (!queryStr) {
             return fail(400, { error: '검색어를 입력해주세요.' });
         }
 
         try {
-            const url = `https://api.geekdo.com/api/geekitems?nosession=1&objecttype=thing&subtype=boardgame&search=${encodeURIComponent(queryStr)}&pagesize=20`;
-            console.log(`[BGG Search] Fetching: ${url}`);
-            const response = await fetch(url);
-            if (!response.ok) {
-                console.error(`[BGG Search] HTTP ${response.status}: ${response.statusText}`);
-                return fail(500, { error: `BGG API 오류 (${response.status})` });
-            }
-            const json = await response.json();
-            const games = (json.items || []).map((item: any) => ({
-                id: String(item.objectid),
-                name: item.name,
-                year: item.yearpublished || ''
-            }));
-
-            console.log(`[BGG Search] Found ${games.length} items`);
+            const games = await searchBggGames(queryStr);
             return { success: true, bggGames: games };
         } catch (err) {
             console.error('[BGG Search Error]', err);
-            return fail(500, { error: 'BGG 검색 중 오류가 발생했습니다.' });
+            return fail(500, { error: err instanceof Error ? err.message : 'BGG 검색 중 오류가 발생했습니다.' });
         }
     },
 
     importBgg: async ({ request }) => {
         const data = await request.formData();
-        const bggId = data.get('bggId');
+        const bggId = data.get('bggId')?.toString();
 
         if (!bggId) {
             return fail(400, { error: 'BGG ID가 없습니다.' });
         }
 
         try {
-            // BGG JSON API로 기본 정보 가져오기
-            const [itemRes, dynamicRes] = await Promise.all([
-                fetch(`https://api.geekdo.com/api/geekitems?nosession=1&objecttype=thing&objectid=${bggId}`),
-                fetch(`https://api.geekdo.com/api/dynamicinfo?nosession=1&objecttype=thing&objectid=${bggId}`)
-            ]);
-            const itemJson = await itemRes.json();
-            const dynamicJson = await dynamicRes.json();
-            const item = itemJson.item;
-            const dynamic = dynamicJson.item;
-
-            if (!item) {
-                throw new Error('Could not find game data on BGG');
-            }
-
-            let name = item.name;
-            const minPlayers = parseInt(item.minplayers || '0');
-            const maxPlayers = parseInt(item.maxplayers || '0');
-            const playtimeMin = parseInt(item.minplaytime || '0');
-            const playtimeMax = parseInt(item.maxplaytime || '0');
-            const minAge = parseInt(item.minage || '0');
-
-            // Clean Description (remove HTML)
-            let description = item.description || '';
-            description = cheerio.load(description).text();
-
             const searchName = data.get('searchName')?.toString();
-            const hasKorean = (str: string) => /[ㄱ-ㅎ|ㅏ-ㅣ|가-힣]/.test(str);
-
-            // Translate Name and Description
-            try {
-                if (searchName && hasKorean(searchName)) {
-                    if (searchName.trim() !== name.trim()) {
-                        name = `${searchName} (${name})`;
-                    }
-                    const descRes = await translate(description, { to: 'ko' });
-                    // @ts-ignore
-                    description = descRes.text;
-                } else {
-                    const [nameRes, descRes] = await Promise.all([
-                        translate(name, { to: 'ko' }),
-                        translate(description, { to: 'ko' })
-                    ]);
-                    // @ts-ignore
-                    const translatedName = nameRes.text;
-                    if (translatedName && translatedName.trim() !== name.trim()) {
-                        name = `${translatedName} (${name})`;
-                    }
-                    // @ts-ignore
-                    description = descRes.text;
-                }
-            } catch (tErr) {
-                console.error('[Translation Error]', tErr);
-            }
-
-            // Image
-            const imageUrl = item.imageurl || item.images?.medium || '';
-
-            // Complexity (Average Weight) - from dynamicinfo
-            let complexity = 0;
-            if (dynamic?.stats?.avgweight) {
-                complexity = parseFloat(dynamic.stats.avgweight);
-            }
-
-            // Best Players - from dynamicinfo
-            let bestPlayers = "";
-            if (dynamic?.polls?.userplayers?.best) {
-                const best = dynamic.polls.userplayers.best;
-                bestPlayers = best.map((b: any) => {
-                    if (b.min === b.max) return b.min;
-                    return `${b.min}-${b.max}`;
-                }).join(', ');
-            }
+            const game = await fetchAndTranslateBggGame(bggId, searchName);
 
             await db.execute(sql`
                 INSERT INTO games (name, min_players, max_players, playtime_min, max_playtime, min_age, complexity, best_players, description, image_url, bgg_id)
-                VALUES (${name}, ${minPlayers}, ${maxPlayers}, ${playtimeMin}, ${playtimeMax}, ${minAge}, ${complexity.toFixed(2)}, ${bestPlayers}, ${description}, ${imageUrl}, ${bggId})
+                VALUES (${game.name}, ${game.minPlayers}, ${game.maxPlayers}, ${game.playtimeMin}, ${game.playtimeMax}, ${game.minAge}, ${game.complexity.toFixed(2)}, ${game.bestPlayers}, ${game.description}, ${game.imageUrl}, ${bggId})
                 ON CONFLICT (bgg_id) DO UPDATE SET
                 name = EXCLUDED.name, min_players = EXCLUDED.min_players, max_players = EXCLUDED.max_players,
                 playtime_min = EXCLUDED.playtime_min, max_playtime = EXCLUDED.max_playtime, min_age = EXCLUDED.min_age,
