@@ -902,7 +902,7 @@
                 {#each sortedAttendees as attendee}
                     {@const a = attendee as Attendee}
                     {@const tier = attendeeTier(a)}
-                    <div class="attendee-card {a.is_playing ? 'playing' : ''}">
+                    <div class="attendee-card {a.is_playing ? 'playing' : ''}" class:titled={a.title_name}>
                         {#if a.title_name}
                             <span class="mini-title">{a.title_name}</span>
                         {/if}
@@ -957,6 +957,7 @@
                     <div
                         class="visit-plan-card"
                         class:editable={isMyPlan}
+                        class:titled={plan.title_name}
                         onclick={() => isMyPlan && openEditVisitPlanModal()}
                         onkeydown={(e) => isMyPlan && e.key === 'Enter' && openEditVisitPlanModal()}
                         role={isMyPlan ? 'button' : undefined}
@@ -2386,9 +2387,12 @@
         align-items: start;
         gap: 0.5rem;
         overflow: hidden;
+        padding-top: 10px;
+        margin-top: -10px;
         transition: max-height 0.2s ease;
     }
     .visit-plan-card {
+        position: relative;
         background: var(--bg-primary);
         padding: 0.4rem 0.5rem;
         border-radius: 10px;
@@ -2400,7 +2404,11 @@
         align-items: center;
         justify-content: center;
         gap: 0.1rem;
-        overflow: hidden;
+    }
+    /* 칭호가 있으면 칸 자체는 그대로 두고 테두리만 강조 — 배지는 칸 밖 위쪽에 따로 붙인다 */
+    .visit-plan-card.titled {
+        border-color: var(--color-amber);
+        box-shadow: 0 0 0 1px var(--color-amber);
     }
     .visit-plan-card .name {
         font-size: 0.8rem;
@@ -2864,9 +2872,12 @@
         align-items: start;
         gap: 0.5rem;
         overflow: hidden;
+        padding-top: 10px;
+        margin-top: -10px;
         transition: max-height 0.2s ease;
     }
     .attendee-card {
+        position: relative;
         background: var(--bg-primary);
         padding: 0.4rem 0.5rem;
         border-radius: 10px;
@@ -2878,7 +2889,11 @@
         align-items: center;
         justify-content: center;
         gap: 0.1rem;
-        overflow: hidden;
+    }
+    /* 칭호가 있으면 칸 자체는 그대로 두고 테두리만 강조 — 배지는 칸 밖 위쪽에 따로 붙인다 */
+    .attendee-card.titled {
+        border-color: var(--color-amber);
+        box-shadow: 0 0 0 1px var(--color-amber);
     }
     .attendee-card .name {
         font-size: 0.8rem;
@@ -4118,24 +4133,29 @@
             font-size: 0.8rem;
         }
     }
-    /* Mini Titles */
+    /* Mini Titles — 칭호는 칸 안에 줄을 차지하지 않고, 칸 밖 위쪽에 뱃지로 얹힌다.
+       칸 자체는 .titled 테두리 강조만 받고 크기는 그대로 유지된다. */
     .mini-title {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: fit-content;
-        max-width: 100%;
-        padding: 2px 8px;
-        border: 1px solid var(--color-amber); /* Amber-400 */
-        border-radius: 6px;
-        background: rgba(255, 255, 255, 0.5);
-        color: var(--color-amber-darker); /* Amber-600 */
-        font-size: 0.75rem;
+        position: absolute;
+        top: -9px;
+        left: 2px;
+        right: 2px;
+        display: block;
+        max-width: calc(100% - 4px);
+        margin: 0 auto;
+        padding: 1px 6px;
+        border: 1px solid var(--color-amber);
+        border-radius: 8px;
+        background: var(--bg-primary);
+        color: var(--color-amber-darker);
+        font-size: 0.58rem;
         font-weight: 700;
-        margin-bottom: 2px;
-        word-break: keep-all;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
         text-align: center;
-        line-height: 1.3;
+        line-height: 1.4;
+        pointer-events: none;
     }
     
     .tag-title {
