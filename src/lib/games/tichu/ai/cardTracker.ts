@@ -212,6 +212,19 @@ export function rankStrengthInContext(rank: number, tracker: CardTracker): numbe
 }
 
 /**
+ * 안 나온 카드 중 "이 콤보보다 높은 조합이 가능한 슬롯" 개수를 세서, 활성 상대 수
+ * 기준 복합 확률로 환산. 슬롯이 0개(수학적으로 아무도 못 이김)면 확정 승리(1.0) —
+ * 콤보 타입 상관없이 동일한 방식이라 "이 정도면 대충 세이프" 식의 매직넘버 없이
+ * 실제 카운트에 비례해서 나옴.
+ */
+function winProbFromCount(higherCount: number, totalSlots: number, activeOpponents: number): number {
+	if (totalSlots <= 0 || higherCount <= 0) return 1.0;
+	const ratio = Math.min(1, higherCount / totalSlots);
+	const probBeaten = 1 - Math.pow(1 - ratio, Math.max(1, activeOpponents));
+	return Math.max(0, Math.min(1, 1 - probBeaten));
+}
+
+/**
  * Estimate how likely a combo will win the trick (not be beaten).
  * Considers: rank relative to what's still out, combo type, and bombs.
  */
@@ -230,6 +243,8 @@ export function comboLikelyToWin(combo: Combination, tracker: CardTracker, hand:
 		return higherBombPossible ? 0.75 : 0.9;
 	}
 
+	const activeOpponents = tracker.activeOpponents;
+
 	if (combo.type === 'single') {
 		const card = combo.cards[0];
 		if (card.type === 'special') {
@@ -240,43 +255,40 @@ export function comboLikelyToWin(combo: Combination, tracker: CardTracker, hand:
 	}
 
 	if (combo.type === 'pair') {
-		// How many higher pairs are possible?
-		let higherPairsOut = 0;
+		// 이 페어보다 높은 랭크 슬롯 중, 실제로 페어를 만들 수 있는 슬롯이 몇 개인지 정확히 셈
+		let higherOut = 0;
+		let slots = 0;
 		for (let r = combo.rank + 1; r <= 14; r++) {
-			const remaining = tracker.remainingByRank.get(r) || 0;
-			// Count how many of this rank I have
-			const inMyHand = hand.filter(c => c.type === 'normal' && c.rank === r).length;
-			const outThere = remaining; // already excludes my hand
-			if (outThere >= 2) higherPairsOut++;
-			// Phoenix can make a pair from 1 card
+			slots++;
+			const outThere = tracker.remainingByRank.get(r) || 0;
+			if (outThere >= 2) higherOut++;
+			// 봉황이 아직 안 나왔으면 1장만 있어도 페어 완성 가능 (부분 가중치)
 			if (outThere >= 1 && !tracker.phoenixPlayed && !tracker.phoenixInMyHand) {
-				higherPairsOut += 0.5; // partial credit for phoenix pair
+				higherOut += 0.5;
 			}
 		}
-		if (higherPairsOut === 0) return 0.9;
-		return Math.max(0.1, 0.9 - higherPairsOut * 0.15);
+		return winProbFromCount(higherOut, slots, activeOpponents);
 	}
 
 	if (combo.type === 'triple' || combo.type === 'full_house') {
-		let higherTriplesOut = 0;
+		let higherOut = 0;
+		let slots = 0;
 		for (let r = combo.rank + 1; r <= 14; r++) {
-			const remaining = tracker.remainingByRank.get(r) || 0;
-			if (remaining >= 3) higherTriplesOut++;
-			if (remaining >= 2 && !tracker.phoenixPlayed && !tracker.phoenixInMyHand) {
-				higherTriplesOut += 0.3;
+			slots++;
+			const outThere = tracker.remainingByRank.get(r) || 0;
+			if (outThere >= 3) higherOut++;
+			if (outThere >= 2 && !tracker.phoenixPlayed && !tracker.phoenixInMyHand) {
+				higherOut += 0.3;
 			}
 		}
-		if (higherTriplesOut === 0) return 0.9;
-		return Math.max(0.15, 0.9 - higherTriplesOut * 0.2);
+		return winProbFromCount(higherOut, slots, activeOpponents);
 	}
 
 	if (combo.type === 'straight') {
-		// Straights are harder to beat — need same length, higher rank
-		// High-rank straights are very strong
-		const maxPossibleRank = 14;
-		const slotsAbove = maxPossibleRank - combo.rank;
-		if (slotsAbove <= 0) return 0.85; // max rank straight
-		// Each slot above: need all ranks present among unknowns
+		// 슬롯: 이 스트레이트보다 높은 랭크로 끝나는 위치. 각 슬롯이 실제로 성립하려면
+		// 그 구간의 모든 랭크가 안 나온 카드 중에 남아있어야 함
+		const slotsAbove = 14 - combo.rank;
+		if (slotsAbove <= 0) return 1.0; // A로 끝나는 최고 스트레이트 — 이론상 못 이김
 		let canBeatCount = 0;
 		for (let topRank = combo.rank + 1; topRank <= 14; topRank++) {
 			const startRank = topRank - combo.length + 1;
@@ -290,14 +302,14 @@ export function comboLikelyToWin(combo: Combination, tracker: CardTracker, hand:
 			}
 			if (possible) canBeatCount++;
 		}
-		if (canBeatCount === 0) return 0.85;
-		return Math.max(0.2, 0.85 - canBeatCount * 0.1);
+		return winProbFromCount(canBeatCount, slotsAbove, activeOpponents);
 	}
 
 	if (combo.type === 'stairs') {
-		// Similar to straight analysis but for consecutive pairs
 		let canBeatCount = 0;
+		let slots = 0;
 		for (let topRank = combo.rank + 1; topRank <= 14; topRank++) {
+			slots++;
 			const startRank = topRank - combo.length + 1;
 			if (startRank < 1) continue;
 			let possible = true;
@@ -309,8 +321,7 @@ export function comboLikelyToWin(combo: Combination, tracker: CardTracker, hand:
 			}
 			if (possible) canBeatCount++;
 		}
-		if (canBeatCount === 0) return 0.85;
-		return Math.max(0.2, 0.85 - canBeatCount * 0.12);
+		return winProbFromCount(canBeatCount, slots, activeOpponents);
 	}
 
 	return 0.5; // default

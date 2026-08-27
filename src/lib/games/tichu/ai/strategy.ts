@@ -18,6 +18,7 @@ import {
 	type CardTracker
 } from './cardTracker';
 import { searchBestPlay, calcExitRate } from './playSearchGrid';
+import { buildSampleWorlds, evaluateLeadSafety, evaluateTwoTurnFinish, getUnseenCards, type SampledWorld } from './monteCarlo';
 
 // ===== Hand Analysis Helpers =====
 
@@ -767,7 +768,7 @@ function decideLead(
  * Lead decision when close to finishing (5 or fewer cards).
  * Uses CardTracker to evaluate win probability and find optimal play sequences.
  */
-function decideLeadEndgame(
+export function decideLeadEndgame(
 	hand: Card[],
 	plan: HandPlan,
 	weights: PersonalityWeights,
@@ -796,22 +797,42 @@ function decideLeadEndgame(
 		(p.grandTichu === true || p.smallTichu) &&
 		p.finishOrder === null
 	);
+
+	// === 몬테카를로 샘플링: 안 보이는 손패를 여러 번 무작위로 나눠 실제 안전성 추정 ===
+	// 이 호출 1회당 한 번만 생성해 아래 모든 후보 평가에 재사용 (공통 난수 기법)
+	const partnerSeatForMc = getPartnerSeat(context.currentSeat) as SeatIndex;
+	const worlds = buildSampleWorlds(context);
+
+	// 상대가 1장 남은 상황의 위협 확률은 샘플링이 필요 없음 — 그 좌석의 카드는 unseen 중
+	// 균등 1장이므로 "unseen 중 내 리드를 이기는 카드의 비율"이 정확한 확률
+	const unseenForThreat = nextPlayerCanFinish ? getUnseenCards(context) : [];
 	const leadThreatPenalty = (combo: Combination): number => {
 		if (!nextPlayerCanFinish && !opponentTichuThreat) return 0;
 		// 일반 싱글(특수카드 제외)만 위험 — 멀티카드 콤보는 카드 1장인 상대가 따라올 수 없음
 		if (combo.type !== 'single' || combo.cards[0].type === 'special') return 0;
-		const winProb = comboLikelyToWin(combo, tracker, hand);
-		if (winProb >= 0.5) return 0;
 		let penalty = 0;
 		// 상대가 1장 남은 상황은 이 리드 하나로 게임을 내줄 수 있는 치명적 위험이라
 		// "약한 카드부터 리드"라는 기본 성향(다른 스코어 요인)을 확실히 압도하도록 크게 잡음
-		if (nextPlayerCanFinish) penalty += 2.0;
-		if (opponentTichuThreat) penalty += 0.3;
+		if (nextPlayerCanFinish) {
+			if (unseenForThreat.length > 0) {
+				let beatCount = 0;
+				for (const uc of unseenForThreat) {
+					const single = detectCombination([uc]);
+					if (single && canBeat(combo, single)) beatCount++;
+				}
+				penalty += 2.0 * (beatCount / unseenForThreat.length);
+			} else if (comboLikelyToWin(combo, tracker, hand) < 0.5) {
+				penalty += 2.0;
+			}
+		}
+		if (opponentTichuThreat && comboLikelyToWin(combo, tracker, hand) < 0.5) {
+			penalty += 0.3;
+		}
 		return penalty;
 	};
 
 	// Find all valid 2-turn finishes and score them by win probability
-	const twoTurnFinishes = findAllTwoTurnFinishes(hand, plan, tracker);
+	const twoTurnFinishes = findAllTwoTurnFinishes(hand, plan, tracker, worlds, partnerSeatForMc);
 	if (twoTurnFinishes.length > 0) {
 		// Sort by combined win probability (lead * remainder), adjusted for threats
 		twoTurnFinishes.sort((a, b) =>
@@ -821,7 +842,7 @@ function decideLeadEndgame(
 	}
 
 	// Try 3-turn finishes
-	const twoStepResult = findTwoStepFinishScored(hand, plan, tracker, leadThreatPenalty);
+	const twoStepResult = findTwoStepFinishScored(hand, plan, tracker, leadThreatPenalty, worlds, partnerSeatForMc);
 	if (twoStepResult) {
 		return twoStepResult.cards.map(c => c.id);
 	}
@@ -867,12 +888,15 @@ function decideLeadEndgame(
  * Find all 2-turn finishes and score them by win probability.
  * Each result: lead combo → remainder combo, scored by how likely both will win.
  */
-function findAllTwoTurnFinishes(
+export function findAllTwoTurnFinishes(
 	hand: Card[],
 	plan: HandPlan,
-	tracker: CardTracker
+	tracker: CardTracker,
+	worlds: SampledWorld[] = [],
+	partnerSeat?: SeatIndex
 ): { lead: Combination; remainder: Combination; score: number }[] {
 	const results: { lead: Combination; remainder: Combination; score: number }[] = [];
+	const useMc = worlds.length > 0 && partnerSeat !== undefined;
 
 	for (const combo of plan.allCombos) {
 		if (isDogCombo(combo)) continue;
@@ -885,14 +909,21 @@ function findAllTwoTurnFinishes(
 		const remainderCombo = detectCombination(remainingCards);
 		if (!remainderCombo) continue;
 
-		const leadWinProb = comboLikelyToWin(combo, tracker, hand);
-		const remainderWinProb = comboLikelyToWin(remainderCombo, tracker, remainingCards);
+		// 리드의 실제 안전성(누가 이길 수 있는지)은 몬테카를로로 추정 가능하면 그것을 쓰고,
+		// 아니면(데이터 불일치 등) 기존 정적 확률로 폴백
+		let leadWinProb: number;
+		let remainderWinProb: number;
+		if (useMc) {
+			const mc = evaluateTwoTurnFinish(combo, remainderCombo, worlds, partnerSeat!);
+			leadWinProb = mc.effectiveWinProb;
+			remainderWinProb = mc.remainderSafeRate;
+		} else {
+			leadWinProb = comboLikelyToWin(combo, tracker, hand);
+			remainderWinProb = comboLikelyToWin(remainderCombo, tracker, remainingCards);
+		}
 
-		// Strategy: lead with the weaker combo (more likely to get beaten but ok),
-		// save strong combo for second turn when we hopefully have lead.
-		// But actually: lead with the one that WILL win, then play remainder.
+		// Strategy: lead with the one that WILL win, then play remainder.
 		// Score = leadWinProb * (1 + remainderWinProb)
-		// Leading with high win prob combo first → we get lead → play remainder
 		const score = leadWinProb * (1 + remainderWinProb * 0.8);
 
 		results.push({ lead: combo, remainder: remainderCombo, score });
@@ -903,14 +934,25 @@ function findAllTwoTurnFinishes(
 
 /**
  * Try 3-turn finishes with win probability scoring.
+ *
+ * 3턴 완성(X → 중간 → 마지막)에는 두 가지 플랜이 있음:
+ * - 체인 플랜: X를 리드해 이기고 선 유지 → 중간 콤보 리드해 이기고 → 마지막 콤보로 나감.
+ *   마지막 콤보는 내는 순간 손패가 비어 나가는 것이므로 이길 필요가 없음 — 중간까지만 이기면 됨.
+ * - 덤프 플랜: 약한 X를 일부러 버려 선을 내주고, 나중에 강한 재진입 콤보로 팔로우해서
+ *   선을 되찾은 뒤 마지막 콤보로 나감. 약한 카드를 마지막까지 쥐고 갇히는 것보다,
+ *   먼저 버리고 강한 카드를 "선 탈환 수단"으로 아끼는 쪽이 더 안전한 경우가 많음.
+ * 두 플랜 중 높은 점수를 그 X의 점수로 사용.
  */
-function findTwoStepFinishScored(
+export function findTwoStepFinishScored(
 	hand: Card[],
 	plan: HandPlan,
 	tracker: CardTracker,
-	leadPenalty: (combo: Combination) => number = () => 0
+	leadPenalty: (combo: Combination) => number = () => 0,
+	worlds: SampledWorld[] = [],
+	partnerSeat?: SeatIndex
 ): Combination | null {
 	const candidates: { combo: Combination; score: number }[] = [];
+	const useMc = worlds.length > 0 && partnerSeat !== undefined;
 
 	for (const combo of plan.allCombos) {
 		if (isDogCombo(combo)) continue;
@@ -920,24 +962,43 @@ function findTwoStepFinishScored(
 		if (remainingCards.length <= 1) continue;
 
 		const remainingCombos = findAllPlayableCombinations(remainingCards);
-		let bestSubScore = -Infinity;
+		let bestMiddleWinProb = -Infinity;
+		let bestReentryScore = -Infinity;
+		let validSplit = false;
 
 		for (const rc of remainingCombos) {
 			const afterFirst = remainingCards.filter(c => !rc.cards.some(cc => cc.id === c.id));
 			if (afterFirst.length === 0) continue;
 
 			const lastCombo = detectCombination(afterFirst);
-			if (lastCombo) {
-				const subScore =
-					comboLikelyToWin(rc, tracker, remainingCards) *
-					comboLikelyToWin(lastCombo, tracker, afterFirst);
-				bestSubScore = Math.max(bestSubScore, subScore);
-			}
+			if (!lastCombo) continue;
+			validSplit = true;
+
+			// 체인 플랜: rc(중간)만 이기면 됨 — lastCombo는 내는 순간 나가므로 승률 무관
+			// (중간 단계는 성능/범위 절충으로 기존 정적 확률 유지)
+			const rcProb = comboLikelyToWin(rc, tracker, remainingCards);
+			bestMiddleWinProb = Math.max(bestMiddleWinProb, rcProb);
+
+			// 덤프 플랜: rc를 재진입 콤보로 사용 — 재진입 성공 확률이 플랜의 성패를 가르므로
+			// 첫 리드와 같은 급으로 취급해 몬테카를로 적용 (폴백 시 정적 확률)
+			const reentryProb = useMc
+				? evaluateLeadSafety(rc, worlds, partnerSeat!).effectiveWinProb
+				: rcProb;
+			// 싱글은 팔로우 기회가 흔하지만, 페어/스트레이트 등은 같은 타입 트릭이 와야만
+			// 재진입할 수 있어 훨씬 불확실함
+			const reentryTypeFactor = rc.type === 'single' ? 0.85 : 0.4;
+			bestReentryScore = Math.max(bestReentryScore, reentryProb * reentryTypeFactor);
 		}
 
-		if (bestSubScore > -Infinity) {
-			const leadScore = comboLikelyToWin(combo, tracker, hand);
-			candidates.push({ combo, score: leadScore * (1 + bestSubScore * 0.6) - leadPenalty(combo) });
+		if (validSplit) {
+			const leadScore = useMc
+				? evaluateLeadSafety(combo, worlds, partnerSeat!).effectiveWinProb
+				: comboLikelyToWin(combo, tracker, hand);
+			const chainScore = leadScore * (0.3 + 0.7 * bestMiddleWinProb);
+			// 덤프 플랜에서 X 자체의 승률은 무관 (버리는 카드) — 대신 약한 카드를 먼저
+			// 버리는 쪽을 미세하게 선호 (강한 카드는 재진입/마지막 용도로 보존)
+			const dumpScore = bestReentryScore + (1 - leadScore) * 0.02;
+			candidates.push({ combo, score: Math.max(chainScore, dumpScore) - leadPenalty(combo) });
 		}
 	}
 

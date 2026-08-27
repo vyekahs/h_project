@@ -464,26 +464,112 @@ export function findBombs(hand: Card[]): Combination[] {
 	return [...findFourBombs(safeHand), ...findStraightFlushBombs(safeHand)];
 }
 
+export interface OptimalPartition {
+	/** 손패를 비우는 데 필요한 실제 최소 턴 수 */
+	turns: number;
+	/** 그 최소 턴 수를 달성하는 한 가지 조합 분할 (싱글 포함) */
+	combos: Combination[];
+}
+
+function popcount(n: number): number {
+	let count = 0;
+	while (n) {
+		n &= n - 1;
+		count++;
+	}
+	return count;
+}
+
 /**
- * Estimate turns to empty hand (simple greedy: biggest combos first, rest as singles).
+ * 손패를 최소 턴 수로 비우는 조합 분할을 정확히 계산 (비트마스크 DP).
+ * 손패가 최대 14장이라 부분집합 상태공간(최대 2^14)이 작아 완전탐색이 저렴함 —
+ * "가장 큰 조합부터 그리디하게" 방식과 달리 실제 최적해를 보장.
+ * candidateCombos를 넘기면 그 목록만 다장 조합 후보로 쓰고(예: 폭탄 제외),
+ * 낱장 싱글은 항상 안전망으로 이용 가능.
+ */
+export function findOptimalPartition(hand: Card[], candidateCombos?: Combination[]): OptimalPartition {
+	if (hand.length === 0) return { turns: 0, combos: [] };
+
+	const bitIndex = new Map<string, number>();
+	hand.forEach((c, i) => bitIndex.set(c.id, i));
+	const fullMask = (1 << hand.length) - 1;
+
+	const maskToCombo = new Map<number, Combination>();
+
+	// 낱장 싱글은 항상 유효한 수이므로 무조건 등록 (재구성 시 항상 값이 존재하도록)
+	for (const card of hand) {
+		const bit = bitIndex.get(card.id)!;
+		const single = detectCombination([card]);
+		if (single) maskToCombo.set(1 << bit, single);
+	}
+
+	const allCombos = candidateCombos ?? findAllPlayableCombinations(hand);
+	for (const combo of allCombos) {
+		let mask = 0;
+		let valid = true;
+		for (const card of combo.cards) {
+			const bit = bitIndex.get(card.id);
+			if (bit === undefined) { valid = false; break; }
+			mask |= 1 << bit;
+		}
+		if (!valid || mask === 0) continue;
+		const existing = maskToCombo.get(mask);
+		if (!existing || combo.cards.length > existing.cards.length) {
+			maskToCombo.set(mask, combo);
+		}
+	}
+
+	// 2장 이상인 조합만 탐색 후보로 (1장짜리는 아래 폴백이 항상 커버)
+	const multiMasks = [...maskToCombo.keys()].filter(m => popcount(m) > 1);
+
+	const memo = new Map<number, { turns: number; mask: number }>();
+	function solve(mask: number): { turns: number; mask: number } {
+		if (mask === 0) return { turns: 0, mask: 0 };
+		const cached = memo.get(mask);
+		if (cached) return cached;
+
+		// 최하위 비트(카드 하나)는 항상 어떤 수로든 처리돼야 함 — 순서 무관 중복 탐색 방지를 위해
+		// "최하위 비트를 포함하는 조합"만 시도
+		const lowBit = mask & -mask;
+		const fallback = solve(mask & ~lowBit);
+		let bestTurns = 1 + fallback.turns;
+		let bestChoice = lowBit;
+
+		for (const cm of multiMasks) {
+			if ((cm & lowBit) === 0) continue;
+			if ((cm & mask) !== cm) continue;
+			const rest = solve(mask & ~cm);
+			const total = 1 + rest.turns;
+			if (total < bestTurns || (total === bestTurns && popcount(cm) > popcount(bestChoice))) {
+				bestTurns = total;
+				bestChoice = cm;
+			}
+		}
+
+		const result = { turns: bestTurns, mask: bestChoice };
+		memo.set(mask, result);
+		return result;
+	}
+
+	const totalTurns = solve(fullMask).turns;
+	const chosen: Combination[] = [];
+	let remaining = fullMask;
+	while (remaining !== 0) {
+		const { mask: chosenMask } = solve(remaining);
+		const combo = maskToCombo.get(chosenMask);
+		if (combo) chosen.push(combo);
+		remaining &= ~chosenMask;
+	}
+
+	return { turns: totalTurns, combos: chosen };
+}
+
+/**
+ * 손패를 비우는 데 필요한 실제 최소 턴 수 (완전탐색 기반 최적해).
  * Shared utility used by multiple presets.
  */
 export function estimateSimpleTurns(hand: Card[]): number {
-	if (hand.length === 0) return 0;
-	const combos = findAllPlayableCombinations(hand);
-	const multiCombos = combos.filter(c => c.type !== 'single' && !isBomb(c));
-	const used = new Set<string>();
-	let turns = 0;
-
-	const sorted = [...multiCombos].sort((a, b) => b.cards.length - a.cards.length);
-	for (const combo of sorted) {
-		if (combo.cards.every(c => !used.has(c.id))) {
-			for (const c of combo.cards) used.add(c.id);
-			turns++;
-		}
-	}
-	turns += hand.filter(c => !used.has(c.id)).length;
-	return turns;
+	return findOptimalPartition(hand).turns;
 }
 
 /**

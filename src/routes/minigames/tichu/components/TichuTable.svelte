@@ -5,6 +5,7 @@
 	import OpponentArea from './OpponentArea.svelte';
 	import TrickArea from './TrickArea.svelte';
 	import PlayerHand from './PlayerHand.svelte';
+	import CardCounter from './CardCounter.svelte';
 	import TichuDeclareModal from './TichuDeclareModal.svelte';
 	import AiTichuDeclareModal from './AiTichuDeclareModal.svelte';
 	import CardComponent from './CardComponent.svelte';
@@ -223,10 +224,10 @@
 		<!-- Small Tichu button (inside table-field so it stays above hand area) -->
 		{#if game.canDeclareSmallTichu}
 			<div class="small-tichu-widget">
+				<span class="small-tichu-stakes">성공 +100 / 실패 -100</span>
 				<button class="btn-small-tichu" onclick={() => game.declareSmallTichu()}>
 					스몰 티츄!
 				</button>
-				<span class="small-tichu-stakes">성공 +100 / 실패 -100</span>
 			</div>
 		{/if}
 		<!-- Opponents -->
@@ -286,6 +287,9 @@
 				</div>
 			{/if}
 		</div>
+
+		<!-- Card counter: 밖에 남은 용/봉/A/K -->
+		<CardCounter {game} />
 
 		<!-- My turn indicator / Finish indicator -->
 		{#if myPlayer?.finishOrder !== null}
@@ -550,7 +554,7 @@
 
 	.my-finish-indicator {
 		position: absolute;
-		bottom: 24px;
+		bottom: 64px;
 		left: 50%;
 		transform: translateX(-50%);
 		padding: 8px 32px;
@@ -568,7 +572,7 @@
 
 	.my-turn-indicator {
 		position: absolute;
-		bottom: 24px;
+		bottom: 64px;
 		left: 50%;
 		transform: translateX(-50%);
 		background: linear-gradient(90deg, rgba(230, 211, 163, 0.05), rgba(230, 211, 163, 0.85), rgba(230, 211, 163, 0.05));

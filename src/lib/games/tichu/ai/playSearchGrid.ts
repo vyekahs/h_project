@@ -9,7 +9,7 @@ import type { AiDecisionContext, PersonalityWeights } from './types';
 import type { PresetBehavior } from './presets/types';
 import type { CardTracker } from './cardTracker';
 import { comboLikelyToWin, rankStrengthInContext } from './cardTracker';
-import { findAllPlayableCombinations } from './handEvaluator';
+import { findAllPlayableCombinations, findOptimalPartition } from './handEvaluator';
 import { isBomb, detectCombination } from '../combinations';
 import { getTeam, getPartnerSeat, getNextActiveSeat } from '../constants';
 
@@ -135,36 +135,19 @@ interface ExitInfo {
 
 /**
  * 남은 손패로 나가기 효율 계산.
- * Greedy 파티션: 가장 큰 콤보부터 선택 → 나머지는 싱글.
- * 각 턴의 승률을 합산하여 효율을 계산.
+ * 최적 파티션(비트마스크 완전탐색)으로 실제 최소 턴 분할을 구한 뒤,
+ * 각 턴의 승률을 합산하여 효율을 계산. 폭탄은 파티션 후보에서 제외(강패 보존).
  */
 export function calcExitRate(hand: Card[], tracker: CardTracker): ExitInfo {
 	if (hand.length === 0) return { rate: 1.0, turns: 0 };
 
 	const combos = findAllPlayableCombinations(hand);
-	const multiCombos = combos.filter(c =>
-		!isBomb(c) && c.type !== 'single' &&
-		// dog는 턴 소모하지만 카드 처리 안 됨 → 제외
-		!(c.cards.length === 1 && c.cards[0].type === 'special' && c.cards[0].special === 'dog')
-	);
+	const nonBombCombos = combos.filter(c => !isBomb(c));
 
-	// Greedy 파티션: 가장 큰 콤보부터 선택 (겹치지 않게)
-	const used = new Set<string>();
-	const selected: Combination[] = [];
-	const sorted = [...multiCombos].sort((a, b) =>
-		b.cards.length - a.cards.length || a.rank - b.rank
-	);
+	const { turns: totalTurns, combos: chosen } = findOptimalPartition(hand, nonBombCombos);
+	const selected = chosen.filter(c => c.cards.length > 1);
+	const singleCards = chosen.filter(c => c.cards.length === 1).map(c => c.cards[0]);
 
-	for (const c of sorted) {
-		if (c.cards.every(card => !used.has(card.id))) {
-			c.cards.forEach(card => used.add(card.id));
-			selected.push(c);
-		}
-	}
-
-	const singleCards = hand.filter(c => !used.has(c.id));
-	// dog는 리드 전용이므로 싱글로 처리되지만, 턴 카운트에는 포함
-	const totalTurns = selected.length + singleCards.length;
 	if (totalTurns === 0) return { rate: 1.0, turns: 0 };
 
 	// 각 콤보/싱글의 승률 합산

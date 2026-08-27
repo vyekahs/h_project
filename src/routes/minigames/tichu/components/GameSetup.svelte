@@ -14,7 +14,6 @@
 	const { game, user, isAdmin }: Props = $props();
 
 	const speedOptions: { id: AiSpeed; label: string }[] = [
-		{ id: 'instant', label: '즉시' },
 		{ id: 'fast', label: '빠름' },
 		{ id: 'normal', label: '보통' },
 		{ id: 'slow', label: '느림' },
