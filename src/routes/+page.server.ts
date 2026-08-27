@@ -45,14 +45,58 @@ export const load: PageServerLoad = async ({ locals }) => {
     const user = locals.user || null;
     const isAdmin = locals.isAdmin || false;
 
+    // 유저별 데이터는 공용 데이터(shared/wantToPlay)와 서로 의존하지 않으므로
+    // 별도 라운드로 나누지 않고 하나의 Promise.all로 동시에 실행한다.
+    // (실패해도 공용 데이터 로딩엔 영향 없도록 자체 catch로 격리)
+    const userQueriesPromise = user
+        ? Promise.all([
+            db.execute(sql`
+                SELECT r.*, gs.game_name, gs.status as session_status, gs.scheduled_at
+                FROM reservations r
+                JOIN game_sessions gs ON r.session_id = gs.id
+                WHERE r.attendee_id = ${user.id} AND r.status IN ('pending', 'waitlisted', 'confirmed', 'pending_approval')
+                LIMIT 1
+            `),
+            db.execute(sql`
+                SELECT gs.*
+                FROM game_sessions gs
+                JOIN session_participants sp ON gs.id = sp.session_id
+                WHERE sp.attendee_id = ${user.id} AND gs.status = 'scheduled'
+                ORDER BY gs.scheduled_at ASC
+            `),
+            db.execute(sql`
+                SELECT gs.id, gs.game_name
+                FROM session_participants sp
+                JOIN game_sessions gs ON sp.session_id = gs.id
+                WHERE sp.attendee_id = ${user.id} AND gs.status = 'playing'
+            `),
+            db.execute(sql`
+                SELECT gp.id, gp.name, gp.game_id, gp.game_name, gp.duration, gp.guest_count,
+                    g.image_url, g.name as resolved_game_name,
+                    COALESCE(json_agg(json_build_object(
+                        'id', a.id, 'name', a.name
+                    ) ORDER BY a.name) FILTER (WHERE a.id IS NOT NULL), '[]') as members
+                FROM game_parties gp
+                LEFT JOIN game_party_members gpm ON gp.id = gpm.party_id AND gpm.status = 'accepted'
+                LEFT JOIN attendees a ON gpm.attendee_id = a.id
+                LEFT JOIN games g ON gp.game_id = g.id
+                WHERE gp.owner_id = ${user.id}
+                GROUP BY gp.id, gp.name, gp.game_id, gp.game_name, gp.duration, gp.guest_count, g.image_url, g.name
+                ORDER BY gp.updated_at DESC
+            `),
+            db.execute(sql`SELECT party_id FROM game_party_members WHERE attendee_id = ${user.id} AND status = 'accepted'`),
+            db.execute(sql`SELECT id FROM daily_visit_plans WHERE attendee_id = ${user.id} AND plan_date = CURRENT_DATE`),
+        ]).catch(() => null)
+        : Promise.resolve(null);
+
     // 공용 데이터는 메모리 캐시에서 가져옴 (동시 요청 시 DB 1번만 조회)
-    const [shared, wantToPlayPosts, wtpAvailableTags] = await Promise.all([
+    const [shared, wantToPlayPosts, wtpAvailableTags, userResults] = await Promise.all([
         getSharedData(),
         WantToPlayService.getOpenPosts(),
         WantToPlayService.getAvailableTags(),
+        userQueriesPromise,
     ]);
 
-    // 유저별 데이터 — Drizzle이 커넥션 풀 자동 관리하므로 병렬 실행 가능
     let userPenaltyInfo = null;
     let userReservation = null;
     let userScheduledGames: any[] = [];
@@ -61,60 +105,14 @@ export const load: PageServerLoad = async ({ locals }) => {
     let userPartyIds: number[] = [];
     let userHasVisitPlan = false;
 
-    if (user) {
-        try {
-            const [resResult, schedResult, playingResult, partiesResult, partyMembershipResult, visitPlanResult] = await Promise.all([
-                db.execute(sql`
-                    SELECT r.*, gs.game_name, gs.status as session_status, gs.scheduled_at
-                    FROM reservations r
-                    JOIN game_sessions gs ON r.session_id = gs.id
-                    WHERE r.attendee_id = ${user.id} AND r.status IN ('pending', 'waitlisted', 'confirmed', 'pending_approval')
-                    LIMIT 1
-                `),
-                db.execute(sql`
-                    SELECT gs.*
-                    FROM game_sessions gs
-                    JOIN session_participants sp ON gs.id = sp.session_id
-                    WHERE sp.attendee_id = ${user.id} AND gs.status = 'scheduled'
-                    ORDER BY gs.scheduled_at ASC
-                `),
-                db.execute(sql`
-                    SELECT gs.id, gs.game_name
-                    FROM session_participants sp
-                    JOIN game_sessions gs ON sp.session_id = gs.id
-                    WHERE sp.attendee_id = ${user.id} AND gs.status = 'playing'
-                `),
-                db.execute(sql`
-                    SELECT gp.id, gp.name, gp.game_id, gp.game_name, gp.duration, gp.guest_count,
-                        g.image_url, g.name as resolved_game_name,
-                        COALESCE(json_agg(json_build_object(
-                            'id', a.id, 'name', a.name
-                        ) ORDER BY a.name) FILTER (WHERE a.id IS NOT NULL), '[]') as members
-                    FROM game_parties gp
-                    LEFT JOIN game_party_members gpm ON gp.id = gpm.party_id AND gpm.status = 'accepted'
-                    LEFT JOIN attendees a ON gpm.attendee_id = a.id
-                    LEFT JOIN games g ON gp.game_id = g.id
-                    WHERE gp.owner_id = ${user.id}
-                       OR gp.id IN (
-                           SELECT party_id FROM game_party_members
-                           WHERE attendee_id = ${user.id} AND status = 'accepted'
-                       )
-                    GROUP BY gp.id, gp.name, gp.game_id, gp.game_name, gp.duration, gp.guest_count, g.image_url, g.name
-                    ORDER BY gp.updated_at DESC
-                `),
-                db.execute(sql`SELECT party_id FROM game_party_members WHERE attendee_id = ${user.id} AND status = 'accepted'`),
-                db.execute(sql`SELECT id FROM daily_visit_plans WHERE attendee_id = ${user.id} AND plan_date = CURRENT_DATE`),
-            ]);
-
-            userReservation = (resResult[0] as any) || null;
-            userScheduledGames = schedResult as any[];
-            userPlayingGame = (playingResult[0] as any) || null;
-            parties = partiesResult as any[];
-            userPartyIds = (partyMembershipResult as any[]).map((r: any) => r.party_id);
-            userHasVisitPlan = visitPlanResult.length > 0;
-        } catch (e) {
-            // query error — return defaults
-        }
+    if (userResults) {
+        const [resResult, schedResult, playingResult, partiesResult, partyMembershipResult, visitPlanResult] = userResults;
+        userReservation = (resResult[0] as any) || null;
+        userScheduledGames = schedResult as any[];
+        userPlayingGame = (playingResult[0] as any) || null;
+        parties = partiesResult as any[];
+        userPartyIds = (partyMembershipResult as any[]).map((r: any) => r.party_id);
+        userHasVisitPlan = visitPlanResult.length > 0;
     }
 
     return {
