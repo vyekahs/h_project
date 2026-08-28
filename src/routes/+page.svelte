@@ -219,8 +219,7 @@
     }
 
     // 참여 버튼이 안 보이는 이유를 사용자에게 설명하기 위한 헬퍼 (버튼을 완전히 숨기지 않고 이유를 표시)
-    function joinBlockedReason(game: any, hasConflict: boolean): string | null {
-        if (hasConflict) return '다른 게임 예약 있음';
+    function joinBlockedReason(game: any): string | null {
         if (!canJoinGame(game)) return '고정팟 전용';
         return null;
     }
@@ -1005,23 +1004,7 @@
                                 </h3>
                                 <div class="header-meta-row">
                                     {#if !isPlaying && data.user && !(game.participants || []).some((p: any) => p.id === data.user!.id)}
-                                        {@const hasConflict = (() => {
-                                            const targetDate = new Date(game.scheduled_at).toDateString();
-                                            if (data.userPlayingGame) {
-                                                const today = new Date().toDateString();
-                                                if (targetDate === today) return true;
-                                            }
-                                            const conflicts = [
-                                                ...(data.userScheduledGames || []),
-                                                ...(data.userReservation ? [data.userReservation] : [])
-                                            ];
-                                            return conflicts.some(c => {
-                                                if (!c.scheduled_at) return false;
-                                                return new Date(c.scheduled_at).toDateString() === targetDate;
-                                            });
-                                        })()}
-
-                                        {#if !hasConflict && canJoinGame(game)}
+                                        {#if canJoinGame(game)}
                                             <div class="actions">
                                                 <form method="POST" action="?/joinScheduledGame"
                                                     use:enhance={() => {
@@ -1038,8 +1021,8 @@
                                             </div>
                                         {:else}
                                             <div class="actions">
-                                                <span class="btn-join-blocked" title={joinBlockedReason(game, hasConflict)}>
-                                                    {joinBlockedReason(game, hasConflict)}
+                                                <span class="btn-join-blocked" title={joinBlockedReason(game)}>
+                                                    {joinBlockedReason(game)}
                                                 </span>
                                             </div>
                                         {/if}
@@ -1432,23 +1415,7 @@
                                     </div>
                                 {/if}
                                 {#if data.user && !(game.participants || []).some((p: any) => p.id === data.user!.id)}
-                                    {@const hasConflict = (() => {
-                                        const targetDate = new Date(game.scheduled_at).toDateString();
-                                        if (data.userPlayingGame) {
-                                            const today = new Date().toDateString();
-                                            if (targetDate === today) return true;
-                                        }
-                                        const conflicts = [
-                                            ...(data.userScheduledGames || []),
-                                            ...(data.userReservation ? [data.userReservation] : [])
-                                        ];
-                                        return conflicts.some(c => {
-                                            if (!c.scheduled_at) return false;
-                                            return new Date(c.scheduled_at).toDateString() === targetDate;
-                                        });
-                                    })()}
-                                    
-                                    {#if !hasConflict && canJoinGame(game)}
+                                    {#if canJoinGame(game)}
                                         <div class="actions">
                                             <form method="POST" action="?/joinScheduledGame"
                                                 use:enhance={() => {
@@ -1465,8 +1432,8 @@
                                         </div>
                                     {:else}
                                         <div class="actions">
-                                            <span class="btn-join-blocked" title={joinBlockedReason(game, hasConflict)}>
-                                                {joinBlockedReason(game, hasConflict)}
+                                            <span class="btn-join-blocked" title={joinBlockedReason(game)}>
+                                                {joinBlockedReason(game)}
                                             </span>
                                         </div>
                                     {/if}
