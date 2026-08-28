@@ -566,6 +566,11 @@
         display: flex;
         flex-direction: column;
         cursor: pointer;
+        -webkit-tap-highlight-color: transparent;
+    }
+    .game-card:active {
+        transform: scale(0.98);
+        box-shadow: 0 2px 8px var(--overlay-light);
     }
     .game-card:hover,
     .game-card:focus-visible {
@@ -604,6 +609,10 @@
         font-size: 1.1rem;
         font-weight: 600;
         color: var(--text-primary);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        min-width: 0;
     }
     .meta {
         display: flex;
@@ -656,9 +665,11 @@
         justify-content: space-between;
         align-items: flex-start;
         margin-bottom: 0.5rem;
+        min-width: 0;
     }
     .title-row h2 { margin: 0; }
     .badge-inactive {
+        flex-shrink: 0;
         font-size: 0.75rem;
         background: var(--text-secondary);
         color: var(--bg-primary);
