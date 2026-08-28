@@ -108,29 +108,23 @@ export const CommentService = {
 			title_name: user?.title_name ?? null,
 		};
 
+		// 알림 팬아웃(수신자별 DB 조회 + 웹 푸시 외부 호출)은 댓글 작성 자체와 무관한
+		// 부수 효과라 응답을 막지 않도록 백그라운드로 돌린다. 특히 고정팟 채팅은
+		// 메시지마다 멤버 수만큼 순차 알림을 기다리면 채팅이 눈에 띄게 느려짐.
 		if (isParty) {
 			// 고정팟: 멤버 전원에게 실시간 채팅 알림
-			try {
-				await this.notifyPartyMembers(userId, gameId, comment, user?.nickname ?? '익명');
-			} catch (e) {
-				console.error('[CommentService] notifyPartyMembers failed:', e);
-			}
+			this.notifyPartyMembers(userId, gameId, comment, user?.nickname ?? '익명')
+				.catch((e) => console.error('[CommentService] notifyPartyMembers failed:', e));
 		} else if (isWtp) {
 			// wtp: 멘션 없음, 대신 참여자 전원에게 메시지 알림
-			try {
-				await this.notifyWtpParticipants(userId, gameId, comment, user?.nickname ?? '익명');
-			} catch (e) {
-				console.error('[CommentService] notifyWtpParticipants failed:', e);
-			}
+			this.notifyWtpParticipants(userId, gameId, comment, user?.nickname ?? '익명')
+				.catch((e) => console.error('[CommentService] notifyWtpParticipants failed:', e));
 		} else {
 			// 미니게임: 멘션 알림
 			const mentions = this.parseMentions(trimmed);
 			if (mentions.length > 0) {
-				try {
-					await this.processMentions(userId, gameId, comment.id, mentions, user?.nickname ?? '익명');
-				} catch (e) {
-					console.error('[CommentService] processMentions failed:', e);
-				}
+				this.processMentions(userId, gameId, comment.id, mentions, user?.nickname ?? '익명')
+					.catch((e) => console.error('[CommentService] processMentions failed:', e));
 			}
 		}
 
@@ -178,12 +172,13 @@ export const CommentService = {
 		const partyName = (membersResult[0] as any)?.party_name ?? '고정팟';
 		const referenceId = `party_chat:${partyId}`;
 
-		for (const row of membersResult as any[]) {
-			if (row.attendee_id === fromUserId) continue;
-			// SSE 실시간 채팅 메시지 전달
+		// 수신자별로 서로 독립적인 작업이라 병렬로 처리 (순차 대기 시 멤버 수만큼 지연 누적)
+		const recipients = (membersResult as any[]).filter((row) => row.attendee_id !== fromUserId);
+		for (const row of recipients) {
 			emitPartyChatMessage(row.attendee_id, { partyId, comment });
-			// DB 알림 저장 (upsert로 중복 방지)
-			await NotificationService.upsertNotify(
+		}
+		await Promise.all(recipients.map((row) =>
+			NotificationService.upsertNotify(
 				row.attendee_id,
 				{
 					type: 'party_message',
@@ -193,8 +188,8 @@ export const CommentService = {
 				},
 				fromUserId,
 				referenceId
-			);
-		}
+			)
+		));
 	},
 
 	async notifyWtpParticipants(fromUserId: number, gameId: string, comment: CommentWithUser, fromName: string) {
@@ -206,11 +201,14 @@ export const CommentService = {
 		const gameName = (postResult[0] as any)?.game_name ?? '같이하기';
 		const referenceId = `wtp:${wtpId}`;
 
-		for (const row of participantsResult as any[]) {
-			if (row.attendee_id === fromUserId) continue;
+		// 수신자별로 서로 독립적인 작업이라 병렬로 처리 (순차 대기 시 참여자 수만큼 지연 누적)
+		const recipients = (participantsResult as any[]).filter((row) => row.attendee_id !== fromUserId);
+		for (const row of recipients) {
 			// SSE 실시간 채팅 메시지 전달 (모달을 열어둔 상태에서도 바로 보이도록)
 			emitWtpChatMessage(row.attendee_id, { wtpId, comment });
-			await NotificationService.upsertNotify(
+		}
+		await Promise.all(recipients.map((row) =>
+			NotificationService.upsertNotify(
 				row.attendee_id,
 				{
 					type: 'wtp_message',
@@ -220,8 +218,8 @@ export const CommentService = {
 				},
 				fromUserId,
 				referenceId
-			);
-		}
+			)
+		));
 	},
 
 	async processMentions(fromUserId: number, gameId: string, commentId: number, mentionedNames: string[], fromName: string) {
@@ -246,9 +244,9 @@ export const CommentService = {
 			mentionUrl = `/minigames/start/${gameId}?tab=comments`;
 		}
 
-		for (const u of users as any[]) {
-			if (u.id === fromUserId) continue; // Don't notify self
-			await NotificationService.notify(
+		const recipients = (users as any[]).filter((u) => u.id !== fromUserId);
+		await Promise.all(recipients.map((u) =>
+			NotificationService.notify(
 				u.id,
 				{
 					type: 'mention',
@@ -258,7 +256,7 @@ export const CommentService = {
 				},
 				fromUserId,
 				`game:${gameId}:comment:${commentId}`
-			);
-		}
+			)
+		));
 	},
 };

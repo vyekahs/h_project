@@ -91,8 +91,8 @@ export const POST: RequestHandler = async ({ request, locals, cookies }) => {
 
                     const displayName = GAME_REGISTRY[gameId]?.name ?? gameId;
 
-                    for (const du of displacedUsers as any[]) {
-                        await NotificationService.notify(
+                    await Promise.all((displacedUsers as any[]).map((du) =>
+                        NotificationService.notify(
                             du.user_id,
                             {
                                 type: 'rank_change',
@@ -102,8 +102,8 @@ export const POST: RequestHandler = async ({ request, locals, cookies }) => {
                             },
                             userId,
                             `ranking:${gameId}:${monthKey}`
-                        );
-                    }
+                        )
+                    ));
                 }
             }
         })().catch((e) => console.error('[API] Rank change notification failed:', e));

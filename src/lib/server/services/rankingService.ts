@@ -202,41 +202,14 @@ export const RankingService = {
              calculatedScore = score || 0;
         }
 
-        // 2. Monthly Cumulative Ranking
+        // 2~4. 월간 누적 랭킹 / 플레이 로그 / 전판 최고기록 갱신 + 포인트 지급
+        // — 서로 다른 테이블(행)을 건드리는 독립적인 쓰기라 병렬로 실행한다.
+        // (기존엔 4개를 순차로 await해서 커넥션을 그만큼 더 오래 붙잡고 있었음.
+        // 포인트 지급 실패는 기존처럼 전체 실패로 이어지지 않도록 자체 catch로 격리)
         const now = new Date();
         const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 
-        await db.execute(sql`
-            INSERT INTO minigame_monthly_rankings (user_id, game_id, month_key, total_score, score_updated_at)
-            VALUES (${userId}, ${gameId}, ${monthKey}, ${calculatedScore}, NOW())
-            ON CONFLICT (user_id, game_id, month_key)
-            DO UPDATE SET
-                total_score = minigame_monthly_rankings.total_score + EXCLUDED.total_score,
-                score_updated_at = NOW()
-        `);
-
-        // 3. Log every clear for activity feed
-        await db.execute(sql`
-            INSERT INTO minigame_play_log (game_id, difficulty, user_id, score, clear_time)
-            VALUES (${gameId}, ${difficulty}, ${userId}, ${calculatedScore}, ${clearTime})
-        `);
-
-        // 4. Update All-time Best Record
-        await db.execute(sql`
-            INSERT INTO minigame_rankings (game_id, difficulty, user_id, clear_time, score, mistakes, achieved_at)
-            VALUES (${gameId}, ${difficulty}, ${userId}, ${clearTime}, ${calculatedScore}, ${mistakes}, NOW())
-            ON CONFLICT (game_id, difficulty, user_id)
-            DO UPDATE SET
-                clear_time = CASE WHEN EXCLUDED.score > minigame_rankings.score THEN EXCLUDED.clear_time ELSE minigame_rankings.clear_time END,
-                score = GREATEST(minigame_rankings.score, EXCLUDED.score),
-                mistakes = CASE WHEN EXCLUDED.score > minigame_rankings.score THEN EXCLUDED.mistakes ELSE minigame_rankings.mistakes END,
-                achieved_at = CASE WHEN EXCLUDED.score > minigame_rankings.score THEN NOW() ELSE minigame_rankings.achieved_at END
-        `);
-
-        // 4. Calculate Rewards
         let earnedPoints = 0;
-        let finalPoints = 0;
-
         if (!skipReward) {
             let basePoints = 10;
             if (gameId === 'tichu') {
@@ -249,19 +222,41 @@ export const RankingService = {
                 if (difficulty === 'expert') basePoints = 100;
                 if (difficulty === 'master') basePoints = 150;
             }
-
-            earnedPoints += basePoints;
-
-            if (earnedPoints > 0) {
-                try {
-                    finalPoints = await PointService.addPoints(userId, earnedPoints, 'game_clear', `${gameId}:${difficulty}`);
-                } catch (e) {
-                    console.error('[RankingService] Points update failed:', e);
-                }
-            }
+            earnedPoints = basePoints;
         }
 
-        // 5. Get New Rank
+        const [, , , finalPoints] = await Promise.all([
+            db.execute(sql`
+                INSERT INTO minigame_monthly_rankings (user_id, game_id, month_key, total_score, score_updated_at)
+                VALUES (${userId}, ${gameId}, ${monthKey}, ${calculatedScore}, NOW())
+                ON CONFLICT (user_id, game_id, month_key)
+                DO UPDATE SET
+                    total_score = minigame_monthly_rankings.total_score + EXCLUDED.total_score,
+                    score_updated_at = NOW()
+            `),
+            db.execute(sql`
+                INSERT INTO minigame_play_log (game_id, difficulty, user_id, score, clear_time)
+                VALUES (${gameId}, ${difficulty}, ${userId}, ${calculatedScore}, ${clearTime})
+            `),
+            db.execute(sql`
+                INSERT INTO minigame_rankings (game_id, difficulty, user_id, clear_time, score, mistakes, achieved_at)
+                VALUES (${gameId}, ${difficulty}, ${userId}, ${clearTime}, ${calculatedScore}, ${mistakes}, NOW())
+                ON CONFLICT (game_id, difficulty, user_id)
+                DO UPDATE SET
+                    clear_time = CASE WHEN EXCLUDED.score > minigame_rankings.score THEN EXCLUDED.clear_time ELSE minigame_rankings.clear_time END,
+                    score = GREATEST(minigame_rankings.score, EXCLUDED.score),
+                    mistakes = CASE WHEN EXCLUDED.score > minigame_rankings.score THEN EXCLUDED.mistakes ELSE minigame_rankings.mistakes END,
+                    achieved_at = CASE WHEN EXCLUDED.score > minigame_rankings.score THEN NOW() ELSE minigame_rankings.achieved_at END
+            `),
+            earnedPoints > 0
+                ? PointService.addPoints(userId, earnedPoints, 'game_clear', `${gameId}:${difficulty}`).catch((e) => {
+                    console.error('[RankingService] Points update failed:', e);
+                    return 0;
+                })
+                : Promise.resolve(0),
+        ]);
+
+        // 5. Get New Rank (월간 랭킹 갱신이 위에서 이미 끝났으므로 이 시점에 조회해야 정확함)
         const currentRank = await this.getUserRank(userId, gameId);
 
         return {

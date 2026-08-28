@@ -4,9 +4,11 @@ import { ShopService } from '$lib/server/services/shopService';
 import type { RequestHandler } from './$types';
 
 export const POST: RequestHandler = async ({ request, locals }) => {
-    // const userId = locals.user?.id; 
-    const userId = 1; // Mock
-    
+    if (!locals.user) {
+        return json({ error: '로그인이 필요합니다' }, { status: 401 });
+    }
+    const userId = locals.user.id;
+
     const { itemCode } = await request.json();
     
     if (!itemCode) {

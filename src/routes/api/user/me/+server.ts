@@ -2,24 +2,15 @@ import { json } from '@sveltejs/kit';
 import { PointService } from '$lib/server/services/pointService';
 import { ShopService } from '$lib/server/services/shopService';
 import { TitleService } from '$lib/server/services/titleService';
-import { verifyAttendeeSession } from '$lib/server/auth';
 
 import type { RequestHandler } from './$types';
 
-export const GET: RequestHandler = async ({ cookies }) => {
-    const sessionToken = cookies.get('user_session');
-    let userId = 1; // Fallback for dev/test if no session
-    let name = 'Guest';
-    let authenticated = false;
-
-    if (sessionToken) {
-        const user = await verifyAttendeeSession(sessionToken);
-        if (user) {
-            userId = user.id;
-            name = user.name;
-            authenticated = true;
-        }
+export const GET: RequestHandler = async ({ locals }) => {
+    if (!locals.user) {
+        return json({ error: '로그인이 필요합니다' }, { status: 401 });
     }
+    const userId = locals.user.id;
+    const name = locals.user.name;
 
     try {
         const [points, inventory, title] = await Promise.all([
@@ -34,7 +25,7 @@ export const GET: RequestHandler = async ({ cookies }) => {
             inventory,
             title,
             name,
-            authenticated
+            authenticated: true
         });
     } catch (e) {
         console.error(e);

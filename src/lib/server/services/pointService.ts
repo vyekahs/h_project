@@ -80,7 +80,12 @@ export const PointService = {
                 .values({ userId, amount: actualAmount, transactionType: type, referenceId });
         });
 
-        import('./titleService').then(({ TitleService }) => TitleService.checkAndAssignTitles(userId)).catch(console.error);
+        // 칭호 체크는 호출부에서 필요할 때 명시적으로 호출한다.
+        // (RankingService.submitScore를 통해 여기로 들어오는 경로는 /api/game/record가
+        // 이미 자체적으로 checkAndAssignTitles를 호출/await하고 있어서, 여기서도 같이
+        // fire-and-forget으로 또 돌리면 같은 유저에 대해 동시에 두 번 실행됨 — 두 실행이
+        // minigame_user_titles/minigame_user_points에 동시에 쓰기 작업을 해 락 경합을
+        // 일으키고, 게임 점수 제출마다 칭호 체크 쿼리 비용이 두 배가 되는 원인이었음)
 
         return actualAmount;
     },
