@@ -6,6 +6,7 @@ import { verifyAdminSession, verifyAttendeeSession } from '$lib/server/auth';
 import { searchBggGames, fetchAndTranslateBggGame } from '$lib/server/bgg';
 
 export const load: PageServerLoad = async ({ cookies, request }) => {
+    // 인기 표시는 "이번달" 기준 — 이달 1일 이후 종료된 게임만 카운트
     const result = await db.execute(sql`
         SELECT g.*, COALESCE(pc.play_count, 0)::int AS play_count
         FROM games g
@@ -13,6 +14,7 @@ export const load: PageServerLoad = async ({ cookies, request }) => {
             SELECT game_id, COUNT(*) AS play_count
             FROM game_sessions
             WHERE status = 'finished' AND game_id IS NOT NULL
+              AND end_time >= date_trunc('month', CURRENT_DATE)
             GROUP BY game_id
         ) pc ON pc.game_id = g.id
         WHERE g.is_active = true

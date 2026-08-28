@@ -44,13 +44,7 @@
         return a.name.localeCompare(b.name, 'ko');
     });
 
-    // 필터 드롭다운과 같은 3단계 기준으로 라벨/등급을 매겨, 카드에도 같은 기준으로 보여준다
-    function complexityLabel(score: number | null | undefined): string | null {
-        if (!score) return null;
-        if (score < 2.5) return '가벼움';
-        if (score < 3.5) return '중간';
-        return '무거움';
-    }
+    // 필터 드롭다운과 같은 3단계 기준으로 등급을 매겨, 배지 색상에 반영한다
     function complexityTier(score: number | null | undefined): string {
         if (!score) return '';
         if (score < 2.5) return 'tier-light';
@@ -93,6 +87,27 @@
     let importingId: string | null = null;
     let alertVisible = false;
     let alertMessage = '';
+
+    // 모달이 떠 있는 동안 뒤에 있는 보드게임 목록 페이지가 같이 스크롤되지 않도록 배경 스크롤 잠금
+    let lockedScrollY = 0;
+    $: anyModalOpen = showDetailModal || showBggModal || alertVisible;
+    $: if (typeof document !== 'undefined') {
+        if (anyModalOpen) {
+            lockedScrollY = window.scrollY;
+            document.body.style.position = 'fixed';
+            document.body.style.top = `-${lockedScrollY}px`;
+            document.body.style.left = '0';
+            document.body.style.right = '0';
+            document.body.style.overflow = 'hidden';
+        } else {
+            document.body.style.position = '';
+            document.body.style.top = '';
+            document.body.style.left = '';
+            document.body.style.right = '';
+            document.body.style.overflow = '';
+            window.scrollTo(0, lockedScrollY);
+        }
+    }
 
     function openBggModal() {
         showBggModal = true;
@@ -198,6 +213,12 @@
                         <div class="inactive-overlay">비활성화됨</div>
                     {/if}
                 </div>
+                {#if game.play_count > 0}
+                    <span class="popular-badge" title="이번달 {game.play_count}회 플레이됨">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg>
+                        이번달 인기
+                    </span>
+                {/if}
                 <div class="game-info">
                     <div class="title-row">
                         <h2>{game.name}</h2>
@@ -207,23 +228,17 @@
                     </div>
                     <div class="meta">
                         <span class="badge players">
-                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
                             {game.min_players}-{game.max_players}인
                         </span>
                         <span class="badge time">
-                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
                             {game.playtime_min}분
                         </span>
                         <span class="badge complexity {complexityTier(game.complexity)}">
-                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="20" x2="6" y2="14"/><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/></svg>
-                            {#if game.complexity}{complexityLabel(game.complexity)} · {game.complexity}/5{:else}난이도 정보 없음{/if}
+                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="20" x2="6" y2="14"/><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/></svg>
+                            {#if game.complexity}난이도 {game.complexity.toFixed(1)}/5{:else}난이도 정보 없음{/if}
                         </span>
-                        {#if game.play_count > 0}
-                            <span class="badge popular">
-                                <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg>
-                                {game.play_count}회 플레이됨
-                            </span>
-                        {/if}
                     </div>
                     {#if game.included_dlcs}
                         <p class="dlc-info">포함된 확장: {game.included_dlcs}</p>
@@ -287,8 +302,14 @@
                     <span class="badge">{selectedDetailGame.min_age ? selectedDetailGame.min_age + '세 이상' : '연령 제한 없음'}</span>
                     <span class="badge complexity {complexityTier(selectedDetailGame.complexity)}">
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="20" x2="6" y2="14"/><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/></svg>
-                        {#if selectedDetailGame.complexity}{complexityLabel(selectedDetailGame.complexity)} · {selectedDetailGame.complexity}/5{:else}난이도 정보 없음{/if}
+                        {#if selectedDetailGame.complexity}난이도 {selectedDetailGame.complexity.toFixed(1)}/5{:else}난이도 정보 없음{/if}
                     </span>
+                    {#if selectedDetailGame.play_count > 0}
+                        <span class="badge popular-count">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg>
+                            이번달 {selectedDetailGame.play_count}회 플레이됨
+                        </span>
+                    {/if}
                 </div>
 
                 {#if selectedDetailGame.best_players}
@@ -517,8 +538,9 @@
     }
     .games-grid.list-view .game-image {
         width: 96px;
-        height: 96px;
+        height: auto;
         flex: 0 0 96px;
+        align-self: stretch;
     }
     .games-grid.list-view .game-info {
         padding: 0.6rem 1rem;
@@ -527,8 +549,18 @@
     .games-grid.list-view .game-info h2 {
         font-size: 1.05rem;
     }
-    .games-grid.list-view .dlc-info,
-    .games-grid.list-view .badge.complexity {
+    .games-grid.list-view .popular-badge {
+        bottom: 4px;
+        right: 4px;
+        padding: 2px 5px;
+        gap: 0.15rem;
+        font-size: 0.6rem;
+    }
+    .games-grid.list-view .popular-badge svg {
+        width: 9px;
+        height: 9px;
+    }
+    .games-grid.list-view .dlc-info {
         display: none;
     }
     .view-toggle {
@@ -537,6 +569,7 @@
         border-radius: 8px;
         overflow: hidden;
         flex: 0 0 auto;
+        margin-left: auto;
     }
     .view-toggle-btn {
         display: flex;
@@ -557,6 +590,7 @@
         color: var(--color-blue-bright);
     }
     .game-card {
+        position: relative;
         background: var(--bg-primary);
         border-radius: 16px;
         overflow: hidden;
@@ -617,16 +651,16 @@
     .meta {
         display: flex;
         flex-wrap: wrap;
-        gap: 0.4rem;
+        gap: 0.35rem;
         margin-bottom: 1rem;
     }
     .badge {
         display: inline-flex;
         align-items: center;
-        gap: 0.3rem;
+        gap: 0.22rem;
         white-space: nowrap;
-        font-size: 0.8rem;
-        padding: 0.3rem 0.65rem;
+        font-size: 0.72rem;
+        padding: 0.22rem 0.5rem;
         border-radius: 20px;
         background: var(--bg-elevated);
         color: var(--text-darker);
@@ -640,8 +674,25 @@
     .badge.complexity.tier-light { background: var(--color-success-bg); color: var(--color-green-dark); }
     .badge.complexity.tier-medium { background: var(--color-warning-bg); color: var(--color-orange-dark); }
     .badge.complexity.tier-heavy { background: var(--color-error-bg); color: var(--color-red-dark); }
-    .badge.popular { background: var(--color-warning-bg); color: var(--color-orange-dark); }
-    
+    .badge.popular-count { background: var(--color-warning-bg); color: var(--color-orange-dark); }
+    .popular-badge {
+        position: absolute;
+        bottom: 8px;
+        right: 8px;
+        z-index: 2;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.25rem;
+        padding: 3px 8px;
+        border-radius: 20px;
+        background: var(--color-amber);
+        color: #78350f;
+        font-size: 0.7rem;
+        font-weight: 700;
+        white-space: nowrap;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+    }
+
     .game-card.inactive {
         filter: grayscale(0.8);
         opacity: 0.7;
