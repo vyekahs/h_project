@@ -11,16 +11,11 @@ export const load: PageServerLoad = async ({ locals }) => {
 
     const userId = locals.user.id;
 
-    const [activityFeed, popularGames, ...rankResults] = await Promise.all([
+    const [activityFeed, popularGames, userRanks] = await Promise.all([
         RankingService.getRecentActivity(1),
         RankingService.getPopularGames(3),
-        ...GAME_IDS.map(gameId => RankingService.getUserRank(userId, gameId))
+        RankingService.getUserRanksForGames(userId, GAME_IDS)
     ]);
-
-    const userRanks: Record<string, number | null> = {};
-    GAME_IDS.forEach((gameId, i) => {
-        userRanks[gameId] = rankResults[i];
-    });
 
     return {
         activityFeed: activityFeed as any[],

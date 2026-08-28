@@ -11,7 +11,7 @@ export const TitleService = {
             db.execute(sql`
                 SELECT
                     p.total_points,
-                    a.arrival_time
+                    a.created_at
                 FROM minigame_user_points p
                 RIGHT JOIN attendees a ON p.user_id = a.id
                 WHERE a.id = ${userId}
@@ -32,7 +32,9 @@ export const TitleService = {
         ]);
 
         const totalPoints = (pointRes[0] as any)?.total_points || 0;
-        const arrivalTime = new Date((pointRes[0] as any)?.arrival_time || Date.now());
+        // 가입일 기준 — arrival_time은 체크인할 때마다 갱신되는 "오늘 도착 시각"이라
+        // 새내기(account_age) 조건에 쓰면 안 됨 (오늘 출석만 해도 항상 조건을 통과하게 됨)
+        const accountCreatedAt = new Date((pointRes[0] as any)?.created_at || Date.now());
         const playCount = parseInt(String((gameRes[0] as any)?.play_count || '0'));
         const ownedTitleIds = new Set(ownedRes.map(r => r.titleId));
 
@@ -119,7 +121,7 @@ export const TitleService = {
                     else if (cond.type === 'play_count') qualified = playCount >= cond.value;
                     else if (cond.type === 'gift_count') qualified = false;
                     else if (cond.type === 'account_age') {
-                         const diffTime = Math.abs(Date.now() - arrivalTime.getTime());
+                         const diffTime = Math.abs(Date.now() - accountCreatedAt.getTime());
                          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
                          qualified = diffDays <= cond.value;
                     }
