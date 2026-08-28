@@ -6,7 +6,18 @@ import { verifyAdminSession, verifyAttendeeSession } from '$lib/server/auth';
 import { searchBggGames, fetchAndTranslateBggGame } from '$lib/server/bgg';
 
 export const load: PageServerLoad = async ({ cookies, request }) => {
-    const result = await db.execute(sql`SELECT * FROM games WHERE is_active = true ORDER BY name ASC`);
+    const result = await db.execute(sql`
+        SELECT g.*, COALESCE(pc.play_count, 0)::int AS play_count
+        FROM games g
+        LEFT JOIN (
+            SELECT game_id, COUNT(*) AS play_count
+            FROM game_sessions
+            WHERE status = 'finished' AND game_id IS NOT NULL
+            GROUP BY game_id
+        ) pc ON pc.game_id = g.id
+        WHERE g.is_active = true
+        ORDER BY g.name ASC
+    `);
 
     // Auth Check for UI rendering
     const userSessionToken = cookies.get('user_session');

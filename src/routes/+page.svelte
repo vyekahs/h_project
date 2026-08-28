@@ -395,6 +395,24 @@
         goto(`${url.pathname}${url.search}`, { replaceState: true, noScroll: true, keepFocus: true });
     });
 
+    // 보드게임 목록 페이지에서 "같이 할래요 등록"으로 넘어왔을 때("?startWtp={gameId}")
+    // 해당 게임이 미리 채워진 채로 같이 할래요 작성 모달을 자동으로 오픈
+    $effect(() => {
+        const startWtpParam = page.url.searchParams.get('startWtp');
+        if (!startWtpParam || !data.user) return;
+        const game = (data.allGames || []).find((g: any) => String(g.id) === startWtpParam);
+        openWtpCreateModal();
+        if (game) {
+            wtpGameSource = 'registered';
+            wtpGameName = game.name;
+            wtpGameId = game.id;
+        }
+        if (!isTablet) activeTab = 'games';
+        const url = new URL(window.location.href);
+        url.searchParams.delete('startWtp');
+        goto(`${url.pathname}${url.search}`, { replaceState: true, noScroll: true, keepFocus: true });
+    });
+
     // Visit Plan Modal
     let showVisitPlanModal = $state(false);
     let selectedVisitTime = $state('');
