@@ -2,7 +2,7 @@ import { db } from '$lib/server/db/index';
 import { sql } from 'drizzle-orm';
 import { NotificationService } from './notificationService';
 import { GAME_REGISTRY } from '$lib/games/gameRegistry';
-import { emitPartyChatMessage } from '$lib/server/liveEvents';
+import { emitPartyChatMessage, emitWtpChatMessage } from '$lib/server/liveEvents';
 
 export interface CommentWithUser {
 	id: number;
@@ -118,7 +118,7 @@ export const CommentService = {
 		} else if (isWtp) {
 			// wtp: 멘션 없음, 대신 참여자 전원에게 메시지 알림
 			try {
-				await this.notifyWtpParticipants(userId, gameId, user?.nickname ?? '익명');
+				await this.notifyWtpParticipants(userId, gameId, comment, user?.nickname ?? '익명');
 			} catch (e) {
 				console.error('[CommentService] notifyWtpParticipants failed:', e);
 			}
@@ -197,7 +197,7 @@ export const CommentService = {
 		}
 	},
 
-	async notifyWtpParticipants(fromUserId: number, gameId: string, fromName: string) {
+	async notifyWtpParticipants(fromUserId: number, gameId: string, comment: CommentWithUser, fromName: string) {
 		const wtpId = parseInt(gameId.slice(4));
 		const [postResult, participantsResult] = await Promise.all([
 			db.execute(sql`SELECT game_name FROM want_to_play_posts WHERE id = ${wtpId}`),
@@ -208,6 +208,8 @@ export const CommentService = {
 
 		for (const row of participantsResult as any[]) {
 			if (row.attendee_id === fromUserId) continue;
+			// SSE 실시간 채팅 메시지 전달 (모달을 열어둔 상태에서도 바로 보이도록)
+			emitWtpChatMessage(row.attendee_id, { wtpId, comment });
 			await NotificationService.upsertNotify(
 				row.attendee_id,
 				{

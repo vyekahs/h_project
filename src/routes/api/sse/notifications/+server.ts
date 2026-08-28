@@ -58,8 +58,19 @@ export function GET({ request, cookies }: { request: Request; cookies: any }) {
 				}
 			}
 
+			function onWtpChat(payload: any) {
+				if (closed) return;
+				if (payload.userId === userId) {
+					send('wtp_chat', {
+						wtpId: payload.wtpId,
+						comment: payload.comment,
+					});
+				}
+			}
+
 			emitter.on('notification', onNotification);
 			emitter.on('party_chat', onPartyChat);
+			emitter.on('wtp_chat', onWtpChat);
 
 			// 연결 직후 바로 한 바이트 보내서 즉시 flush시킨다.
 			// (첫 데이터가 올 때까지 브라우저의 EventSource가 open 상태로 전환되지 않고
@@ -82,6 +93,7 @@ export function GET({ request, cookies }: { request: Request; cookies: any }) {
 				closed = true;
 				emitter.off('notification', onNotification);
 				emitter.off('party_chat', onPartyChat);
+				emitter.off('wtp_chat', onWtpChat);
 				if (heartbeatTimer) clearInterval(heartbeatTimer);
 				try { controller.close(); } catch {}
 			}

@@ -20,6 +20,10 @@ export function emitPartyChatMessage(userId: number, data: { partyId: number; co
 	getLiveEmitter().emit('party_chat', { userId, ...data });
 }
 
+export function emitWtpChatMessage(userId: number, data: { wtpId: number; comment: any }) {
+	getLiveEmitter().emit('wtp_chat', { userId, ...data });
+}
+
 // SSE connection counter
 if ((globalThis as any).__sseConnectionCount === undefined) {
 	(globalThis as any).__sseConnectionCount = 0;

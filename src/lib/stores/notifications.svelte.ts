@@ -12,6 +12,8 @@ let lastShownAt = 0;
 let unreadCount = $state(0);
 let eventSource: EventSource | null = null;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+type WtpChatPayload = { wtpId: number; comment: any };
+const wtpChatSubscribers = new Set<(payload: WtpChatPayload) => void>();
 
 export function getToasts() {
 	return toasts;
@@ -52,6 +54,13 @@ function connectSSE() {
 		} catch {}
 	});
 
+	eventSource.addEventListener('wtp_chat', (e) => {
+		try {
+			const data = JSON.parse(e.data);
+			for (const cb of wtpChatSubscribers) cb(data);
+		} catch {}
+	});
+
 	eventSource.addEventListener('error', () => {
 		eventSource?.close();
 		eventSource = null;
@@ -79,4 +88,11 @@ export function showToast(notification: { title: string; body: string; url?: str
 
 export function dismissToast(id: number) {
 	toasts = toasts.filter(t => t.id !== id);
+}
+
+// wtp 대화 모달이 열려 있는 동안 새 메시지를 실시간으로 받기 위한 구독.
+// 알림 SSE 연결은 세션당 하나뿐이라 컴포넌트별로 각자 연결하지 않고 이걸 통해 전달받는다.
+export function subscribeWtpChat(callback: (payload: WtpChatPayload) => void): () => void {
+	wtpChatSubscribers.add(callback);
+	return () => wtpChatSubscribers.delete(callback);
 }
