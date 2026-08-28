@@ -323,6 +323,36 @@ export const RankingService = {
         return null;
     },
 
+    /**
+     * 여러 게임의 유저 순위를 한 번에 조회 (게임 개수만큼 쿼리를 날리지 않도록 배치 처리).
+     * /minigames 허브 페이지가 게임마다 getUserRank()를 따로 호출해서 방문 한 번에
+     * 쿼리 13개가 동시에 나가던 것 때문에 커넥션이 순간적으로 몰리던 문제를 해결.
+     */
+    async getUserRanksForGames(userId: number, gameIds: string[]): Promise<Record<string, number | null>> {
+        const ranks: Record<string, number | null> = {};
+        for (const gameId of gameIds) ranks[gameId] = null;
+        if (gameIds.length === 0) return ranks;
+
+        const now = new Date();
+        const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+        const result = await db.execute(sql`
+            SELECT game_id, rank FROM (
+                SELECT user_id, game_id,
+                       RANK() OVER (PARTITION BY game_id ORDER BY total_score DESC, score_updated_at ASC) as rank
+                FROM minigame_monthly_rankings
+                WHERE month_key = ${monthKey} AND game_id IN (${sql.join(gameIds.map(g => sql`${g}`), sql`, `)})
+            ) ranked
+            WHERE user_id = ${userId}
+        `);
+
+        for (const row of result as any[]) {
+            const rank = parseInt(String(row.rank));
+            ranks[row.game_id] = rank <= 100 ? rank : null;
+        }
+        return ranks;
+    },
+
     async getPopularGames(limit = 3): Promise<{ gameId: string; playCount: number }[]> {
         const oneMonthAgo = new Date();
         oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
