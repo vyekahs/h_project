@@ -1,5 +1,6 @@
 <script lang="ts">
 	import MentionInput from './MentionInput.svelte';
+	import { subscribeWtpChat } from '$lib/stores/notifications.svelte';
 
 	let {
 		gameId,
@@ -167,6 +168,25 @@
 
 	const isWtp = gameId.startsWith('wtp_');
 
+	// wtp 대화방은 알림처럼 조용히 오는 게 아니라 채팅이라 모달을 열어둔 상태에서도
+	// 바로 보여야 한다. 상대가 보낸 메시지를 실시간 SSE로 받아 목록에 이어붙인다.
+	$effect(() => {
+		if (!isWtp) return;
+		const wtpId = parseInt(gameId.slice(4));
+		const unsubscribe = subscribeWtpChat((payload) => {
+			if (payload.wtpId !== wtpId) return;
+			const incoming = payload.comment;
+			if (comments.some(c => c.id === incoming.id)) return;
+			comments = [...comments, incoming];
+			requestAnimationFrame(() => {
+				if (scrollContainer) {
+					scrollContainer.scrollTop = scrollContainer.scrollHeight;
+				}
+			});
+		});
+		return unsubscribe;
+	});
+
 	function renderContent(content: string): string {
 		// Escape HTML first
 		const escaped = content.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -187,7 +207,6 @@
 
 <div class="comments-container" class:dark>
 	<!-- Scrollable comment list -->
-	<p style="text-align: center; font-size: 0.8rem; color: var(--text-muted, #999); margin-bottom: 0.5rem;">아직 테스트 중인 기능입니다. 언제든지 없어질 수 있습니다.</p>
 	<div class="comments-scroll" bind:this={scrollContainer}>
 		{#if loading}
 			<div class="empty-state">불러오는 중...</div>
