@@ -452,7 +452,8 @@ export const actions: Actions = {
         });
 
         // 4. Notify existing participants (game_join)
-        try {
+        // 알림 팬아웃은 참가 성공 여부와 무관한 부수 효과라 응답을 막지 않도록 백그라운드 + 병렬 처리
+        (async () => {
             const joinerInfo = await db.execute(sql`SELECT name FROM attendees WHERE id = ${finalAttendeeId}`);
             const joinerName = (joinerInfo[0] as any)?.name ?? '누군가';
             const gameName = (targetSession[0] as any).game_name ?? '게임';
@@ -461,8 +462,8 @@ export const actions: Actions = {
                 SELECT sp.attendee_id FROM session_participants sp
                 WHERE sp.session_id = ${sessionId} AND sp.attendee_id != ${finalAttendeeId} AND sp.attendee_id IS NOT NULL
             `);
-            for (const p of existingParticipants as any[]) {
-                await NotificationService.notify(
+            await Promise.all((existingParticipants as any[]).map((p) =>
+                NotificationService.notify(
                     p.attendee_id,
                     {
                         type: 'game_join',
@@ -472,11 +473,9 @@ export const actions: Actions = {
                     },
                     finalAttendeeId,
                     `game_session:${sessionId}`
-                );
-            }
-        } catch (e) {
-            console.error('[joinScheduledGame] game_join notification failed:', e);
-        }
+                )
+            ));
+        })().catch((e) => console.error('[joinScheduledGame] game_join notification failed:', e));
 
         // 5. Auto-register daily visit plan (고정팟 제외, 오늘 날짜만)
         const isPartyGame = !!(targetSession[0] as any).party_id;
@@ -493,13 +492,14 @@ export const actions: Actions = {
                 `);
 
                 // Visit plan notification to all users
-                try {
+                // 전체 회원 브로드캐스트라 인원이 많을수록 순차 대기 시 응답이 크게 느려짐 — 백그라운드 + 병렬 처리
+                (async () => {
                     const joinerInfo2 = await db.execute(sql`SELECT name FROM attendees WHERE id = ${finalAttendeeId}`);
                     const joinerName2 = (joinerInfo2[0] as any)?.name ?? '누군가';
                     const allUsers = await db.execute(sql`SELECT id FROM attendees WHERE id != ${finalAttendeeId}`);
                     const today = new Date().toISOString().slice(0, 10);
-                    for (const u of allUsers as any[]) {
-                        await NotificationService.notify(
+                    await Promise.all((allUsers as any[]).map((u) =>
+                        NotificationService.notify(
                             u.id,
                             {
                                 type: 'visit_plan',
@@ -509,11 +509,9 @@ export const actions: Actions = {
                             },
                             finalAttendeeId,
                             `visit_plan:${today}`
-                        );
-                    }
-                } catch (e) {
-                    console.error('[joinScheduledGame] visit_plan notification failed:', e);
-                }
+                        )
+                    ));
+                })().catch((e) => console.error('[joinScheduledGame] visit_plan notification failed:', e));
             }
         }
 
@@ -1124,11 +1122,12 @@ export const actions: Actions = {
                 `);
 
                 // Visit plan notification to all users
-                try {
+                // 전체 회원 브로드캐스트 — 백그라운드 + 병렬 처리로 응답 지연 제거
+                (async () => {
                     const allUsers = await db.execute(sql`SELECT id FROM attendees WHERE id != ${user.id}`);
                     const today = new Date().toISOString().slice(0, 10);
-                    for (const u of allUsers as any[]) {
-                        await NotificationService.notify(
+                    await Promise.all((allUsers as any[]).map((u) =>
+                        NotificationService.notify(
                             u.id,
                             {
                                 type: 'visit_plan',
@@ -1138,11 +1137,9 @@ export const actions: Actions = {
                             },
                             user.id,
                             `visit_plan:${today}`
-                        );
-                    }
-                } catch (e) {
-                    console.error('[toggleVisitPlan] visit_plan notification failed:', e);
-                }
+                        )
+                    ));
+                })().catch((e) => console.error('[toggleVisitPlan] visit_plan notification failed:', e));
             }
 
             emitLiveEvent('visitors');
