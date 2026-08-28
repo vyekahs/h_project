@@ -1,7 +1,7 @@
 import type { Card, Combination, SeatIndex, ExchangeCards, WishState, NormalCard } from '../types';
 import type { AiDecisionContext, PersonalityWeights } from './types';
 import type { PresetBehavior } from './presets/types';
-import { getTeam, getPartnerSeat, getLeftSeat, getRightSeat } from '../constants';
+import { getTeam, getPartnerSeat, getLeftSeat, getRightSeat, getNextActiveSeat } from '../constants';
 import { canBeat, isBomb, detectCombination } from '../combinations';
 import { mustPlayWishedRank, playFulfillsWish, canPlayWishedCombo } from '../wish';
 import {
@@ -18,6 +18,7 @@ import {
 	type CardTracker
 } from './cardTracker';
 import { searchBestPlay, calcExitRate } from './playSearchGrid';
+import { buildSampleWorlds, evaluateLeadSafety, evaluateTwoTurnFinish, getUnseenCards, type SampledWorld } from './monteCarlo';
 
 // ===== Hand Analysis Helpers =====
 
@@ -719,6 +720,15 @@ function decideLead(
 	// Behavior hook: 드래곤 리드 사용 조건
 	const dragonLeadAllowed = behavior.shouldLeadDragon?.(hand, context);
 
+	// === 다음 플레이어가 상대이고 카드 1장 남았으면: 이길 확률 낮은 일반 싱글은 리드에서 원천 배제 ===
+	// (playSearchGrid의 소프트 페널티만으로는 "약한 카드부터 리드"라는 기본 성향에 밀려
+	//  실제로 걸러지지 않는 경우가 있어, 리드 후보 단계에서 하드 필터로 확실히 막음)
+	const myTeamForLead = getTeam(context.currentSeat);
+	const nextSeatForLead = getNextActiveSeat(context.currentSeat, context.players) as SeatIndex;
+	const nextPlayerForLead = context.players[nextSeatForLead];
+	const nextPlayerCanFinish = getTeam(nextSeatForLead) !== myTeamForLead &&
+		nextPlayerForLead.finishOrder === null && nextPlayerForLead.hand.length === 1;
+
 	// Get all lead candidates (exclude dog, handled above; exclude bombs unless aggressive)
 	const canFinishSoon = hand.length <= 5;
 	let candidates = plan.allCombos.filter(c => {
@@ -735,6 +745,10 @@ function decideLead(
 		if (c.type === 'single' &&
 			c.cards[0].type === 'special' &&
 			c.cards[0].special === 'phoenix') return false;
+		// 다음 상대가 1장 남았으면, 이길 확률 낮은 일반 싱글(예: 2)로 리드해서 바로 내주는 것 금지
+		if (nextPlayerCanFinish && c.type === 'single' && c.cards[0].type !== 'special') {
+			if (comboLikelyToWin(c, tracker, hand) < 0.5) return false;
+		}
 		return true;
 	});
 
@@ -754,7 +768,7 @@ function decideLead(
  * Lead decision when close to finishing (5 or fewer cards).
  * Uses CardTracker to evaluate win probability and find optimal play sequences.
  */
-function decideLeadEndgame(
+export function decideLeadEndgame(
 	hand: Card[],
 	plan: HandPlan,
 	weights: PersonalityWeights,
@@ -768,16 +782,67 @@ function decideLeadEndgame(
 		return allAtOnce.cards.map(c => c.id);
 	}
 
+	// === 위협 감지: 일반 리드 스코어링(playSearchGrid)에만 있던 방어 로직을
+	// 엔드게임 경로에서도 반영 ===
+	// 1) 다음 플레이어(상대)가 카드 1장만 남았으면, 쉽게 뺏길 약한 싱글 리드는 위험
+	// 2) 상대가 티츄를 선언한 상태면 확실히 이기는 리드를 선호
+	const myTeam = getTeam(context.currentSeat);
+	// 이미 나간 플레이어는 건너뛰고 실제로 다음에 낼 좌석을 찾음
+	const nextSeat = getNextActiveSeat(context.currentSeat, context.players) as SeatIndex;
+	const nextPlayer = context.players[nextSeat];
+	const nextPlayerCanFinish = getTeam(nextSeat) !== myTeam &&
+		nextPlayer.finishOrder === null && nextPlayer.hand.length === 1;
+	const opponentTichuThreat = context.players.some(p =>
+		getTeam(p.seat) !== myTeam &&
+		(p.grandTichu === true || p.smallTichu) &&
+		p.finishOrder === null
+	);
+
+	// === 몬테카를로 샘플링: 안 보이는 손패를 여러 번 무작위로 나눠 실제 안전성 추정 ===
+	// 이 호출 1회당 한 번만 생성해 아래 모든 후보 평가에 재사용 (공통 난수 기법)
+	const partnerSeatForMc = getPartnerSeat(context.currentSeat) as SeatIndex;
+	const worlds = buildSampleWorlds(context);
+
+	// 상대가 1장 남은 상황의 위협 확률은 샘플링이 필요 없음 — 그 좌석의 카드는 unseen 중
+	// 균등 1장이므로 "unseen 중 내 리드를 이기는 카드의 비율"이 정확한 확률
+	const unseenForThreat = nextPlayerCanFinish ? getUnseenCards(context) : [];
+	const leadThreatPenalty = (combo: Combination): number => {
+		if (!nextPlayerCanFinish && !opponentTichuThreat) return 0;
+		// 일반 싱글(특수카드 제외)만 위험 — 멀티카드 콤보는 카드 1장인 상대가 따라올 수 없음
+		if (combo.type !== 'single' || combo.cards[0].type === 'special') return 0;
+		let penalty = 0;
+		// 상대가 1장 남은 상황은 이 리드 하나로 게임을 내줄 수 있는 치명적 위험이라
+		// "약한 카드부터 리드"라는 기본 성향(다른 스코어 요인)을 확실히 압도하도록 크게 잡음
+		if (nextPlayerCanFinish) {
+			if (unseenForThreat.length > 0) {
+				let beatCount = 0;
+				for (const uc of unseenForThreat) {
+					const single = detectCombination([uc]);
+					if (single && canBeat(combo, single)) beatCount++;
+				}
+				penalty += 2.0 * (beatCount / unseenForThreat.length);
+			} else if (comboLikelyToWin(combo, tracker, hand) < 0.5) {
+				penalty += 2.0;
+			}
+		}
+		if (opponentTichuThreat && comboLikelyToWin(combo, tracker, hand) < 0.5) {
+			penalty += 0.3;
+		}
+		return penalty;
+	};
+
 	// Find all valid 2-turn finishes and score them by win probability
-	const twoTurnFinishes = findAllTwoTurnFinishes(hand, plan, tracker);
+	const twoTurnFinishes = findAllTwoTurnFinishes(hand, plan, tracker, worlds, partnerSeatForMc);
 	if (twoTurnFinishes.length > 0) {
-		// Sort by combined win probability (lead * remainder)
-		twoTurnFinishes.sort((a, b) => b.score - a.score);
+		// Sort by combined win probability (lead * remainder), adjusted for threats
+		twoTurnFinishes.sort((a, b) =>
+			(b.score - leadThreatPenalty(b.lead)) - (a.score - leadThreatPenalty(a.lead))
+		);
 		return twoTurnFinishes[0].lead.cards.map(c => c.id);
 	}
 
 	// Try 3-turn finishes
-	const twoStepResult = findTwoStepFinishScored(hand, plan, tracker);
+	const twoStepResult = findTwoStepFinishScored(hand, plan, tracker, leadThreatPenalty, worlds, partnerSeatForMc);
 	if (twoStepResult) {
 		return twoStepResult.cards.map(c => c.id);
 	}
@@ -808,6 +873,8 @@ function decideLeadEndgame(
 				if (c.cards[0].special === 'dragon') score -= 20;
 				if (c.cards[0].special === 'phoenix') score -= 15;
 			}
+			// 상대 위협 페널티 (0~0.45 범위를 fallback 스코어 스케일에 맞게 확대)
+			score -= leadThreatPenalty(c) * 10;
 			return { combo: c, score };
 		});
 		scored.sort((a, b) => b.score - a.score);
@@ -821,12 +888,15 @@ function decideLeadEndgame(
  * Find all 2-turn finishes and score them by win probability.
  * Each result: lead combo → remainder combo, scored by how likely both will win.
  */
-function findAllTwoTurnFinishes(
+export function findAllTwoTurnFinishes(
 	hand: Card[],
 	plan: HandPlan,
-	tracker: CardTracker
+	tracker: CardTracker,
+	worlds: SampledWorld[] = [],
+	partnerSeat?: SeatIndex
 ): { lead: Combination; remainder: Combination; score: number }[] {
 	const results: { lead: Combination; remainder: Combination; score: number }[] = [];
+	const useMc = worlds.length > 0 && partnerSeat !== undefined;
 
 	for (const combo of plan.allCombos) {
 		if (isDogCombo(combo)) continue;
@@ -839,14 +909,21 @@ function findAllTwoTurnFinishes(
 		const remainderCombo = detectCombination(remainingCards);
 		if (!remainderCombo) continue;
 
-		const leadWinProb = comboLikelyToWin(combo, tracker, hand);
-		const remainderWinProb = comboLikelyToWin(remainderCombo, tracker, remainingCards);
+		// 리드의 실제 안전성(누가 이길 수 있는지)은 몬테카를로로 추정 가능하면 그것을 쓰고,
+		// 아니면(데이터 불일치 등) 기존 정적 확률로 폴백
+		let leadWinProb: number;
+		let remainderWinProb: number;
+		if (useMc) {
+			const mc = evaluateTwoTurnFinish(combo, remainderCombo, worlds, partnerSeat!);
+			leadWinProb = mc.effectiveWinProb;
+			remainderWinProb = mc.remainderSafeRate;
+		} else {
+			leadWinProb = comboLikelyToWin(combo, tracker, hand);
+			remainderWinProb = comboLikelyToWin(remainderCombo, tracker, remainingCards);
+		}
 
-		// Strategy: lead with the weaker combo (more likely to get beaten but ok),
-		// save strong combo for second turn when we hopefully have lead.
-		// But actually: lead with the one that WILL win, then play remainder.
+		// Strategy: lead with the one that WILL win, then play remainder.
 		// Score = leadWinProb * (1 + remainderWinProb)
-		// Leading with high win prob combo first → we get lead → play remainder
 		const score = leadWinProb * (1 + remainderWinProb * 0.8);
 
 		results.push({ lead: combo, remainder: remainderCombo, score });
@@ -857,9 +934,25 @@ function findAllTwoTurnFinishes(
 
 /**
  * Try 3-turn finishes with win probability scoring.
+ *
+ * 3턴 완성(X → 중간 → 마지막)에는 두 가지 플랜이 있음:
+ * - 체인 플랜: X를 리드해 이기고 선 유지 → 중간 콤보 리드해 이기고 → 마지막 콤보로 나감.
+ *   마지막 콤보는 내는 순간 손패가 비어 나가는 것이므로 이길 필요가 없음 — 중간까지만 이기면 됨.
+ * - 덤프 플랜: 약한 X를 일부러 버려 선을 내주고, 나중에 강한 재진입 콤보로 팔로우해서
+ *   선을 되찾은 뒤 마지막 콤보로 나감. 약한 카드를 마지막까지 쥐고 갇히는 것보다,
+ *   먼저 버리고 강한 카드를 "선 탈환 수단"으로 아끼는 쪽이 더 안전한 경우가 많음.
+ * 두 플랜 중 높은 점수를 그 X의 점수로 사용.
  */
-function findTwoStepFinishScored(hand: Card[], plan: HandPlan, tracker: CardTracker): Combination | null {
+export function findTwoStepFinishScored(
+	hand: Card[],
+	plan: HandPlan,
+	tracker: CardTracker,
+	leadPenalty: (combo: Combination) => number = () => 0,
+	worlds: SampledWorld[] = [],
+	partnerSeat?: SeatIndex
+): Combination | null {
 	const candidates: { combo: Combination; score: number }[] = [];
+	const useMc = worlds.length > 0 && partnerSeat !== undefined;
 
 	for (const combo of plan.allCombos) {
 		if (isDogCombo(combo)) continue;
@@ -867,27 +960,45 @@ function findTwoStepFinishScored(hand: Card[], plan: HandPlan, tracker: CardTrac
 
 		const remainingCards = hand.filter(c => !combo.cards.some(cc => cc.id === c.id));
 		if (remainingCards.length <= 1) continue;
-		if (remainingCards.length > 6) continue;
 
 		const remainingCombos = findAllPlayableCombinations(remainingCards);
-		let bestSubScore = -Infinity;
+		let bestMiddleWinProb = -Infinity;
+		let bestReentryScore = -Infinity;
+		let validSplit = false;
 
 		for (const rc of remainingCombos) {
 			const afterFirst = remainingCards.filter(c => !rc.cards.some(cc => cc.id === c.id));
 			if (afterFirst.length === 0) continue;
 
 			const lastCombo = detectCombination(afterFirst);
-			if (lastCombo) {
-				const subScore =
-					comboLikelyToWin(rc, tracker, remainingCards) *
-					comboLikelyToWin(lastCombo, tracker, afterFirst);
-				bestSubScore = Math.max(bestSubScore, subScore);
-			}
+			if (!lastCombo) continue;
+			validSplit = true;
+
+			// 체인 플랜: rc(중간)만 이기면 됨 — lastCombo는 내는 순간 나가므로 승률 무관
+			// (중간 단계는 성능/범위 절충으로 기존 정적 확률 유지)
+			const rcProb = comboLikelyToWin(rc, tracker, remainingCards);
+			bestMiddleWinProb = Math.max(bestMiddleWinProb, rcProb);
+
+			// 덤프 플랜: rc를 재진입 콤보로 사용 — 재진입 성공 확률이 플랜의 성패를 가르므로
+			// 첫 리드와 같은 급으로 취급해 몬테카를로 적용 (폴백 시 정적 확률)
+			const reentryProb = useMc
+				? evaluateLeadSafety(rc, worlds, partnerSeat!).effectiveWinProb
+				: rcProb;
+			// 싱글은 팔로우 기회가 흔하지만, 페어/스트레이트 등은 같은 타입 트릭이 와야만
+			// 재진입할 수 있어 훨씬 불확실함
+			const reentryTypeFactor = rc.type === 'single' ? 0.85 : 0.4;
+			bestReentryScore = Math.max(bestReentryScore, reentryProb * reentryTypeFactor);
 		}
 
-		if (bestSubScore > -Infinity) {
-			const leadScore = comboLikelyToWin(combo, tracker, hand);
-			candidates.push({ combo, score: leadScore * (1 + bestSubScore * 0.6) });
+		if (validSplit) {
+			const leadScore = useMc
+				? evaluateLeadSafety(combo, worlds, partnerSeat!).effectiveWinProb
+				: comboLikelyToWin(combo, tracker, hand);
+			const chainScore = leadScore * (0.3 + 0.7 * bestMiddleWinProb);
+			// 덤프 플랜에서 X 자체의 승률은 무관 (버리는 카드) — 대신 약한 카드를 먼저
+			// 버리는 쪽을 미세하게 선호 (강한 카드는 재진입/마지막 용도로 보존)
+			const dumpScore = bestReentryScore + (1 - leadScore) * 0.02;
+			candidates.push({ combo, score: Math.max(chainScore, dumpScore) - leadPenalty(combo) });
 		}
 	}
 
@@ -987,11 +1098,8 @@ export function decideWish(
 		}
 	}
 
-	// Strategy 3: 아무 높은 랭크라도 (A → K → Q → J)
-	for (const rank of highRanks) {
-		return rank;
-	}
-
+	// 여기까지 왔다면 A/K/Q/J가 전부 내 손패에 있거나 이미 소진된 상태 →
+	// 아무도 채울 수 없는 "죽은 소원"이 되므로 소원 생략
 	return null;
 }
 
@@ -1072,24 +1180,35 @@ export function shouldPlayBomb(
 	const bombs = findBombs(hand);
 	if (bombs.length === 0) return null;
 
-	// Behavior hook: 폭탄 사용 오버라이드
-	const bombOverride = behavior.shouldUseBomb?.(hand, bombs, context, lastPlay);
-	if (bombOverride === 'skip') return null;
-	if (bombOverride !== null && bombOverride !== undefined) return bombOverride;
-
 	const beatable = bombs.filter(b => canBeat(lastPlay.combination, b));
 	if (beatable.length === 0) return null;
 
 	beatable.sort((a, b) => a.rank - b.rank);
 
-	const tracker = buildCardTracker(context);
-
-	// Counter-bomb scenario
+	// === 필수 저지 로직: 프리셋의 shouldUseBomb 오버라이드보다 항상 우선 적용 ===
+	// (모든 프리셋이 shouldUseBomb에서 'skip'/콤보 중 하나를 반환해버리면
+	//  아래 공용 로직 전체가 죽은 코드가 되어버리는 문제를 방지)
 	if (isBomb(lastPlay.combination)) {
 		const attacker = players[lastPlay.seat];
 		if (attacker.hand.length <= 2) {
-			return beatable[0]; // Must stop them
+			return beatable[0]; // 상대가 폭탄으로 나가려는 중이면 반드시 저지
 		}
+	} else {
+		const player = players[lastPlay.seat];
+		if (player.hand.length <= 2) {
+			return beatable[0]; // 상대가 곧 나갈 것 같으면 반드시 저지
+		}
+	}
+
+	// Behavior hook: 폭탄 사용 오버라이드 (필수 저지 이후, 선택적 상황)
+	const bombOverride = behavior.shouldUseBomb?.(hand, bombs, context, lastPlay);
+	if (bombOverride === 'skip') return null;
+	if (bombOverride !== null && bombOverride !== undefined) return bombOverride;
+
+	const tracker = buildCardTracker(context);
+
+	// Counter-bomb scenario (이미 나간 폭탄에 카운터폭탄 칠지)
+	if (isBomb(lastPlay.combination)) {
 		// 카운터폭탄은 트릭 포인트가 충분할 때만 (10점 이상)
 		const counterTrickCards = context.trick?.plays.flatMap(p => p.combination.cards) || [];
 		const counterTrickPoints = getTrickPoints(counterTrickCards);
@@ -1109,12 +1228,6 @@ export function shouldPlayBomb(
 
 	// High bomb holding = reluctant to use bombs
 	if (weights.bombHolding > 0.8) return null;
-
-	// Opponent about to finish — always bomb
-	const player = players[lastPlay.seat];
-	if (player.hand.length <= 2) {
-		return beatable[0];
-	}
 
 	// 상대 티츄 선언 → 적극 폭탄 (카드 7장 이하)
 	if (hasOpponentDeclaredTichu(tracker)) {

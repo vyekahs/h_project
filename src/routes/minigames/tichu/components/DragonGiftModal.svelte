@@ -56,10 +56,10 @@
 	}
 
 	.modal-content {
-		background: rgba(30, 10, 10, 0.9); /* Dark Red tint */
+		background: rgba(24, 18, 36, 0.9); /* Dark Lavender tint */
 		backdrop-filter: blur(24px);
 		-webkit-backdrop-filter: blur(24px);
-		border: 1px solid rgba(251, 191, 36, 0.4);
+		border: 1px solid rgba(230, 211, 163, 0.4);
 		border-radius: 24px;
 		padding: 32px;
 		text-align: center;
@@ -85,12 +85,10 @@
 
 	h2 {
 		margin: 0 0 8px;
-		font-size: 1.4rem;
+		font-size: 1.5rem;
 		font-weight: 800;
-		background: linear-gradient(135deg, #f59e0b 0%, #ef4444 100%);
-		-webkit-background-clip: text;
-		background-clip: text;
-		-webkit-text-fill-color: transparent;
+		color: #e6d3a3;
+		text-shadow: 0 2px 12px rgba(168, 130, 79, 0.5);
 		letter-spacing: -0.02em;
 	}
 
@@ -125,10 +123,10 @@
 	}
 
 	.gift-btn:hover {
-		background: rgba(220, 38, 38, 0.15);
-		border-color: rgba(220, 38, 38, 0.5);
+		background: rgba(139, 122, 184, 0.15);
+		border-color: rgba(139, 122, 184, 0.5);
 		transform: translateY(-2px);
-		box-shadow: 0 4px 15px rgba(220, 38, 38, 0.2);
+		box-shadow: 0 4px 15px rgba(139, 122, 184, 0.2);
 		color: #fff;
 	}
 

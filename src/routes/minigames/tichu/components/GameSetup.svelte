@@ -14,7 +14,6 @@
 	const { game, user, isAdmin }: Props = $props();
 
 	const speedOptions: { id: AiSpeed; label: string }[] = [
-		{ id: 'instant', label: '즉시' },
 		{ id: 'fast', label: '빠름' },
 		{ id: 'normal', label: '보통' },
 		{ id: 'slow', label: '느림' },
@@ -250,16 +249,13 @@
 	}
 
 	.nav-title {
-		font-size: 1.6rem;
+		font-size: 1.8rem;
 		font-weight: 800;
 		margin: 0;
 		letter-spacing: -0.05em;
 		text-transform: uppercase;
-		background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 50%, #d97706 100%);
-		-webkit-background-clip: text;
-		background-clip: text;
-		-webkit-text-fill-color: transparent;
-		filter: drop-shadow(0 2px 10px rgba(217, 119, 6, 0.4));
+		color: #e6d3a3;
+		text-shadow: 0 2px 12px rgba(168, 130, 79, 0.5);
 	}
 
 	.nav-spacer {
@@ -291,8 +287,8 @@
 
 	.tab-btn.active {
 		background: rgba(255, 255, 255, 0.1);
-		color: #fbbf24;
-		border: 1px solid rgba(251, 191, 36, 0.3);
+		color: #e6d3a3;
+		border: 1px solid rgba(230, 211, 163, 0.3);
 	}
 
 	/* Sections */
@@ -309,12 +305,11 @@
 	}
 
 	.section-title {
-		font-size: 0.85rem;
+		font-size: 1.05rem;
 		font-weight: 700;
-		text-transform: uppercase;
-		letter-spacing: 0.05em;
+		letter-spacing: -0.01em;
 		margin: 0 0 12px;
-		color: #cbd5e1;
+		color: #f1f5f9;
 		padding-left: 4px;
 		text-shadow: 0 1px 2px rgba(0,0,0,0.5);
 	}
@@ -348,13 +343,13 @@
 
 
 	.strategy-card.selected {
-		border-color: rgba(251, 191, 36, 0.8);
-		background: linear-gradient(135deg, rgba(69, 10, 10, 0.4), rgba(127, 29, 29, 0.4));
-		color: #fbbf24;
+		border-color: rgba(230, 211, 163, 0.8);
+		background: linear-gradient(135deg, rgba(45, 35, 75, 0.4), rgba(60, 45, 95, 0.4));
+		color: #e6d3a3;
 		box-shadow:
-			0 0 0 1px rgba(251, 191, 36, 0.3),
-			0 10px 30px -5px rgba(245, 158, 11, 0.2),
-			inset 0 0 20px rgba(245, 158, 11, 0.1);
+			0 0 0 1px rgba(230, 211, 163, 0.3),
+			0 10px 30px -5px rgba(203, 170, 110, 0.2),
+			inset 0 0 20px rgba(203, 170, 110, 0.1);
 	}
 
 	.strategy-character {
@@ -366,7 +361,7 @@
 		border: none;
 		backdrop-filter: none;
 		-webkit-backdrop-filter: none;
-		color: #fbbf24;
+		color: #e6d3a3;
 		font-size: 0.9rem;
 		font-weight: 800;
 		letter-spacing: -0.01em;
@@ -385,7 +380,7 @@
 		background: transparent;
 		border-color: transparent;
 		color: #fff;
-		text-shadow: 0 0 8px rgba(251, 191, 36, 0.6);
+		text-shadow: 0 0 8px rgba(230, 211, 163, 0.6);
 		box-shadow: none;
 	}
 
@@ -423,10 +418,10 @@
 	}
 
 	.speed-btn.selected {
-		border-color: rgba(251, 191, 36, 0.8);
-		background: linear-gradient(135deg, rgba(69, 10, 10, 0.4), rgba(127, 29, 29, 0.4));
-		color: #fbbf24;
-		box-shadow: 0 4px 15px rgba(245,158,11,0.2);
+		border-color: rgba(230, 211, 163, 0.8);
+		background: linear-gradient(135deg, rgba(45, 35, 75, 0.4), rgba(60, 45, 95, 0.4));
+		color: #e6d3a3;
+		box-shadow: 0 4px 15px rgba(203,170,110,0.2);
 	}
 
 	/* Score Row */
@@ -459,10 +454,10 @@
 	}
 
 	.score-btn.selected {
-		border-color: rgba(251, 191, 36, 0.8);
-		background: linear-gradient(135deg, rgba(69, 10, 10, 0.4), rgba(127, 29, 29, 0.4));
-		color: #fbbf24;
-		box-shadow: 0 4px 15px rgba(245,158,11,0.2);
+		border-color: rgba(230, 211, 163, 0.8);
+		background: linear-gradient(135deg, rgba(45, 35, 75, 0.4), rgba(60, 45, 95, 0.4));
+		color: #e6d3a3;
+		box-shadow: 0 4px 15px rgba(203,170,110,0.2);
 	}
 
 	/* Resume Button - Jade Green */
@@ -513,29 +508,29 @@
 		transform: translateY(-1px);
 	}
 
-	/* Start Button - Imperial Gold */
+	/* Start Button - Cream Gold */
 	.start-btn {
 		width: 100%;
 		padding: 20px;
-		background: linear-gradient(135deg, #fbbf24 0%, #d97706 100%);
-		color: #fff;
-		border: 1px solid rgba(255,255,255,0.2);
+		background: linear-gradient(135deg, #e6d3a3 0%, #c9a668 100%);
+		color: #4a3820;
+		border: 1px solid rgba(255,255,255,0.3);
 		border-radius: 22px;
-		font-size: 1.2rem;
+		font-size: 1.35rem;
 		font-weight: 800;
 		cursor: pointer;
 		transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
 		box-shadow:
-			0 10px 25px -5px rgba(245, 158, 11, 0.5),
-			inset 0 1px 1px rgba(255,255,255,0.4);
-		text-shadow: 0 1px 2px rgba(180, 83, 9, 0.5);
+			0 10px 25px -5px rgba(168, 130, 79, 0.5),
+			inset 0 1px 1px rgba(255,255,255,0.5);
+		text-shadow: 0 1px 0 rgba(255,255,255,0.3);
 		letter-spacing: -0.01em;
 	}
 
 	.start-btn:hover {
 		transform: translateY(-2px) scale(1.01);
-		background: linear-gradient(135deg, #fcd34d 0%, #d97706 100%);
-		box-shadow: 0 15px 35px -5px rgba(245, 158, 11, 0.6);
+		background: linear-gradient(135deg, #f0e2c0 0%, #c9a668 100%);
+		box-shadow: 0 15px 35px -5px rgba(168, 130, 79, 0.6);
 	}
 
 	.start-btn:active {
@@ -617,11 +612,11 @@
 
 	.score-cell {
 		font-weight: 700;
-		color: #fbbf24;
+		color: #e6d3a3;
 	}
 
 	.top3 {
-		background: rgba(251, 191, 36, 0.08);
+		background: rgba(230, 211, 163, 0.08);
 	}
 
 	.ranking-empty {

@@ -605,26 +605,7 @@ export const actions: Actions = {
             return fail(400, { error: '이미 참여 중인 게임입니다.' });
         }
 
-        // 1.5 Get Target Session Date
-        const targetSessionResult = await db.execute(sql`SELECT COALESCE(scheduled_at, start_time, NOW()) as session_date FROM game_sessions WHERE id = ${sessionId}`);
-        if (targetSessionResult.length === 0) return fail(404, { error: '세션을 찾을 수 없습니다.' });
-        const targetDate = (targetSessionResult[0] as any).session_date;
-
-        // 2. Check if busy with OTHER games or reservations ON THE SAME DAY
-        const busyCheck = await db.execute(sql`
-            SELECT 1 FROM session_participants sp
-            JOIN game_sessions gs ON sp.session_id = gs.id
-            WHERE sp.attendee_id = ${finalAttendeeId}
-            AND (gs.status = 'playing' OR gs.status = 'scheduled')
-            AND gs.id != ${sessionId}
-            AND DATE(COALESCE(gs.scheduled_at, gs.start_time, NOW())) = DATE(${targetDate})
-        `);
-
-        if (busyCheck.length > 0) {
-            return fail(400, { error: '해당 날짜에 이미 다른 게임에 참여 중이거나 예약된 내역이 있습니다.' });
-        }
-
-        // 3. Join session
+        // 2. Join session
         try {
             await db.transaction(async (tx) => {
                 await tx.execute(sql`INSERT INTO session_participants (session_id, attendee_id) VALUES (${sessionId}, ${finalAttendeeId})`);

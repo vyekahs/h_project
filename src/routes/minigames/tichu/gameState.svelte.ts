@@ -229,7 +229,7 @@ export function createTichuGameState() {
 				clearTichuSave();
 				savedGameAvailable = false;
 				// 랭킹 점수 제출
-				submitTichuScore(s.cumulativeScoreA);
+				submitTichuScore(s.cumulativeScoreA, s.cumulativeScoreB);
 			}
 		}
 	});
@@ -329,7 +329,9 @@ export function createTichuGameState() {
 		partnerStrategy = validStrategies.includes(save.config.partnerStrategy)
 			? save.config.partnerStrategy
 			: 'balanced';
-		aiSpeed = save.config.aiSpeed;
+		// instant는 제거됨 — 이전 세이브 호환을 위해 fast로 폴백
+		const validSpeeds = ['fast', 'normal', 'slow', 'very_slow'];
+		aiSpeed = validSpeeds.includes(save.config.aiSpeed) ? save.config.aiSpeed : 'fast';
 		targetScore = save.config.targetScore;
 
 		engine = LocalGameEngine.restore(save, handleStateChange, handleEvent);
@@ -350,15 +352,16 @@ export function createTichuGameState() {
 		saveNow();
 	}
 
-	function calculateRankingScore(teamAScore: number): number {
-		return Math.min(teamAScore, targetScore);
+	function calculateRankingScore(teamAScore: number, teamBScore: number): number {
+		// 오락실 티츄 랭킹 포인트 = 우리팀 점수 - 상대팀 점수 (최소 100점) — GameSetup.svelte 랭킹 탭 안내와 동일
+		return Math.max(100, teamAScore - teamBScore);
 	}
 
-	async function submitTichuScore(teamAScore: number) {
+	async function submitTichuScore(teamAScore: number, teamBScore: number) {
 		if (scoreSubmitting) return;
 		scoreSubmitting = true;
 		try {
-			const score = calculateRankingScore(teamAScore);
+			const score = calculateRankingScore(teamAScore, teamBScore);
 			const res = await fetch('/api/game/record', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
@@ -758,6 +761,7 @@ export function createTichuGameState() {
 		// Access stateVersion to subscribe to engine state changes in components
 		get stateVersion() { return stateVersion; },
 		get gameState() { return gameState; },
+		get humanExchangeIds() { return engine?.getHumanExchangeIds() ?? []; },
 		get phase() { return phase; },
 
 		// UI state

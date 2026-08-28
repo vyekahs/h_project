@@ -92,9 +92,13 @@
         resetManual();
     }
 
-    function startWithTeams() {
+    // 재시작(같은 4명이 이어서 새 판)인지 — 최초 시작은 메인에서 이미 만든 세션을 그대로 쓰지만,
+    // 재시작은 메인의 "진행 중인 게임"에 새로 뜨도록 서버에 새 세션을 만들어야 한다.
+    let isRestart = $state(false);
+    let startingSession = $state(false);
+
+    async function startWithTeams() {
         if (!teamAssignReady) return;
-        if (urlSessionId) game.sessionId = urlSessionId;
         game.teamAName = teamA.map(p => p.name).join(', ');
         game.teamBName = teamB.map(p => p.name).join(', ');
         game.playerNames = [teamA[0].name, teamA[1].name, teamB[0].name, teamB[1].name] as [string, string, string, string];
@@ -104,6 +108,30 @@
             { id: teamB[0].id, name: teamB[0].name, team: 'B' as const },
             { id: teamB[1].id, name: teamB[1].name, team: 'B' as const },
         ];
+
+        if (isRestart) {
+            isRestart = false;
+            startingSession = true;
+            try {
+                const res = await fetch('/api/tichu/start', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ playerData: game.playerData })
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    game.sessionId = data.sessionId;
+                    urlSessionId = data.sessionId;
+                }
+            } catch (e) {
+                console.error('[Tichu] Failed to start new session:', e);
+            } finally {
+                startingSession = false;
+            }
+        } else if (urlSessionId) {
+            game.sessionId = urlSessionId;
+        }
+
         started = true;
         game.save();
     }
@@ -120,6 +148,7 @@
             teamA = pData.filter(p => p.team === 'A').map(p => ({ id: p.id, name: p.name }));
             teamB = pData.filter(p => p.team === 'B').map(p => ({ id: p.id, name: p.name }));
             unassigned = [];
+            isRestart = true;
             urlPlayers = pData.map(p => ({ id: p.id, name: p.name }));
             if (!urlSessionId) urlSessionId = -1;
         }
@@ -317,7 +346,7 @@
                                 onclick={() => game.targetScore = t}>{t}</button>
                         {/each}
                     </div>
-                    <button class="start-btn" onclick={startWithTeams} disabled={!teamAssignReady}>시작</button>
+                    <button class="start-btn" onclick={startWithTeams} disabled={!teamAssignReady || startingSession}>{startingSession ? '시작하는 중...' : '시작'}</button>
                 </div>
             {:else}
                 <!-- Standard start screen (no URL params) -->

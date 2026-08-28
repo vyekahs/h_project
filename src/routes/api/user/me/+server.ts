@@ -24,7 +24,8 @@ export const GET: RequestHandler = async ({ locals }) => {
             points,
             inventory,
             title,
-            name
+            name,
+            authenticated: true
         });
     } catch (e) {
         console.error(e);

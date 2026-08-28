@@ -13,6 +13,7 @@ interface UserState {
     inventory: any[];
     name: string | null;
     loading: boolean;
+    authenticated: boolean;
 }
 
 const initialState: UserState = {
@@ -21,7 +22,8 @@ const initialState: UserState = {
     currentTitle: null,
     inventory: [],
     name: null,
-    loading: true
+    loading: true,
+    authenticated: false
 };
 
 function createUserStore() {
@@ -43,7 +45,8 @@ function createUserStore() {
                         currentTitle: data.title,
                         inventory: data.inventory,
                         name: data.name,
-                        loading: false
+                        loading: false,
+                        authenticated: data.authenticated ?? false
                     }));
                 } else {
                     update(s => ({ ...s, loading: false }));

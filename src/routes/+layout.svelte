@@ -9,8 +9,11 @@
     import RankUpModal from '$lib/components/gamification/RankUpModal.svelte';
     import NotificationToast from '$lib/components/notifications/NotificationToast.svelte';
     import NotificationBell from '$lib/components/notifications/NotificationBell.svelte';
+    import NetworkStatusBanner from '$lib/components/NetworkStatusBanner.svelte';
     import { themeStore } from '$lib/stores/theme.svelte';
     import { user } from '$lib/stores/user';
+    import { initNotificationsSSE } from '$lib/stores/notifications.svelte';
+    import { initNetworkHealthCheck } from '$lib/stores/networkHealth.svelte';
 
 	let { children } = $props();
 
@@ -21,19 +24,63 @@
         return GAME_PATHS.some(p => pathname.startsWith(p));
     }
 
+    // 하단 네비게이션 물방울 인디케이터
+    const navActiveIndex = $derived.by(() => {
+        const path = $page.url.pathname;
+        if (path.startsWith('/games')) return 1;
+        if (path.startsWith('/minigames')) return 2;
+        if (path.startsWith('/mypage')) return 3;
+        return 0;
+    });
+    let navSquash = $state(false);
+    let navMounted = false;
+    let navPrevIndex = 0;
+    let navSquashTimer: ReturnType<typeof setTimeout> | null = null;
+    $effect(() => {
+        const idx = navActiveIndex;
+        if (!navMounted) {
+            navMounted = true;
+            navPrevIndex = idx;
+            return;
+        }
+        if (idx === navPrevIndex) return;
+        navPrevIndex = idx;
+        navSquash = false;
+        requestAnimationFrame(() => {
+            navSquash = true;
+            if (navSquashTimer) clearTimeout(navSquashTimer);
+            navSquashTimer = setTimeout(() => { navSquash = false; }, 500);
+        });
+    });
+
     // iOS PWA 페이지 전환 시 하단 네비게이션 터치 버그 수정
+    // (주의: display:none 토글은 인디케이터 트랜지션을 매번 끊어버리므로 사용하지 않는다 —
+    //  bottom 값만 잠깐 흔들어서 env(safe-area-inset-bottom) 재계산을 강제한다)
     afterNavigate(() => {
         const nav = document.querySelector('.bottom-nav');
         if (nav instanceof HTMLElement) {
-            nav.style.display = 'none';
-            nav.offsetHeight; // 강제 리플로우로 env(safe-area-inset-bottom) 재계산
-            nav.style.display = '';
+            const prevBottom = nav.style.bottom;
+            nav.style.bottom = '0px';
+            void nav.offsetHeight; // 강제 리플로우
+            nav.style.bottom = prevBottom;
+        }
+    });
+
+    // 알림 SSE는 로그인 확인 후 레이아웃에서 세션당 한 번만 연결한다.
+    // (NotificationBell이 레이아웃/홈/마이페이지에 각각 따로 마운트되기 때문에,
+    //  컴포넌트 마운트에 연결을 묶으면 페이지 이동마다 재연결됨)
+    // $user.id는 세션이 없어도 dev/test용 폴백(1번 Guest)으로 채워지므로,
+    // 실제 세션 검증을 통과했는지는 authenticated 플래그로 따로 확인한다.
+    $effect(() => {
+        if ($user.authenticated) {
+            initNotificationsSSE();
         }
     });
 
     onMount(() => {
         themeStore.init();
         user.refresh();
+        initNetworkHealthCheck();
 
         // /_app/version.json은 프로덕션 빌드에만 생성됨 (vite dev에선 없어서 항상 404) — dev 모드에선 폴링 생략
         if (dev) return;
@@ -54,6 +101,7 @@
 
     onDestroy(() => {
         if (versionCheckTimer) clearInterval(versionCheckTimer);
+        if (navSquashTimer) clearTimeout(navSquashTimer);
     });
 </script>
 
@@ -88,6 +136,9 @@
 		<a href="/privacy">개인정보처리방침</a>
 	</footer>
 	<nav class="bottom-nav">
+		<div class="nav-indicator" style={`--active-index: ${navActiveIndex}`}>
+			<div class="nav-indicator-blob" class:squash={navSquash}></div>
+		</div>
 		<a href="/" class="nav-item home" class:active={$page.url.pathname === '/'}>
 			<span class="icon">
                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
@@ -123,6 +174,7 @@
 
 	<RankUpModal />
 	<NotificationToast />
+	<NetworkStatusBanner />
 </div>
 
 <style>
@@ -131,9 +183,9 @@
         /* Text */
         --text-primary: #333;
         --text-secondary: #666;
-        --text-tertiary: #888;
-        --text-muted: #999;
-        --text-hint: #adb5bd;
+        --text-tertiary: #4b5563;
+        --text-muted: #5f6b7a;
+        --text-hint: #5b6472;
         --text-dark: #495057;
         --text-darker: #555;
 
@@ -169,8 +221,8 @@
         --color-slate-dark: #64748b;
 
         /* Brand Colors */
-        --color-blue: #339af0;
-        --color-blue-bright: #007bff;
+        --color-blue: #1864ab;
+        --color-blue-bright: #0056b3;
         --color-amber: #fbbf24;
         --color-amber-dark: #f59e0b;
         --color-amber-darker: #d97706;
@@ -179,7 +231,7 @@
         --color-red: #ef4444;
         --color-red-dark: #d32f2f;
         --color-orange: #ff9800;
-        --color-orange-dark: #e67700;
+        --color-orange-dark: #c2410c;
 
         /* State Backgrounds */
         --color-success-bg: #e8f5e9;
@@ -191,6 +243,13 @@
         --border-warning: #ffe0b2;
         --color-purple-bg: #e8d5f5;
         --color-indigo: #364fc7;
+
+        /* Bottom nav glass */
+        --nav-glass-bg: rgba(255, 255, 255, 0.6);
+        --nav-glass-border: rgba(255, 255, 255, 0.7);
+
+        /* Status pill text (AA-contrast pairing for pale status backgrounds) */
+        --status-success-text: #1b5e20;
 
         color-scheme: light;
     }
@@ -261,6 +320,13 @@
         --color-purple-bg: rgba(147,51,234,0.12);
         --color-indigo: #5c7cfa;
 
+        /* Bottom nav glass */
+        --nav-glass-bg: rgba(37, 38, 43, 0.6);
+        --nav-glass-border: rgba(255, 255, 255, 0.1);
+
+        /* Status pill text (AA-contrast pairing for pale status backgrounds) */
+        --status-success-text: #34d399;
+
         color-scheme: dark;
     }
 
@@ -288,7 +354,7 @@
 	.app-layout {
 		min-height: 100vh;
 		position: relative;
-		padding-bottom: calc(70px + env(safe-area-inset-bottom));
+		padding-bottom: calc(96px + env(safe-area-inset-bottom));
 		display: flex;
 		flex-direction: column;
 	}
@@ -299,26 +365,59 @@
 
 	.bottom-nav {
 		position: fixed;
-		bottom: 0;
+		bottom: calc(16px + env(safe-area-inset-bottom));
 		left: 50%;
         transform: translateX(-50%);
-		width: 100%;
-        max-width: 600px;
-		height: 60px;
-        box-sizing: content-box;
-		background: var(--bg-primary);
-		border-top: 1px solid var(--border-light);
+		width: calc(100% - 32px);
+        max-width: 420px;
+		height: 64px;
+        box-sizing: border-box;
+		background: var(--nav-glass-bg);
+		backdrop-filter: blur(20px) saturate(180%);
+		-webkit-backdrop-filter: blur(20px) saturate(180%);
+		border-radius: 32px;
+		border: 1px solid var(--nav-glass-border);
 		display: flex;
 		justify-content: space-around;
 		align-items: center;
-		padding-bottom: env(safe-area-inset-bottom);
-		box-shadow: 0 -2px 10px var(--shadow-sm);
+		padding: 0 6px;
+		box-shadow: 0 12px 32px var(--shadow-lg), 0 1px 0 rgba(255,255,255,0.4) inset;
 		z-index: 1000;
-        border-left: 1px solid var(--bg-tertiary);
-        border-right: 1px solid var(--bg-tertiary);
 		isolation: isolate;
 	}
+	.nav-indicator {
+		position: absolute;
+		top: 6px;
+		bottom: 6px;
+		left: 6px;
+		width: calc((100% - 12px) / 4);
+		transform: translateX(calc(var(--active-index) * 100%));
+		transition: transform 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+		z-index: 0;
+		pointer-events: none;
+	}
+	.nav-indicator-blob {
+		width: 100%;
+		height: 100%;
+		border-radius: 24px;
+		background: var(--color-blue-bright);
+		opacity: 0.16;
+	}
+	.nav-indicator-blob.squash {
+		animation: nav-blob-squash 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+	}
+	@keyframes nav-blob-squash {
+		0% { transform: scale(1, 1); }
+		45% { transform: scale(1.16, 0.9); }
+		100% { transform: scale(1, 1); }
+	}
+	@media (prefers-reduced-motion: reduce) {
+		.nav-indicator { transition: none; }
+		.nav-indicator-blob.squash { animation: none; }
+	}
 	.nav-item {
+		position: relative;
+		z-index: 1;
 		display: flex;
 		flex-direction: column;
 		align-items: center;
@@ -328,13 +427,26 @@
 		padding: 0.5rem;
 		flex: 1;
 		transition: color 0.2s;
+		-webkit-tap-highlight-color: transparent;
+	}
+	.nav-item:focus {
+		outline: none;
+	}
+	.nav-item:focus-visible {
+		outline: 2px solid var(--color-blue-bright);
+		outline-offset: -2px;
+		border-radius: 12px;
 	}
 	.nav-item .icon {
 		font-size: 1.4rem;
 		margin-bottom: 3px;
 	}
+	.nav-item .icon svg {
+		width: 20px;
+		height: 20px;
+	}
 	.nav-item.active {
-		color: var(--text-primary);
+		color: var(--color-blue-bright);
 	}
     .nav-item.active .icon {
         transform: scale(1.1);
@@ -364,5 +476,8 @@
 		top: 12px;
 		right: 12px;
 		z-index: 1050;
+		background: var(--bg-primary);
+		border-radius: 50%;
+		box-shadow: 0 2px 8px var(--shadow-md);
 	}
 </style>

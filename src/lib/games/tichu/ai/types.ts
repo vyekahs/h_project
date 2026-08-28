@@ -6,11 +6,10 @@ import type { Card, Combination, SeatIndex, TichuPlayer, TichuRoundResult, WishS
 export type AiStrategy = 'aggressive' | 'balanced' | 'defensive' | 'tricky' | 'wild';
 
 /** AI turn processing speed */
-export type AiSpeed = 'instant' | 'fast' | 'normal' | 'slow' | 'very_slow';
+export type AiSpeed = 'fast' | 'normal' | 'slow' | 'very_slow';
 
 /** Delay in ms for each AI speed setting */
 export const AI_SPEED_DELAYS: Record<AiSpeed, number> = {
-	instant: 0,
 	fast: 800,
 	normal: 1500,
 	slow: 2500,

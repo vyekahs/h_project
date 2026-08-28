@@ -103,12 +103,10 @@
 
 	h2 {
 		margin: 0 0 8px;
-		font-size: 1.4rem;
+		font-size: 1.5rem;
 		font-weight: 800;
-		background: linear-gradient(135deg, #34d399 0%, #059669 100%);
-		-webkit-background-clip: text;
-		background-clip: text;
-		-webkit-text-fill-color: transparent;
+		color: #34d399;
+		text-shadow: 0 2px 12px rgba(5, 150, 105, 0.5);
 		letter-spacing: -0.02em;
 	}
 

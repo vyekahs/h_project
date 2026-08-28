@@ -19,7 +19,10 @@ export type BoardGrid = CellColor[][];
 // ===========================================================================
 
 /** 위험 종류 */
-export type DangerType = 'doom-row' | 'doom-col' | 'hazard-zone' | 'reinforced' | 'spreading';
+export type DangerType = 'doom-row' | 'doom-col' | 'hazard-zone' | 'reinforced' | 'spreading' | 'storm' | 'portal' | 'rust' | 'chaser' | 'quest';
+
+/** QUEST 패턴 종류 — 사용자가 카운트 동안 한 번 달성하면 위험 해결 */
+export type QuestPatternType = 'combo' | 'same-color-line' | 'cross';
 
 /**
  * 셀별 메타데이터 — `BoardGrid`(색상 0~5)와 분리된 추가 정보.
@@ -36,6 +39,22 @@ export interface CellMeta {
 	spreadOrigin?: boolean;
 	/** 증식 블록 가족 마커 — 어느 Danger 소속인지 추적 */
 	spreadingDangerId?: string;
+	/** STORM 중심 셀 마커 — 라인 클리어로 비워지면 위험 해결 */
+	stormOrigin?: boolean;
+	/** STORM 위험 ID (셀 → 위험 매핑) */
+	stormDangerId?: string;
+	/** PORTAL 마커 — 사용자 블록 배치 시 짝꿍 포털에 같은 색 1셀 자동 추가 */
+	portalMark?: boolean;
+	/** PORTAL 위험 ID (셀 → 위험 매핑) */
+	portalDangerId?: string;
+	/** RUST 부식 셀 마커 — 라인 클리어에 포함되면 그 라인 점수 -50% */
+	rustMark?: boolean;
+	/** RUST 위험 ID (셀 → 위험 매핑) */
+	rustDangerId?: string;
+	/** CHASER 추적 폭탄 마커 — 매 턴 인접 셀로 이동, 카운트 0 도달 시 3x3 폭발 */
+	chaserMark?: boolean;
+	/** CHASER 위험 ID (셀 → 위험 매핑) */
+	chaserDangerId?: string;
 }
 
 export type CellMetaMap = Record<string, CellMeta>;
@@ -67,6 +86,12 @@ export interface Danger {
 	 * 0이 되는 순간 활성화되며 reinforced/spreading은 그때 보드에 셀 배치.
 	 */
 	delayTurns: number;
+	/** CHASER 전용 — 폭발 목표 셀 좌표 (활성화 시 결정, 매 턴 이동으로 접근) */
+	chaserTarget?: [number, number];
+	/** QUEST 전용 — 달성해야 할 패턴 (활성화 시 1개 무작위 부여) */
+	questPattern?: QuestPatternType;
+	/** QUEST 전용 — 콤보 패턴의 목표 콤보 수 (예: 3) */
+	questThreshold?: number;
 }
 
 /** 위험 스테이지 활성 상태 */

@@ -9,9 +9,9 @@ import type { AiDecisionContext, PersonalityWeights } from './types';
 import type { PresetBehavior } from './presets/types';
 import type { CardTracker } from './cardTracker';
 import { comboLikelyToWin, rankStrengthInContext } from './cardTracker';
-import { findAllPlayableCombinations } from './handEvaluator';
+import { findAllPlayableCombinations, findOptimalPartition } from './handEvaluator';
 import { isBomb, detectCombination } from '../combinations';
-import { getTeam, getPartnerSeat, getLeftSeat } from '../constants';
+import { getTeam, getPartnerSeat, getNextActiveSeat } from '../constants';
 
 // ===== Types =====
 
@@ -135,36 +135,19 @@ interface ExitInfo {
 
 /**
  * 남은 손패로 나가기 효율 계산.
- * Greedy 파티션: 가장 큰 콤보부터 선택 → 나머지는 싱글.
- * 각 턴의 승률을 합산하여 효율을 계산.
+ * 최적 파티션(비트마스크 완전탐색)으로 실제 최소 턴 분할을 구한 뒤,
+ * 각 턴의 승률을 합산하여 효율을 계산. 폭탄은 파티션 후보에서 제외(강패 보존).
  */
 export function calcExitRate(hand: Card[], tracker: CardTracker): ExitInfo {
 	if (hand.length === 0) return { rate: 1.0, turns: 0 };
 
 	const combos = findAllPlayableCombinations(hand);
-	const multiCombos = combos.filter(c =>
-		!isBomb(c) && c.type !== 'single' &&
-		// dog는 턴 소모하지만 카드 처리 안 됨 → 제외
-		!(c.cards.length === 1 && c.cards[0].type === 'special' && c.cards[0].special === 'dog')
-	);
+	const nonBombCombos = combos.filter(c => !isBomb(c));
 
-	// Greedy 파티션: 가장 큰 콤보부터 선택 (겹치지 않게)
-	const used = new Set<string>();
-	const selected: Combination[] = [];
-	const sorted = [...multiCombos].sort((a, b) =>
-		b.cards.length - a.cards.length || a.rank - b.rank
-	);
+	const { turns: totalTurns, combos: chosen } = findOptimalPartition(hand, nonBombCombos);
+	const selected = chosen.filter(c => c.cards.length > 1);
+	const singleCards = chosen.filter(c => c.cards.length === 1).map(c => c.cards[0]);
 
-	for (const c of sorted) {
-		if (c.cards.every(card => !used.has(card.id))) {
-			c.cards.forEach(card => used.add(card.id));
-			selected.push(c);
-		}
-	}
-
-	const singleCards = hand.filter(c => !used.has(c.id));
-	// dog는 리드 전용이므로 싱글로 처리되지만, 턴 카운트에는 포함
-	const totalTurns = selected.length + singleCards.length;
 	if (totalTurns === 0) return { rate: 1.0, turns: 0 };
 
 	// 각 콤보/싱글의 승률 합산
@@ -346,7 +329,8 @@ function calcContextModifier(
 		}
 
 		// 다음 플레이어가 상대이고 1장 남았으면 → 이길 수 있는 리드 강제
-		const nextSeat = getLeftSeat(context.currentSeat) as SeatIndex;
+		// (이미 나간 플레이어는 건너뛰고 실제로 다음에 낼 좌석을 찾음)
+		const nextSeat = getNextActiveSeat(context.currentSeat, context.players) as SeatIndex;
 		const nextPlayer = context.players[nextSeat];
 		if (getTeam(nextSeat) !== myTeam && nextPlayer.finishOrder === null && nextPlayer.hand.length === 1) {
 			if (combo.type === 'single' && combo.cards[0].type !== 'special') {
@@ -485,9 +469,18 @@ function calcContextModifier(
 				}
 			} else {
 				if (afterCombo) {
-					mod += 0.25; // 1턴에 나갈 수 있음
+					// 1턴에 나갈 수 있음 — 그 콤보가 실제로 이길 확률만큼 가중치 부여
+					// (승률과 무관하게 고정 보너스를 주면, 이기기 힘든 애프터 콤보를 위해
+					//  드래곤 같은 강패를 낭비해 지금 트릭을 뺏으려는 유인이 생김)
+					const afterWinProb = comboLikelyToWin(afterCombo, tracker, remainingHand);
+					mod += 0.1 + afterWinProb * 0.2;
 				} else if (remainingHand.length === 1) {
-					mod += 0.2; // 1장만 남음
+					const lastCard = remainingHand[0];
+					const lastRank = lastCard.type === 'normal'
+						? lastCard.rank
+						: (lastCard.type === 'special' && lastCard.special === 'dragon') ? 15 : 1;
+					const winProb = rankStrengthInContext(lastRank, tracker);
+					mod += 0.05 + winProb * 0.15;
 				}
 			}
 		}
@@ -529,23 +522,35 @@ function getTrickPoints(cards: Card[]): number {
 }
 
 /**
- * 풀하우스에서 강한 싱글톤을 페어로 낭비하는지 체크.
+ * 풀하우스에서 강한 카드를 페어 파트로 낭비하는지 체크.
+ * 풀하우스의 랭크는 트리플로만 정해지므로, 페어 파트에 쓴 높은 카드(K,K 등)는
+ * 조합 강도에 아무 기여 없이 버려지는 셈 — 그 페어를 따로 아끼면 트릭을 딸 수 있다.
  * 감점값을 반환 (항상 0 이하).
  */
 function applyFullHousePenalty(combo: Combination, hand: Card[]): number {
 	let penalty = 0;
-	// 풀하우스의 페어 파트 (rank !== combo.rank인 카드들)
+	// 풀하우스의 페어 파트 (rank !== combo.rank인 카드들 + 봉황)
 	const pairCards = combo.cards.filter(c => {
-		if (c.type !== 'normal') return false;
+		if (c.type === 'special') return true; // 페어 파트를 봉황으로 채운 경우
 		return (c as NormalCard).rank !== combo.rank;
 	});
+
+	// 페어 파트의 자연 랭크 (봉황 제외 카드 기준)
+	const naturalPair = pairCards.find(c => c.type === 'normal') as NormalCard | undefined;
+	const pRank = naturalPair?.rank ?? 0;
+
+	// 높은 자연 페어를 버리는 파트로 사용: 트리플 랭크보다 높을수록 명백한 낭비
+	// (예: 3-3-3 + K-K → 랭크 3짜리 풀하우스에 KK를 소모)
+	if (pRank === 14) penalty -= 0.35;
+	else if (pRank === 13) penalty -= 0.25;
+	else if (pRank === 12) penalty -= 0.15;
+	else if (pRank === 11) penalty -= 0.08;
+
+	// 싱글톤(봉황으로 페어를 완성한 경우) 추가 페널티: 봉황 자체도 낭비
 	for (const pc of pairCards) {
 		if (pc.type !== 'normal') continue;
-		const pRank = (pc as NormalCard).rank;
 		if (isSingletonInHand(pc, hand)) {
-			if (pRank === 14) penalty -= 0.25;        // A 싱글톤 페어: 강한 페널티
-			else if (pRank === 13) penalty -= 0.18;    // K 싱글톤 페어: 중간 페널티
-			else if (pRank >= 11) penalty -= 0.06;
+			penalty -= 0.1;
 		}
 	}
 	return penalty;

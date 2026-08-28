@@ -133,7 +133,9 @@ export function createTichuGame() {
                     winner,
                     scoreA,
                     scoreB,
-                    playerData
+                    playerData,
+                    // -1은 "실제 세션과 연동 없이 재대결" 상태를 나타내는 내부용 값이라 실제 세션으로 취급하면 안 됨
+                    sessionId: sessionId && sessionId > 0 ? sessionId : null
                 })
             });
         } catch (e) {

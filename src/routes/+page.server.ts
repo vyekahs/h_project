@@ -170,27 +170,14 @@ export const actions: Actions = {
 
             if (!sessionId) return fail(400, { error: '게임 세션을 선택해주세요.' });
 
-            // 0. Check attendee info + game info + busy check (병렬)
-            const [attendeeInfo, gameInfo, busyCheck] = await Promise.all([
+            // 0. Check attendee info + game info + same-game duplicate check (병렬)
+            const [attendeeInfo, gameInfo, sameGameCheck] = await Promise.all([
                 db.execute(sql`SELECT is_blacklisted, penalty_points FROM attendees WHERE id = ${attendeeId}`),
                 db.execute(sql`SELECT status, party_id FROM game_sessions WHERE id = ${sessionId}`),
                 db.execute(sql`
-                    SELECT 1 FROM session_participants sp
-                    JOIN game_sessions gs ON sp.session_id = gs.id
-                    WHERE sp.attendee_id = ${attendeeId}
-                    AND (
-                        gs.status = 'playing'
-                        OR (gs.status = 'scheduled' AND gs.scheduled_at::date = CURRENT_DATE)
-                    )
+                    SELECT 1 FROM session_participants WHERE session_id = ${sessionId} AND attendee_id = ${attendeeId}
                     UNION
-                    SELECT 1 FROM reservations r
-                    JOIN game_sessions gs ON r.session_id = gs.id
-                    WHERE r.attendee_id = ${attendeeId}
-                    AND r.status IN ('pending', 'waitlisted', 'confirmed', 'pending_approval')
-                    AND (
-                        gs.status = 'playing'
-                        OR (gs.status = 'scheduled' AND gs.scheduled_at::date = CURRENT_DATE)
-                    )
+                    SELECT 1 FROM reservations WHERE session_id = ${sessionId} AND attendee_id = ${attendeeId} AND status IN ('pending_approval', 'confirmed')
                 `),
             ]);
 
@@ -211,19 +198,8 @@ export const actions: Actions = {
                 }
             }
 
-            if (busyCheck.length > 0) {
-                 // If trying to join the SAME game, show specific error
-                 const sameGameCheck = await db.execute(sql`
-                    SELECT 1 FROM session_participants WHERE session_id = ${sessionId} AND attendee_id = ${attendeeId}
-                    UNION
-                    SELECT 1 FROM reservations WHERE session_id = ${sessionId} AND attendee_id = ${attendeeId} AND status IN ('pending_approval', 'confirmed')
-                 `);
-
-                 if (sameGameCheck.length > 0) {
-                     return fail(400, { error: '이미 참여 중이거나 요청을 보냈습니다.' });
-                 }
-
-                return fail(400, { error: '오늘 진행 중이거나 예약된 게임이 있어 예약(요청)할 수 없습니다.' });
+            if (sameGameCheck.length > 0) {
+                return fail(400, { error: '이미 참여 중이거나 요청을 보냈습니다.' });
             }
 
             // 2. Create reservation
@@ -373,13 +349,11 @@ export const actions: Actions = {
             if (penalty_points >= 3) return fail(403, { error: '페널티 누적으로 인해 예약이 불가능합니다.' });
         }
 
-        // 1. Check if busy
-        // 0.5. Get target session info to check date
+        // 0.5. Get target session info
         const targetSession = await db.execute(sql`SELECT scheduled_at, party_id, game_name FROM game_sessions WHERE id = ${sessionId}`);
         if (targetSession.length === 0) {
             return fail(404, { error: '세션을 찾을 수 없습니다.' });
         }
-        const targetDate = (targetSession[0] as any).scheduled_at;
 
         // Check party restriction
         if ((targetSession[0] as any).party_id) {
@@ -393,34 +367,6 @@ export const actions: Actions = {
         const existingParticipant = await db.execute(sql`SELECT 1 FROM session_participants WHERE session_id = ${sessionId} AND attendee_id = ${finalAttendeeId}`);
         if (existingParticipant.length > 0) {
             return fail(400, { error: '이미 참여 중인 게임입니다.' });
-        }
-
-        // 2. Check if busy with OTHER games or reservations ON THE SAME DAY
-        const busyCheck = await db.execute(sql`
-            SELECT 1 FROM session_participants sp
-            JOIN game_sessions gs ON sp.session_id = gs.id
-            WHERE sp.attendee_id = ${finalAttendeeId}
-            AND gs.id != ${sessionId}
-            AND (
-                (gs.status = 'playing' AND ${targetDate}::date = CURRENT_DATE)
-                OR
-                (gs.status = 'scheduled' AND gs.scheduled_at::date = ${targetDate}::date)
-            )
-            UNION
-            SELECT 1 FROM reservations r
-            JOIN game_sessions gs ON r.session_id = gs.id
-            WHERE r.attendee_id = ${finalAttendeeId}
-            AND r.status IN ('pending', 'waitlisted', 'confirmed')
-            AND r.session_id != ${sessionId}
-            AND (
-                (gs.status = 'playing' AND ${targetDate}::date = CURRENT_DATE)
-                OR
-                (gs.status = 'scheduled' AND gs.scheduled_at::date = ${targetDate}::date)
-            )
-        `);
-
-        if (busyCheck.length > 0) {
-            return fail(400, { error: '해당 날짜에 이미 다른 게임에 참여 중이거나 예약된 내역이 있습니다.' });
         }
 
         // 2. Check if session is full
@@ -552,6 +498,54 @@ export const actions: Actions = {
             await promoteWaitlist(sessionId);
         }
 
+        return { success: true };
+    },
+
+    // 예약(reservations)과 참여 예정(session_participants)이 같은 세션을 동시에 가리킬 때
+    // 나의 예약 현황에서 카드 하나로 합쳐 보여주는데, 취소도 하나의 액션으로 둘 다 정리한다.
+    // (leaveScheduledGame + cancelReservation을 각각 호출하면 페널티가 중복 적용될 수 있어 통합)
+    cancelMergedBooking: async ({ request, cookies }) => {
+        const data = await request.formData();
+        const sessionId = data.get('sessionId');
+        const reservationId = data.get('reservationId');
+        const userSessionToken = cookies.get('user_session');
+
+        if (!userSessionToken) return fail(401, { error: '로그인이 필요합니다.' });
+        const user = await verifyAttendeeSession(userSessionToken);
+        if (!user) return fail(401, { error: 'Invalid session' });
+
+        const session = await db.execute(sql`SELECT scheduled_at FROM game_sessions WHERE id = ${sessionId}`);
+        if (session.length > 0) {
+            const { scheduled_at } = session[0] as any;
+            if (scheduled_at && new Date(scheduled_at).getTime() - Date.now() < 10 * 60 * 1000) {
+                const { applyPenalty } = await import('$lib/server/reservations');
+                await applyPenalty(user.id);
+            }
+        }
+
+        if (reservationId) {
+            await db.execute(sql`DELETE FROM reservations WHERE id = ${reservationId} AND attendee_id = ${user.id}`);
+        }
+        await db.execute(sql`DELETE FROM session_participants WHERE session_id = ${sessionId} AND attendee_id = ${user.id}`);
+
+        const { promoteWaitlist } = await import('$lib/server/reservations');
+        await promoteWaitlist(Number(sessionId));
+
+        // 다른 오늘 시작예정 게임에 참여 중이 아니면 갈 예정에서 제거
+        const otherScheduled = await db.execute(sql`
+            SELECT 1 FROM session_participants sp
+            JOIN game_sessions gs ON sp.session_id = gs.id
+            WHERE sp.attendee_id = ${user.id}
+            AND gs.status = 'scheduled'
+            AND gs.scheduled_at::date = CURRENT_DATE
+            AND gs.party_id IS NULL
+        `);
+        if (otherScheduled.length === 0) {
+            await db.execute(sql`DELETE FROM daily_visit_plans WHERE attendee_id = ${user.id} AND plan_date = CURRENT_DATE`);
+            emitLiveEvent('visitors');
+        }
+
+        emitLiveEvent('games');
         return { success: true };
     },
 

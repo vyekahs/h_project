@@ -138,7 +138,7 @@
 		background: rgba(20, 20, 20, 0.85); /* Deep Dark Glass */
 		backdrop-filter: blur(24px);
 		-webkit-backdrop-filter: blur(24px);
-		border: 1px solid rgba(251, 191, 36, 0.3); /* Gold Border */
+		border: 1px solid rgba(230, 211, 163, 0.3); /* Cream Gold Border */
 		border-radius: 24px;
 		padding: 28px;
 		max-width: 400px;
@@ -161,7 +161,7 @@
 	h2 {
 		margin: 0 0 20px;
 		font-size: 1.3rem;
-		color: #fbbf24; /* Imperial Gold */
+		color: #e6d3a3; /* Cream Gold */
 		font-weight: 800;
 		text-shadow: 0 2px 4px rgba(0,0,0,0.3);
 		letter-spacing: -0.02em;
@@ -211,10 +211,10 @@
 		font-weight: 500;
 		backdrop-filter: blur(4px);
 	}
-	.one-two { 
-		background: rgba(245, 158, 11, 0.15); 
-		color: #fbbf24; 
-		border: 1px solid rgba(245, 158, 11, 0.3);
+	.one-two {
+		background: rgba(203, 170, 110, 0.15);
+		color: #e6d3a3;
+		border: 1px solid rgba(203, 170, 110, 0.3);
 	}
 	.success { 
 		background: rgba(34, 197, 94, 0.15); 
@@ -296,19 +296,19 @@
 		margin-top: 24px;
 		padding: 12px 48px;
 		border-radius: 16px;
-		border: 1px solid rgba(255,255,255,0.2);
-		background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
-		color: #fff;
+		border: 1px solid rgba(255,255,255,0.3);
+		background: linear-gradient(135deg, #e6d3a3 0%, #c9a668 100%);
+		color: #4a3820;
 		font-weight: 700;
 		font-size: 1rem;
 		cursor: pointer;
-		box-shadow: 0 4px 15px rgba(245, 158, 11, 0.4);
+		box-shadow: 0 4px 15px rgba(168, 130, 79, 0.4);
 		transition: transform 0.2s, box-shadow 0.2s;
-		text-shadow: 0 1px 1px rgba(0,0,0,0.2);
+		text-shadow: 0 1px 0 rgba(255,255,255,0.3);
 	}
 	.btn-ok:hover {
 		transform: translateY(-2px);
-		box-shadow: 0 8px 25px rgba(245, 158, 11, 0.6);
+		box-shadow: 0 8px 25px rgba(168, 130, 79, 0.6);
 	}
 	.btn-ok:active {
 		transform: translateY(0);

@@ -5,6 +5,7 @@
 	import OpponentArea from './OpponentArea.svelte';
 	import TrickArea from './TrickArea.svelte';
 	import PlayerHand from './PlayerHand.svelte';
+	import CardCounter from './CardCounter.svelte';
 	import TichuDeclareModal from './TichuDeclareModal.svelte';
 	import AiTichuDeclareModal from './AiTichuDeclareModal.svelte';
 	import CardComponent from './CardComponent.svelte';
@@ -163,6 +164,12 @@
 		return null;
 	});
 
+	// 그랜드 티츄: 내가 이미 결정했는데 다른 플레이어(AI)가 아직 결정 중인 구간
+	// (phase는 4명 전원이 결정해야 바뀌므로, 그 사이 "멈춘 것처럼" 보이지 않게 안내)
+	const waitingAfterGrandTichu = $derived.by(() => {
+		return game.phase === 'grand_tichu_window' && myPlayer?.grandTichu !== null;
+	});
+
 	// Wish indicator
 	const wishActive = $derived.by(() => gs()?.round?.wish?.active ?? false);
 	const wishRank = $derived.by(() => gs()?.round?.wish?.requestedRank);
@@ -205,14 +212,23 @@
 	{#if phaseLabel}
 		<div class="phase-indicator">{phaseLabel}</div>
 	{/if}
+	{#if waitingAfterGrandTichu}
+		<div class="waiting-indicator">
+			<span class="wait-dot"></span>
+			상대방 결정 중...
+		</div>
+	{/if}
 
 	<!-- Table Area -->
 	<div class="table-field">
 		<!-- Small Tichu button (inside table-field so it stays above hand area) -->
 		{#if game.canDeclareSmallTichu}
-			<button class="btn-small-tichu" onclick={() => game.declareSmallTichu()}>
-				스몰 티츄!
-			</button>
+			<div class="small-tichu-widget">
+				<span class="small-tichu-stakes">성공 +100 / 실패 -100</span>
+				<button class="btn-small-tichu" onclick={() => game.declareSmallTichu()}>
+					스몰 티츄!
+				</button>
+			</div>
 		{/if}
 		<!-- Opponents -->
 		{#if leftPlayer}
@@ -271,6 +287,9 @@
 				</div>
 			{/if}
 		</div>
+
+		<!-- Card counter: 밖에 남은 용/봉/A/K -->
+		<CardCounter {game} />
 
 		<!-- My turn indicator / Finish indicator -->
 		{#if myPlayer?.finishOrder !== null}
@@ -344,7 +363,7 @@
 		background: rgba(0, 0, 0, 0.4);
 		backdrop-filter: blur(16px);
 		-webkit-backdrop-filter: blur(16px);
-		border-bottom: 1px solid rgba(251, 191, 36, 0.3);
+		border-bottom: 1px solid rgba(230, 211, 163, 0.3);
 		font-size: 0.95rem;
 		font-weight: 700;
 		color: #f3f4f6;
@@ -396,8 +415,8 @@
 		background: rgba(0, 0, 0, 0.5);
 		backdrop-filter: blur(12px);
 		-webkit-backdrop-filter: blur(12px);
-		border: 1px solid rgba(251, 191, 36, 0.4);
-		color: #fbbf24;
+		border: 1px solid rgba(230, 211, 163, 0.4);
+		color: #e6d3a3;
 		padding: 6px 16px;
 		border-radius: 14px;
 		font-size: 0.8rem;
@@ -406,6 +425,37 @@
 		white-space: nowrap;
 		box-shadow: 0 4px 12px rgba(0,0,0,0.3);
 		text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+	}
+
+	.waiting-indicator {
+		position: absolute;
+		top: 104px;
+		left: 16px;
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		background: rgba(0, 0, 0, 0.5);
+		backdrop-filter: blur(12px);
+		-webkit-backdrop-filter: blur(12px);
+		border: 1px solid rgba(255, 255, 255, 0.12);
+		color: #cbd5e1;
+		padding: 6px 16px;
+		border-radius: 14px;
+		font-size: 0.75rem;
+		font-weight: 600;
+		z-index: 50;
+		white-space: nowrap;
+	}
+	.wait-dot {
+		width: 6px;
+		height: 6px;
+		border-radius: 50%;
+		background: #e6d3a3;
+		animation: waitDotPulse 1.2s ease-in-out infinite;
+	}
+	@keyframes waitDotPulse {
+		0%, 100% { opacity: 0.3; transform: scale(0.8); }
+		50% { opacity: 1; transform: scale(1.2); }
 	}
 
 	.pass-bubble {
@@ -431,8 +481,8 @@
 		background: rgba(0, 0, 0, 0.75);
 		backdrop-filter: blur(12px);
 		-webkit-backdrop-filter: blur(12px);
-		border: 1px solid rgba(251, 191, 36, 0.5);
-		color: #fbbf24;
+		border: 1px solid rgba(230, 211, 163, 0.5);
+		color: #e6d3a3;
 		padding: 6px 16px;
 		border-radius: 16px;
 		font-size: 0.85rem;
@@ -442,11 +492,26 @@
 		white-space: nowrap;
 	}
 
-	.btn-small-tichu {
+	.small-tichu-widget {
 		position: absolute;
 		bottom: 12px;
 		right: 16px;
 		z-index: 50;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 4px;
+	}
+	.small-tichu-stakes {
+		font-size: 0.7rem;
+		font-weight: 600;
+		color: #e0f2fe;
+		background: rgba(0, 0, 0, 0.45);
+		padding: 2px 10px;
+		border-radius: 10px;
+		white-space: nowrap;
+	}
+	.btn-small-tichu {
 		padding: 10px 20px;
 		border-radius: 16px;
 		border: 1px solid rgba(14, 165, 233, 0.4);
@@ -489,7 +554,7 @@
 
 	.my-finish-indicator {
 		position: absolute;
-		bottom: 24px;
+		bottom: 64px;
 		left: 50%;
 		transform: translateX(-50%);
 		padding: 8px 32px;
@@ -500,31 +565,31 @@
 		animation: turnPulse 2s ease-in-out infinite;
 		text-shadow: 0 2px 4px rgba(0,0,0,0.5);
 	}
-	.my-finish-indicator.badge-1 { background: linear-gradient(135deg, #fbbf24, #d97706); color: #fff; border: 2px solid #fde68a; }
+	.my-finish-indicator.badge-1 { background: linear-gradient(135deg, #e6d3a3, #c9a668); color: #4a3820; border: 2px solid #f5ecd8; }
 	.my-finish-indicator.badge-2 { background: linear-gradient(135deg, #94a3b8, #64748b); color: #fff; border: 2px solid #cbd5e1; }
 	.my-finish-indicator.badge-3 { background: linear-gradient(135deg, #b45309, #78350f); color: #fff; border: 2px solid #fcd34d; }
 	.my-finish-indicator.badge-4 { background: rgba(0,0,0,0.7); color: #9ca3af; border: 2px solid #4b5563; }
 
 	.my-turn-indicator {
 		position: absolute;
-		bottom: 24px;
+		bottom: 64px;
 		left: 50%;
 		transform: translateX(-50%);
-		background: linear-gradient(90deg, rgba(251, 191, 36, 0.05), rgba(251, 191, 36, 0.8), rgba(251, 191, 36, 0.05));
+		background: linear-gradient(90deg, rgba(230, 211, 163, 0.05), rgba(230, 211, 163, 0.85), rgba(230, 211, 163, 0.05));
 		border-radius: 24px;
-		color: #fff;
+		color: #4a3820;
 		padding: 10px 48px;
 		font-size: 1.1rem;
 		font-weight: 800;
 		letter-spacing: 0.05em;
-		text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
-		box-shadow: 0 0 20px rgba(251, 191, 36, 0.3);
+		text-shadow: 0 1px 2px rgba(255, 255, 255, 0.4);
+		box-shadow: 0 0 20px rgba(230, 211, 163, 0.3);
 		animation: turnPulse 1.5s ease-in-out infinite;
 		pointer-events: none;
 	}
 	@keyframes turnPulse {
-		0%, 100% { opacity: 0.8; transform: translateX(-50%) scale(1); text-shadow: 0 0 10px rgba(251, 191, 36, 0.6); }
-		50% { opacity: 1; transform: translateX(-50%) scale(1.05); text-shadow: 0 0 20px rgba(251, 191, 36, 0.9); }
+		0%, 100% { opacity: 0.8; transform: translateX(-50%) scale(1); }
+		50% { opacity: 1; transform: translateX(-50%) scale(1.05); }
 	}
 
 	/* Trick won notice */
@@ -637,13 +702,13 @@
 	.exchange-result-dismiss {
 		padding: 10px 32px;
 		border-radius: 14px;
-		border: 1px solid rgba(255,255,255,0.2);
-		background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
-		color: #fff;
+		border: 1px solid rgba(255,255,255,0.3);
+		background: linear-gradient(135deg, #e6d3a3 0%, #c9a668 100%);
+		color: #4a3820;
 		font-weight: 700;
 		font-size: 0.95rem;
 		cursor: pointer;
-		box-shadow: 0 4px 15px rgba(245,158,11,0.3);
+		box-shadow: 0 4px 15px rgba(168,130,79,0.3);
 		transition: all 0.2s;
 	}
 	.exchange-result-dismiss:hover {

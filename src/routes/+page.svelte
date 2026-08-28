@@ -2,7 +2,8 @@
     import type { PageData } from './$types';
     import { onMount, onDestroy } from 'svelte';
     import { enhance, applyAction } from '$app/forms';
-    import { invalidateAll } from '$app/navigation';
+    import { invalidateAll, goto } from '$app/navigation';
+    import { page } from '$app/state';
     import NotificationBell from '$lib/components/notifications/NotificationBell.svelte';
     import WantToPlayCard from '$lib/components/games/WantToPlayCard.svelte';
     import GameComments from '$lib/components/games/GameComments.svelte';
@@ -118,6 +119,21 @@
     const scheduledVisitors = $derived((data.todayScheduledParticipants || []).filter((p: any) => !checkedInIds.has(p.attendee_id) && !visitPlanIds.has(p.attendee_id)));
     const mergedVisitPlans = $derived([...(data.dailyVisitPlans || []), ...scheduledVisitors.map((p: any) => ({ attendee_id: p.attendee_id, name: p.name, planned_time: p.planned_time, title_name: p.title_name, is_party: p.is_party }))]);
 
+    // 현재 참여 인원 정렬: 게임 참여 안 함(0) → 일반 게임 진행중(1) → 고정팟 게임 진행중(2)
+    function attendeeTier(a: Attendee): number {
+        if (!a.is_playing) return 0;
+        const game = games.find(g => (g.players || g.participants || []).some((p: any) => p.id === a.id));
+        return game?.party_id ? 2 : 1;
+    }
+    const sortedAttendees = $derived([...attendees].sort((a, b) => attendeeTier(a) - attendeeTier(b)));
+
+    // 오늘 갈 예정 정렬: 특정 게임 없음(0) → 일반 게임 참여 예정(1) → 고정팟 게임 참여 예정(2)
+    function visitPlanTier(plan: any): number {
+        if (plan.is_party === undefined) return 0;
+        return plan.is_party ? 2 : 1;
+    }
+    const sortedVisitPlans = $derived([...mergedVisitPlans].sort((a, b) => visitPlanTier(a) - visitPlanTier(b)));
+
     function getGameReservations(gameId: number) {
         return (data.reservations || []).filter((r: any) => r.session_id === gameId);
     }
@@ -126,6 +142,46 @@
     let activeTab: 'home' | 'games' = $state('home');
     let isTablet = $state(false);
     let showAllMainGames = $state(false);
+    let showAllAttendees = $state(false);
+    let showAllVisitPlans = $state(false);
+    let attendeesOverflow = $state(false);
+    let visitPlansOverflow = $state(false);
+    const CHIP_ROW_LIMIT = 2;
+
+    // 화면 너비에 따라 한 줄에 들어가는 칩 개수가 달라지므로, 실제 렌더된 칩 높이를
+    // 재서 "N줄까지만" 보이도록 자르는 액션. 개수가 아니라 줄 수 기준으로 접힘.
+    function clipToRows(node: HTMLElement, opts: { rows: number; expanded: boolean; itemSelector: string; onOverflow: (v: boolean) => void }) {
+        function measure() {
+            const items = Array.from(node.querySelectorAll(opts.itemSelector)) as HTMLElement[];
+            if (items.length === 0) { opts.onOverflow(false); node.style.maxHeight = ''; return; }
+            // 칭호(3~4줄) 카드가 섞이면 줄 높이가 균일하지 않으므로, 첫 카드 높이로 추정하지 않고
+            // 실제 각 카드의 top 위치를 재서 몇 번째 줄에 속하는지 판별한다.
+            const containerTop = node.getBoundingClientRect().top;
+            const rowTops: number[] = [];
+            for (const item of items) {
+                const top = Math.round(item.getBoundingClientRect().top - containerTop);
+                if (!rowTops.some(t => Math.abs(t - top) < 1)) rowTops.push(top);
+            }
+            if (rowTops.length === 0) return;
+            rowTops.sort((a, b) => a - b);
+            const overflows = rowTops.length > opts.rows;
+            opts.onOverflow(overflows);
+            if (!opts.expanded && overflows) {
+                const gap = parseFloat(getComputedStyle(node).rowGap || '0') || 0;
+                const cutTop = rowTops[opts.rows];
+                node.style.maxHeight = `${Math.max(0, cutTop - gap)}px`;
+            } else {
+                node.style.maxHeight = '';
+            }
+        }
+        measure();
+        const onResize = () => measure();
+        window.addEventListener('resize', onResize);
+        return {
+            update(newOpts: typeof opts) { opts = newOpts; measure(); },
+            destroy() { window.removeEventListener('resize', onResize); }
+        };
+    }
     // --- Game Management Logic ---
     let showModal = $state(false);
     let selectedGameName = $state('');
@@ -160,6 +216,12 @@
     function canJoinGame(game: any): boolean {
         if (!game.party_id) return true;
         return userPartyIds.has(game.party_id);
+    }
+
+    // 참여 버튼이 안 보이는 이유를 사용자에게 설명하기 위한 헬퍼 (버튼을 완전히 숨기지 않고 이유를 표시)
+    function joinBlockedReason(game: any): string | null {
+        if (!canJoinGame(game)) return '고정팟 전용';
+        return null;
     }
 
     // 참석자 + 고정팟 미참석 멤버 병합 (고정팟 멤버 상단 정렬)
@@ -286,10 +348,70 @@
         } catch { showAlert('네트워크 오류'); }
     }
 
+    async function handleWtpCloseAndSchedule(post: any) {
+        if (!await showConfirm('마감하면 이 글은 삭제되고 예정 게임으로 등록됩니다. 계속할까요?')) return;
+        try {
+            const res = await fetch(`/api/wanttoplay/${post.id}`, { method: 'DELETE' });
+            const result = await res.json();
+            if (!res.ok) { showAlert(result.error || '마감 실패'); return; }
+            showWtpDetailModal = false;
+            selectedWtpPost = null;
+            await invalidateAll();
+            // 예정 게임 모달 초기화 후 게임명 + 참여자 프리필
+            dropdownOpen = false;
+            guestCount = 0;
+            showScheduledGuestInput = false;
+            const wtpParticipants = (post.participants || []) as { id: number; name: string }[];
+            scheduledSelectedPlayerIds = wtpParticipants.map(p => p.id);
+            scheduledPartyMembers = wtpParticipants.map(p => ({ id: p.id, name: p.name }));
+            scheduledSelectedPartyId = null;
+            scheduledGameName = post.game_name;
+            if (post.min_players) minPlayers = post.min_players;
+            const floorMax = Math.max(post.max_players || 0, wtpParticipants.length, minPlayers);
+            if (floorMax > 0) maxPlayers = floorMax;
+            const now = new Date();
+            now.setMinutes(Math.ceil((now.getMinutes() + 30) / 10) * 10);
+            scheduledAt = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}T${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+            showScheduledGameModal = true;
+        } catch { showAlert('네트워크 오류'); }
+    }
+
     function openWtpDetail(post: any) {
         selectedWtpPost = post;
         showWtpDetailModal = true;
     }
+
+    // 알림/푸시로 "?wtp={postId}" 링크를 타고 들어왔을 때 해당 같이 할래요 모달을 자동으로 오픈
+    $effect(() => {
+        const wtpParam = page.url.searchParams.get('wtp');
+        if (!wtpParam) return;
+        const post = (data.wantToPlayPosts || []).find((p: any) => String(p.id) === wtpParam);
+        if (post) {
+            openWtpDetail(post);
+            if (!isTablet) activeTab = 'games';
+        }
+        const url = new URL(window.location.href);
+        url.searchParams.delete('wtp');
+        goto(`${url.pathname}${url.search}`, { replaceState: true, noScroll: true, keepFocus: true });
+    });
+
+    // 보드게임 목록 페이지에서 "같이 할래요 등록"으로 넘어왔을 때("?startWtp={gameId}")
+    // 해당 게임이 미리 채워진 채로 같이 할래요 작성 모달을 자동으로 오픈
+    $effect(() => {
+        const startWtpParam = page.url.searchParams.get('startWtp');
+        if (!startWtpParam || !data.user) return;
+        const game = (data.allGames || []).find((g: any) => String(g.id) === startWtpParam);
+        openWtpCreateModal();
+        if (game) {
+            wtpGameSource = 'registered';
+            wtpGameName = game.name;
+            wtpGameId = game.id;
+        }
+        if (!isTablet) activeTab = 'games';
+        const url = new URL(window.location.href);
+        url.searchParams.delete('startWtp');
+        goto(`${url.pathname}${url.search}`, { replaceState: true, noScroll: true, keepFocus: true });
+    });
 
     // Visit Plan Modal
     let showVisitPlanModal = $state(false);
@@ -365,6 +487,31 @@
         confirmVisible = false;
         if (confirmResolve) { confirmResolve(result); confirmResolve = null; }
     }
+
+    // 모달이 떠 있는 동안 뒤에 있는 메인 페이지가 같이 스크롤/드래그되지 않도록 배경 스크롤 잠금
+    const anyModalOpen = $derived(
+        showModal || showScheduledGameModal || endGameModalVisible ||
+        showWtpCreateModal || showWtpDetailModal || showVisitPlanModal ||
+        alertVisible || confirmVisible
+    );
+    let lockedScrollY = 0;
+    $effect(() => {
+        if (anyModalOpen) {
+            lockedScrollY = window.scrollY;
+            document.body.style.position = 'fixed';
+            document.body.style.top = `-${lockedScrollY}px`;
+            document.body.style.left = '0';
+            document.body.style.right = '0';
+            document.body.style.overflow = 'hidden';
+        } else {
+            document.body.style.position = '';
+            document.body.style.top = '';
+            document.body.style.left = '';
+            document.body.style.right = '';
+            document.body.style.overflow = '';
+            window.scrollTo(0, lockedScrollY);
+        }
+    });
 
     // PWA Install Guide
     let showInstallGuide = $state(false);
@@ -450,7 +597,9 @@
     }
 
     function applyPartyToModal(party: Party) {
-        selectedGameName = party.game_name || party.resolved_game_name || '';
+        if (!selectedGameName.trim()) {
+            selectedGameName = party.game_name || party.resolved_game_name || '';
+        }
         selectedGameId = party.game_id?.toString() || '';
         selectedDuration = party.duration?.toString() || '';
         guestCount = party.guest_count || 0;
@@ -460,14 +609,48 @@
         selectedPartyId = party.id;
     }
 
+    function clearPartyFromModal() {
+        selectedPartyId = null;
+        selectedPlayerIds = [];
+        partyMembers = [];
+    }
+
     function applyPartyToScheduledModal(party: Party) {
-        scheduledGameName = party.game_name || party.resolved_game_name || '';
+        if (!scheduledGameName.trim()) {
+            scheduledGameName = party.game_name || party.resolved_game_name || '';
+        }
         guestCount = party.guest_count || 0;
         showScheduledGuestInput = guestCount > 0;
         scheduledPartyMembers = party.members;
         scheduledSelectedPlayerIds = party.members.map(m => m.id);
         scheduledSelectedPartyId = party.id;
+        if (party.members.length > 0) {
+            maxPlayers = Math.max(maxPlayers, party.members.length, minPlayers);
+        }
     }
+
+    function clearPartyFromScheduledModal() {
+        scheduledSelectedPartyId = null;
+        scheduledSelectedPlayerIds = [];
+        scheduledPartyMembers = [];
+    }
+
+    // 고정팟을 불러온 뒤 멤버를 전부 지우면(체크 해제 포함) 팟 연결도 함께 해제한다.
+    // 그렇지 않으면 화면은 "선택 안 함"처럼 보이는데 서버에는 party_id가 그대로 남아
+    // 의도치 않게 고정팟 전용(비공개) 게임이 생성된다.
+    $effect(() => {
+        if (selectedPartyId && selectedPlayerIds.length === 0) {
+            selectedPartyId = null;
+        }
+    });
+    $effect(() => {
+        if (scheduledSelectedPartyId && scheduledSelectedPlayerIds.length === 0) {
+            scheduledSelectedPartyId = null;
+        }
+    });
+
+    const selectedPartyName = $derived(parties.find((p: any) => p.id === selectedPartyId)?.name ?? null);
+    const scheduledSelectedPartyName = $derived(parties.find((p: any) => p.id === scheduledSelectedPartyId)?.name ?? null);
 
     function openScheduledGameModal() {
         showScheduledGameModal = true;
@@ -606,6 +789,59 @@
 
         return { relative: relativeStr, absolute: fullTimeStr };
     }
+
+    // 1시간 이내로 임박한 예약인지 — 나의 예약 현황에서 가장 급한 카드를 강조하기 위함
+    function isUrgentSoon(dateString: string) {
+        const diffMs = new Date(dateString).getTime() - Date.now();
+        return diffMs >= 0 && diffMs < 60 * 60 * 1000;
+    }
+
+    // 나의 예약 현황 리스트용 — "3시간 뒤" 같은 상대 표현 대신 정확한 날짜/요일/시간
+    function formatExactSchedule(dateString: string) {
+        const date = new Date(dateString);
+        const weekday = ['일', '월', '화', '수', '목', '금', '토'][date.getDay()];
+        const timeStr = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        return `${date.getMonth() + 1}/${date.getDate()}(${weekday}) ${timeStr}`;
+    }
+
+    // 나의 예약 현황 두 번째 줄용 — 항상 "N분/시간/일 뒤 · 날짜(요일) 시간"로 표시.
+    // relative는 강조 표시하고 exact는 부가 정보로 옅게 보여주기 위해 분리해서 반환한다.
+    function formatListSchedule(dateString: string): { relative: string | null; exact: string } {
+        const diffMs = new Date(dateString).getTime() - Date.now();
+        const exact = formatExactSchedule(dateString);
+        if (diffMs < 0) return { relative: null, exact };
+        const diffMins = Math.floor(diffMs / (1000 * 60));
+        const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+        const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+        let relative: string;
+        if (diffMins < 60) relative = `${diffMins}분 뒤`;
+        else if (diffHours < 24) relative = `${diffHours}시간 뒤`;
+        else relative = `${diffDays}일 뒤`;
+        return { relative, exact };
+    }
+
+    // 나의 예약 현황: 참여 예정/참여 중/예약 내역을 시간순 리스트 하나로 합치고,
+    // 가장 가까운 일정(진행 중인 게임은 항상 최우선)이 맨 위에 크게 나오도록 정렬한다.
+    const scheduleItems = $derived.by(() => {
+        const items: any[] = [];
+        if (data.userScheduledGames && data.userScheduledGames.length > 0) {
+            for (const game of data.userScheduledGames) {
+                const mergedRes = data.userReservation && data.userReservation.session_id === game.id ? data.userReservation : null;
+                items.push({ kind: 'scheduled', game, mergedRes, time: new Date(game.scheduled_at).getTime() });
+            }
+        } else if (data.userPlayingGame) {
+            items.push({ kind: 'playing', game: data.userPlayingGame, time: -Infinity });
+        }
+        if (data.userReservation && !(data.userScheduledGames || []).some((g: any) => g.id === data.userReservation.session_id)) {
+            items.push({
+                kind: 'reservation',
+                res: data.userReservation,
+                time: data.userReservation.scheduled_at ? new Date(data.userReservation.scheduled_at).getTime() : Infinity
+            });
+        }
+        items.sort((a, b) => a.time - b.time);
+        return items;
+    });
 </script>
 
 <div class="container">
@@ -672,204 +908,27 @@
     {/if} -->
 
     {#snippet homeContent()}
-        {#if data.user && ((data.userPenaltyInfo && data.userPenaltyInfo.penalty_points > 0) || (data.userScheduledGames && data.userScheduledGames.length > 0) || data.userPlayingGame || data.userReservation)}
-            <section class="my-status-section">
-                <h2>나의 예약 현황</h2>
-                <div class="my-status-grid">
-                    {#if data.userPenaltyInfo && data.userPenaltyInfo.penalty_points > 0}
-                        <div class="status-card penalty-warning">
-                            <span class="label">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px; margin-bottom:-2px;"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                                누적 페널티
-                            </span>
-                            <span class="value">{data.userPenaltyInfo.penalty_points} / 3</span>
-                            {#if data.userPenaltyInfo.penalty_points >= 3}
-                                <p class="warning-text">예약이 제한되었습니다.</p>
-                            {/if}
-                        </div>
-                    {/if}
-
-                    {#if data.userScheduledGames && data.userScheduledGames.length > 0}
-                        {#each data.userScheduledGames as game}
-                            {@const time = formatScheduledTime(game.scheduled_at)}
-                            <div class="status-card scheduled">
-                                <span class="label">
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px; margin-bottom:-2px;"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-                                    참여 예정 게임
-                                </span>
-                                <span class="value">{game.game_name}</span>
-                                <span class="sub-value"><span class="highlight-orange">{time.relative}</span> ({time.absolute} 시작)</span>
-                                <form method="POST" action="?/leaveScheduledGame"
-                                    use:enhance={async ({ cancel }) => {
-                                        const scheduledAt = new Date(game.scheduled_at).getTime();
-                                        const now = Date.now();
-                                        let msg = '정말 참여를 취소하시겠습니까?';
-                                        if (scheduledAt - now < 10 * 60 * 1000) {
-                                            msg = '시작 10분 전입니다. 지금 취소하면 페널티가 부여됩니다. 정말 취소하시겠습니까?';
-                                        }
-                                        const ok = await showConfirm(msg);
-                                        if (!ok) { cancel(); return; }
-                                        return async ({ result }) => {
-                                            await applyAction(result);
-                                            await invalidateAll();
-                                        };
-                                    }}>
-                                    <input type="hidden" name="sessionId" value={game.id}>
-                                    <button type="submit" class="btn-cancel-small">참여 취소</button>
-                                </form>
-                            </div>
-                        {/each}
-                    {:else if data.userPlayingGame}
-                        <div class="status-card playing">
-                            <span class="label">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px; margin-bottom:-2px;"><line x1="6" y1="12" x2="10" y2="12"/><line x1="8" y1="10" x2="8" y2="14"/><line x1="15" y1="13" x2="15.01" y2="13"/><line x1="18" y1="11" x2="18.01" y2="11"/><rect x="2" y="6" width="20" height="12" rx="2"/></svg>
-                                참여 중인 게임
-                            </span>
-                            <span class="value">{data.userPlayingGame.game_name}</span>
-                        </div>
-                    {/if}
-
-                    {#if data.userReservation}
-                        <div class="status-card reservation">
-                            <span class="label">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px; margin-bottom:-2px;"><path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/><path d="M13 5v2"/><path d="M13 17v2"/><path d="M13 11v2"/></svg>
-                                예약 내역
-                            </span>
-                            <span class="value">{data.userReservation.game_name}</span>
-                            <span class="status-tag {data.userReservation.status}">
-                                {data.userReservation.status === 'pending' ? '대기 중' : 
-                                 data.userReservation.status === 'waitlisted' ? '대기 순번' : '확정'}
-                            </span>
-                            <form method="POST" action="?/cancelReservation"
-                                use:enhance={async ({ cancel }) => {
-                                    const ok = await showConfirm('정말 예약을 취소하시겠습니까? (시작 10분 전 이내인 경우 페널티가 부여될 수 있습니다)');
-                                    if (!ok) { cancel(); return; }
-                                    return async ({ result }) => {
-                                        await applyAction(result);
-                                        await invalidateAll();
-                                    };
-                                }}>
-                                <input type="hidden" name="reservationId" value={data.userReservation.id}>
-                                <button type="submit" class="btn-cancel-small">예약 취소</button>
-                            </form>
-                        </div>
-                    {/if}
-                </div>
-            </section>
-        {/if}
-
-        {#if (data.mainScheduledGames || []).length > 0}
-            {@const mainGames = data.mainScheduledGames || []}
-            <section class="tables-section">
-                <div class="main-games-toggle-header" onclick={() => { if (mainGames.length > 1) showAllMainGames = !showAllMainGames; }} onkeydown={(e) => { if (e.key === 'Enter' && mainGames.length > 1) showAllMainGames = !showAllMainGames; }} role="button" tabindex="0">
-                    <h2>이번주 혼놀데이</h2>
-                    {#if mainGames.length > 1}
-                        <span class="expand-icon" class:rotated={showAllMainGames}>{showAllMainGames ? '접기' : `+${mainGames.length - 1}개 더보기`}</span>
-                    {/if}
-                </div>
-                <div class="tables-grid">
-                    {#each showAllMainGames ? mainGames : mainGames.slice(0, 1) as game}
-                        {@const isPlaying = game.status === 'playing'}
-                        {@const time = isPlaying ? null : formatScheduledTime(game.scheduled_at)}
-                        <div class="table-card available">
-                            <div class="table-header">
-                                <h3>
-                                    <span class="game-title-text">{game.game_name}</span>
-                                    {#if game.party_id}<span class="party-badge">고정팟</span>{/if}
-                                    <span class="sub-text">({(game.participants || game.players || []).length}{#if game.max_players} / {game.max_players}{/if})</span>
-                                </h3>
-                                <div class="header-meta-row">
-                                    {#if !isPlaying && data.user && !(game.participants || []).some((p: any) => p.id === data.user!.id)}
-                                        {@const hasConflict = (() => {
-                                            const targetDate = new Date(game.scheduled_at).toDateString();
-                                            if (data.userPlayingGame) {
-                                                const today = new Date().toDateString();
-                                                if (targetDate === today) return true;
-                                            }
-                                            const conflicts = [
-                                                ...(data.userScheduledGames || []),
-                                                ...(data.userReservation ? [data.userReservation] : [])
-                                            ];
-                                            return conflicts.some(c => {
-                                                if (!c.scheduled_at) return false;
-                                                return new Date(c.scheduled_at).toDateString() === targetDate;
-                                            });
-                                        })()}
-
-                                        {#if !hasConflict && canJoinGame(game)}
-                                            <div class="actions">
-                                                <form method="POST" action="?/joinScheduledGame"
-                                                    use:enhance={() => {
-                                                        return async ({ result }) => {
-                                                            await applyAction(result);
-                                                            await invalidateAll();
-                                                        };
-                                                    }}>
-                                                    <input type="hidden" name="sessionId" value={game.id}>
-                                                    <button type="submit" class="btn-join">
-                                                        {(game.participants || []).length >= game.max_players ? '대기열 합류' : '참여하기'}
-                                                    </button>
-                                                </form>
-                                            </div>
-                                        {/if}
-                                    {/if}
-                                </div>
-                            </div>
-
-                            <div class="table-content">
-                                <div class="session-info next">
-                                    <div class="session-header">
-                                        <span class="start-time">
-                                            {#if isPlaying}
-                                                <span class="highlight-playing">진행중</span>
-                                            {:else if time}
-                                                <span class="highlight-green">{time.relative}</span>
-                                                <span class="sub-text">({time.absolute} 시작)</span>
-                                            {/if}
-                                        </span>
-                                    </div>
-                                    <div class="participants">
-                                        <div class="participant-list">
-                                            {#each (game.participants || game.players || []) as p}
-                                                {@const participant = p as any}
-                                                <span class="p-name" class:guest-name={participant.is_guest}>
-                                                    {#if participant.title_name}
-                                                        <span class="p-title">[ {participant.title_name} ]</span>
-                                                    {/if}
-                                                    {participant.name}
-                                                    {#if participant.is_guest}
-                                                        <span class="guest-badge">G</span>
-                                                    {/if}
-                                                </span>
-                                            {/each}
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    {/each}
-                </div>
-            </section>
-        {/if}
-
         <section class="attendees-section">
-            <h2>현재 참여 인원 ({liveVisitorCount ?? (data.attendees || []).length})</h2>
-            <div class="attendee-grid">
-                {#each (data.attendees || []) as attendee}
+            <div class="main-games-toggle-header" onclick={() => { if (attendeesOverflow) showAllAttendees = !showAllAttendees; }} onkeydown={(e) => { if (e.key === 'Enter' && attendeesOverflow) showAllAttendees = !showAllAttendees; }} role="button" tabindex="0">
+                <h2>현재 참여 인원 ({liveVisitorCount ?? attendees.length})</h2>
+                {#if attendeesOverflow}
+                    <span class="expand-icon" class:rotated={showAllAttendees}>{showAllAttendees ? '접기' : '더보기'}</span>
+                {/if}
+            </div>
+            <div class="attendee-grid" use:clipToRows={{ rows: CHIP_ROW_LIMIT, expanded: showAllAttendees, itemSelector: '.attendee-card', onOverflow: (v) => attendeesOverflow = v }}>
+                {#each sortedAttendees as attendee}
                     {@const a = attendee as Attendee}
-                    <div class="attendee-card {a.is_playing ? 'playing' : ''}">
-                        <div class="attendee-info">
-                            {#if a.title_name}
-                                <span class="mini-title">{a.title_name}</span>
-                            {/if}
-                            <span class="name">{a.name}</span>
-                        </div>
-                        <span class="time">
-                            {new Date(a.arrival_time).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                            {#if a.is_playing}
-                                <br><span class="playing-text">게임 중</span>
-                            {/if}
-                        </span>
+                    {@const tier = attendeeTier(a)}
+                    <div class="attendee-card {a.is_playing ? 'playing' : ''}" class:titled={a.title_name}>
+                        {#if a.title_name}
+                            <span class="mini-title">{a.title_name}</span>
+                        {/if}
+                        <span class="name">{a.name}</span>
+                        {#if a.is_playing}
+                            <span class="playing-text" class:party={tier === 2}>{tier === 2 ? '고정팟' : '게임 중'}</span>
+                        {:else}
+                            <span class="time">{new Date(a.arrival_time).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                        {/if}
                     </div>
                 {/each}
                 {#if (data.attendees || []).length === 0}
@@ -888,26 +947,34 @@
         <section class="visit-plan-section">
             <div class="section-header">
                 <h2>오늘 갈 예정 ({mergedVisitPlans.length})</h2>
-                {#if data.user && !checkedInIds.has(data.user.id)}
-                    {#if data.userHasVisitPlan}
-                        <form method="POST" action="?/toggleVisitPlan" use:enhance={() => {
-                            return async ({ result, update }) => { await update(); };
-                        }}>
-                            <input type="hidden" name="cancel" value="true" />
-                            <button type="submit" class="btn-visit-plan active">취소하기</button>
-                        </form>
-                    {:else}
-                        <button type="button" class="btn-visit-plan" onclick={openVisitPlanModal}>나도 갈 예정!</button>
+                <div class="section-header-actions">
+                    {#if visitPlansOverflow}
+                        <button type="button" class="expand-icon-btn" onclick={() => showAllVisitPlans = !showAllVisitPlans}>
+                            {showAllVisitPlans ? '접기' : '더보기'}
+                        </button>
                     {/if}
-                {/if}
+                    {#if data.user && !checkedInIds.has(data.user.id)}
+                        {#if data.userHasVisitPlan}
+                            <form method="POST" action="?/toggleVisitPlan" use:enhance={() => {
+                                return async ({ result, update }) => { await update(); };
+                            }}>
+                                <input type="hidden" name="cancel" value="true" />
+                                <button type="submit" class="btn-visit-plan active">취소하기</button>
+                            </form>
+                        {:else}
+                            <button type="button" class="btn-visit-plan" onclick={openVisitPlanModal}>나도 갈 예정!</button>
+                        {/if}
+                    {/if}
+                </div>
             </div>
-            <div class="visit-plan-grid">
-                {#each mergedVisitPlans as plan}
+            <div class="visit-plan-grid" use:clipToRows={{ rows: CHIP_ROW_LIMIT, expanded: showAllVisitPlans, itemSelector: '.visit-plan-card', onOverflow: (v) => visitPlansOverflow = v }}>
+                {#each sortedVisitPlans as plan}
                     {@const isMyPlan = data.user && plan.attendee_id === data.user.id && !checkedInIds.has(data.user.id)}
                     <!-- svelte-ignore a11y_no_static_element_interactions a11y_no_noninteractive_tabindex -->
                     <div
                         class="visit-plan-card"
                         class:editable={isMyPlan}
+                        class:titled={plan.title_name}
                         onclick={() => isMyPlan && openEditVisitPlanModal()}
                         onkeydown={(e) => isMyPlan && e.key === 'Enter' && openEditVisitPlanModal()}
                         role={isMyPlan ? 'button' : undefined}
@@ -932,6 +999,197 @@
                 {/if}
             </div>
         </section>
+
+        {#if (data.mainScheduledGames || []).length > 0}
+            {@const mainGames = data.mainScheduledGames || []}
+            <section class="tables-section">
+                <div class="main-games-toggle-header" onclick={() => { if (mainGames.length > 1) showAllMainGames = !showAllMainGames; }} onkeydown={(e) => { if (e.key === 'Enter' && mainGames.length > 1) showAllMainGames = !showAllMainGames; }} role="button" tabindex="0">
+                    <h2>이번주 혼놀데이</h2>
+                    {#if mainGames.length > 1}
+                        <span class="expand-icon" class:rotated={showAllMainGames}>{showAllMainGames ? '접기' : `+${mainGames.length - 1}개 더보기`}</span>
+                    {/if}
+                </div>
+                <div class="tables-grid">
+                    {#each showAllMainGames ? mainGames : mainGames.slice(0, 1) as game}
+                        {@const isPlaying = game.status === 'playing'}
+                        {@const time = isPlaying ? null : formatScheduledTime(game.scheduled_at)}
+                        <div class="table-card available">
+                            <div class="table-header">
+                                <h3>
+                                    <span class="game-title-text">{game.game_name}</span>
+                                    {#if game.party_id}<span class="party-badge">고정팟</span>{/if}
+                                    <span class="sub-text">({(game.participants || game.players || []).length}{#if game.max_players} / {game.max_players}{/if})</span>
+                                </h3>
+                                <div class="header-meta-row">
+                                    {#if !isPlaying && data.user && !(game.participants || []).some((p: any) => p.id === data.user!.id)}
+                                        {#if canJoinGame(game)}
+                                            <div class="actions">
+                                                <form method="POST" action="?/joinScheduledGame"
+                                                    use:enhance={() => {
+                                                        return async ({ result }) => {
+                                                            await applyAction(result);
+                                                            await invalidateAll();
+                                                        };
+                                                    }}>
+                                                    <input type="hidden" name="sessionId" value={game.id}>
+                                                    <button type="submit" class="btn-join">
+                                                        {(game.participants || []).length >= game.max_players ? '대기열 합류' : '참여하기'}
+                                                    </button>
+                                                </form>
+                                            </div>
+                                        {:else}
+                                            <div class="actions">
+                                                <span class="btn-join-blocked" title={joinBlockedReason(game)}>
+                                                    {joinBlockedReason(game)}
+                                                </span>
+                                            </div>
+                                        {/if}
+                                    {/if}
+                                </div>
+                            </div>
+
+                            <div class="table-content">
+                                <div class="session-info next">
+                                    <div class="session-header">
+                                        <span class="start-time">
+                                            {#if isPlaying}
+                                                <span class="highlight-playing">진행중</span>
+                                            {:else if time}
+                                                <span class="highlight-green">{time.relative}</span>
+                                                <span class="sub-text">({time.absolute} 시작)</span>
+                                            {/if}
+                                        </span>
+                                    </div>
+                                    <div class="participants">
+                                        <div class="participant-list">
+                                            {#each (game.participants || game.players || []) as p}
+                                                {@const participant = p as any}
+                                                <span class="p-name" class:guest-name={participant.is_guest}>
+                                                    {#if participant.title_name}
+                                                        <span class="p-title">{participant.title_name}</span>
+                                                    {/if}
+                                                    {participant.name}
+                                                    {#if participant.is_guest}
+                                                        <span class="guest-badge">G</span>
+                                                    {/if}
+                                                </span>
+                                            {/each}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    {/each}
+                </div>
+            </section>
+        {/if}
+
+        {#if data.user && ((data.userPenaltyInfo && data.userPenaltyInfo.penalty_points > 0) || (data.userScheduledGames && data.userScheduledGames.length > 0) || data.userPlayingGame || data.userReservation)}
+            <section class="my-status-section">
+                <h2>나의 예약 현황</h2>
+                <div class="my-status-list">
+                    {#if data.userPenaltyInfo && data.userPenaltyInfo.penalty_points > 0}
+                        <div class="status-card penalty-warning">
+                            <div class="status-line1">
+                                <svg class="status-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                                <span class="status-name">누적 페널티</span>
+                            </div>
+                            <div class="status-line2">
+                                <span class="status-time">{data.userPenaltyInfo.penalty_points} / 3</span>
+                            </div>
+                            {#if data.userPenaltyInfo.penalty_points >= 3}
+                                <p class="warning-text">예약이 제한되었습니다.</p>
+                            {/if}
+                        </div>
+                    {/if}
+
+                    {#each scheduleItems as item, i (item.kind + '-' + (item.game?.id ?? item.res?.id))}
+                        {#if item.kind === 'scheduled'}
+                            {@const listTime = formatListSchedule(item.game.scheduled_at)}
+                            {@const urgent = isUrgentSoon(item.game.scheduled_at)}
+                            <div class="status-card scheduled" class:urgent={urgent} class:primary={i === 0}>
+                                {#if urgent}<span class="urgent-flag">곧 시작</span>{/if}
+                                <div class="status-line1">
+                                    <svg class="status-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                                    <span class="status-name">{item.game.game_name}</span>
+                                </div>
+                                <div class="status-line2">
+                                    <span class="status-time">
+                                        {#if listTime.relative}<span class="status-relative">{listTime.relative}</span>{' · '}{/if}{listTime.exact}
+                                    </span>
+                                    {#if item.mergedRes}
+                                        <span class="status-tag {item.mergedRes.status}">
+                                            {item.mergedRes.status === 'pending' ? '대기 중' :
+                                             item.mergedRes.status === 'waitlisted' ? '대기 순번' : '확정'}
+                                        </span>
+                                    {/if}
+                                    <form method="POST" action="?/cancelMergedBooking"
+                                        use:enhance={async ({ cancel }) => {
+                                            const scheduledAt = new Date(item.game.scheduled_at).getTime();
+                                            const now = Date.now();
+                                            let msg = '정말 참여를 취소하시겠습니까?';
+                                            if (scheduledAt - now < 10 * 60 * 1000) {
+                                                msg = '시작 10분 전입니다. 지금 취소하면 페널티가 부여됩니다. 정말 취소하시겠습니까?';
+                                            }
+                                            const ok = await showConfirm(msg);
+                                            if (!ok) { cancel(); return; }
+                                            return async ({ result }) => {
+                                                await applyAction(result);
+                                                await invalidateAll();
+                                            };
+                                        }}>
+                                        <input type="hidden" name="sessionId" value={item.game.id}>
+                                        {#if item.mergedRes}<input type="hidden" name="reservationId" value={item.mergedRes.id}>{/if}
+                                        <button type="submit" class="btn-cancel-small">참여 취소</button>
+                                    </form>
+                                </div>
+                            </div>
+                        {:else if item.kind === 'playing'}
+                            <div class="status-card playing" class:primary={i === 0}>
+                                <div class="status-line1">
+                                    <svg class="status-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="12" x2="10" y2="12"/><line x1="8" y1="10" x2="8" y2="14"/><line x1="15" y1="13" x2="15.01" y2="13"/><line x1="18" y1="11" x2="18.01" y2="11"/><rect x="2" y="6" width="20" height="12" rx="2"/></svg>
+                                    <span class="status-name">{item.game.game_name}</span>
+                                </div>
+                                <div class="status-line2">
+                                    <span class="status-time">진행 중</span>
+                                </div>
+                            </div>
+                        {:else if item.kind === 'reservation'}
+                            <div class="status-card reservation" class:primary={i === 0}>
+                                <div class="status-line1">
+                                    <svg class="status-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/><path d="M13 5v2"/><path d="M13 17v2"/><path d="M13 11v2"/></svg>
+                                    <span class="status-name">{item.res.game_name}</span>
+                                </div>
+                                <div class="status-line2">
+                                    {#if item.res.scheduled_at}
+                                        {@const resTime = formatListSchedule(item.res.scheduled_at)}
+                                        <span class="status-time">
+                                            {#if resTime.relative}<span class="status-relative">{resTime.relative}</span>{' · '}{/if}{resTime.exact}
+                                        </span>
+                                    {/if}
+                                    <span class="status-tag {item.res.status}">
+                                        {item.res.status === 'pending' ? '대기 중' :
+                                         item.res.status === 'waitlisted' ? '대기 순번' : '확정'}
+                                    </span>
+                                    <form method="POST" action="?/cancelReservation"
+                                        use:enhance={async ({ cancel }) => {
+                                            const ok = await showConfirm('정말 예약을 취소하시겠습니까? (시작 10분 전 이내인 경우 페널티가 부여될 수 있습니다)');
+                                            if (!ok) { cancel(); return; }
+                                            return async ({ result }) => {
+                                                await applyAction(result);
+                                                await invalidateAll();
+                                            };
+                                        }}>
+                                        <input type="hidden" name="reservationId" value={item.res.id}>
+                                        <button type="submit" class="btn-cancel-small">예약 취소</button>
+                                    </form>
+                                </div>
+                            </div>
+                        {/if}
+                    {/each}
+                </div>
+            </section>
+        {/if}
     {/snippet}
 
     {#snippet gamesContent()}
@@ -1013,6 +1271,8 @@
                                                 <input type="hidden" name="sessionId" value={game.id}>
                                                 <button class="btn-reserve">참여 요청</button>
                                             </form>
+                                        {:else if !myReservation}
+                                            <span class="btn-join-blocked" title="고정팟 전용">고정팟 전용</span>
                                         {/if}
                                     </div>
                                 {/if}
@@ -1030,7 +1290,7 @@
                                         {@const p = player as any}
                                         <div class="player-tag" class:guest-tag={p.is_guest}>
                                             {#if p.title_name}
-                                                <span class="tag-title">[ {p.title_name} ]</span>
+                                                <span class="tag-title">{p.title_name}</span>
                                             {/if}
                                             {p.name}
                                             {#if p.is_guest}
@@ -1116,7 +1376,7 @@
         <!-- 보드게임 하고싶어요 -->
         <section class="tables-section">
             <div class="section-header">
-                <h2>want to play({(data.wantToPlayPosts || []).length})</h2>
+                <h2>🙋 같이 할래요 ({(data.wantToPlayPosts || []).length})</h2>
                 {#if data.user}
                     <button class="btn-create" onclick={openWtpCreateModal}>+게임 등록</button>
                 {/if}
@@ -1173,23 +1433,7 @@
                                     </div>
                                 {/if}
                                 {#if data.user && !(game.participants || []).some((p: any) => p.id === data.user!.id)}
-                                    {@const hasConflict = (() => {
-                                        const targetDate = new Date(game.scheduled_at).toDateString();
-                                        if (data.userPlayingGame) {
-                                            const today = new Date().toDateString();
-                                            if (targetDate === today) return true;
-                                        }
-                                        const conflicts = [
-                                            ...(data.userScheduledGames || []),
-                                            ...(data.userReservation ? [data.userReservation] : [])
-                                        ];
-                                        return conflicts.some(c => {
-                                            if (!c.scheduled_at) return false;
-                                            return new Date(c.scheduled_at).toDateString() === targetDate;
-                                        });
-                                    })()}
-                                    
-                                    {#if !hasConflict && canJoinGame(game)}
+                                    {#if canJoinGame(game)}
                                         <div class="actions">
                                             <form method="POST" action="?/joinScheduledGame"
                                                 use:enhance={() => {
@@ -1203,6 +1447,12 @@
                                                     {(game.participants || []).length >= game.max_players ? '대기열 합류' : '참여하기'}
                                                 </button>
                                             </form>
+                                        </div>
+                                    {:else}
+                                        <div class="actions">
+                                            <span class="btn-join-blocked" title={joinBlockedReason(game)}>
+                                                {joinBlockedReason(game)}
+                                            </span>
                                         </div>
                                     {/if}
                                 {/if}
@@ -1223,7 +1473,7 @@
                                             {@const participant = p as any}
                                             <span class="p-name" class:guest-name={participant.is_guest}>
                                                 {#if participant.title_name}
-                                                    <span class="p-title">[ {participant.title_name} ]</span>
+                                                    <span class="p-title">{participant.title_name}</span>
                                                 {/if}
                                                 {participant.name}
                                                 {#if participant.is_guest}
@@ -1300,17 +1550,28 @@
                 <div class="party-selector">
                     <span class="label-heading">고정팟 불러오기</span>
                     <div class="party-dropdown-wrapper" onclick={(e) => e.stopPropagation()} role="presentation">
-                        <button id="partyDropdown" type="button" class="party-dropdown-trigger" onclick={() => partyDropdownOpen = !partyDropdownOpen}>
-                            <span>고정팟 선택</span>
+                        <button id="partyDropdown" type="button" class="party-dropdown-trigger" aria-haspopup="listbox" aria-expanded={partyDropdownOpen} onclick={() => partyDropdownOpen = !partyDropdownOpen}>
+                            <span>{selectedPartyName ?? '고정팟 선택'}</span>
                             <span class="party-chevron" class:open={partyDropdownOpen}>&#9662;</span>
                         </button>
                         {#if partyDropdownOpen}
-                            <div class="party-dropdown-list">
+                            <div class="party-dropdown-list" role="listbox">
+                                {#if selectedPartyId}
+                                    <button type="button" class="party-dropdown-item party-dropdown-clear" onclick={() => {
+                                        clearPartyFromModal();
+                                        partyDropdownOpen = false;
+                                    }}>
+                                        <span class="party-item-name">고정팟 없음 (전체 공개)</span>
+                                    </button>
+                                {/if}
                                 {#each parties as party}
-                                    <button type="button" class="party-dropdown-item" onclick={() => {
+                                    <button type="button" class="party-dropdown-item" class:selected={party.id === selectedPartyId} role="option" aria-selected={party.id === selectedPartyId} onclick={() => {
                                         applyPartyToModal(party);
                                         partyDropdownOpen = false;
                                     }}>
+                                        {#if party.id === selectedPartyId}
+                                            <span class="party-item-check">&#10003;</span>
+                                        {/if}
                                         <span class="party-item-name">{party.name}</span>
                                         <span class="party-item-game">{party.game_name || party.resolved_game_name || '게임 미지정'}</span>
                                     </button>
@@ -1527,17 +1788,28 @@
                 <div class="party-selector">
                     <span class="label-heading">고정팟 불러오기</span>
                     <div class="party-dropdown-wrapper" onclick={(e) => e.stopPropagation()} role="presentation">
-                        <button id="scheduledPartyDropdown" type="button" class="party-dropdown-trigger" onclick={() => scheduledPartyDropdownOpen = !scheduledPartyDropdownOpen}>
-                            <span>고정팟 선택</span>
+                        <button id="scheduledPartyDropdown" type="button" class="party-dropdown-trigger" aria-haspopup="listbox" aria-expanded={scheduledPartyDropdownOpen} onclick={() => scheduledPartyDropdownOpen = !scheduledPartyDropdownOpen}>
+                            <span>{scheduledSelectedPartyName ?? '고정팟 선택'}</span>
                             <span class="party-chevron" class:open={scheduledPartyDropdownOpen}>&#9662;</span>
                         </button>
                         {#if scheduledPartyDropdownOpen}
-                            <div class="party-dropdown-list">
+                            <div class="party-dropdown-list" role="listbox">
+                                {#if scheduledSelectedPartyId}
+                                    <button type="button" class="party-dropdown-item party-dropdown-clear" onclick={() => {
+                                        clearPartyFromScheduledModal();
+                                        scheduledPartyDropdownOpen = false;
+                                    }}>
+                                        <span class="party-item-name">고정팟 없음 (전체 공개)</span>
+                                    </button>
+                                {/if}
                                 {#each parties as party}
-                                    <button type="button" class="party-dropdown-item" onclick={() => {
+                                    <button type="button" class="party-dropdown-item" class:selected={party.id === scheduledSelectedPartyId} role="option" aria-selected={party.id === scheduledSelectedPartyId} onclick={() => {
                                         applyPartyToScheduledModal(party);
                                         scheduledPartyDropdownOpen = false;
                                     }}>
+                                        {#if party.id === scheduledSelectedPartyId}
+                                            <span class="party-item-check">&#10003;</span>
+                                        {/if}
                                         <span class="party-item-name">{party.name}</span>
                                         <span class="party-item-game">{party.game_name || party.resolved_game_name || '게임 미지정'}</span>
                                     </button>
@@ -1812,7 +2084,7 @@
                 <div class="wtp-detail-names">
                     {#each selectedWtpPost.participants as p}
                         <span class="wtp-participant-tag">
-                            {#if p.title_name}<span class="tag-title">[ {p.title_name} ]</span>{/if}
+                            {#if p.title_name}<span class="tag-title">{p.title_name}</span>{/if}
                             {p.name}
                         </span>
                     {/each}
@@ -1827,41 +2099,24 @@
                     {:else}
                         <button class="wtp-btn join" onclick={() => handleWtpJoin(selectedWtpPost.id)}>참여</button>
                     {/if}
-                    <button class="btn-create" onclick={async () => {
-                        // 마감 처리 후 예정 게임 등록 모달로 이동
-                        const postId = selectedWtpPost.id;
-                        const gameName = selectedWtpPost.game_name;
-                        const minP = selectedWtpPost.min_players;
-                        const maxP = selectedWtpPost.max_players;
-                        try {
-                            await fetch(`/api/wanttoplay/${postId}`, { method: 'DELETE' });
-                        } catch {}
-                        showWtpDetailModal = false;
-                        selectedWtpPost = null;
-                        await invalidateAll();
-                        // 예정 게임 모달 초기화 후 게임명 프리필
-                        dropdownOpen = false;
-                        guestCount = 0;
-                        showScheduledGuestInput = false;
-                        scheduledSelectedPlayerIds = [];
-                        scheduledPartyMembers = [];
-                        scheduledSelectedPartyId = null;
-                        scheduledGameName = gameName;
-                        if (minP) minPlayers = minP;
-                        if (maxP) maxPlayers = maxP;
-                        const now = new Date();
-                        now.setMinutes(Math.ceil((now.getMinutes() + 30) / 10) * 10);
-                        scheduledAt = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}T${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
-                        showScheduledGameModal = true;
-                    }}>예정 게임 등록</button>
                 {/if}
             </div>
 
+            {#if data.user && (data.isAdmin || selectedWtpPost.created_by === data.user.id)}
+                <div class="wtp-detail-owner-actions">
+                    <button class="wtp-btn close" onclick={() => handleWtpCloseAndSchedule(selectedWtpPost)}>마감하고 예정 게임 등록</button>
+                </div>
+            {/if}
+
             <div class="wtp-detail-comments">
                 <h3>대화</h3>
-                {#if data.user}
-                    <GameComments gameId={`wtp_${selectedWtpPost.id}`} userId={data.user.id} isAdmin={data.isAdmin} />
-                {/if}
+                <div class="wtp-detail-comments-body">
+                    {#if data.user}
+                        <GameComments gameId={`wtp_${selectedWtpPost.id}`} userId={data.user.id} isAdmin={data.isAdmin} />
+                    {:else}
+                        <p class="wtp-comments-login-hint">로그인 후 대화를 볼 수 있어요.</p>
+                    {/if}
+                </div>
             </div>
         </div>
     </div>
@@ -2034,6 +2289,12 @@
         width: 140px;
         outline: none;
     }
+    /* 게임 이름 입력창은 .custom-dropdown(원래 소요시간처럼 좁은 드롭다운용) 클래스를
+       자동완성 드롭다운 위치잡기 용도로만 같이 쓰는 것이라, 폭은 꽉 채워야 한다 */
+    .input-group.custom-dropdown {
+        display: flex;
+        width: 100%;
+    }
     .dropdown-selected {
         display: flex;
         justify-content: space-between;
@@ -2097,7 +2358,7 @@
 
     :global(body) {
         margin: 0;
-        font-family: 'Inter', system-ui, -apple-system, sans-serif;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
         background: var(--bg-elevated);
         color: var(--text-primary);
     }
@@ -2107,20 +2368,35 @@
     }
     .visit-plan-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
-        gap: 0.75rem;
+        grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+        align-items: start;
+        gap: 0.5rem;
+        overflow: hidden;
+        padding-top: 10px;
+        margin-top: -10px;
+        transition: max-height 0.2s ease;
     }
     .visit-plan-card {
+        position: relative;
         background: var(--bg-primary);
-        padding: 0.75rem;
-        border-radius: 12px;
+        padding: 0.4rem 0.5rem;
+        border-radius: 10px;
         text-align: center;
-        box-shadow: 0 2px 8px var(--overlay-light);
+        box-shadow: 0 1px 4px var(--overlay-light);
+        border: 1px solid var(--border-light);
         display: flex;
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        overflow: hidden;
+        gap: 0.1rem;
+    }
+    /* 칭호가 있으면 칸 자체는 그대로 두고 테두리만 강조 — 배지는 칸 밖 위쪽에 따로 붙인다 */
+    .visit-plan-card.titled {
+        border-color: var(--color-amber);
+        box-shadow: 0 0 0 1px var(--color-amber);
+    }
+    .visit-plan-card .name {
+        font-size: 0.8rem;
     }
     .btn-visit-plan {
         background: var(--color-warning-bg);
@@ -2334,6 +2610,21 @@
         color: var(--color-orange-dark);
         font-weight: 600;
     }
+    .section-header-actions {
+        display: flex;
+        align-items: center;
+        gap: 0.6rem;
+    }
+    .expand-icon-btn {
+        background: none;
+        border: none;
+        padding: 0;
+        font-size: 0.8rem;
+        color: var(--color-orange-dark);
+        font-weight: 600;
+        cursor: pointer;
+        white-space: nowrap;
+    }
     .container {
         max-width: 600px;
         margin: 0 auto;
@@ -2422,7 +2713,7 @@
     }
     .status-pill.closed {
         background: var(--color-error-bg);
-        color: var(--color-red);
+        color: var(--color-red-dark);
     }
     .status-pill.admin-panel {
         background: var(--color-info-bg);
@@ -2550,29 +2841,47 @@
         margin-bottom: 2rem;
     }
     h2 {
-        font-size: 1.2rem;
-        color: var(--text-darker);
-        border-bottom: 2px solid var(--border-default);
+        font-size: 0.95rem;
+        font-weight: 700;
+        color: var(--text-secondary);
+        letter-spacing: 0.01em;
+        border-bottom: 1px solid var(--border-light);
         padding-bottom: 0.5rem;
         margin: 0;
         margin-bottom: 1rem;
     }
+
     .attendee-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
-        gap: 1rem;
+        grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+        align-items: start;
+        gap: 0.5rem;
+        overflow: hidden;
+        padding-top: 10px;
+        margin-top: -10px;
+        transition: max-height 0.2s ease;
     }
     .attendee-card {
+        position: relative;
         background: var(--bg-primary);
-        padding: 0.75rem;
-        border-radius: 12px;
+        padding: 0.4rem 0.5rem;
+        border-radius: 10px;
         text-align: center;
-        box-shadow: 0 2px 8px var(--overlay-light);
+        box-shadow: 0 1px 4px var(--overlay-light);
+        border: 1px solid var(--border-light);
         display: flex;
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        overflow: hidden;
+        gap: 0.1rem;
+    }
+    /* 칭호가 있으면 칸 자체는 그대로 두고 테두리만 강조 — 배지는 칸 밖 위쪽에 따로 붙인다 */
+    .attendee-card.titled {
+        border-color: var(--color-amber);
+        box-shadow: 0 0 0 1px var(--color-amber);
+    }
+    .attendee-card .name {
+        font-size: 0.8rem;
     }
     .name {
         font-weight: 600;
@@ -2584,19 +2893,20 @@
         display: block;
     }
     .time {
-        font-size: 0.75rem;
+        font-size: 0.68rem;
         color: var(--text-tertiary);
-        margin-top: 0.25rem;
     }
     .attendee-card.playing {
         background: var(--bg-surface);
         border: 1px solid var(--border-default);
-        opacity: 0.8;
     }
     .playing-text {
-        color: var(--color-orange);
-        font-weight: bold;
-        font-size: 0.7rem;
+        color: var(--color-orange-dark);
+        font-weight: 700;
+        font-size: 0.65rem;
+    }
+    .playing-text.party {
+        color: var(--color-blue-bright);
     }
     .games-grid {
         display: flex;
@@ -2608,7 +2918,7 @@
         padding: 1.25rem;
         border-radius: 12px;
         box-shadow: 0 2px 8px var(--overlay-light);
-        border-left: 5px solid var(--color-orange);
+        border: 1px solid var(--border-light);
     }
     .time-remaining {
         color: var(--color-orange-dark);
@@ -2668,7 +2978,7 @@
     }
     .closed-state {
         background: var(--bg-hover);
-        color: var(--color-slate-dark);
+        color: var(--text-tertiary);
         font-weight: bold;
         border: 1px solid var(--border-medium);
     }
@@ -2706,77 +3016,182 @@
         color: var(--text-primary);
     }
 
+    /* 이 섹션 자체가 하나의 패널이므로, 안의 항목들은 각자 박스를 만들지 않고
+       플랫한 리스트 행으로 흐른다 (박스 안에 박스가 되는 것을 피하기 위함).
+       유일한 예외는 가장 가까운 일정(.primary)과 페널티 경고 — 진짜로 눈에 띄어야 하는 것만. */
     .my-status-section {
-        background: var(--bg-primary);
+        background: linear-gradient(135deg, var(--color-warning-bg) 0%, var(--bg-primary) 60%);
         padding: 1.5rem;
-        border-radius: 16px;
-        box-shadow: 0 4px 12px var(--shadow-sm);
+        border-radius: 20px;
+        box-shadow: 0 4px 16px var(--shadow-md);
         margin-bottom: 2rem;
-        border: 1px solid var(--border-light);
+        border: 1px solid var(--border-warning);
     }
-    .my-status-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-        gap: 1rem;
-    }
-    .status-card {
+    .my-status-list {
         display: flex;
         flex-direction: column;
-        gap: 0.25rem;
-        padding: 1rem;
-        background: var(--bg-secondary);
-        border-radius: 12px;
-        border: 1px solid var(--bg-hover);
     }
-    .status-card .label {
-        font-size: 0.75rem;
+    .status-card {
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        gap: 0.3rem;
+        padding: 0.7rem 0.15rem;
+        border-bottom: 1px solid var(--border-light);
+    }
+    /* 플랫 리스트 행에만 적용 — 박스 처리된 카드(.primary/.urgent)는 자기 padding을 그대로 써야
+       위/아래 여백이 한쪽만 눌리지 않는다 */
+    .my-status-list > .status-card:last-child:not(.primary):not(.urgent) {
+        border-bottom: none;
+        padding-bottom: 0.2rem;
+    }
+    .my-status-list > .status-card:first-child:not(.primary):not(.urgent) {
+        padding-top: 0.1rem;
+    }
+    /* 1번째 줄: 아이콘 + 이름 / 2번째 줄: 시간 + 상태 배지 + 취소 버튼 — 이름이 길든 짧든 항상 같은 2줄 구조 */
+    .status-line1 {
+        display: flex;
+        align-items: center;
+        gap: 0.45rem;
+    }
+    .status-line2 {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.4rem;
+        padding-left: calc(16px + 0.45rem);
+    }
+    .status-card form {
+        /* form 태그가 2번째 줄의 흐름을 끊지 않도록 — 버튼이 바로 flex 아이템이 된다 */
+        display: contents;
+    }
+    .status-icon {
+        flex-shrink: 0;
         color: var(--text-secondary);
-        font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
     }
-    .status-card .value {
-        font-size: 1rem;
+    .status-name {
+        font-size: 0.85rem;
         font-weight: 700;
         color: var(--text-primary);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        min-width: 0;
     }
-    .status-card .sub-value {
-        font-size: 0.8rem;
+    .status-time {
+        font-size: 0.72rem;
+        font-weight: 600;
         color: var(--text-secondary);
+        white-space: nowrap;
+    }
+    .status-relative {
+        color: var(--color-orange-dark);
+        font-weight: 800;
+    }
+    .status-line2 .status-tag {
+        flex-shrink: 0;
+    }
+    .status-line2 .btn-cancel-small {
+        flex-shrink: 0;
+        margin: 0 -0.3rem -0.3rem auto;
+        font-size: 0.68rem;
+        padding: 0.35rem 0.3rem;
+        min-height: 32px;
+    }
+    /* 가장 가까운 일정(.primary)이거나 임박한 일정(.urgent)이면 플랫 리스트에서 분리해
+       독립된 박스로 여백을 확보한다 — 급한데 작은 항목이면 다음 줄과 여백이 뒤엉켰던 문제 수정 */
+    .status-card.primary,
+    .status-card.scheduled.urgent {
+        padding: 1rem 1.1rem;
+        margin-bottom: 0.6rem;
+        border: 1px solid var(--bg-hover);
+        border-radius: 16px;
+        background: var(--bg-primary);
+        box-shadow: 0 4px 14px var(--shadow-sm);
+        gap: 0.4rem;
+    }
+    .status-card.primary {
+        padding: 1.1rem 1.1rem;
+    }
+    .status-card.primary .status-icon {
+        width: 20px;
+        height: 20px;
+    }
+    .status-card.primary .status-name {
+        font-size: 1.15rem;
+        font-weight: 800;
+    }
+    .status-card.primary .status-line2 {
+        padding-left: calc(20px + 0.45rem);
+    }
+    .status-card.primary .status-time {
+        font-size: 0.85rem;
+    }
+    .status-card.primary .status-tag {
+        font-size: 0.78rem;
+        padding: 0.18rem 0.55rem;
+    }
+    .status-card.primary .btn-cancel-small {
+        font-size: 0.85rem;
+        padding: 0.5rem 0.4rem;
+        min-height: 40px;
+        margin: 0 -0.4rem -0.3rem auto;
+    }
+    .status-card.scheduled.urgent {
+        border: 2px solid var(--color-orange);
+        box-shadow: 0 4px 16px rgba(255, 152, 0, 0.28);
+        animation: urgent-pulse 2s ease-in-out infinite;
+    }
+    @keyframes urgent-pulse {
+        0%, 100% { box-shadow: 0 4px 16px rgba(255, 152, 0, 0.28); }
+        50% { box-shadow: 0 4px 22px rgba(255, 152, 0, 0.5); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+        .status-card.scheduled.urgent { animation: none; }
+    }
+    .urgent-flag {
+        position: absolute;
+        top: -10px;
+        right: 12px;
+        background: var(--color-orange);
+        color: #fff;
+        font-size: 0.65rem;
+        font-weight: 700;
+        padding: 2px 8px;
+        border-radius: 10px;
+        letter-spacing: 0.02em;
     }
     .status-card.penalty-warning {
+        padding: 1rem 1.1rem;
+        margin-bottom: 0.6rem;
+        border: 1px solid var(--color-red-dark);
+        border-radius: 16px;
         background: var(--color-error-bg);
-        border-color: var(--color-error-bg);
+        box-shadow: 0 4px 14px var(--shadow-sm);
     }
-    .status-card.penalty-warning .value {
-        color: var(--color-red);
+    .status-card.penalty-warning .status-time {
+        color: var(--color-red-dark);
+        font-weight: 700;
+        margin-left: auto;
     }
     .warning-text {
+        flex-basis: 100%;
         font-size: 0.7rem;
-        color: var(--color-red);
-        margin: 0.25rem 0 0 0;
+        color: var(--color-red-dark);
+        margin: 0;
         font-weight: 600;
-    }
-    .status-card.scheduled {
-        background: var(--color-purple-bg);
-        border-color: var(--border-light);
-    }
-    .status-card.reservation {
-        background: var(--color-info-bg);
-        border-color: var(--color-info-bg);
     }
     .status-tag {
         display: inline-block;
-        font-size: 0.7rem;
+        font-size: 0.62rem;
         font-weight: 700;
-        padding: 0.1rem 0.4rem;
+        padding: 0.05rem 0.35rem;
         border-radius: 4px;
-        margin-top: 0.25rem;
         width: fit-content;
     }
     .status-tag.pending { background: var(--color-warning-bg); color: var(--color-orange-dark); }
     .status-tag.waitlisted { background: var(--bg-hover); color: var(--text-dark); }
-    .status-tag.confirmed { background: var(--color-success-bg); color: var(--color-green-dark); }
+    .status-tag.confirmed { background: var(--color-success-bg); color: var(--status-success-text); }
 
     .btn-action-text {
         background: none;
@@ -2811,18 +3226,23 @@
     .btn-cancel-small {
         background: none;
         border: none;
-        color: var(--text-hint);
-        font-size: 0.75rem;
+        color: var(--text-dark);
+        font-size: 0.78rem;
+        font-weight: 600;
         text-decoration: underline;
+        text-underline-offset: 2px;
         cursor: pointer;
-        padding: 0;
-        margin-top: 0.5rem;
+        padding: 0.5rem 0.4rem;
+        margin: 0.25rem -0.4rem -0.4rem -0.4rem;
+        min-height: 40px;
         text-align: left;
+        border-radius: 8px;
+        transition: background 0.15s, color 0.15s;
     }
     .btn-cancel-small:hover {
-        color: var(--text-dark);
+        color: var(--color-red-dark);
+        background: var(--color-error-bg);
     }
-
     .section-header {
         display: flex;
         justify-content: space-between;
@@ -2871,12 +3291,6 @@
         transform: translateY(-2px);
         box-shadow: 0 4px 12px var(--shadow-sm);
     }
-    .table-card.playing {
-        border-left: 6px solid var(--color-orange);
-    }
-    .table-card.available {
-        border-left: 6px solid var(--color-green);
-    }
     .table-header {
         display: flex;
         align-items: center;
@@ -2894,6 +3308,20 @@
         display: flex;
         align-items: center;
         gap: 0.3rem;
+    }
+    .table-card.playing .table-header h3::before,
+    .table-card.available .table-header h3::before {
+        content: '';
+        flex-shrink: 0;
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+    }
+    .table-card.playing .table-header h3::before {
+        background: var(--color-orange);
+    }
+    .table-card.available .table-header h3::before {
+        background: var(--color-green);
     }
     .game-title-text {
         white-space: nowrap;
@@ -3005,8 +3433,11 @@
         border: none;
         color: var(--text-hint);
         padding: 0;
-        width: 14px;
-        height: 14px;
+        width: 32px;
+        height: 32px;
+        min-width: 32px;
+        min-height: 32px;
+        font-size: 1rem;
         cursor: pointer;
         display: flex;
         align-items: center;
@@ -3070,7 +3501,20 @@
         white-space: nowrap;
         flex-shrink: 0;
     }
-    
+    .btn-join-blocked {
+        width: auto;
+        padding: 0.3rem 0.8rem;
+        font-size: 0.75rem;
+        font-weight: 600;
+        border-radius: 6px;
+        background: var(--bg-tertiary);
+        color: var(--text-tertiary);
+        border: 1px dashed var(--border-medium);
+        white-space: nowrap;
+        flex-shrink: 0;
+        cursor: default;
+    }
+
     @media (max-width: 768px) {
         .table-card {
             flex-direction: column;
@@ -3316,6 +3760,7 @@
         box-shadow: 0 4px 12px var(--shadow-lg);
         max-height: 90vh;
         overflow-y: auto;
+        overscroll-behavior: contain;
     }
     .modal-content h2 {
         margin-top: 0;
@@ -3673,65 +4118,38 @@
             font-size: 0.8rem;
         }
     }
-    /* Mini Titles */
+    /* Mini Titles — 칭호는 칸 안에 줄을 차지하지 않고, 칸 밖 위쪽에 뱃지로 얹힌다.
+       칸 자체는 .titled 테두리 강조만 받고 크기는 그대로 유지된다. */
     .mini-title {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: fit-content;
-        max-width: 100%;
-        padding: 2px 8px;
-        border: 1px solid var(--color-amber); /* Amber-400 */
-        border-radius: 6px;
-        background: rgba(255, 255, 255, 0.5);
-        color: var(--color-amber-darker); /* Amber-600 */
-        font-size: 0.75rem;
+        position: absolute;
+        top: -9px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: max-content;
+        max-width: 110px;
+        padding: 1px 6px;
+        border: 1px solid var(--color-amber);
+        border-radius: 8px;
+        background: var(--bg-primary);
+        color: var(--color-amber-darker);
+        font-size: 0.58rem;
         font-weight: 700;
-        margin-bottom: 2px;
-        word-break: keep-all;
-        text-align: center;
-        line-height: 1.3;
-    }
-    .attendee-info {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        width: 100%;
-        min-width: 0;
-        flex: 1;
-    }
-    .attendee-info .name {
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
-    }
-    
-    .tag-title {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        width: fit-content;
-        /* padding: 2px 8px; */
- 
-        background: rgba(255, 255, 255, 0.5);
-        color: var(--color-amber-darker);
-        font-size: 0.75rem;
-        font-weight: 700;
-        vertical-align: middle;
+        text-align: center;
+        line-height: 1.4;
+        pointer-events: none;
     }
     .player-tag {
         display: inline-flex;
         align-items: center;
         gap: 4px;
-        background: transparent;
         padding: 0.2rem 0.5rem;
-          border-radius: 6px;
+        border-radius: 6px;
         font-size: 0.9rem;
         font-weight: 500;
         color: var(--text-dark);
-        margin-right: 8px;
-        margin-bottom: 6px;
     }
 
     .p-name {
@@ -3739,18 +4157,20 @@
         align-items: center;
         gap: 2px;
     }
-    .p-title {
+    /* 참가자 태그 안 칭호는 배지로 빼지 않고 그냥 인라인으로 — 여기는 한 줄에 인원이
+       적어서 태그가 길어져도 보기 편하고, 칭호 있는 사람이 여럿 나란히 있는 경우도 흔하다 */
+    .p-title, .tag-title {
         display: inline-flex;
         align-items: center;
         justify-content: center;
         width: fit-content;
-        /* padding: 2px 8px; */
-
-        background: rgba(255, 255, 255, 0.5);
-        color: var(--color-amber-darker);
-        font-size: 0.75rem;
-        font-weight: 700;
+        padding: 1px 6px;
         margin-right: 4px;
+        border-radius: 4px;
+        background: rgba(251, 191, 36, 0.18);
+        color: var(--color-amber-darker);
+        font-size: 0.7rem;
+        font-weight: 700;
         vertical-align: middle;
     }
 
@@ -3904,6 +4324,18 @@
     }
     .party-dropdown-item:not(:last-child) {
         border-bottom: 1px solid var(--bg-tertiary);
+    }
+    .party-dropdown-item.selected {
+        background: var(--color-info-bg);
+    }
+    .party-item-check {
+        color: var(--color-blue-bright);
+        font-weight: 700;
+        flex-shrink: 0;
+    }
+    .party-dropdown-item.party-dropdown-clear {
+        color: var(--text-secondary);
+        font-style: italic;
     }
     .party-item-name {
         font-weight: 600;
@@ -4059,23 +4491,26 @@
     }
     .wtp-tag-badge {
         display: inline-block;
-        padding: 0.1rem 0.45rem;
+        padding: 0.15rem 0.5rem;
         border-radius: 10px;
         background: var(--color-blue-light, #dbeafe);
-        color: var(--color-blue, #3b82f6);
-        font-size: 0.7rem;
-        font-weight: 500;
+        color: var(--color-blue-deep, #1d4ed8);
+        font-size: 0.75rem;
+        font-weight: 600;
     }
 
     .wtp-detail-modal {
-        max-height: 85vh;
-        overflow-y: auto;
+        max-height: min(860px, 92vh);
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
     }
     .wtp-detail-header {
         display: flex;
         justify-content: space-between;
         align-items: flex-start;
         gap: 0.5rem;
+        flex-shrink: 0;
     }
     .wtp-detail-game {
         display: flex;
@@ -4106,8 +4541,12 @@
         padding: 0;
         line-height: 1;
     }
+    .wtp-detail-modal > .wtp-tags-display {
+        flex-shrink: 0;
+    }
     .wtp-detail-participants {
         margin: 1rem 0;
+        flex-shrink: 0;
     }
     .wtp-detail-participants h3 {
         font-size: 0.9rem;
@@ -4130,15 +4569,42 @@
         gap: 0.5rem;
         margin: 0.75rem 0;
         flex-wrap: wrap;
+        flex-shrink: 0;
+    }
+    .wtp-detail-owner-actions {
+        display: flex;
+        margin: 0 0 0.5rem;
+        padding-top: 0.5rem;
+        border-top: 1px dashed var(--border-medium);
+        flex-shrink: 0;
     }
     .wtp-detail-comments {
         margin-top: 1rem;
         border-top: 1px solid var(--border-light);
         padding-top: 0.75rem;
+        display: flex;
+        flex-direction: column;
+        flex: 1 1 auto;
+        min-height: 260px;
     }
     .wtp-detail-comments h3 {
         font-size: 0.9rem;
         margin: 0 0 0.5rem;
+        flex-shrink: 0;
+    }
+    .wtp-detail-comments-body {
+        flex: 1 1 auto;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+    }
+    .wtp-comments-login-hint {
+        margin: 0;
+        padding: 1rem 0;
+        text-align: center;
+        font-size: 0.85rem;
+        color: var(--text-tertiary);
     }
 
     .wtp-btn {
@@ -4162,5 +4628,6 @@
         background: var(--bg-secondary);
         color: var(--color-red, #ef4444);
         border: 1px solid var(--color-red, #ef4444);
+        width: 100%;
     }
 </style>

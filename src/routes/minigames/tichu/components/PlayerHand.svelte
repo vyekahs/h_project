@@ -248,8 +248,8 @@
 		align-self: center;
 	}
 	.my-declaration.grand {
-		background: linear-gradient(135deg, #dc2626, #b91c1c);
-		border: 1px solid rgba(252, 165, 165, 0.4);
+		background: linear-gradient(135deg, #6b5a95, #4a3d6b);
+		border: 1px solid rgba(196, 181, 253, 0.4);
 	}
 	.my-declaration.small-tichu {
 		background: linear-gradient(135deg, #059669, #047857);
@@ -266,15 +266,15 @@
 		background: rgba(0, 0, 0, 0.45);
 		backdrop-filter: blur(20px);
 		-webkit-backdrop-filter: blur(20px);
-		border-top: 1px solid rgba(251, 191, 36, 0.3);
+		border-top: 1px solid rgba(230, 211, 163, 0.3);
 		box-shadow: 0 -4px 20px rgba(0,0,0,0.4);
 		font-family: 'Inter', sans-serif;
 		transition: all 0.3s ease;
 	}
 	.hand-area.is-my-turn {
-		background: rgba(40, 25, 0, 0.6);
-		border-top: 1px solid rgba(251, 191, 36, 0.8);
-		box-shadow: 0 -10px 30px rgba(251, 191, 36, 0.15), inset 0 20px 30px rgba(251, 191, 36, 0.05);
+		background: rgba(35, 28, 50, 0.6);
+		border-top: 1px solid rgba(230, 211, 163, 0.8);
+		box-shadow: 0 -10px 30px rgba(230, 211, 163, 0.15), inset 0 20px 30px rgba(230, 211, 163, 0.05);
 	}
 
 	.hand-cards {
@@ -316,30 +316,32 @@
 	.btn-play {
 		padding: 10px 32px;
 		border-radius: 14px;
-		border: 1px solid rgba(255,255,255,0.2);
-		background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); /* Imperial Gold */
-		color: #fff;
+		border: 1px solid rgba(255,255,255,0.3);
+		background: linear-gradient(135deg, #e6d3a3 0%, #c9a668 100%); /* Cream Gold */
+		color: #4a3820;
 		font-weight: 700;
 		font-size: 1rem;
 		cursor: pointer;
-		box-shadow: 0 4px 15px rgba(245,158,11,0.4);
+		box-shadow: 0 4px 15px rgba(168,130,79,0.4);
 		transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-		text-shadow: 0 1px 1px rgba(0,0,0,0.2);
+		text-shadow: 0 1px 0 rgba(255,255,255,0.3);
 	}
 	.btn-play:hover:not(:disabled) {
 		transform: translateY(-2px) scale(1.02);
-		box-shadow: 0 8px 25px rgba(245,158,11,0.6);
+		box-shadow: 0 8px 25px rgba(168,130,79,0.6);
 	}
 	.btn-play:active:not(:disabled) {
 		transform: translateY(1px);
 	}
 	.btn-play:disabled {
-		background: rgba(107, 114, 128, 0.5);
+		/* opacity를 쓰면 텍스트/배경이 함께 옅어져 대비가 배경에 따라 들쭉날쭉해짐 —
+		   대신 불투명한 색을 직접 지정해 대비를 보장 */
+		background: #4b5563;
 		box-shadow: none;
 		border-color: transparent;
-		opacity: 0.6;
 		cursor: not-allowed;
-		color: #d1d5db;
+		color: #e5e7eb;
+		text-shadow: none;
 	}
 
 	.btn-pass {
@@ -361,7 +363,9 @@
 		border-color: rgba(255,255,255,0.3);
 	}
 	.btn-pass:disabled {
-		opacity: 0.4;
+		background: rgba(0, 0, 0, 0.35);
+		border-color: rgba(255, 255, 255, 0.08);
+		color: #9ca3af;
 		cursor: not-allowed;
 	}
 
@@ -385,7 +389,9 @@
 		transform: scale(1.05);
 	}
 	.btn-bomb:disabled {
-		opacity: 0.4;
+		background: rgba(0, 0, 0, 0.35);
+		border-color: rgba(255, 255, 255, 0.08);
+		color: #9ca3af;
 		cursor: not-allowed;
 		animation: none;
 	}
@@ -449,9 +455,9 @@
 		border-color: rgba(255,255,255,0.3);
 	}
 	.exchange-slot.target {
-		border-color: #fbbf24;
-		background: rgba(251, 191, 36, 0.15);
-		box-shadow: 0 0 15px rgba(251, 191, 36, 0.2);
+		border-color: #e6d3a3;
+		background: rgba(230, 211, 163, 0.15);
+		box-shadow: 0 0 15px rgba(230, 211, 163, 0.2);
 		animation: slotPulse 1.5s infinite;
 	}
 	.exchange-slot.assigned {
@@ -464,8 +470,8 @@
 		pointer-events: none;
 	}
 	@keyframes slotPulse {
-		0%, 100% { box-shadow: 0 0 5px rgba(251, 191, 36, 0.2); }
-		50% { box-shadow: 0 0 20px rgba(251, 191, 36, 0.4); transform: scale(1.02); }
+		0%, 100% { box-shadow: 0 0 5px rgba(230, 211, 163, 0.2); }
+		50% { box-shadow: 0 0 20px rgba(230, 211, 163, 0.4); transform: scale(1.02); }
 	}
 	.slot-label {
 		font-size: 0.75rem;
@@ -491,7 +497,7 @@
 	}
 	.exchange-hint {
 		font-size: 0.8rem;
-		color: #fbbf24;
+		color: #e6d3a3;
 		font-weight: 600;
 		text-shadow: 0 1px 2px rgba(0,0,0,0.5);
 		background: rgba(0,0,0,0.3);
@@ -502,16 +508,16 @@
 		padding: 10px 32px;
 		border-radius: 14px;
 		border: none;
-		background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
-		color: #fff;
+		background: linear-gradient(135deg, #e6d3a3 0%, #c9a668 100%);
+		color: #4a3820;
 		font-weight: 700;
 		font-size: 0.95rem;
 		cursor: pointer;
-		box-shadow: 0 4px 15px rgba(245,158,11,0.3);
+		box-shadow: 0 4px 15px rgba(168,130,79,0.3);
 		transition: all 0.2s;
 	}
 	.btn-exchange-submit:hover {
 		transform: translateY(-2px);
-		box-shadow: 0 8px 20px rgba(245,158,11,0.5);
+		box-shadow: 0 8px 20px rgba(168,130,79,0.5);
 	}
 </style>

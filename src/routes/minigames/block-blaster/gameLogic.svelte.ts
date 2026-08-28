@@ -826,6 +826,11 @@ export function createBlockBlasterGame() {
 		// special 모드: 블록 배치 성공 시 쿨다운 진행
 		if (isSpecialMode()) tickCooldowns();
 
+		// PORTAL 발동 — 사용자 블록이 portal 마커 셀과 겹쳤다면 짝꿍 위치에 자동 셀 추가 + 두 포털 이동
+		if (isSpecialMode() && currentDangerStage) {
+			triggerPortalsAt(placedCells, block.color);
+		}
+
 		// Check for completed lines
 		const { rows, cols } = findCompletedLines(grid);
 		const totalLines = rows.length + cols.length;
@@ -838,9 +843,25 @@ export function createBlockBlasterGame() {
 			combo++;
 			if (combo > maxCombo) maxCombo = combo;
 
-			const points = calculateScore(block.cells.length, totalLines, combo);
+			let points = calculateScore(block.cells.length, totalLines, combo);
+			// RUST 페널티 — 부식 셀이 포함된 라인 수만큼 라인 점수 절반 (콤보 보너스는 유지)
+			if (isSpecialMode()) {
+				const rustyLines = countRustyLines(rows, cols);
+				if (rustyLines > 0) {
+					// 라인 점수 = totalLines² × 10. rusty 라인 비중만큼 절반 깎음.
+					const linePoints = totalLines * totalLines * 10;
+					const penalty = Math.floor((linePoints * rustyLines) / (totalLines * 2));
+					points -= penalty;
+				}
+			}
 			score += points;
 			linesCleared += totalLines;
+
+			// QUEST 패턴 감지 — clearLinesWithMeta 호출 전(grid에 라인 데이터 살아있을 때)
+			// 사용자 블록 배치로 만든 라인 클리어만 카운트 (능력 경로 X)
+			if (isSpecialMode() && currentDangerStage) {
+				detectQuestPatterns(rows, cols, combo);
+			}
 
 			setTimeout(() => {
 				clearLinesWithMeta(rows, cols);
@@ -1230,10 +1251,71 @@ export function createBlockBlasterGame() {
 	 * doom-row/col, hazard-zone은 영역 표시만 — DangerOverlay가 cells 좌표로 그림.
 	 */
 	function activateDangerOnBoard(d: Danger, stageNumber: number) {
-		if (d.type !== 'reinforced' && d.type !== 'spreading') return;
+		if (
+			d.type !== 'reinforced' &&
+			d.type !== 'spreading' &&
+			d.type !== 'storm' &&
+			d.type !== 'portal' &&
+			d.type !== 'rust' &&
+			d.type !== 'chaser'
+		) return;
 		const next = cloneGrid(grid);
 		const nextMeta = { ...cellMeta };
 		const reinforcedHp = stageNumber <= 5 ? 2 : 3;
+		// STORM은 단일 셀이고 활성화 시 자리에 이미 셀이 있으면 silent 종료
+		if (d.type === 'storm') {
+			const [r, c] = d.cells[0];
+			if (next[r][c] !== 0) {
+				d.resolved = true; // 보너스 X, 그냥 사라짐
+				return;
+			}
+			next[r][c] = 5 as CellColor;
+			nextMeta[cellKey(r, c)] = { stormOrigin: true, stormDangerId: d.id };
+			grid = next;
+			cellMeta = nextMeta;
+			return;
+		}
+		// PORTAL은 grid에 색을 채우지 않음 — 사용자가 그 빈 셀에 블록을 놓아야 발동
+		if (d.type === 'portal') {
+			// 활성화 시점에 두 셀 모두 빈 셀이고 다른 portal 마커도 없어야 함
+			for (const [r, c] of d.cells) {
+				if (next[r][c] !== 0 || nextMeta[cellKey(r, c)]?.portalMark) {
+					d.resolved = true;
+					return;
+				}
+			}
+			for (const [r, c] of d.cells) {
+				nextMeta[cellKey(r, c)] = { portalMark: true, portalDangerId: d.id };
+			}
+			cellMeta = nextMeta;
+			return;
+		}
+		// RUST는 색을 채우고 (자체 색상 5) rustMark + rustDangerId 마커
+		if (d.type === 'rust') {
+			const [r, c] = d.cells[0];
+			if (next[r][c] !== 0) {
+				d.resolved = true;
+				return;
+			}
+			next[r][c] = 5 as CellColor;
+			nextMeta[cellKey(r, c)] = { rustMark: true, rustDangerId: d.id };
+			grid = next;
+			cellMeta = nextMeta;
+			return;
+		}
+		// CHASER는 색을 채우고 chaserMark + chaserDangerId 마커. 매 턴 인접 셀로 이동.
+		if (d.type === 'chaser') {
+			const [r, c] = d.cells[0];
+			if (next[r][c] !== 0) {
+				d.resolved = true;
+				return;
+			}
+			next[r][c] = 5 as CellColor;
+			nextMeta[cellKey(r, c)] = { chaserMark: true, chaserDangerId: d.id };
+			grid = next;
+			cellMeta = nextMeta;
+			return;
+		}
 		for (const [r, c] of d.cells) {
 			if (next[r][c] !== 0) continue; // 이미 채워진 칸은 건너뜀(드물게 발생)
 			next[r][c] = 5 as CellColor;
@@ -1264,7 +1346,7 @@ export function createBlockBlasterGame() {
 			for (const d of ds.dangers) {
 				if (d.resolved) continue;
 				if (d.delayTurns > 0) continue;
-				if (!isDangerResolved(d, grid)) continue;
+				if (!isDangerResolved(d, grid, cellMeta)) continue;
 				d.resolved = true;
 				changed = true;
 				score += 200; // 위험 1개 해결 보너스
@@ -1362,6 +1444,415 @@ export function createBlockBlasterGame() {
 				spreadOnce(d);
 				d.countdown = d.initialCountdown;
 			}
+			if (d.type === 'portal' && d.countdown === 0) {
+				// 카운트 만료 — 포털 마커 제거 + 자연 종료 (보너스 X)
+				const nextMeta = { ...cellMeta };
+				for (const [r, c] of d.cells) {
+					const k = cellKey(r, c);
+					if (nextMeta[k]?.portalMark) delete nextMeta[k];
+				}
+				cellMeta = nextMeta;
+				d.resolved = true;
+				resolvedDangerCount++;
+				checkStageClearByCount();
+				if (isMatchedToLock(d, ds)) {
+					ds.lockedSlotDangerIds = ds.lockedSlotDangerIds.filter(id => id !== d.id);
+				}
+			}
+			if (d.type === 'storm') {
+				// 매 N턴마다 보드의 무작위 빈 셀에 검은 돌 추가
+				// (스테이지 1~5: 매 2턴, 6~10: 매 1턴)
+				const interval = ds.stageNumber <= 5 ? 2 : 1;
+				const elapsed = d.initialCountdown - d.countdown;
+				if (d.countdown > 0 && elapsed > 0 && elapsed % interval === 0) {
+					addRandomBlackStone();
+				}
+				if (d.countdown === 0) {
+					// 카운트 만료 — 중심 셀을 검은 돌(petrified)로 변환 후 자연 종료 (보너스 없음)
+					const [r, c] = d.cells[0];
+					const meta = cellMeta[cellKey(r, c)] ?? {};
+					const { stormOrigin: _so, stormDangerId: _sid, ...rest } = meta;
+					void _so; void _sid;
+					cellMeta = { ...cellMeta, [cellKey(r, c)]: { ...rest, petrified: true } };
+					d.resolved = true;
+					resolvedDangerCount++;
+					checkStageClearByCount();
+					// 잠금 매칭 위험이면 슬롯 해제 (1단계 fixpoint와 별개로 명시 처리)
+					if (isMatchedToLock(d, ds)) {
+						ds.lockedSlotDangerIds = ds.lockedSlotDangerIds.filter(id => id !== d.id);
+					}
+				}
+			}
+			if (d.type === 'rust') {
+				// 매 N턴마다 인접 빈 셀로 확산 (스테이지 1~7: 매 3턴, 8~10: 매 2턴)
+				const interval = ds.stageNumber <= 7 ? 3 : 2;
+				const elapsed = d.initialCountdown - d.countdown;
+				if (d.countdown > 0 && elapsed > 0 && elapsed % interval === 0) {
+					rustSpreadOnce(d);
+				}
+				if (d.countdown === 0) {
+					// 카운트 만료 — 부식 가족 셀 모두 제거 + 자연 종료 (보너스 X)
+					const next = cloneGrid(grid);
+					const nextMeta = { ...cellMeta };
+					for (const [r, c] of d.cells) {
+						if (nextMeta[cellKey(r, c)]?.rustDangerId === d.id) {
+							next[r][c] = 0;
+							delete nextMeta[cellKey(r, c)];
+						}
+					}
+					grid = next;
+					cellMeta = nextMeta;
+					d.resolved = true;
+					resolvedDangerCount++;
+					checkStageClearByCount();
+					if (isMatchedToLock(d, ds)) {
+						ds.lockedSlotDangerIds = ds.lockedSlotDangerIds.filter(id => id !== d.id);
+					}
+				}
+			}
+			if (d.type === 'chaser') {
+				// 매 턴 인접 셀 중 폭발 효율이 가장 높은 곳으로 이동 (이동 가능 후보 0이면 제자리)
+				if (d.countdown > 0) {
+					chaserMoveOnce(d);
+				}
+				if (d.countdown === 0) {
+					// 카운트 만료 — 3x3 폭발: 영역의 채워진 셀들을 petrified로 변환 후 자연 종료
+					chaserExplode(d);
+					d.resolved = true;
+					resolvedDangerCount++;
+					checkStageClearByCount();
+					if (isMatchedToLock(d, ds)) {
+						ds.lockedSlotDangerIds = ds.lockedSlotDangerIds.filter(id => id !== d.id);
+					}
+				}
+			}
+			if (d.type === 'quest' && d.countdown === 0) {
+				// 카운트 만료 — 패턴 미달성. 잠금 해제 + 자연 종료 (보너스 X, resolvedDangerCount는 +1)
+				d.resolved = true;
+				resolvedDangerCount++;
+				checkStageClearByCount();
+				if (isMatchedToLock(d, ds)) {
+					ds.lockedSlotDangerIds = ds.lockedSlotDangerIds.filter(id => id !== d.id);
+				}
+			}
+		}
+	}
+
+	/**
+	 * PORTAL 발동 — 사용자가 방금 배치한 셀들 중 portal 마커와 겹친 게 있으면
+	 * 해당 portal 위험들에 대해: 짝꿍 위치에 같은 색 1셀 자동 추가 + 두 portal 모두
+	 * 새 빈 셀로 이동.
+	 *
+	 * 한 블록이 두 포털 셀을 동시에 덮은 경우(같은 위험의 양쪽 셀에 모두 닿음):
+	 * 자동 추가는 한 번만, 위치 이동도 한 번 시도.
+	 */
+	function triggerPortalsAt(placed: [number, number][], color: CellColor) {
+		if (!currentDangerStage) return;
+		// placed 셀 좌표 → key set
+		const placedKeys = new Set(placed.map(([r, c]) => cellKey(r, c)));
+		// 영향받은 portal 위험 ID 수집 (한 위험이 양쪽 다 덮였어도 한 번만)
+		const triggered = new Set<string>();
+		for (const key of placedKeys) {
+			const id = cellMeta[key]?.portalDangerId;
+			if (id) triggered.add(id);
+		}
+		if (triggered.size === 0) return;
+
+		for (const id of triggered) {
+			const d = currentDangerStage.dangers.find(x => x.id === id);
+			if (!d || d.resolved) continue;
+			// 짝꿍 셀 찾기 — d.cells 두 개 중 placed에 포함되지 않은 쪽
+			// (양쪽 다 placed면 첫 번째를 짝꿍으로 처리해 한 번 추가)
+			const [a, b] = d.cells;
+			const aPlaced = placedKeys.has(cellKey(a[0], a[1]));
+			const bPlaced = placedKeys.has(cellKey(b[0], b[1]));
+			let partner: [number, number] | null = null;
+			if (aPlaced && !bPlaced) partner = b;
+			else if (bPlaced && !aPlaced) partner = a;
+			else if (aPlaced && bPlaced) partner = b; // 둘 다 덮임 — b를 짝꿍으로
+			if (!partner) continue;
+
+			// 짝꿍 위치에 같은 색 1셀 자동 추가 (이미 다른 셀이 있으면 추가 안 함)
+			const next = cloneGrid(grid);
+			const nextMeta = { ...cellMeta };
+			if (next[partner[0]][partner[1]] === 0) {
+				next[partner[0]][partner[1]] = color;
+			}
+			// 두 포털 마커 제거 (placed로 덮인 쪽은 사용자 블록 색이 들어와 있고, 짝꿍은 자동 셀)
+			delete nextMeta[cellKey(a[0], a[1])];
+			delete nextMeta[cellKey(b[0], b[1])];
+			grid = next;
+			cellMeta = nextMeta;
+
+			// 빈 셀 2개 새로 찾아서 포털 이동
+			const empty: [number, number][] = [];
+			for (let r = 0; r < GRID_SIZE; r++) {
+				for (let c = 0; c < GRID_SIZE; c++) {
+					if (grid[r][c] === 0 && !cellMeta[cellKey(r, c)]?.portalMark) {
+						empty.push([r, c]);
+					}
+				}
+			}
+			if (empty.length >= 2) {
+				const i1 = Math.floor(Math.random() * empty.length);
+				let i2 = Math.floor(Math.random() * (empty.length - 1));
+				if (i2 >= i1) i2++;
+				const newA = empty[i1];
+				const newB = empty[i2];
+				d.cells = [newA, newB];
+				const movedMeta = { ...cellMeta };
+				movedMeta[cellKey(newA[0], newA[1])] = { portalMark: true, portalDangerId: d.id };
+				movedMeta[cellKey(newB[0], newB[1])] = { portalMark: true, portalDangerId: d.id };
+				cellMeta = movedMeta;
+			} else if (empty.length === 1) {
+				// 한 자리만 가능 — 이동 못함, 위험은 그대로 종료 처리 (보드가 거의 막힘)
+				d.resolved = true;
+			} else {
+				d.resolved = true;
+			}
+		}
+	}
+
+	/**
+	 * 보드의 무작위 빈 셀 1개에 검은 돌(petrified) 셀을 추가.
+	 * STORM이 매 턴 호출. 빈 셀이 없으면 아무 작업 안 함.
+	 */
+	/**
+	 * 라인 클리어 시 부식(rustMark) 셀이 포함된 라인 수를 셈.
+	 * 점수 페널티 계산용 — rustyLines / totalLines 비중만큼 라인 점수 -50%.
+	 */
+	function countRustyLines(rows: number[], cols: number[]): number {
+		let n = 0;
+		for (const r of rows) {
+			let hit = false;
+			for (let c = 0; c < GRID_SIZE; c++) {
+				if (cellMeta[cellKey(r, c)]?.rustMark) {
+					hit = true;
+					break;
+				}
+			}
+			if (hit) n++;
+		}
+		for (const c of cols) {
+			let hit = false;
+			for (let r = 0; r < GRID_SIZE; r++) {
+				if (cellMeta[cellKey(r, c)]?.rustMark) {
+					hit = true;
+					break;
+				}
+			}
+			if (hit) n++;
+		}
+		return n;
+	}
+
+	function addRandomBlackStone() {
+		const empty: [number, number][] = [];
+		for (let r = 0; r < GRID_SIZE; r++) {
+			for (let c = 0; c < GRID_SIZE; c++) {
+				// PORTAL 마커 셀은 빈 셀이지만 사용자가 블록 놓아 발동해야 함 — 검은 돌로 막지 않음
+				if (grid[r][c] === 0 && !cellMeta[cellKey(r, c)]?.portalMark) empty.push([r, c]);
+			}
+		}
+		if (empty.length === 0) return;
+		const [r, c] = empty[Math.floor(Math.random() * empty.length)];
+		const next = cloneGrid(grid);
+		next[r][c] = 5 as CellColor;
+		grid = next;
+		cellMeta = { ...cellMeta, [cellKey(r, c)]: { ...cellMeta[cellKey(r, c)], petrified: true } };
+	}
+
+	/**
+	 * RUST 확산 — 부식 가족 셀 중 살아있는(grid≠0) 셀의 인접 빈 셀로 1칸 확장.
+	 * 인접 후보는 일반 빈 셀만 (다른 위험 마커 셀, portal 마커 셀 제외).
+	 * d.cells에 새 좌표 push, cellMeta에 rustMark + rustDangerId 부여.
+	 * 확산 가능 후보 0개면 아무 작업 X (확산 중지, 카운트는 계속 진행).
+	 */
+	function rustSpreadOnce(d: Danger) {
+		const dirs = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+		const candidates: [number, number][] = [];
+		const consideredKeys = new Set<string>();
+		for (const [r, c] of d.cells) {
+			if (grid[r][c] === 0) continue; // 라인 클리어로 사라진 가족 셀
+			for (const [dr, dc] of dirs) {
+				const nr = r + dr;
+				const nc = c + dc;
+				if (nr < 0 || nr >= GRID_SIZE || nc < 0 || nc >= GRID_SIZE) continue;
+				if (grid[nr][nc] !== 0) continue; // 빈 셀만
+				const k = cellKey(nr, nc);
+				if (consideredKeys.has(k)) continue;
+				consideredKeys.add(k);
+				const meta = cellMeta[k];
+				// 다른 위험 마커 셀은 제외 (portal/storm origin/rust 본인 가족도 제외)
+				if (meta?.portalMark) continue;
+				if (meta?.stormOrigin) continue;
+				if (meta?.rustMark) continue;
+				if (meta?.chaserMark) continue;
+				candidates.push([nr, nc]);
+			}
+		}
+		if (candidates.length === 0) return;
+
+		const [nr, nc] = candidates[Math.floor(Math.random() * candidates.length)];
+		const next = cloneGrid(grid);
+		next[nr][nc] = 5 as CellColor;
+		grid = next;
+		cellMeta = {
+			...cellMeta,
+			[cellKey(nr, nc)]: { rustMark: true, rustDangerId: d.id }
+		};
+		d.cells.push([nr, nc]);
+	}
+
+	/**
+	 * CHASER 이동 — 활성화 시 정한 목표(d.chaserTarget)를 향해 매 턴 1칸 이동.
+	 * 4방향 후보 중 목표와의 맨해튼 거리가 가장 짧은 인접 빈 셀로 이동.
+	 * 다른 위험 마커 셀과 일반 블록 셀은 회피 (사용자 블록 보존). 후보 0이면 제자리.
+	 * 카운트와 거리가 정확히 맞으면 마지막 턴에 목표에 도착.
+	 */
+	function chaserMoveOnce(d: Danger) {
+		if (!d.chaserTarget) return;
+		const [cr, cc] = d.cells[0];
+		const [tr, tc] = d.chaserTarget;
+		// 이미 목표에 있으면 이동 X
+		if (cr === tr && cc === tc) return;
+
+		const dirs: [number, number][] = [[-1, 0], [1, 0], [0, -1], [0, 1]];
+		const isBlocked = (r: number, c: number): boolean => {
+			const m = cellMeta[cellKey(r, c)];
+			if (!m) return false;
+			return !!(
+				m.spreadingDangerId ||
+				m.stormOrigin ||
+				m.portalMark ||
+				m.rustMark ||
+				m.reinforcedDangerId ||
+				m.chaserMark
+			);
+		};
+
+		const currentDist = Math.abs(cr - tr) + Math.abs(cc - tc);
+		const candidates: [number, number][] = [];
+		for (const [dr, dc] of dirs) {
+			const nr = cr + dr;
+			const nc = cc + dc;
+			if (nr < 0 || nr >= GRID_SIZE || nc < 0 || nc >= GRID_SIZE) continue;
+			// 빈 셀로만 (사용자 블록 안 덮음)
+			if (grid[nr][nc] !== 0) continue;
+			// 다른 위험 마커 회피
+			if (isBlocked(nr, nc)) continue;
+			// 목표와의 거리가 줄어드는 자리만 (왕복 방지)
+			const newDist = Math.abs(nr - tr) + Math.abs(nc - tc);
+			if (newDist >= currentDist) continue;
+			candidates.push([nr, nc]);
+		}
+		if (candidates.length === 0) return; // 길이 막힘 — 제자리
+
+		const [nr, nc] = candidates[Math.floor(Math.random() * candidates.length)];
+		const next = cloneGrid(grid);
+		const nextMeta = { ...cellMeta };
+		next[cr][cc] = 0;
+		delete nextMeta[cellKey(cr, cc)];
+		next[nr][nc] = 5 as CellColor;
+		nextMeta[cellKey(nr, nc)] = { chaserMark: true, chaserDangerId: d.id };
+		grid = next;
+		cellMeta = nextMeta;
+		d.cells = [[nr, nc]];
+	}
+
+	/**
+	 * CHASER 폭발 — 카운트 만료 시 chaser 위치 중심 3x3 영역의 채워진 셀들을 petrified로 변환.
+	 * 다른 위험 마커는 보존하면서 petrified 추가 (이중 마커). chaser 본인 셀은 비움.
+	 */
+	function chaserExplode(d: Danger) {
+		const [cr, cc] = d.cells[0];
+		const next = cloneGrid(grid);
+		const nextMeta = { ...cellMeta };
+
+		// 본인 셀 먼저 비우기
+		next[cr][cc] = 0;
+		delete nextMeta[cellKey(cr, cc)];
+
+		for (let dr = -1; dr <= 1; dr++) {
+			for (let dc = -1; dc <= 1; dc++) {
+				const nr = cr + dr;
+				const nc = cc + dc;
+				if (nr < 0 || nr >= GRID_SIZE || nc < 0 || nc >= GRID_SIZE) continue;
+				if (nr === cr && nc === cc) continue; // 본인 셀은 위에서 처리
+				if (next[nr][nc] === 0) continue; // 빈 셀은 폭발 효과 없음
+				// 채워진 셀 → petrified 추가 (다른 마커는 보존)
+				const k = cellKey(nr, nc);
+				nextMeta[k] = { ...nextMeta[k], petrified: true };
+			}
+		}
+		grid = next;
+		cellMeta = nextMeta;
+	}
+
+	/**
+	 * QUEST 패턴 감지 — 사용자 블록 배치로 라인 클리어가 발생한 시점에 호출.
+	 * 진행 중 quest들의 패턴이 충족되면 d.resolved=true로 마킹 (1단계 fixpoint가 잡지 않으므로 직접).
+	 *
+	 * @param rows 클리어된 가로줄 인덱스
+	 * @param cols 클리어된 세로열 인덱스
+	 * @param comboValue 이번 라인 클리어 후 콤보 값
+	 *
+	 * 패턴:
+	 * - 'combo': comboValue >= questThreshold
+	 * - 'same-color-line': 클리어된 라인 중 한 줄/열의 모든 셀 색이 동일
+	 * - 'cross': 가로 라인과 세로 라인이 같은 턴에 모두 클리어됨 (rows.length > 0 && cols.length > 0)
+	 */
+	function detectQuestPatterns(rows: number[], cols: number[], comboValue: number) {
+		if (!currentDangerStage) return;
+		const ds = currentDangerStage;
+
+		// 같은 색 라인 판정 — 클리어 직전 grid 상태에서 라인의 모든 셀이 같은 색이면 true
+		const hasSameColorLine = (): boolean => {
+			for (const r of rows) {
+				const first = grid[r][0];
+				if (first === 0) continue;
+				let same = true;
+				for (let c = 1; c < GRID_SIZE; c++) {
+					if (grid[r][c] !== first) { same = false; break; }
+				}
+				if (same) return true;
+			}
+			for (const c of cols) {
+				const first = grid[0][c];
+				if (first === 0) continue;
+				let same = true;
+				for (let r = 1; r < GRID_SIZE; r++) {
+					if (grid[r][c] !== first) { same = false; break; }
+				}
+				if (same) return true;
+			}
+			return false;
+		};
+		const isCross = rows.length > 0 && cols.length > 0;
+		// 같은 색 판정은 비싸니 lazy
+		let sameColorCached: boolean | null = null;
+		const sameColorMatched = (): boolean => {
+			if (sameColorCached === null) sameColorCached = hasSameColorLine();
+			return sameColorCached;
+		};
+
+		for (const d of ds.dangers) {
+			if (d.type !== 'quest') continue;
+			if (d.resolved) continue;
+			if (d.delayTurns > 0) continue;
+			let matched = false;
+			if (d.questPattern === 'combo' && d.questThreshold && comboValue >= d.questThreshold) matched = true;
+			else if (d.questPattern === 'cross' && isCross) matched = true;
+			else if (d.questPattern === 'same-color-line' && sameColorMatched()) matched = true;
+			if (matched) {
+				d.resolved = true;
+				score += 200; // 일반 위험 해결 보너스
+				resolvedDangerCount++;
+				checkStageClearByCount();
+				if (isMatchedToLock(d, ds)) {
+					ds.lockedSlotDangerIds = ds.lockedSlotDangerIds.filter(id => id !== d.id);
+				}
+			}
 		}
 	}
 
@@ -1441,6 +1932,14 @@ export function createBlockBlasterGame() {
 				const meta = cellMeta[k];
 				// 자기 가족 또는 다른 증식 가족은 제외
 				if (meta?.spreadingDangerId) continue;
+				// STORM 중심 셀은 별도 위험으로 보존 (감염 시 마커 중첩 + 시각 혼란)
+				if (meta?.stormOrigin) continue;
+				// PORTAL 셀은 빈 셀이지만 마커 보존 — 감염 X
+				if (meta?.portalMark) continue;
+				// RUST 셀은 자체 위험 — 감염 X (격리)
+				if (meta?.rustMark) continue;
+				// CHASER 셀은 매 턴 이동하는 추적자 — 감염 X (격리)
+				if (meta?.chaserMark) continue;
 				if (grid[nr][nc] === 0) {
 					emptyCandidates.push([nr, nc]);
 					continue;
@@ -2139,6 +2638,37 @@ export function createBlockBlasterGame() {
 				}
 			}
 			return m;
+		},
+		/** STORM 위험 ID → 카운트 만료까지 남은 턴 수 */
+		get stormCountdownById() {
+			const m: Record<string, number> = {};
+			if (currentDangerStage) {
+				for (const d of currentDangerStage.dangers) {
+					if (d.type === 'storm' && !d.resolved && d.delayTurns === 0) {
+						m[d.id] = d.countdown;
+					}
+				}
+			}
+			return m;
+		},
+		/** CHASER 위험 ID → 폭발까지 남은 턴 수 */
+		get chaserCountdownById() {
+			const m: Record<string, number> = {};
+			if (currentDangerStage) {
+				for (const d of currentDangerStage.dangers) {
+					if (d.type === 'chaser' && !d.resolved && d.delayTurns === 0) {
+						m[d.id] = d.countdown;
+					}
+				}
+			}
+			return m;
+		},
+		/** 활성 QUEST 목록 — 헤더에 진행 중 도전 과제 표시용 */
+		get activeQuests(): Danger[] {
+			if (!currentDangerStage) return [];
+			return currentDangerStage.dangers.filter(
+				d => d.type === 'quest' && !d.resolved && d.delayTurns === 0
+			);
 		},
 		get pendingDangerIntro() { return pendingDangerIntro; },
 		get pendingDangerClear() { return pendingDangerClear; },

@@ -2,7 +2,7 @@ import { db } from '$lib/server/db/index';
 import { sql } from 'drizzle-orm';
 import { NotificationService } from './notificationService';
 import { GAME_REGISTRY } from '$lib/games/gameRegistry';
-import { emitPartyChatMessage } from '$lib/server/liveEvents';
+import { emitPartyChatMessage, emitWtpChatMessage } from '$lib/server/liveEvents';
 
 export interface CommentWithUser {
 	id: number;
@@ -117,7 +117,7 @@ export const CommentService = {
 				.catch((e) => console.error('[CommentService] notifyPartyMembers failed:', e));
 		} else if (isWtp) {
 			// wtp: 멘션 없음, 대신 참여자 전원에게 메시지 알림
-			this.notifyWtpParticipants(userId, gameId, user?.nickname ?? '익명')
+			this.notifyWtpParticipants(userId, gameId, comment, user?.nickname ?? '익명')
 				.catch((e) => console.error('[CommentService] notifyWtpParticipants failed:', e));
 		} else {
 			// 미니게임: 멘션 알림
@@ -192,7 +192,7 @@ export const CommentService = {
 		));
 	},
 
-	async notifyWtpParticipants(fromUserId: number, gameId: string, fromName: string) {
+	async notifyWtpParticipants(fromUserId: number, gameId: string, comment: CommentWithUser, fromName: string) {
 		const wtpId = parseInt(gameId.slice(4));
 		const [postResult, participantsResult] = await Promise.all([
 			db.execute(sql`SELECT game_name FROM want_to_play_posts WHERE id = ${wtpId}`),
@@ -201,7 +201,12 @@ export const CommentService = {
 		const gameName = (postResult[0] as any)?.game_name ?? '같이하기';
 		const referenceId = `wtp:${wtpId}`;
 
+		// 수신자별로 서로 독립적인 작업이라 병렬로 처리 (순차 대기 시 참여자 수만큼 지연 누적)
 		const recipients = (participantsResult as any[]).filter((row) => row.attendee_id !== fromUserId);
+		for (const row of recipients) {
+			// SSE 실시간 채팅 메시지 전달 (모달을 열어둔 상태에서도 바로 보이도록)
+			emitWtpChatMessage(row.attendee_id, { wtpId, comment });
+		}
 		await Promise.all(recipients.map((row) =>
 			NotificationService.upsertNotify(
 				row.attendee_id,
@@ -209,7 +214,7 @@ export const CommentService = {
 					type: 'wtp_message',
 					title: '같이하기 대화',
 					body: `${fromName}님이 "${gameName}" 대화방에 메시지를 보냈습니다`,
-					url: '/?tab=games',
+					url: `/?wtp=${wtpId}`,
 				},
 				fromUserId,
 				referenceId
