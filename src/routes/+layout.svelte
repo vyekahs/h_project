@@ -476,5 +476,8 @@
 		top: 12px;
 		right: 12px;
 		z-index: 1050;
+		background: var(--bg-primary);
+		border-radius: 50%;
+		box-shadow: 0 2px 8px var(--shadow-md);
 	}
 </style>

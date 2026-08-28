@@ -20,8 +20,22 @@
 	let showDropdown = $state(false);
 	let loading = $state(false);
 	let dropdownRef: HTMLDivElement | undefined = $state();
+	let dropdownPanelRef: HTMLDivElement | undefined = $state();
 	let bellBtnRef: HTMLButtonElement | undefined = $state();
 	let dropdownStyle = $state('');
+
+	// 알림 패널은 position:fixed로 뷰포트에 고정돼야 하는데, 헤더에 backdrop-filter가
+	// 걸려 있으면(Safari에서 특히) 그게 새 containing block이 되어 fixed가 헤더 기준
+	// absolute처럼 동작해버린다 — 그러면 스크롤할 때 패널이 화면을 따라 내려간다.
+	// document.body로 포탈해서 그 문제를 원천적으로 피한다.
+	function portal(node: HTMLElement) {
+		document.body.appendChild(node);
+		return {
+			destroy() {
+				if (node.parentNode) node.parentNode.removeChild(node);
+			}
+		};
+	}
 
 	// Swipe state
 	let swipingId: number | null = $state(null);
@@ -44,7 +58,10 @@
 	});
 
 	function handleClickOutside(e: MouseEvent) {
-		if (dropdownRef && !dropdownRef.contains(e.target as Node)) {
+		const target = e.target as Node;
+		const insideBell = dropdownRef && dropdownRef.contains(target);
+		const insidePanel = dropdownPanelRef && dropdownPanelRef.contains(target);
+		if (!insideBell && !insidePanel) {
 			showDropdown = false;
 		}
 	}
@@ -242,7 +259,7 @@
 	</button>
 
 	{#if showDropdown}
-		<div class="dropdown" style={dropdownStyle}>
+		<div class="dropdown" style={dropdownStyle} use:portal bind:this={dropdownPanelRef}>
 			<div class="dropdown-header">
 				<span class="dropdown-title">알림</span>
 				{#if unreadCount > 0}
