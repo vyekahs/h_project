@@ -34,16 +34,80 @@
         };
     }
 
+    // 라이브 시계 — 카운트다운/요약 스트립이 SSE 이벤트 없이도 갱신되도록 30초마다 틱
+    let now = Date.now();
+    let clockTimer: ReturnType<typeof setInterval> | null = null;
+
     onMount(() => {
         connectSSE();
+        clockTimer = setInterval(() => { now = Date.now(); }, 30000);
     });
 
     onDestroy(() => {
         sseDestroyed = true;
         if (debounceTimer) clearTimeout(debounceTimer);
         if (sseReconnectTimer) clearTimeout(sseReconnectTimer);
+        if (clockTimer) clearInterval(clockTimer);
         if (eventSource) { eventSource.close(); eventSource = null; }
     });
+
+    /** 폼 제출 시 제출 버튼을 잠깐 비활성화해 더블탭 중복 제출 방지 */
+    function submitLock(form: HTMLFormElement) {
+        function onSubmit() {
+            const btns = form.querySelectorAll<HTMLButtonElement>('button:not([type]), button[type="submit"]');
+            btns.forEach((b) => (b.disabled = true));
+            setTimeout(() => btns.forEach((b) => (b.disabled = false)), 2500);
+        }
+        form.addEventListener('submit', onSubmit);
+        return { destroy() { form.removeEventListener('submit', onSubmit); } };
+    }
+
+    function autofocus(node: HTMLElement) {
+        node.focus();
+    }
+
+    // 파괴적 액션 공통 확인 모달
+    let confirmState:
+        | { title: string; message: string; confirmLabel: string; danger: boolean; handle?: (opts: any) => Promise<void> }
+        | null = null;
+    let pendingForm: HTMLFormElement | null = null;
+
+    function closeConfirm() {
+        confirmState = null;
+        pendingForm = null;
+    }
+
+    function confirmSubmit(opts: {
+        title: string;
+        message: string;
+        confirmLabel?: string;
+        danger?: boolean;
+        handle?: (opts: any) => Promise<void>;
+    }) {
+        return (arg: any) => {
+            if (arg.formElement.dataset.confirmed === 'true') {
+                arg.formElement.dataset.confirmed = '';
+                return opts.handle ?? (async ({ update }: any) => { await update(); });
+            }
+            arg.cancel();
+            pendingForm = arg.formElement;
+            confirmState = {
+                title: opts.title,
+                message: opts.message,
+                confirmLabel: opts.confirmLabel ?? '확인',
+                danger: opts.danger ?? false,
+                handle: opts.handle
+            };
+            return undefined;
+        };
+    }
+
+    function runConfirm() {
+        if (!pendingForm) return;
+        pendingForm.dataset.confirmed = 'true';
+        pendingForm.requestSubmit();
+        closeConfirm();
+    }
 
     let showModal = false;
     let selectedGameName = '';
@@ -216,10 +280,9 @@
         }
     }
 
-    function getTimeRemaining(endTime: string) {
+    function getTimeRemaining(endTime: string, nowTs: number = Date.now()) {
         const end = new Date(endTime).getTime();
-        const now = new Date().getTime();
-        const diff = end - now;
+        const diff = end - nowTs;
         if (diff <= 0) return '종료됨';
         
         const totalMins = Math.floor(diff / 60000);
@@ -315,10 +378,14 @@
     // 방 현황 요약 스트립
     $: playingCount = (games || []).length;
     $: attendeeCount = (attendees || []).length;
+    // 종료 임박 순 정렬 — "진행 중인 게임" 목록에서 끝나가는 게임을 위로
+    $: playingSorted = [...(games || [])].sort(
+        (a, b) => new Date(a.end_time).getTime() - new Date(b.end_time).getTime()
+    );
     $: nextGameEndTs = (games || []).length
         ? Math.min(...(games as GameSession[]).map((g) => new Date(g.end_time).getTime()))
         : null;
-    $: nextEndMins = nextGameEndTs !== null ? Math.round((nextGameEndTs - Date.now()) / 60000) : null;
+    $: nextEndMins = nextGameEndTs !== null ? Math.round((nextGameEndTs - now) / 60000) : null;
 
     // 오늘 갈 예정 merge
     $: checkedInIds = new Set((attendees || []).map((a: Attendee) => a.id));
@@ -379,9 +446,10 @@
         }}>+ 새 게임 시작</button>
     </div>
     <ul class="game-list">
-        {#each (showAllPlaying ? (games || []) : (games || []).slice(0, 5)) as game (game.id)}
+        {#each (showAllPlaying ? playingSorted : playingSorted.slice(0, 5)) as game (game.id)}
+            {@const endingSoon = new Date(game.end_time).getTime() - now < 5 * 60000}
             <!-- svelte-ignore a11y_no_noninteractive_element_interactions a11y_no_noninteractive_tabindex -->
-            <li class="game-list-item" onclick={() => { selectedPlayingGame = game; resetParticipantSearch(); }} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { selectedPlayingGame = game; resetParticipantSearch(); }}} tabindex="0">
+            <li class="game-list-item" class:ending-soon={endingSoon} onclick={() => { selectedPlayingGame = game; resetParticipantSearch(); }} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { selectedPlayingGame = game; resetParticipantSearch(); }}} tabindex="0">
                 {#if game.image_url}
                     <img src={game.image_url} alt={game.game_name} class="list-thumb" />
                 {:else}
@@ -389,7 +457,7 @@
                 {/if}
                 <span class="list-name">{game.game_name}</span>
                 <span class="list-meta">{game.players.length}명</span>
-                <span class="list-meta time-remaining">{getTimeRemaining(game.end_time)}</span>
+                <span class="list-meta time-remaining">{getTimeRemaining(game.end_time, now)}</span>
                 <span class="list-arrow">›</span>
             </li>
         {/each}
@@ -430,20 +498,20 @@
                 </div>
                 <div class="attendee-actions">
                     <div class="penalty-actions">
-                        <form method="POST" action="?/applyPenaltyAdmin" use:enhance style="display:inline;">
+                        <form method="POST" action="?/applyPenaltyAdmin" use:enhance use:submitLock style="display:inline;">
                             <input type="hidden" name="attendeeId" value={a.id} />
                             <input type="hidden" name="points" value="-1" />
                             <button type="submit" class="btn-penalty remove" title="페널티 -1">-1</button>
                         </form>
-                        <form method="POST" action="?/applyPenaltyAdmin" use:enhance style="display:inline;">
+                        <form method="POST" action="?/applyPenaltyAdmin" use:enhance use:submitLock style="display:inline;">
                             <input type="hidden" name="attendeeId" value={a.id} />
                             <input type="hidden" name="points" value="1" />
                             <button type="submit" class="btn-penalty add" title="페널티 +1">+1</button>
                         </form>
                     </div>
-                    <form method="POST" action="?/toggleblacklist" use:enhance style="display:inline;">
+                    <form method="POST" action="?/toggleblacklist" use:enhance={a.is_blacklisted ? undefined : confirmSubmit({ title: '블랙리스트 등록', message: `${a.name}님을 블랙리스트에 등록합니다. 이후 입장·게임 참여가 제한됩니다.`, confirmLabel: '블랙 등록', danger: true })} style="display:inline;">
                         <input type="hidden" name="attendeeId" value={a.id} />
-                        <button type="submit" class="btn-blacklist" title="블랙리스트 토글">
+                        <button type="submit" class="btn-blacklist" title={a.is_blacklisted ? '블랙리스트 해제' : '블랙리스트 등록'}>
                             {a.is_blacklisted ? '해제' : '블랙'}
                         </button>
                     </form>
@@ -457,11 +525,13 @@
                             {/if}
                         </button>
                     </form>
-                    <form method="POST" action="?/removeAttendee" use:enhance={({ cancel }) => {
+                    <form method="POST" action="?/removeAttendee" use:enhance={(arg) => {
                         if (a.is_playing) {
-                            cancel(); // Stop default submission
-                            handleRemove(a); // Open modal
+                            arg.cancel(); // 게임 중이면 전용 모달로
+                            handleRemove(a);
+                            return;
                         }
+                        return confirmSubmit({ title: '퇴장 처리', message: `${a.name}님을 퇴장 처리합니다.`, confirmLabel: '퇴장', danger: true })(arg);
                     }} style="display:inline;">
                         <input type="hidden" name="id" value={a.id} />
                         <button type="submit" class="btn-delete">퇴장</button>
@@ -469,9 +539,12 @@
                 </div>
             </li>
         {/each}
+        {#if (attendees || []).length === 0}
+            <li class="empty-state">현재 참여 중인 인원이 없습니다.</li>
+        {/if}
     </ul>
 
-    <form method="POST" action="?/addAttendee" use:enhance class="add-form">
+    <form method="POST" action="?/addAttendee" use:enhance use:submitLock class="add-form">
         <input type="text" name="name" placeholder="이름 입력" required />
         <button type="submit">인원 추가</button>
     </form>
@@ -492,7 +565,7 @@
                                 <span class="penalty-dot">({member.penalty_points})</span>
                             {/if}
                         </a>
-                        <form method="POST" action="?/addAttendee" use:enhance style="display:inline;">
+                        <form method="POST" action="?/addAttendee" use:enhance use:submitLock style="display:inline;">
                             <input type="hidden" name="name" value={member.name} />
                             <button type="submit" class="chip-add" title="입장" disabled={member.is_blacklisted}>+</button>
                         </form>
@@ -633,14 +706,18 @@
                                 {schedule.is_active ? '비활성화' : '활성화'}
                             </button>
                         </form>
-                        <form method="POST" action="?/deleteRecurringSchedule" use:enhance={() => {
-                            return async ({ result, update }) => {
+                        <form method="POST" action="?/deleteRecurringSchedule" use:enhance={confirmSubmit({
+                            title: '반복 게임 삭제',
+                            message: `"${schedule.game_name}" 매주 반복 일정을 삭제합니다. 되돌릴 수 없습니다.`,
+                            confirmLabel: '삭제',
+                            danger: true,
+                            handle: async ({ result, update }) => {
                                 if (result.type === 'failure') {
                                     showAlert((result as any).data?.error || '삭제 실패');
                                 }
                                 await update();
-                            };
-                        }} style="display:inline;">
+                            }
+                        })} style="display:inline;">
                             <input type="hidden" name="scheduleId" value={schedule.id} />
                             <button type="submit" class="btn-delete">삭제</button>
                         </form>
@@ -821,6 +898,27 @@
                     <button type="submit" class="btn-primary">종료 및 저장</button>
                 </div>
             </form>
+        </div>
+    </div>
+{/if}
+
+<!-- 파괴적 액션 확인 모달 -->
+{#if confirmState}
+    <div
+        class="modal-backdrop"
+        onclick={closeConfirm}
+        onkeydown={(e) => e.key === 'Escape' && closeConfirm()}
+        role="button"
+        tabindex="-1"
+        aria-label="확인 닫기"
+    >
+        <div class="modal-content confirm-modal" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="alertdialog" aria-modal="true" tabindex="-1">
+            <h3>{confirmState.title}</h3>
+            <p>{confirmState.message}</p>
+            <div class="modal-actions">
+                <button class="btn-cancel" onclick={closeConfirm}>취소</button>
+                <button class="btn-confirm-action" class:danger={confirmState.danger} use:autofocus onclick={runConfirm}>{confirmState.confirmLabel}</button>
+            </div>
         </div>
     </div>
 {/if}
@@ -1073,8 +1171,12 @@
                     <input type="number" name="duration" value="60" class="duration-input" />
                     <button type="submit" class="btn-primary">게임 시작</button>
                 </form>
-                <form method="POST" action="?/dissolveScheduledGame" use:enhance={() => {
-                    return async ({ result, update }) => {
+                <form method="POST" action="?/dissolveScheduledGame" use:enhance={confirmSubmit({
+                    title: '게임 폭파',
+                    message: `"${g.game_name}" 예약 게임을 폭파합니다. 참여자 예약이 모두 취소됩니다.`,
+                    confirmLabel: '폭파',
+                    danger: true,
+                    handle: async ({ result, update }) => {
                         if (result.type === 'failure') {
                             showAlert((result as any).data?.error || '오류');
                         } else {
@@ -1082,8 +1184,8 @@
                             showAlert('게임이 폭파되었습니다.');
                         }
                         await update();
-                    };
-                }} class="detail-form-row">
+                    }
+                })} class="detail-form-row">
                     <input type="hidden" name="sessionId" value={g.id} />
                     <button type="submit" class="btn-delete" style="width:100%;">게임 폭파</button>
                 </form>
@@ -1105,7 +1207,7 @@
                 <div>
                     <h3>{g.game_name}</h3>
                     <p class="detail-sub">종료 예정: {new Date(g.end_time).toLocaleTimeString()}</p>
-                    <p class="detail-sub time-remaining">{getTimeRemaining(g.end_time)}</p>
+                    <p class="detail-sub time-remaining">{getTimeRemaining(g.end_time, now)}</p>
                 </div>
             </div>
             <div class="detail-section">
@@ -1157,7 +1259,7 @@
                             await update();
                             refreshSelectedPlayingGame();
                         };
-                    }} style="flex:1;">
+                    }} use:submitLock style="flex:1;">
                         <input type="hidden" name="id" value={g.id} />
                         <input type="hidden" name="minutes" value="10" />
                         <button type="submit" class="btn-extend" style="width:100%;">+10분</button>
@@ -1168,7 +1270,7 @@
                             await update();
                             refreshSelectedPlayingGame();
                         };
-                    }} style="flex:1;">
+                    }} use:submitLock style="flex:1;">
                         <input type="hidden" name="id" value={g.id} />
                         <input type="hidden" name="minutes" value="30" />
                         <button type="submit" class="btn-extend" style="width:100%;">+30분</button>
@@ -1246,6 +1348,22 @@
     }
     .btn-ghost:hover {
         background: #f0f0f0;
+    }
+
+    .btn-confirm-action {
+        background: #007bff;
+        color: white;
+        border: none;
+        padding: 0.5rem 1.25rem;
+        border-radius: 4px;
+        cursor: pointer;
+        font-weight: 700;
+    }
+    .btn-confirm-action.danger {
+        background: #d32f2f;
+    }
+    .btn-confirm-action.danger:hover {
+        background: #b71c1c;
     }
 
     .attendee-list {
@@ -1961,6 +2079,16 @@
     }
     .game-list-item:last-child {
         border-bottom: none;
+    }
+    .game-list-item.ending-soon {
+        background: #fff5f5;
+    }
+    .game-list-item.ending-soon:hover {
+        background: #ffecec;
+    }
+    .game-list-item.ending-soon .time-remaining {
+        color: #d32f2f;
+        font-weight: 700;
     }
     .list-thumb {
         width: 32px;
