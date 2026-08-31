@@ -404,7 +404,7 @@
                         <div class="analysis-row">
                             <!-- Top Opponents -->
                             <div class="analysis-card">
-                                <h4>자주 만난 친구</h4>
+                                <h2>자주 만난 친구</h2>
                                 <ul>
                                     {#each topOpponents as [name, count]}
                                         <li>
@@ -419,9 +419,9 @@
 
                             <!-- Top Games -->
                             <div class="analysis-card">
-                                <h4>
+                                <h2>
                                     최애 게임
-                                </h4>
+                                </h2>
                                 <ul>
                                     {#each topGames as [game, count]}
                                         <li>
@@ -439,9 +439,9 @@
 
                 <div class="devices-section">
                     <div class="section-header">
-                        <h3>
+                        <h2>
                             내 기기
-                        </h3>
+                        </h2>
                         <div class="header-actions">
                             <a href="/devices/register" class="btn-register">기기 등록</a>
                             <button class="btn-guide" on:click={() => showGuideModal = true} aria-label="기기 등록 방법">
@@ -559,7 +559,7 @@
             <div class="tab-content">
                 {#if data.pendingInvitations && data.pendingInvitations.length > 0}
                     <div class="invitation-section">
-                        <h4 class="invitation-title">받은 초대</h4>
+                        <h2 class="invitation-title">받은 초대</h2>
                         {#each data.pendingInvitations as invite}
                             <div class="invitation-card">
                                 <div class="invite-info">
@@ -594,7 +594,7 @@
 
                 <div class="parties-section">
                     <div class="section-header">
-                        <h3>고정팟 관리</h3>
+                        <h2>고정팟 관리</h2>
                         <button class="btn-create-party" on:click={openCreatePartyModal}>+ 새 고정팟</button>
                     </div>
 
@@ -665,9 +665,9 @@
             <div class="tab-content">
                 <div class="history-section">
                     <div class="section-header">
-                        <h3>
+                        <h2>
                             활동 기록
-                        </h3>
+                        </h2>
                         <div class="filters">
                             <!-- Year Dropdown -->
                             <div class="custom-select" on:click|stopPropagation={toggleYear} role="button" tabindex="0" on:keydown={(e) => e.key === 'Enter' && toggleYear()}>
@@ -1078,8 +1078,10 @@
 
     .page-header {
         display: flex;
+        flex-wrap: wrap;
         justify-content: space-between;
         align-items: center;
+        gap: 0.5rem;
         margin-bottom: 2rem;
         padding-bottom: 1rem;
         border-bottom: 1px solid var(--border-light);
@@ -1090,11 +1092,14 @@
         font-size: 1.5rem;
         margin: 0;
         color: var(--text-primary);
+        white-space: nowrap;
     }
     .header-right {
         display: flex;
         align-items: center;
         gap: 0.75rem;
+        flex-wrap: wrap;
+        justify-content: flex-end;
     }
     .header-settings-btn {
         background: none;
@@ -1251,7 +1256,7 @@
         box-shadow: 0 2px 10px var(--shadow-sm);
         font-size: 0.9rem;
     }
-    .analysis-card h4 {
+    .analysis-card h2 {
         margin: 0 0 0.8rem 0;
         font-size: 0.95rem;
         color: var(--text-darker);
@@ -1307,7 +1312,7 @@
         position: relative;
         z-index: 5;
     }
-    .section-header h3 {
+    .section-header h2 {
         font-size: 1.1rem;
         color: var(--text-primary);
         margin: 0;
