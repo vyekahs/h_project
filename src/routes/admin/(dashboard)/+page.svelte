@@ -312,6 +312,14 @@
     $: savedMembers = data.savedMembers as SavedMember[];
     $: recurringSchedules = (data as any).recurringSchedules || [];
 
+    // 방 현황 요약 스트립
+    $: playingCount = (games || []).length;
+    $: attendeeCount = (attendees || []).length;
+    $: nextGameEndTs = (games || []).length
+        ? Math.min(...(games as GameSession[]).map((g) => new Date(g.end_time).getTime()))
+        : null;
+    $: nextEndMins = nextGameEndTs !== null ? Math.round((nextGameEndTs - Date.now()) / 60000) : null;
+
     // 오늘 갈 예정 merge
     $: checkedInIds = new Set((attendees || []).map((a: Attendee) => a.id));
     $: visitPlanIds = new Set(((data as any).dailyVisitPlans || []).map((p: any) => p.attendee_id));
@@ -338,52 +346,63 @@
 
 
 
-<section>
-    <h2>
-        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg>
-        공지사항 관리
-    </h2>
-    <div class="notice-manager">
-        {#if data.notice}
-            <div class="current-notice">
-                <strong>현재 공지:</strong> {data.notice}
-                <form method="POST" action="?/clearNotice" use:enhance style="display:inline; margin-left: 1rem;">
-                    <button type="submit" class="btn-delete">숨기기</button>
-                </form>
-            </div>
+
+<section class="room-summary" aria-label="방 현황 요약">
+    <span class="rs-item">
+        <span class="rs-dot" class:live={attendeeCount > 0} aria-hidden="true"></span>
+        <strong>{attendeeCount}명</strong> 현재
+    </span>
+    <span class="rs-sep" aria-hidden="true">·</span>
+    <span class="rs-item"><strong>게임 {playingCount}개</strong> 진행 중</span>
+    <span class="rs-sep" aria-hidden="true">·</span>
+    <span class="rs-item">
+        {#if nextEndMins === null}
+            종료 예정 <strong>없음</strong>
+        {:else if nextEndMins <= 0}
+            <strong class="urgent">종료 임박</strong>
+        {:else}
+            <strong class:urgent={nextEndMins <= 5}>{nextEndMins}분</strong> 후 첫 종료
         {/if}
-        <form method="POST" action="?/updateNotice" use:enhance class="notice-form">
-            <input type="text" name="content" placeholder="새 공지사항 입력" required />
-            <button type="submit">등록</button>
-        </form>
-    </div>
+    </span>
 </section>
 
-{#if mergedVisitPlans.length > 0}
-<section class="visit-plan-section">
-    <h2>
-        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-        오늘 갈 예정 ({mergedVisitPlans.length})
-    </h2>
-    <div class="visit-plan-grid">
-        {#each mergedVisitPlans as plan}
-            <div class="visit-plan-chip">
-                <span class="vp-name">{plan.name}</span>
-                {#if (plan as any).is_party}
-                    <span class="vp-party">팟</span>
-                {/if}
-                <span class="vp-time">
-                    {#if plan.planned_time}
-                        {formatVisitTime(plan.planned_time)}~
-                    {:else}
-                        상황봐서
-                    {/if}
-                </span>
-            </div>
-        {/each}
+<section>
+    <div class="section-header">
+        <h2>진행 중인 게임 ({(games || []).length})</h2>
+        <button class="btn-primary" onclick={() => {
+            showModal = true;
+            selectedGameName = '';
+            selectedDuration = '';
+            selectedGameId = '';
+            guestCount = 0;
+            dropdownOpen = false;
+        }}>+ 새 게임 시작</button>
     </div>
+    <ul class="game-list">
+        {#each (showAllPlaying ? (games || []) : (games || []).slice(0, 5)) as game (game.id)}
+            <!-- svelte-ignore a11y_no_noninteractive_element_interactions a11y_no_noninteractive_tabindex -->
+            <li class="game-list-item" onclick={() => { selectedPlayingGame = game; resetParticipantSearch(); }} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { selectedPlayingGame = game; resetParticipantSearch(); }}} tabindex="0">
+                {#if game.image_url}
+                    <img src={game.image_url} alt={game.game_name} class="list-thumb" />
+                {:else}
+                    <div class="list-thumb placeholder">🎲</div>
+                {/if}
+                <span class="list-name">{game.game_name}</span>
+                <span class="list-meta">{game.players.length}명</span>
+                <span class="list-meta time-remaining">{getTimeRemaining(game.end_time)}</span>
+                <span class="list-arrow">›</span>
+            </li>
+        {/each}
+        {#if (games || []).length === 0}
+            <p class="empty-state">진행 중인 게임이 없습니다.</p>
+        {/if}
+    </ul>
+    {#if (games || []).length > 5}
+        <button class="show-more-btn" onclick={() => showAllPlaying = !showAllPlaying}>
+            {showAllPlaying ? '접기' : `+${(games || []).length - 5}개 더보기`}
+        </button>
+    {/if}
 </section>
-{/if}
 
 <section>
     <h2>현재 참여 인원</h2>
@@ -520,6 +539,53 @@
     {/if}
 </section>
 
+{#if mergedVisitPlans.length > 0}
+<section class="visit-plan-section">
+    <h2>
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        오늘 갈 예정 ({mergedVisitPlans.length})
+    </h2>
+    <div class="visit-plan-grid">
+        {#each mergedVisitPlans as plan}
+            <div class="visit-plan-chip">
+                <span class="vp-name">{plan.name}</span>
+                {#if (plan as any).is_party}
+                    <span class="vp-party">팟</span>
+                {/if}
+                <span class="vp-time">
+                    {#if plan.planned_time}
+                        {formatVisitTime(plan.planned_time)}~
+                    {:else}
+                        상황봐서
+                    {/if}
+                </span>
+            </div>
+        {/each}
+    </div>
+</section>
+{/if}
+
+<section>
+    <h2>
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg>
+        공지사항 관리
+    </h2>
+    <div class="notice-manager">
+        {#if data.notice}
+            <div class="current-notice">
+                <strong>현재 공지:</strong> {data.notice}
+                <form method="POST" action="?/clearNotice" use:enhance style="display:inline; margin-left: 1rem;">
+                    <button type="submit" class="btn-ghost">숨기기</button>
+                </form>
+            </div>
+        {/if}
+        <form method="POST" action="?/updateNotice" use:enhance class="notice-form">
+            <input type="text" name="content" placeholder="새 공지사항 입력" required />
+            <button type="submit">등록</button>
+        </form>
+    </div>
+</section>
+
 <section>
     <div class="section-header">
         <h2>
@@ -584,96 +650,6 @@
         </div>
     {:else}
         <p class="empty-state">등록된 반복 게임이 없습니다.</p>
-    {/if}
-</section>
-
-<!-- <section>
-    <div class="section-header">
-        <h2>
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:10px; vertical-align:text-bottom;"><path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/><path d="M13 5v2"/><path d="M13 17v2"/><path d="M13 11v2"/></svg>
-            예약 및 대기열 ({(reservations || []).length})
-        </h2>
-        <form method="POST" action="/?/reserveGame" use:enhance class="inline-add-form">
-            <select name="attendeeId" required class="attendee-select-mini">
-                <option value="">예약자 추가</option>
-                {#each (attendees || []) as attendee}
-                    <option value={attendee.id}>{attendee.name}</option>
-                {/each}
-            </select>
-            <select name="sessionId" required class="session-select-mini">
-                <option value="">게임 선택</option>
-                {#each (games || []) as game}
-                    <option value={game.id}>{game.game_name}</option>
-                {/each}
-            </select>
-            <button type="submit" class="btn-mini">추가</button>
-        </form>
-    </div>
-    <div class="reservations-list">
-        {#each (reservations || []) as res (res.id)}
-            <div class="reservation-item {res.status}">
-                <div class="res-info">
-                    <span class="res-name"><strong>{res.attendee_name}</strong></span>
-                    <span class="res-game">{res.game_name}</span>
-                    <span class="res-status-badge {res.status}">
-                        {res.status === 'pending' ? '대기' : res.status === 'waitlisted' ? '대기열' : '확정'}
-                    </span>
-                </div>
-                <div class="res-actions">
-                    {#if res.status === 'pending'}
-                        <form method="POST" action="?/confirmReservation" use:enhance>
-                            <input type="hidden" name="reservationId" value={res.id} />
-                            <button type="submit" class="btn-confirm">확정</button>
-                        </form>
-                    {/if}
-                    <form method="POST" action="?/cancelReservationAdmin" use:enhance>
-                        <input type="hidden" name="reservationId" value={res.id} />
-                        <button type="submit" class="btn-delete">취소</button>
-                    </form>
-                </div>
-            </div>
-        {/each}
-        {#if (data.reservations || []).length === 0}
-            <p class="empty-state">현재 예약 내역이 없습니다.</p>
-        {/if}
-    </div>
-</section> -->
-
-<section>
-    <div class="section-header">
-        <h2>진행 중인 게임 ({(games || []).length})</h2>
-        <button class="btn-primary" onclick={() => {
-            showModal = true;
-            selectedGameName = '';
-            selectedDuration = '';
-            selectedGameId = '';
-            guestCount = 0;
-            dropdownOpen = false;
-        }}>+ 새 게임 시작</button>
-    </div>
-    <ul class="game-list">
-        {#each (showAllPlaying ? (games || []) : (games || []).slice(0, 5)) as game (game.id)}
-            <!-- svelte-ignore a11y_no_noninteractive_element_interactions a11y_no_noninteractive_tabindex -->
-            <li class="game-list-item" onclick={() => { selectedPlayingGame = game; resetParticipantSearch(); }} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { selectedPlayingGame = game; resetParticipantSearch(); }}} tabindex="0">
-                {#if game.image_url}
-                    <img src={game.image_url} alt={game.game_name} class="list-thumb" />
-                {:else}
-                    <div class="list-thumb placeholder">🎲</div>
-                {/if}
-                <span class="list-name">{game.game_name}</span>
-                <span class="list-meta">{game.players.length}명</span>
-                <span class="list-meta time-remaining">{getTimeRemaining(game.end_time)}</span>
-                <span class="list-arrow">›</span>
-            </li>
-        {/each}
-        {#if (games || []).length === 0}
-            <p class="empty-state">진행 중인 게임이 없습니다.</p>
-        {/if}
-    </ul>
-    {#if (games || []).length > 5}
-        <button class="show-more-btn" onclick={() => showAllPlaying = !showAllPlaying}>
-            {showAllPlaying ? '접기' : `+${(games || []).length - 5}개 더보기`}
-        </button>
     {/if}
 </section>
 
@@ -1218,6 +1194,60 @@
         align-items: center;
         gap: 0.75rem;
     }
+
+    /* 방 현황 요약 스트립 */
+    .room-summary {
+        margin-bottom: 1.5rem;
+        padding: 0.85rem 1.25rem;
+        border: 1px solid #e0e0e0;
+        border-radius: 8px;
+        background: #fff;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.4rem 0.9rem;
+        font-size: 0.95rem;
+        color: #444;
+    }
+    .room-summary strong {
+        font-weight: 700;
+        color: #1a1a1a;
+    }
+    .room-summary .rs-item {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+    }
+    .room-summary .rs-sep {
+        color: #bbb;
+    }
+    .room-summary .rs-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #bbb;
+        flex-shrink: 0;
+    }
+    .room-summary .rs-dot.live {
+        background: #2b8a3e;
+        box-shadow: 0 0 0 3px rgba(43, 138, 62, 0.15);
+    }
+    .room-summary .urgent {
+        color: #d32f2f;
+    }
+
+    .btn-ghost {
+        background: none;
+        border: 1px solid #ccc;
+        color: #666;
+        padding: 0.25rem 0.5rem;
+        border-radius: 4px;
+        cursor: pointer;
+    }
+    .btn-ghost:hover {
+        background: #f0f0f0;
+    }
+
     .attendee-list {
         list-style: none;
         padding: 0;
