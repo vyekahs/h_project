@@ -741,10 +741,10 @@
                                     </div>
                                     <span class="game-date">{new Date(game.end_time).toLocaleDateString()}</span>
                                 </div>
-                                <div class="history-body">
-                                    <div class="opponents">
-                                        with 
-                                        {#if game.opponents && game.opponents.length > 0}
+                                {#if game.opponents && game.opponents.length > 0}
+                                    <div class="history-body">
+                                        <div class="opponents">
+                                            함께:
                                             {#each game.opponents as opp, i}
                                                 <span class="opp-name">
                                                     {opp.name}
@@ -752,11 +752,9 @@
                                                     {i < game.opponents.length - 1 ? ', ' : ''}
                                                 </span>
                                             {/each}
-                                        {:else}
-                                            -
-                                        {/if}
+                                        </div>
                                     </div>
-                                </div>
+                                {/if}
                             </div>
                         {/each}
 
