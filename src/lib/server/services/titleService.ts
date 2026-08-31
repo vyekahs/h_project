@@ -2,6 +2,28 @@ import { db } from '$lib/server/db/index';
 import { sql, eq } from 'drizzle-orm';
 import { minigameUserPoints, minigameTitles, minigameUserTitles } from '$lib/server/db/schema/minigame';
 
+// 칭호 정의 목록은 앱 코드에서 절대 쓰지 않고(INSERT/UPDATE/DELETE 없음) 관리 스크립트로만
+// 바뀌므로, checkAndAssignTitles()가 호출될 때마다(게임 기록 제출/마이페이지/로그인/
+// 포인트지급마다) 매번 새로 조회할 필요가 없다. 5분 캐시로 그 왕복을 없앤다.
+type TitleDef = { id: number; titleCode: string; conditionType: string | null; conditionValue: unknown };
+let titlesCache: TitleDef[] | null = null;
+let titlesCacheTime = 0;
+const TITLES_CACHE_TTL = 5 * 60 * 1000;
+
+async function getTitlesList(): Promise<TitleDef[]> {
+    if (titlesCache && Date.now() - titlesCacheTime < TITLES_CACHE_TTL) return titlesCache;
+    titlesCache = await db
+        .select({
+            id: minigameTitles.id,
+            titleCode: minigameTitles.titleCode,
+            conditionType: minigameTitles.conditionType,
+            conditionValue: minigameTitles.conditionValue,
+        })
+        .from(minigameTitles);
+    titlesCacheTime = Date.now();
+    return titlesCache;
+}
+
 export const TitleService = {
     async checkAndAssignTitles(userId: number) {
         const assignedTitles: string[] = [];
@@ -17,14 +39,7 @@ export const TitleService = {
                 WHERE a.id = ${userId}
             `),
             db.execute(sql`SELECT COUNT(*) as play_count FROM minigame_rankings WHERE user_id = ${userId}`),
-            db
-                .select({
-                    id: minigameTitles.id,
-                    titleCode: minigameTitles.titleCode,
-                    conditionType: minigameTitles.conditionType,
-                    conditionValue: minigameTitles.conditionValue,
-                })
-                .from(minigameTitles),
+            getTitlesList(),
             db
                 .select({ titleId: minigameUserTitles.titleId })
                 .from(minigameUserTitles)

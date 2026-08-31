@@ -5,7 +5,7 @@ import { sql } from 'drizzle-orm';
 import { getSSEConnectionCount } from '$lib/server/liveEvents';
 import { verifyAdminSession } from '$lib/server/auth';
 import { getAutoCheckinLogs } from '$lib/server/ble';
-import { getDbConnectionStats } from '$lib/server/performance';
+import { getDbConnectionStats, getStuckRequests, getAbandonedRequests } from '$lib/server/performance';
 
 // CPU snapshot for delta-based usage calculation
 let prevCpuIdle = 0;
@@ -95,6 +95,8 @@ export async function GET({ cookies }: { cookies: any }) {
 		connections: {
 			sse: getSSEConnectionCount()
 		},
+		stuckRequests: getStuckRequests(5000),
+		abandonedRequests: getAbandonedRequests(20),
 		uptime: Math.floor(process.uptime()),
 		responseTime: Math.round(performance.now() - start),
 		timestamp: Date.now(),

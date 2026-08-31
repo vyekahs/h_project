@@ -25,6 +25,74 @@ interface SlowQueryLog {
 	stack?: string;
 }
 
+// 진행 중인 요청 추적 — 요청 "완료" 시점에만 기록하면 아예 끝나지 않고
+// 멈춰버린(진짜 행) 요청은 로그에 전혀 안 남는다. 시작 시점에 등록해뒀다가
+// 끝나면 지우는 방식으로, 지금 이 순간 오래 걸리고 있는 요청을 실시간으로 볼 수 있게 한다.
+//
+// 주의: 유저가 새로고침/뒤로가기 등으로 응답을 기다리지 않고 나가버린 요청도
+// 서버는 (abort 신호를 직접 넘겨서 취소시키지 않는 한) 하던 작업을 끝까지 계속한다.
+// 이런 건 "진짜 멈춤"이 아니라 그냥 응답받을 사람이 없어진 낭비 작업이므로,
+// clientAborted로 구분해서 경고 대상에서 제외한다.
+interface InFlightRequest {
+	path: string;
+	method: string;
+	startTime: number;
+	clientAborted: boolean;
+}
+const inFlightRequests = new Map<string, InFlightRequest>();
+
+export function recordRequestStart(id: string, path: string, method: string) {
+	inFlightRequests.set(id, { path, method, startTime: Date.now(), clientAborted: false });
+}
+
+// 일정 시간(ABANDONED_MIN_AGE) 이상 진행되다가 클라이언트가 끊어버린 요청의 이력.
+// 클라이언트 쪽에서 화면이 멈춰서 새로고침/재접속한 경우, 그 순간엔 이미 abort되어
+// "지금 멈춘 요청" 목록에서는 빠지지만 — 그게 바로 그 프리징의 증거이므로 별도로 남겨둔다.
+interface AbandonedRequest {
+	path: string;
+	method: string;
+	ranForMs: number;
+	timestamp: number;
+}
+const abandonedRequests: AbandonedRequest[] = [];
+const MAX_ABANDONED = 50;
+const ABANDONED_MIN_AGE = 3000;
+
+export function markRequestAborted(id: string) {
+	const r = inFlightRequests.get(id);
+	if (!r || r.clientAborted) return;
+	r.clientAborted = true;
+
+	const ranForMs = Date.now() - r.startTime;
+	if (ranForMs >= ABANDONED_MIN_AGE) {
+		abandonedRequests.push({ path: r.path, method: r.method, ranForMs, timestamp: Date.now() });
+		if (abandonedRequests.length > MAX_ABANDONED) abandonedRequests.shift();
+	}
+}
+
+/**
+ * 최근 "오래 진행되다가 클라이언트가 끊어버린" 요청 이력 (최신순)
+ */
+export function getAbandonedRequests(limit = 20) {
+	return abandonedRequests.slice(-limit).reverse();
+}
+
+export function recordRequestEnd(id: string) {
+	inFlightRequests.delete(id);
+}
+
+/**
+ * minAgeMs 이상 진행 중인 요청 목록 (오래된 순).
+ * clientAborted=true(유저가 이미 나간 요청)는 실제 프리징 신호가 아니므로 제외한다.
+ */
+export function getStuckRequests(minAgeMs = 5000) {
+	const now = Date.now();
+	return Array.from(inFlightRequests.entries())
+		.map(([id, r]) => ({ id, path: r.path, method: r.method, ageMs: now - r.startTime, clientAborted: r.clientAborted }))
+		.filter((r) => r.ageMs >= minAgeMs && !r.clientAborted)
+		.sort((a, b) => b.ageMs - a.ageMs);
+}
+
 // 최근 요청 메트릭 (링 버퍼)
 const recentRequests: RequestMetrics[] = [];
 const MAX_RECENT_REQUESTS = 1000;

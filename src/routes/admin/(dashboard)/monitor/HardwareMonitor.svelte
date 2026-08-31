@@ -17,6 +17,20 @@
 		attendeeId: number;
 	}
 
+	interface StuckRequest {
+		id: string;
+		path: string;
+		method: string;
+		ageMs: number;
+	}
+
+	interface AbandonedRequest {
+		path: string;
+		method: string;
+		ranForMs: number;
+		timestamp: number;
+	}
+
 	interface Metrics {
 		cpu: { usage: number; cores: number };
 		memory: {
@@ -34,6 +48,8 @@
 			latencyMs: number;
 		};
 		connections: { sse: number };
+		stuckRequests?: StuckRequest[];
+		abandonedRequests?: AbandonedRequest[];
 		uptime: number;
 		timestamp: number;
 		history?: MetricsSnapshot[];
@@ -55,6 +71,13 @@
 		if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
 		if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
 		return (bytes / (1024 * 1024 * 1024)).toFixed(1) + ' GB';
+	}
+
+	function formatAge(ms: number): string {
+		if (ms < 60000) return `${Math.round(ms / 1000)}초`;
+		const m = Math.floor(ms / 60000);
+		const s = Math.round((ms % 60000) / 1000);
+		return `${m}분 ${s}초`;
 	}
 
 	function formatUptime(seconds: number): string {
@@ -252,6 +275,69 @@
 	</div>
 
 	{#if metrics}
+		<!-- -1. 멈춘 요청 경고 (5초 이상 응답 못 준 요청) -->
+		{#if metrics.stuckRequests && metrics.stuckRequests.length > 0}
+			<div class="detail-card stuck-card">
+				<h3>
+					<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px; vertical-align:text-bottom;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+					⚠️ 응답 없는 요청 ({metrics.stuckRequests.length}개)
+				</h3>
+				<div class="log-table-wrap">
+					<table class="log-table">
+						<thead>
+							<tr>
+								<th>경과 시간</th>
+								<th>메서드</th>
+								<th>경로</th>
+							</tr>
+						</thead>
+						<tbody>
+							{#each metrics.stuckRequests as r (r.id)}
+								<tr>
+									<td class="log-time stuck-age">{formatAge(r.ageMs)}</td>
+									<td><span class="log-source">{r.method}</span></td>
+									<td>{r.path}</td>
+								</tr>
+							{/each}
+						</tbody>
+					</table>
+				</div>
+			</div>
+		{/if}
+
+		<!-- -0.5. 클라이언트가 중간에 끊어버린 장기 요청 이력 (클라이언트 쪽 프리징의 흔적) -->
+		{#if metrics.abandonedRequests && metrics.abandonedRequests.length > 0}
+			<div class="detail-card abandoned-card">
+				<h3>
+					<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px; vertical-align:text-bottom;"><path d="M1 4v6h6"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+					도중에 끊긴 장기 요청 이력 (클라이언트 새로고침 추정)
+				</h3>
+				<p class="abandoned-hint">3초 이상 진행 중이던 요청을 클라이언트가 중간에 끊은 기록입니다 — 모바일 등에서 화면이 멈춰 새로고침했을 때 남는 흔적입니다.</p>
+				<div class="log-table-wrap">
+					<table class="log-table">
+						<thead>
+							<tr>
+								<th>시각</th>
+								<th>진행 시간</th>
+								<th>메서드</th>
+								<th>경로</th>
+							</tr>
+						</thead>
+						<tbody>
+							{#each metrics.abandonedRequests as r, i (r.timestamp + '-' + i)}
+								<tr>
+									<td class="log-time">{new Date(r.timestamp).toLocaleTimeString('ko-KR')}</td>
+									<td class="stuck-age">{formatAge(r.ranForMs)}</td>
+									<td><span class="log-source">{r.method}</span></td>
+									<td>{r.path}</td>
+								</tr>
+							{/each}
+						</tbody>
+					</table>
+				</div>
+			</div>
+		{/if}
+
 		<!-- 0. 자동 체크인/체크아웃 기록 -->
 		<div class="detail-card log-card">
 			<h3>
@@ -640,6 +726,36 @@
 	}
 	.log-card {
 		margin-bottom: 1.5rem;
+	}
+	.stuck-card {
+		margin-bottom: 1.5rem;
+		border: 1px solid #f44336;
+		background: #fff5f5;
+		animation: pulse-border 2s infinite;
+	}
+	.stuck-card h3 {
+		color: #c62828;
+	}
+	.stuck-age {
+		font-weight: 700;
+		color: #c62828;
+	}
+	.abandoned-card {
+		margin-bottom: 1.5rem;
+		border: 1px solid #ff9800;
+		background: #fff8e1;
+	}
+	.abandoned-card h3 {
+		color: #e65100;
+	}
+	.abandoned-hint {
+		margin: 0 0 0.75rem 0;
+		font-size: 0.8rem;
+		color: #8d6e63;
+	}
+	@keyframes pulse-border {
+		0%, 100% { border-color: #f44336; }
+		50% { border-color: #ffcdd2; }
 	}
 	.log-table-wrap {
 		max-height: 400px;
