@@ -109,12 +109,14 @@
     }
 
     let equippingId: number | null = null;
+    let titleActionError = '';
 
     async function equipTitle(titleId: number | null) {
         if (equippingId) return; // Prevent double clicks
-        // Removed native confirm for smoother UX
+        // Removed native confirm for smoother UX — equip/unequip is low-risk and reversible
         equippingId = titleId;
-        
+        titleActionError = '';
+
         try {
             const res = await fetch('/api/user/titles/equip', {
                 method: 'POST',
@@ -122,14 +124,14 @@
                 body: JSON.stringify({ titleId })
             });
             if (res.ok) {
-                await loadTitles(true); 
-                await invalidateAll(); 
+                await loadTitles(true);
+                await invalidateAll();
             } else {
-                // Silent fail or toast? For now just log
-                console.error('Failed to equip');
+                titleActionError = titleId ? '칭호 장착에 실패했습니다. 다시 시도해주세요.' : '칭호 해제에 실패했습니다. 다시 시도해주세요.';
             }
         } catch(e) {
             console.error(e);
+            titleActionError = '네트워크 오류로 처리하지 못했습니다. 다시 시도해주세요.';
         } finally {
             equippingId = null;
         }
@@ -258,6 +260,8 @@
         g.name.toLowerCase().includes(partyGameSearch.toLowerCase())
     );
 
+    let partyModalError = '';
+
     function openCreatePartyModal() {
         editingParty = null;
         partyName = '';
@@ -268,6 +272,7 @@
         partyMemberIds = data.user ? [data.user.id] : [];
         partyGameDropdownOpen = false;
         partyGameSearch = '';
+        partyModalError = '';
         showPartyModal = true;
     }
 
@@ -284,6 +289,7 @@
         }
         partyGameDropdownOpen = false;
         partyGameSearch = '';
+        partyModalError = '';
         showPartyModal = true;
     }
 
@@ -504,7 +510,10 @@
             <div class="tab-content">
                 <!-- My Titles Section -->
                 <div class="titles-section">
-                
+                    {#if titleActionError}
+                        <p class="inline-error">{titleActionError}</p>
+                    {/if}
+
                     {#if loadingTitles}
                         <div class="loading">불러오는 중...</div>
                     {:else if myTitles.length === 0}
@@ -891,11 +900,19 @@
     >
         <div class="modal-content party-modal">
             <h3>{editingParty ? '고정팟 수정' : '새 고정팟 만들기'}</h3>
+            {#if partyModalError}
+                <p class="inline-error">{partyModalError}</p>
+            {/if}
             <form method="POST" action={editingParty ? '?/updateParty' : '?/createParty'} use:enhance={() => {
+                partyModalError = '';
                 return async ({ result, update }) => {
                     if (result.type === 'success') {
                         showPartyModal = false;
                         await update();
+                    } else if (result.type === 'failure') {
+                        partyModalError = (result.data as any)?.error || '요청을 처리하지 못했습니다. 다시 시도해주세요.';
+                    } else if (result.type === 'error') {
+                        partyModalError = '네트워크 오류가 발생했습니다. 다시 시도해주세요.';
                     }
                 };
             }}>
@@ -1755,6 +1772,15 @@
         color: var(--text-primary);
         line-height: 1.5;
         white-space: pre-line;
+    }
+    .inline-error {
+        margin: -0.5rem 0 1rem 0;
+        padding: 0.6rem 0.8rem;
+        border-radius: 8px;
+        background: var(--color-error-bg, #fff5f5);
+        color: var(--color-red-dark, #d32f2f);
+        font-size: 0.85rem;
+        line-height: 1.4;
     }
 
     /* Success Modal */
