@@ -35,3 +35,8 @@ scripts/killer-sudoku-gen/*
 
 
 .tts
+
+# 블루/그린 배포 런타임 상태 — 서버 로컬 상태라 git으로 관리하지 않음
+# (scripts/deploy-blue-green.sh가 active_app.caddy.example을 복사해 생성/갱신함)
+/active_app.caddy
+/.deploy_active_color

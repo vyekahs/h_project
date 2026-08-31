@@ -7,6 +7,10 @@ export interface WtpTag {
 	name: string;
 }
 
+let tagsCache: WtpTag[] | null = null;
+let tagsCacheTime = 0;
+const TAGS_CACHE_TTL = 5 * 60 * 1000;
+
 export interface WtpPost {
 	id: number;
 	game_id: number | null;
@@ -208,10 +212,15 @@ export const WantToPlayService = {
 	},
 
 	async getAvailableTags(): Promise<WtpTag[]> {
+		// 태그 목록은 앱 코드에서 절대 안 바뀌므로(관리 스크립트로만 수정) 캐시로 매 홈 로드마다
+		// 도는 조회를 없앤다.
+		if (tagsCache && Date.now() - tagsCacheTime < TAGS_CACHE_TTL) return tagsCache;
 		const tags = await db.execute(sql`
 			SELECT id, name FROM wtp_tags ORDER BY sort_order ASC
 		`);
-		return (tags as any[]).map(t => ({ id: t.id, name: t.name }));
+		tagsCache = (tags as any[]).map(t => ({ id: t.id, name: t.name }));
+		tagsCacheTime = Date.now();
+		return tagsCache;
 	},
 
 	async closePost(userId: number, postId: number, isAdmin: boolean): Promise<void> {

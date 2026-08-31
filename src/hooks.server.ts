@@ -2,10 +2,19 @@ import { startAutoCloseScheduler } from '$lib/server/autoClose';
 import { verifyAdminSession, verifyAttendeeSession } from '$lib/server/auth';
 import {
 	recordRequest,
+	recordRequestStart,
+	recordRequestEnd,
+	markRequestAborted,
 	recordDbPoolStats,
 	getActiveDbConnections,
 	getDbPoolStats
 } from '$lib/server/performance';
+
+let requestIdSeq = 0;
+function nextRequestId() {
+	requestIdSeq = (requestIdSeq + 1) % Number.MAX_SAFE_INTEGER;
+	return `${Date.now()}-${requestIdSeq}`;
+}
 
 // Start the scheduler when the server starts
 startAutoCloseScheduler();
@@ -60,31 +69,45 @@ export const handle: Handle = async ({ event, resolve }) => {
 		}
 	}
 
-	const beforeResolve = Date.now();
-	const response = await resolve(event);
-	if (isApiKeyRoute) {
-		console.log(`[HOOK] ⏱️ ${event.url.pathname}: auth=${beforeResolve - startTime}ms, resolve=${Date.now() - beforeResolve}ms, total=${Date.now() - startTime}ms`);
-	}
-
-	// 성능 메트릭 기록 (정적 파일 제외)
+	// 성능 메트릭용 경로 (정적 파일 제외) — SvelteKit form action 이름 포함
+	// (예: /games?/importBgg → /games?/importBgg)
 	const pathname = event.url.pathname;
-	// SvelteKit form action 이름 포함 (예: /games?/importBgg → /games?/importBgg)
 	const actionMatch = event.url.search.match(/^\?\/([\w]+)/);
 	const path = actionMatch ? `${pathname}?/${actionMatch[1]}` : pathname;
-	if (
+	const isTrackedRequest =
 		!pathname.startsWith('/_app/') &&
-		!pathname.match(/\.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot)$/)
-	) {
-		const duration = Date.now() - startTime;
-		recordRequest({
-			path,
-			method: event.request.method,
-			duration,
-			timestamp: Date.now(),
-			statusCode: response.status,
-			userAgent: event.request.headers.get('user-agent') || undefined
-		});
+		!pathname.match(/\.(js|css|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot)$/);
+
+	const requestId = isTrackedRequest ? nextRequestId() : null;
+	if (requestId) {
+		recordRequestStart(requestId, path, event.request.method);
+		// adapter-node는 TCP 연결이 끊기면(새로고침/탭 종료 등) 이 signal을 abort시킨다 —
+		// 유저가 이미 응답을 기다리지 않게 된 요청은 "멈춤" 경고에서 빼기 위한 신호로 쓴다.
+		event.request.signal.addEventListener('abort', () => markRequestAborted(requestId));
 	}
 
-	return response;
+	const beforeResolve = Date.now();
+	try {
+		const response = await resolve(event);
+		if (isApiKeyRoute) {
+			console.log(`[HOOK] ⏱️ ${event.url.pathname}: auth=${beforeResolve - startTime}ms, resolve=${Date.now() - beforeResolve}ms, total=${Date.now() - startTime}ms`);
+		}
+
+		if (isTrackedRequest) {
+			const duration = Date.now() - startTime;
+			recordRequest({
+				path,
+				method: event.request.method,
+				duration,
+				timestamp: Date.now(),
+				statusCode: response.status,
+				userAgent: event.request.headers.get('user-agent') || undefined
+			});
+		}
+
+		return response;
+	} finally {
+		// resolve()가 던지거나(에러) 끝까지 멈춰있어도 진행 중 목록에서는 반드시 빠지도록
+		if (requestId) recordRequestEnd(requestId);
+	}
 }

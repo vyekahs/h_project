@@ -7,10 +7,7 @@ damonpyo.mooo.com {
         reverse_proxy ble-server:3001
     }
     handle {
-        reverse_proxy app:3000 {
-            header_up X-Forwarded-Host {host}
-            header_up X-Forwarded-Proto {scheme}
-        }
+        import active_app.caddy
     }
 }
 
@@ -19,10 +16,13 @@ honnol.org {
         reverse_proxy ble-server:3001
     }
     handle {
-        reverse_proxy app:3000 {
-            header_up X-Forwarded-Host {host}
-            header_up X-Forwarded-Proto {scheme}
-        }
+        import active_app.caddy
     }
 }
-   
+
+# 내부 전용 리스너 — ble-server가 app:3000을 직접 보지 않고 여기를 거쳐서
+# 항상 지금 활성인 블루/그린 슬롯으로 연결되도록 한다. 도메인 없이 도커
+# 네트워크 안에서만(호스트 포트 노출 없음) 접근 가능하다.
+:8080 {
+    import active_app.caddy
+}

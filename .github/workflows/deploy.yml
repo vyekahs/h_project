@@ -13,9 +13,10 @@ jobs:
       with:
         host: ${{ secrets.HOST }}
         username: ${{ secrets.USERNAME }}
-        password: ${{ secrets.PASSWORD }}
+        key: ${{ secrets.KEY }}
         port: ${{ secrets.PORT }}
         script: |
           cd Documents/projects/hproject/h_project/
           git pull
-          docker compose up -d --build
+          chmod +x scripts/deploy-blue-green.sh
+          ./scripts/deploy-blue-green.sh

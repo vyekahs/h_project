@@ -15,24 +15,24 @@ export const load: PageServerLoad = async ({ parent, params }) => {
 	const isMember = await PartyService.isPartyMember(partyId, user.id);
 	if (!isMember) throw redirect(302, '/mypage');
 
-	// 파티 정보 + 멤버 조회
-	const partyResult = await db.execute(sql`
-		SELECT gp.id, gp.name,
-			COALESCE(json_agg(json_build_object(
-				'id', a.id, 'name', a.name
-			) ORDER BY a.name) FILTER (WHERE a.id IS NOT NULL), '[]') as members
-		FROM game_parties gp
-		LEFT JOIN game_party_members gpm ON gp.id = gpm.party_id AND gpm.status = 'accepted'
-		LEFT JOIN attendees a ON gpm.attendee_id = a.id
-		WHERE gp.id = ${partyId}
-		GROUP BY gp.id, gp.name
-	`);
+	// 파티 정보 + 초기 메시지 — 둘 다 partyId에만 의존하고 서로 독립적이라 병렬로 조회
+	const [partyResult, { comments, hasMore }] = await Promise.all([
+		db.execute(sql`
+			SELECT gp.id, gp.name,
+				COALESCE(json_agg(json_build_object(
+					'id', a.id, 'name', a.name
+				) ORDER BY a.name) FILTER (WHERE a.id IS NOT NULL), '[]') as members
+			FROM game_parties gp
+			LEFT JOIN game_party_members gpm ON gp.id = gpm.party_id AND gpm.status = 'accepted'
+			LEFT JOIN attendees a ON gpm.attendee_id = a.id
+			WHERE gp.id = ${partyId}
+			GROUP BY gp.id, gp.name
+		`),
+		CommentService.getComments(`party_${partyId}`, undefined, 30),
+	]);
 
 	const party = (partyResult as any[])[0];
 	if (!party) throw redirect(302, '/mypage');
-
-	// 초기 메시지 로드
-	const { comments, hasMore } = await CommentService.getComments(`party_${partyId}`, undefined, 30);
 
 	return {
 		party: {

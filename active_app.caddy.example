@@ -1,0 +1,8 @@
+reverse_proxy app_blue:3000 {
+    header_up X-Forwarded-Host {host}
+    header_up X-Forwarded-Proto {scheme}
+    # 배포 중 컨테이너가 재시작되는 짧은 틈(연결 거부)에 바로 에러를 내지 않고
+    # 최대 20초까지 250ms 간격으로 재시도 — 그 사이 새 컨테이너가 뜨면 그대로 이어짐
+    lb_try_duration 20s
+    lb_try_interval 250ms
+}
