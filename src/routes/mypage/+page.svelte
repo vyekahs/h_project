@@ -184,6 +184,22 @@
             activeTab = tabParam as Tab;
         }
     }
+    // 파괴적 액션(기기/팟 삭제) 확인을 하나의 커스텀 모달로 통일 — 네이티브 confirm()은 안 씀
+    let confirmVisible = false;
+    let confirmMessage = '';
+    let confirmResolve: ((value: boolean) => void) | null = null;
+
+    function showConfirm(msg: string): Promise<boolean> {
+        confirmMessage = msg;
+        confirmVisible = true;
+        return new Promise((resolve) => { confirmResolve = resolve; });
+    }
+
+    function handleConfirm(result: boolean) {
+        confirmVisible = false;
+        if (confirmResolve) { confirmResolve(result); confirmResolve = null; }
+    }
+
     // Feedback Logic
 
     let showFeedbackModal = false;
@@ -437,7 +453,17 @@
                                     </div>
                                     <form method="POST" action="?/deleteDevice" use:enhance>
                                         <input type="hidden" name="deviceId" value={device.id} />
-                                        <button type="submit" class="btn-delete" aria-label="삭제">
+                                        <button
+                                            type="button"
+                                            class="btn-delete"
+                                            aria-label="삭제"
+                                            on:click={async (e) => {
+                                                const form = (e.currentTarget as HTMLElement).closest('form');
+                                                if (await showConfirm(`'${device.name}' 기기를 삭제하시겠습니까?\n삭제하면 이 기기로는 더 이상 자동 체크인이 되지 않습니다.`)) {
+                                                    form?.requestSubmit();
+                                                }
+                                            }}
+                                        >
                                             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                                 <path d="M3 6h18"></path>
                                                 <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
@@ -605,10 +631,10 @@
                                                 };
                                             }}>
                                                 <input type="hidden" name="partyId" value={party.id} />
-                                                <button type="submit" class="btn-delete-party" on:click|preventDefault={(e) => {
-                                                    if (confirm(`'${party.name}' 고정팟을 삭제하시겠습니까?`)) {
-                                                        const form = (e.currentTarget as HTMLElement).closest('form');
-                                                        if (form) form.requestSubmit();
+                                                <button type="button" class="btn-delete-party" on:click={async (e) => {
+                                                    const form = (e.currentTarget as HTMLElement).closest('form');
+                                                    if (await showConfirm(`'${party.name}' 고정팟을 삭제하시겠습니까?`)) {
+                                                        form?.requestSubmit();
                                                     }
                                                 }}>삭제</button>
                                             </form>
@@ -830,6 +856,26 @@
             <h3>전송 완료!</h3>
             <p>소중한 의견 감사합니다.</p>
             <button class="modal-close-btn" on:click={() => showSuccessModal = false}>확인</button>
+        </div>
+    </div>
+{/if}
+
+{#if confirmVisible}
+    <div
+        class="modal-backdrop"
+        on:click|self={() => handleConfirm(false)}
+        on:keydown={(e) => e.key === 'Escape' && handleConfirm(false)}
+        role="button"
+        tabindex="-1"
+        aria-label="Close modal"
+        transition:fade
+    >
+        <div class="modal-content confirm-modal">
+            <p class="confirm-message">{confirmMessage}</p>
+            <div class="modal-actions">
+                <button class="btn-cancel" on:click={() => handleConfirm(false)}>취소</button>
+                <button class="btn-danger" on:click={() => handleConfirm(true)}>삭제</button>
+            </div>
         </div>
     </div>
 {/if}
@@ -1693,6 +1739,22 @@
     .btn-submit:disabled {
         background: var(--text-hint);
         cursor: not-allowed;
+    }
+    .btn-danger {
+        background: var(--color-red, #ef4444);
+        color: #fff;
+    }
+    .btn-danger:hover {
+        background: var(--color-red-dark, #d32f2f);
+    }
+    .confirm-modal {
+        max-width: 340px;
+    }
+    .confirm-message {
+        margin: 0 0 1.25rem 0;
+        color: var(--text-primary);
+        line-height: 1.5;
+        white-space: pre-line;
     }
 
     /* Success Modal */
