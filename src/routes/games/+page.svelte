@@ -44,6 +44,15 @@
         return a.name.localeCompare(b.name, 'ko');
     });
 
+    // 인기 배지는 검색/필터와 무관하게 이번달 전체 순위 기준 1~3위에만 붙인다
+    $: topPopularRanks = new Map(
+        [...data.games]
+            .filter((g: any) => g.play_count > 0)
+            .sort((a: any, b: any) => b.play_count - a.play_count)
+            .slice(0, 3)
+            .map((g: any, i: number) => [g.id, i + 1])
+    );
+
     // 필터 드롭다운과 같은 3단계 기준으로 등급을 매겨, 배지 색상에 반영한다
     function complexityTier(score: number | null | undefined): string {
         if (!score) return '';
@@ -213,10 +222,10 @@
                         <div class="inactive-overlay">비활성화됨</div>
                     {/if}
                 </div>
-                {#if game.play_count > 0}
+                {#if topPopularRanks.has(game.id)}
                     <span class="popular-badge" title="이번달 {game.play_count}회 플레이됨">
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg>
-                        이번달 인기
+                        이번달 인기 {topPopularRanks.get(game.id)}위
                     </span>
                 {/if}
                 <div class="game-info">
