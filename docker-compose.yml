@@ -1,29 +1,42 @@
+x-app-common: &app-common
+  build: .
+  environment:
+    - DATABASE_URL=postgres://user:password@db:5432/boardgameclub
+    - PROTOCOL_HEADER=x-forwarded-proto
+    - HOST_HEADER=x-forwarded-host
+    - BODY_SIZE_LIMIT=Infinity
+    - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin1234}
+    - SCANNER_API_KEY=${SCANNER_API_KEY:-hproject_scanner_secret_2026}
+    - INTERNAL_API_KEY=${INTERNAL_API_KEY:-ble_internal_secret_2026}
+    - BLE_SERVER_URL=http://ble-server:3001
+    - SMTP_HOST=${SMTP_HOST:-smtp.gmail.com}
+    - SMTP_PORT=${SMTP_PORT:-587}
+    - SMTP_USER=${SMTP_USER}
+    - SMTP_PASS=${SMTP_PASS}
+    - SMTP_TO=${SMTP_TO}
+    - PUBLIC_VAPID_KEY=${PUBLIC_VAPID_KEY}
+    - VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY}
+    - VAPID_SUBJECT=${VAPID_SUBJECT:-mailto:admin@example.com}
+    - TZ=Asia/Seoul
+  healthcheck:
+    test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/ping"]
+    interval: 5s
+    timeout: 3s
+    retries: 3
+    start_period: 10s
+  depends_on:
+    - db
+  restart: always
+
 services:
-  app:
-    build: .
-    ports:
-      - "3000:3000"
-    environment:
-      - DATABASE_URL=postgres://user:password@db:5432/boardgameclub
-      - PROTOCOL_HEADER=x-forwarded-proto
-      - HOST_HEADER=x-forwarded-host
-      - BODY_SIZE_LIMIT=Infinity
-      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin1234}
-      - SCANNER_API_KEY=${SCANNER_API_KEY:-hproject_scanner_secret_2026}
-      - INTERNAL_API_KEY=${INTERNAL_API_KEY:-ble_internal_secret_2026}
-      - BLE_SERVER_URL=http://ble-server:3001
-      - SMTP_HOST=${SMTP_HOST:-smtp.gmail.com}
-      - SMTP_PORT=${SMTP_PORT:-587}
-      - SMTP_USER=${SMTP_USER}
-      - SMTP_PASS=${SMTP_PASS}
-      - SMTP_TO=${SMTP_TO}
-      - PUBLIC_VAPID_KEY=${PUBLIC_VAPID_KEY}
-      - VAPID_PRIVATE_KEY=${VAPID_PRIVATE_KEY}
-      - VAPID_SUBJECT=${VAPID_SUBJECT:-mailto:admin@example.com}
-      - TZ=Asia/Seoul
-    depends_on:
-      - db
-    restart: always
+  # 블루/그린 두 슬롯 — 무중단 배포 시 scripts/deploy-blue-green.sh가 비활성 슬롯을
+  # 새로 빌드/기동하고, 헬스체크 통과 후 Caddy를 그쪽으로 전환한 다음 이전 슬롯을 정지한다.
+  # 둘 다 호스트 포트를 직접 열지 않고 Caddy(내부 도커 네트워크)를 통해서만 접근한다.
+  app_blue:
+    <<: *app-common
+
+  app_green:
+    <<: *app-common
 
   db:
     image: postgres:15-alpine
@@ -45,13 +58,13 @@ services:
     build: ./ble-server
     environment:
       - SCANNER_API_KEY=${SCANNER_API_KEY:-hproject_scanner_secret_2026}
-      - SVELTEKIT_URL=http://app:3000
+      # app:3000을 직접 보지 않고 Caddy의 내부 전용 리스너(8080)를 거친다 —
+      # 블루/그린 중 지금 활성인 쪽으로 항상 자동으로 연결됨 (Caddyfile의 active_app.caddy 참고)
+      - SVELTEKIT_URL=http://caddy:8080
       - INTERNAL_API_KEY=${INTERNAL_API_KEY:-ble_internal_secret_2026}
       - LISTEN_PORT=3001
       - RUST_LOG=info
       - TZ=Asia/Seoul
-    depends_on:
-      - app
     restart: always
 
   caddy:
@@ -62,16 +75,14 @@ services:
       - "443:443"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile
+      - ./active_app.caddy:/etc/caddy/active_app.caddy
       - caddy_data:/data
       - caddy_config:/config
     environment:
       - DOMAIN_NAME=${DOMAIN_NAME:-localhost}
       - EMAIL=${EMAIL:-admin@localhost}
-    depends_on:
-      - app
-      - ble-server
-    extra_hosts:                                                                              
-      - "host.docker.internal:host-gateway"     
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
 volumes:
   db-data:
