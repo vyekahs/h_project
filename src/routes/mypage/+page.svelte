@@ -1037,6 +1037,13 @@
         padding: 1rem;
         padding-bottom: 2rem;
     }
+    @media (min-width: 860px) {
+        .mypage-container {
+            /* 데스크톱에서 모바일 폭(600px) 그대로 두면 양옆이 그냥 비어서,
+               읽기엔 아직 편한 폭까지만 넓힌다(전면 2열 재배치는 별도 작업) */
+            max-width: 820px;
+        }
+    }
     
     /* Tabs */
     .tabs {
