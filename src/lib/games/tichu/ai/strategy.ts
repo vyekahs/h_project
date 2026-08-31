@@ -460,15 +460,36 @@ export function decidePlay(
 
 	// Is the opponent who played the last card about to finish?
 	const lastPlayer = players[lastPlay.seat];
-	const lastPlayerAboutToFinish = lastPlayer.finishOrder === null && lastPlayer.hand.length <= 2;
+
+	// 상대팀 원투(1·2등 동시 완주) 위협: 상대 팀원이 이미 1등으로 나갔고 이 트릭을 리드한
+	// 다른 상대가 아직 안 나갔으면, 이 상대가 계속 선을 잡을수록 원투에 가까워진다.
+	// 원투는 즉시 라운드 종료 + 200점 손실이라 일반 "곧 나감"보다 훨씬 낮은 문턱으로 막아야 함.
+	const oneTwoThreat = trickLeaderTeam !== myTeam &&
+		context.finishOrder.length > 0 &&
+		getTeam(context.finishOrder[0]) === trickLeaderTeam &&
+		lastPlayer.finishOrder === null;
+	const lastPlayerAboutToFinish = lastPlayer.finishOrder === null &&
+		lastPlayer.hand.length <= (oneTwoThreat ? 5 : 2);
+
+	// 상대(트릭 리더)가 티츄 선언 중인지 — 진행 중인 리드를 그냥 넘겨주면 그 상대의
+	// 티츄 성공 가능성이 계속 유지됨
+	const lastPlayerTichuActive = lastPlayer.finishOrder === null &&
+		(lastPlayer.grandTichu === true || lastPlayer.smallTichu);
+
+	// 우리 팀(나 또는 파트너) 티츄가 살아있는지 — 상대에게 계속 선을 내주면
+	// 우리 쪽 티츄 완주 타이밍이 밀릴 수 있음
+	const iDeclaredTichuInFollow = players[currentSeat].finishOrder === null &&
+		(players[currentSeat].grandTichu === true || players[currentSeat].smallTichu);
+	const ourTichuActiveInFollow = iDeclaredTichuInFollow || partnerTichuInFollow;
 
 	// === Bomb decisions ===
-	// Use bomb if opponent about to finish
-	if (opponentAboutToFinish && bombPlays.length > 0 && weights.bombHolding < 0.8) {
-		return bombPlays.sort((a, b) => a.rank - b.rank)[0].cards.map(c => c.id);
-	}
+	// 주의: "어떤 상대든 손패 2장 이하"라는 이유만으로 이 트릭을 폭탄으로 따는 건 의미가 없다 —
+	// 그 상대가 지금 이 트릭의 리더가 아니면(다른 좌석의 카드 상황일 뿐) 이 트릭을 폭탄으로 이겨봤자
+	// 그 상대를 막는 것과 전혀 무관하고, 이미 일반 카드(nonBombPlays)로 이길 수 있는 트릭이면
+	// 굳이 폭탄을 낭비할 이유가 없다. 실제로 막아야 할 대상은 "지금 이 트릭을 리드한 사람"뿐이므로
+	// 아래 lastPlayerAboutToFinish(트릭 리더 특정, 원투 위협 시 문턱 완화) 체크만 사용한다.
 
-	// Use bomb if the last player is about to go out and winning the trick
+	// Use bomb if the last player is about to go out (or about to complete a one-two) and winning the trick
 	if (lastPlayerAboutToFinish && trickLeaderTeam !== myTeam && bombPlays.length > 0) {
 		return bombPlays.sort((a, b) => a.rank - b.rank)[0].cards.map(c => c.id);
 	}
@@ -511,9 +532,15 @@ export function decidePlay(
 	}
 
 	if (playsForFollow.length === 0) {
-		// Only bombs available
+		// Only bombs available — 일반 카드로는 아무도 못 이기는 패
 		if (bombPlays.length > 0) {
-			if (weights.bombHolding > 0.7 && !opponentAboutToFinish && trickPoints < 15) {
+			// 티츄가 걸린 상황(상대가 선언했거나, 우리 쪽이 선언했거나, 내가 직접 선언)에서는
+			// "나중을 위해 아낀다"는 명분이 약해짐 — 상대 티츄면 그 상대의 선을 계속 열어주는 셈이고,
+			// 우리 티츄면 계속 상대에게 주도권을 내주는 게 우리 완주 타이밍에 불리하다.
+			// 내가 직접 선언한 경우엔 폭탄 사용이 트릭 승리 + 내 손패 4장 이상 소모(완주 전진)를
+			// 동시에 달성하므로 더더욱 아낄 이유가 없다.
+			const tichuOverridesHold = lastPlayerTichuActive || ourTichuActiveInFollow;
+			if (weights.bombHolding > 0.7 && !opponentAboutToFinish && trickPoints < 15 && !tichuOverridesHold) {
 				return 'pass'; // Hold bomb for later
 			}
 			return bombPlays.sort((a, b) => a.rank - b.rank)[0].cards.map(c => c.id);
