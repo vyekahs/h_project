@@ -15,7 +15,7 @@ export const DELETE: RequestHandler = async ({ params, cookies }) => {
 	}
 
 	try {
-		await CommentService.deleteComment(commentId, user.id, user.isAdmin ?? false);
+		await CommentService.deleteComment(commentId, user.id, user.is_admin ?? false);
 		return json({ success: true });
 	} catch (e: any) {
 		const status = e.message.includes('권한') ? 403 : 404;

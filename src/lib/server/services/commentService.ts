@@ -3,6 +3,7 @@ import { sql } from 'drizzle-orm';
 import { NotificationService } from './notificationService';
 import { GAME_REGISTRY } from '$lib/games/gameRegistry';
 import { emitPartyChatMessage, emitWtpChatMessage } from '$lib/server/liveEvents';
+import { PartyService } from './partyService';
 
 export interface CommentWithUser {
 	id: number;
@@ -15,6 +16,26 @@ export interface CommentWithUser {
 }
 
 export const CommentService = {
+	/**
+	 * wtp/party 대화방은 참여자/멤버만 읽고 쓸 수 있다. 미니게임 댓글(그 외 gameId)은
+	 * 공개 댓글이라 별도 제한이 없다.
+	 */
+	async canAccessComments(gameId: string, userId: number, isAdmin = false): Promise<boolean> {
+		if (isAdmin) return true;
+		if (gameId.startsWith('wtp_')) {
+			const wtpId = parseInt(gameId.slice(4));
+			const res = await db.execute(sql`
+				SELECT 1 FROM want_to_play_participants WHERE post_id = ${wtpId} AND attendee_id = ${userId}
+			`);
+			return res.length > 0;
+		}
+		if (gameId.startsWith('party_')) {
+			const partyId = parseInt(gameId.slice(6));
+			return PartyService.isPartyMember(partyId, userId);
+		}
+		return true;
+	},
+
 	/**
 	 * Get comments for a game, cursor-based pagination.
 	 * Returns newest first (caller reverses for chat-style display).

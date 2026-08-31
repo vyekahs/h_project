@@ -10,6 +10,10 @@ export const GET: RequestHandler = async ({ params, url, cookies }) => {
 	if (!user) return json({ error: '세션이 만료되었습니다' }, { status: 401 });
 
 	const gameId = params.gameId;
+	if (!(await CommentService.canAccessComments(gameId, user.id, user.is_admin))) {
+		return json({ error: '참여자만 볼 수 있습니다' }, { status: 403 });
+	}
+
 	const beforeId = url.searchParams.get('before') ? Number(url.searchParams.get('before')) : undefined;
 	const limit = Math.min(Number(url.searchParams.get('limit') || 20), 50);
 
@@ -22,6 +26,10 @@ export const POST: RequestHandler = async ({ params, request, cookies }) => {
 	if (!sessionToken) return json({ error: '로그인이 필요합니다' }, { status: 401 });
 	const user = await verifyAttendeeSession(sessionToken);
 	if (!user) return json({ error: '세션이 만료되었습니다' }, { status: 401 });
+
+	if (!(await CommentService.canAccessComments(params.gameId, user.id, user.is_admin))) {
+		return json({ error: '참여자만 작성할 수 있습니다' }, { status: 403 });
+	}
 
 	const { content } = await request.json();
 	if (!content || typeof content !== 'string') {

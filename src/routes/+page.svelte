@@ -2111,10 +2111,12 @@
             <div class="wtp-detail-comments">
                 <h3>대화</h3>
                 <div class="wtp-detail-comments-body">
-                    {#if data.user}
+                    {#if !data.user}
+                        <p class="wtp-comments-login-hint">로그인 후 대화를 볼 수 있어요.</p>
+                    {:else if data.isAdmin || selectedWtpPost.participants.some((p: any) => p.id === data.user?.id)}
                         <GameComments gameId={`wtp_${selectedWtpPost.id}`} userId={data.user.id} isAdmin={data.isAdmin} />
                     {:else}
-                        <p class="wtp-comments-login-hint">로그인 후 대화를 볼 수 있어요.</p>
+                        <p class="wtp-comments-login-hint">참여자만 대화를 볼 수 있어요.</p>
                     {/if}
                 </div>
             </div>
