@@ -217,6 +217,25 @@ export const actions: Actions = {
         }
     },
 
+    leaveParty: async ({ request, cookies }) => {
+        const userSessionToken = cookies.get('user_session');
+        if (!userSessionToken) return fail(401, { error: '로그인이 필요합니다.' });
+        const user = await verifyAttendeeSession(userSessionToken);
+        if (!user) return fail(401, { error: '로그인이 필요합니다.' });
+
+        const data = await request.formData();
+        const partyId = parseInt(data.get('partyId')?.toString() || '0');
+        if (!partyId) return fail(400, { error: '잘못된 요청입니다.' });
+
+        try {
+            const left = await PartyService.leaveParty(partyId, user.id);
+            if (!left) return fail(404, { error: '고정팟을 찾을 수 없습니다.' });
+            return { success: true };
+        } catch (e: any) {
+            return fail(400, { error: e.message || '고정팟 나가기에 실패했습니다.' });
+        }
+    },
+
     deleteDevice: async ({ request, cookies }) => {
         const userSessionToken = cookies.get('user_session');
         if (!userSessionToken) return redirect(302, '/login');

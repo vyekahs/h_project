@@ -150,6 +150,30 @@ export const PartyService = {
         return result.length > 0;
     },
 
+    /**
+     * 방장이 아닌 멤버가 이미 수락한(accepted) 고정팟에서 스스로 나간다.
+     * 방장은 나갈 수 없다 — 팟을 없애려면 deleteParty를 쓴다.
+     */
+    async leaveParty(partyId: number, attendeeId: number): Promise<boolean> {
+        const party = await db
+            .select({ ownerId: gameParties.ownerId })
+            .from(gameParties)
+            .where(eq(gameParties.id, partyId));
+        if (party.length === 0) return false;
+        if (party[0].ownerId === attendeeId) {
+            throw new Error('방장은 고정팟을 나갈 수 없습니다. 삭제해주세요.');
+        }
+
+        const result = await db.delete(gamePartyMembers)
+            .where(and(
+                eq(gamePartyMembers.partyId, partyId),
+                eq(gamePartyMembers.attendeeId, attendeeId),
+                eq(gamePartyMembers.status, 'accepted')
+            ))
+            .returning();
+        return result.length > 0;
+    },
+
     async isPartyMember(partyId: number, attendeeId: number): Promise<boolean> {
         const result = await db
             .select()

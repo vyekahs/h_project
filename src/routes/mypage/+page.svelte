@@ -330,6 +330,7 @@
     );
 
     let partyModalError = '';
+    let partyLeaveError = '';
     let partySubmitting = false;
     let showPartyAdvanced = false;
     let partyMemberSearch = '';
@@ -736,6 +737,10 @@
                         <button class="btn-create-party" on:click={openCreatePartyModal}>+ 새 고정팟</button>
                     </div>
 
+                    {#if partyLeaveError}
+                        <p class="inline-error">{partyLeaveError}</p>
+                    {/if}
+
                     {#if data.parties && data.parties.length > 0}
                         <div class="party-list">
                             {#each data.parties as party}
@@ -784,6 +789,25 @@
                                                         form?.requestSubmit();
                                                     }
                                                 }}>삭제</button>
+                                            </form>
+                                        {:else}
+                                            <form method="POST" action="?/leaveParty" use:enhance={() => {
+                                                partyLeaveError = '';
+                                                return async ({ result, update }) => {
+                                                    if (result.type === 'success') {
+                                                        await update();
+                                                    } else if (result.type === 'failure') {
+                                                        partyLeaveError = (result.data as any)?.error || '고정팟 나가기에 실패했습니다.';
+                                                    }
+                                                };
+                                            }}>
+                                                <input type="hidden" name="partyId" value={party.id} />
+                                                <button type="button" class="btn-delete-party" on:click={async (e) => {
+                                                    const form = (e.currentTarget as HTMLElement).closest('form');
+                                                    if (await showConfirm(`'${party.name}' 고정팟에서 나가시겠습니까?`)) {
+                                                        form?.requestSubmit();
+                                                    }
+                                                }}>나가기</button>
                                             </form>
                                         {/if}
                                     </div>
