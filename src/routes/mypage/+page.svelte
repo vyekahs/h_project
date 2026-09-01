@@ -777,7 +777,7 @@
                             <div class="history-card" class:winner={game.is_winner}>
                                 <div class="history-header">
                                     <div class="game-info">
-                                        <span class="game-name text-truncate" title={game.game_name}>{game.game_name}</span>
+                                        <span class="game-name" title={game.game_name}>{game.game_name}</span>
                                         <div class="my-result">
                                             {#if game.is_winner}
                                                 <span class="result-badge win">승리</span>
@@ -1405,22 +1405,30 @@
         justify-content: space-between;
         align-items: flex-start;
         margin-bottom: 0.8rem;
+        gap: 0.5rem;
     }
     .game-info {
         display: flex;
         flex-direction: row;
+        align-items: center;
         gap: 0.5rem;
+        min-width: 0; /* game-name의 ellipsis가 실제로 부딪힐 때만 걸리게 함 */
+        flex: 1 1 auto;
     }
     .game-name {
         font-weight: 700;
         font-size: 1.1rem;
         color: var(--text-primary);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        min-width: 0;
     }
     .game-date {
         font-size: 0.8rem;
         color: var(--text-tertiary);
         white-space: nowrap;
-        margin-left: 1rem;
+        flex-shrink: 0;
     }
     .history-body {
         display: flex;
@@ -1431,7 +1439,7 @@
         display: flex;
         align-items: center;
         gap: 0.5rem;
-        margin-left: 0.5rem;
+        flex-shrink: 0;
     }
     .result-badge {
         font-size: 0.8rem;
