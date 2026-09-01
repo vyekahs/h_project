@@ -406,7 +406,7 @@
     }
 
     function formatTime(dateString: string) {
-        return new Date(dateString).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+        return new Date(dateString).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
     }
 
     function formatScheduledTime(dateString: string) {
@@ -414,7 +414,7 @@
         const now = new Date();
         const isToday = date.getDate() === now.getDate() && date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear();
         
-        const timeStr = date.toLocaleTimeString('ko-KR', {hour: '2-digit', minute:'2-digit'});
+        const timeStr = date.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
         return isToday ? timeStr : `${date.getMonth() + 1}/${date.getDate()} ${timeStr}`;
     }
 
@@ -446,16 +446,6 @@
         scheduled_at: string;
     }
 
-    interface Reservation {
-        id: number;
-        attendee_id: number;
-        session_id: number;
-        status: string;
-        created_at: string;
-        attendee_name: string;
-        game_name: string;
-    }
-
     interface SavedMember {
         id: number;
         name: string;
@@ -463,17 +453,10 @@
         is_blacklisted: boolean;
     }
 
-    interface Table {
-        id: number;
-        name: string;
-    }
-
     let attendees: Attendee[];
     let games: GameSession[];
     let scheduledGames: GameSession[];
-    let reservations: Reservation[];
     let savedMembers: SavedMember[];
-    let tables: Table[];
 
     const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
 
@@ -481,7 +464,6 @@
     $: allUsers = (data as any).allUsers || [];
     $: games = data.games as GameSession[];
     $: scheduledGames = data.scheduledGames as GameSession[];
-    $: reservations = data.reservations as Reservation[];
     $: savedMembers = data.savedMembers as SavedMember[];
     $: recurringSchedules = (data as any).recurringSchedules || [];
 
@@ -573,7 +555,7 @@
             <li>
                 <button type="button" class="game-list-item" class:ending-soon={endingSoon} onclick={() => { selectedPlayingGame = game; resetParticipantSearch(); }}>
                     {#if game.image_url}
-                        <img src={game.image_url} alt={game.game_name} class="list-thumb" />
+                        <img src={game.image_url} alt={game.game_name} width="32" height="32" class="list-thumb" />
                     {:else}
                         <div class="list-thumb placeholder">🎲</div>
                     {/if}
@@ -688,7 +670,7 @@
             <li>
                 <button type="button" class="game-list-item" onclick={() => { selectedScheduledGame = g; resetParticipantSearch(); }}>
                     {#if g.image_url}
-                        <img src={g.image_url} alt={g.game_name} class="list-thumb" />
+                        <img src={g.image_url} alt={g.game_name} width="32" height="32" class="list-thumb" />
                     {:else}
                         <div class="list-thumb placeholder">🎲</div>
                     {/if}
@@ -1307,7 +1289,7 @@
         <div class="modal-content game-detail-modal" use:trapFocus={() => selectedScheduledGame = null} onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="dialog" aria-modal="true" tabindex="-1">
             <div class="detail-header">
                 {#if g.image_url}
-                    <img src={g.image_url} alt={g.game_name} class="detail-thumb" />
+                    <img src={g.image_url} alt={g.game_name} width="56" height="56" class="detail-thumb" />
                 {/if}
                 <div>
                     <h3>{g.game_name}</h3>
@@ -1399,7 +1381,7 @@
         <div class="modal-content game-detail-modal" use:trapFocus={() => selectedPlayingGame = null} onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="dialog" aria-modal="true" tabindex="-1">
             <div class="detail-header">
                 {#if g.image_url}
-                    <img src={g.image_url} alt={g.game_name} class="detail-thumb" />
+                    <img src={g.image_url} alt={g.game_name} width="56" height="56" class="detail-thumb" />
                 {/if}
                 <div>
                     <h3>{g.game_name}</h3>
@@ -1472,7 +1454,7 @@
                         <button type="submit" class="btn-extend" style="width:100%;">+30분</button>
                     </form>
                 </div>
-                <button class="btn-delete" style="width:100%;" onclick={() => { openEndGameModal(g); selectedPlayingGame = null; }}>게임 종료</button>
+                <button class="btn-end-session" style="width:100%;" onclick={() => { openEndGameModal(g); selectedPlayingGame = null; }}>게임 종료</button>
             </div>
             <button class="btn-cancel" style="width:100%; margin-top:0.75rem;" onclick={() => selectedPlayingGame = null}>닫기</button>
         </div>
@@ -1725,6 +1707,19 @@
         border-radius: 4px;
         cursor: pointer;
     }
+    /* 파괴적이지 않은 세션 종료 — 빨강과 구분 */
+    .btn-end-session {
+        background: #495057;
+        color: white;
+        border: none;
+        padding: 0.5rem 1rem;
+        border-radius: 4px;
+        cursor: pointer;
+        font-weight: 700;
+    }
+    .btn-end-session:hover {
+        background: #343a40;
+    }
     .btn-warning {
         background: #ff9800;
         color: white;
@@ -1759,7 +1754,7 @@
     }
     .time-remaining {
         font-weight: bold;
-        color: #ef6c00;
+        color: #c2410c;
         margin-left: 0.5rem;
         white-space: nowrap;
     }
@@ -2483,7 +2478,7 @@
     }
     .vp-time {
         font-size: 0.75rem;
-        color: #ef6c00;
+        color: #c2410c;
         font-weight: 500;
     }
 
