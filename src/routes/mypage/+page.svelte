@@ -309,6 +309,7 @@
     );
 
     let partyModalError = '';
+    let showPartyAdvanced = false;
 
     function openCreatePartyModal() {
         editingParty = null;
@@ -321,6 +322,7 @@
         partyGameDropdownOpen = false;
         partyGameSearch = '';
         partyModalError = '';
+        showPartyAdvanced = false;
         showPartyModal = true;
     }
 
@@ -338,6 +340,8 @@
         partyGameDropdownOpen = false;
         partyGameSearch = '';
         partyModalError = '';
+        // 이미 값이 있으면 접어두지 않고 바로 보여준다 (수정하러 들어왔는데 숨어있으면 안 됨)
+        showPartyAdvanced = !!(party.duration || party.guest_count);
         showPartyModal = true;
     }
 
@@ -994,19 +998,22 @@
                     </div>
                 </div>
 
-                <div class="form-row">
-                    <div class="form-group half">
-                        <label for="partyDuration">플레이 시간 (분)</label>
-                        <input type="number" id="partyDuration" name="duration" bind:value={partyDuration} placeholder="60" min="1" />
+                <details class="advanced-details" bind:open={showPartyAdvanced}>
+                    <summary class="advanced-summary">세부 설정 (플레이 시간 · 게스트 수)</summary>
+                    <div class="form-row">
+                        <div class="form-group half">
+                            <label for="partyDuration">플레이 시간 (분)</label>
+                            <input type="number" id="partyDuration" name="duration" bind:value={partyDuration} placeholder="60" min="1" />
+                        </div>
+                        <div class="form-group half">
+                            <label for="partyGuestCount">게스트 수</label>
+                            <input type="number" id="partyGuestCount" name="guestCount" bind:value={partyGuestCount} min="0" max="20" />
+                        </div>
                     </div>
-                    <div class="form-group half">
-                        <label for="partyGuestCount">게스트 수</label>
-                        <input type="number" id="partyGuestCount" name="guestCount" bind:value={partyGuestCount} min="0" max="20" />
-                    </div>
-                </div>
+                </details>
 
                 <div class="form-group">
-                    <span class="label-heading">초대할 멤버 선택 <span class="member-hint">함께 플레이한 사람만 표시됩니다</span></span>
+                    <span class="label-heading">초대할 멤버 선택 <span class="member-hint">지금까지 같이 게임을 한 적 있는 사람만 표시돼요</span></span>
                     <div class="member-select-list">
                         {#each (data.allAttendees || []) as attendee}
                             <label class="member-checkbox" class:owner={data.user && attendee.id === data.user.id}>
@@ -2037,6 +2044,39 @@
     }
     .form-group.half {
         flex: 1;
+    }
+    .advanced-details {
+        margin-bottom: 1rem;
+        border: 1px solid var(--border-light);
+        border-radius: 8px;
+        padding: 0.6rem 0.8rem;
+    }
+    .advanced-details[open] {
+        padding-bottom: 0.9rem;
+    }
+    .advanced-summary {
+        cursor: pointer;
+        font-size: 0.85rem;
+        font-weight: 600;
+        color: var(--text-tertiary);
+        list-style: none;
+        display: flex;
+        align-items: center;
+        gap: 0.3rem;
+    }
+    .advanced-summary::-webkit-details-marker {
+        display: none;
+    }
+    .advanced-summary::before {
+        content: '▸';
+        font-size: 0.75rem;
+        transition: transform 0.15s;
+    }
+    .advanced-details[open] .advanced-summary::before {
+        transform: rotate(90deg);
+    }
+    .advanced-details .form-row {
+        margin-top: 0.7rem;
     }
     .game-search-wrapper {
         position: relative;
