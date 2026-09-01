@@ -721,4 +721,20 @@
             max-width: 100px;
         }
     }
+
+    /* Wide desktop: 600px 고정폭이었을 땐 1280px에서도 화면 절반 이상이
+       빈 그라디언트로 방치되고 하단 네비게이션까지 모바일 폭 그대로
+       떠 있었다 — 컨테이너를 넓히고 그리드도 그만큼 채움 */
+    @media (min-width: 1024px) {
+        .arcade-container {
+            max-width: 960px;
+        }
+        .games-grid {
+            grid-template-columns: repeat(6, 1fr);
+            gap: 1.5rem 1rem;
+        }
+        .game-icon-item {
+            max-width: 120px;
+        }
+    }
 </style>
