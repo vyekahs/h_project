@@ -597,7 +597,10 @@
         right: -3px;
         z-index: 3;
         background: rgba(255, 255, 255, 0.95);
-        color: var(--accent);
+        /* 게임별 accentColor를 그대로 쓰면 10개 중 5개가 흰 배경에서
+           1.5~2.5:1로 AA(4.5:1) 미달이었다 — 색감은 유지하되 균일하게
+           어둡게 섞어서 모든 accentColor에서 확실히 대비를 확보 */
+        color: color-mix(in srgb, var(--accent) 50%, black);
         font-size: 0.6rem;
         font-weight: 800;
         min-width: 1.3rem;
