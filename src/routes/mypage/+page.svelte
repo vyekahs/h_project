@@ -14,7 +14,7 @@
     // 직접 포커스를 옮기고 여기서 Tab 순환/Escape를 처리해야 한다.
     function trapFocus(node: HTMLElement, { onEscape }: { onEscape: () => void }) {
         const previouslyFocused = document.activeElement as HTMLElement | null;
-        const focusableSelector = 'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
+        const focusableSelector = 'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
         function getFocusable(): HTMLElement[] {
             return Array.from(node.querySelectorAll<HTMLElement>(focusableSelector));
