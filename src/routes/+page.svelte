@@ -3813,8 +3813,11 @@
     }
 
     .btn-danger {
-        background: var(--color-red-dark);
-        color: var(--bg-primary);
+        /* --color-red-dark는 다크 테마에서 --color-red와 같은 값(밝은 레드)으로
+           앨리어싱되어 있어, 고정 텍스트 색과 짝지으면 테마에 따라 대비가 깨질 수
+           있다 — 흰 텍스트 배경 전용인 --status-danger-bg를 쓴다 */
+        background: var(--status-danger-bg, #d32f2f);
+        color: #fff;
         border: none;
         padding: 0.75rem 1.5rem;
         border-radius: 8px;
@@ -3822,7 +3825,7 @@
         cursor: pointer;
     }
     .btn-danger:hover {
-        background: var(--color-red-dark);
+        filter: brightness(0.9);
     }
 
     .player-select {
