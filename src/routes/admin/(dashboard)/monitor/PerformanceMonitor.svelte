@@ -617,7 +617,7 @@
 		border-radius: 50%;
 		width: 48px;
 		height: 48px;
-		animation: spin 1s cubic-bezier(0.68, -0.55, 0.265, 1.55) infinite;
+		animation: spin 1s cubic-bezier(0.22, 1, 0.36, 1) infinite;
 		margin: 0 auto 1rem;
 	}
 

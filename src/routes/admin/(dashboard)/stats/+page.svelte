@@ -1,5 +1,6 @@
 <script lang="ts">
     import type { PageData } from './$types';
+    import { trapFocus } from '$lib/actions/modal';
     export let data: PageData;
 
     // Modal states
@@ -20,7 +21,7 @@
     <div class="header">
         <h1>
             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:10px; vertical-align:text-bottom;"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
-            통계 대시보드
+            통계
         </h1>
     </div>
 
@@ -31,20 +32,22 @@
             <div class="value">{data.kpis.totalVisits}</div>
             <div class="label">누적 방문 횟수</div>
         </div>
-        <!-- svelte-ignore a11y-click-events-have-key-events -->
-        <!-- svelte-ignore a11y-no-static-element-interactions -->
-        <div class="kpi-card clickable" on:click={() => showTopVisitorsModal = true}>
+        <button type="button" class="kpi-card clickable" on:click={() => showTopVisitorsModal = true}>
             <h3>등록 멤버</h3>
             <div class="value">{data.kpis.totalMembers}</div>
-            <div class="label">클릭하면 이번 달 Top 10</div>
-        </div>
-        <!-- svelte-ignore a11y-click-events-have-key-events -->
-        <!-- svelte-ignore a11y-no-static-element-interactions -->
-        <div class="kpi-card clickable" on:click={() => showPopularGamesModal = true}>
+            <div class="label">이번 달 방문 Top 10 보기</div>
+        </button>
+        <div class="kpi-card">
             <h3>평균 체류</h3>
             <div class="value">{data.kpis.avgDuration}분</div>
-            <div class="label">클릭하면 인기 게임 Top 5</div>
+            <div class="label">1회 방문당 평균 머문 시간</div>
         </div>
+    </div>
+
+    <div class="kpi-extra-actions">
+        <button type="button" class="btn-drilldown" on:click={() => showPopularGamesModal = true}>
+            인기 게임 Top 5 보기
+        </button>
     </div>
 
     <!-- User Stats Section -->
@@ -57,20 +60,16 @@
     </div>
 
     <div class="kpi-grid kpi-grid-4">
-        <!-- svelte-ignore a11y-click-events-have-key-events -->
-        <!-- svelte-ignore a11y-no-static-element-interactions -->
-        <div class="kpi-card clickable" on:click={() => showPeakHoursModal = true}>
+        <button type="button" class="kpi-card clickable" on:click={() => showPeakHoursModal = true}>
             <h3>평균 주간 방문</h3>
             <div class="value">{data.userStats.avgWeeklyVisits}<span class="unit">일</span></div>
-            <div class="label">1인당 주 평균 방문 일수 · 클릭→시간대별</div>
-        </div>
-        <!-- svelte-ignore a11y-click-events-have-key-events -->
-        <!-- svelte-ignore a11y-no-static-element-interactions -->
-        <div class="kpi-card clickable" on:click={() => showDailyTrendModal = true}>
+            <div class="label">1인당 주 평균 방문 일수 · 시간대별 분포 보기</div>
+        </button>
+        <button type="button" class="kpi-card clickable" on:click={() => showDailyTrendModal = true}>
             <h3>평균 월간 방문</h3>
             <div class="value">{data.userStats.avgMonthlyVisits}<span class="unit">일</span></div>
-            <div class="label">1인당 월 평균 방문 일수 · 클릭→30일 추이</div>
-        </div>
+            <div class="label">1인당 월 평균 방문 일수 · 최근 30일 추이 보기</div>
+        </button>
         <div class="kpi-card">
             <h3>활성 유저</h3>
             <div class="value">{data.userStats.activeUsers}<span class="unit">명</span> <span class="sub-value">({activeRate}%)</span></div>
@@ -86,15 +85,16 @@
 
 <!-- Peak Hours Modal -->
 {#if showPeakHoursModal}
+    <!-- 백드롭은 편의용 클릭 영역. 키보드 경로는 모달의 Escape(trapFocus)와 닫기 버튼이 담당한다. -->
+    <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
     <div 
         class="modal-backdrop" 
         on:click={() => showPeakHoursModal = false}
-        on:keydown={(e) => e.key === 'Escape' && (showPeakHoursModal = false)}
         role="button"
         tabindex="-1"
         aria-label="모달 닫기"
     >
-        <div class="modal-content" on:click|stopPropagation on:keydown|stopPropagation role="dialog" tabindex="-1">
+        <div class="modal-content" use:trapFocus={() => (showPeakHoursModal = false)} on:click|stopPropagation on:keydown|stopPropagation role="dialog" aria-modal="true" tabindex="-1">
             <div class="modal-header">
                 <h3>시간대별 방문 (혼잡도)</h3>
                 <button class="modal-close" on:click={() => showPeakHoursModal = false}>&times;</button>
@@ -117,15 +117,16 @@
 
 <!-- Daily Trend Modal (Last 30 days) -->
 {#if showDailyTrendModal}
+    <!-- 백드롭은 편의용 클릭 영역. 키보드 경로는 모달의 Escape(trapFocus)와 닫기 버튼이 담당한다. -->
+    <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
     <div 
         class="modal-backdrop" 
         on:click={() => showDailyTrendModal = false}
-        on:keydown={(e) => e.key === 'Escape' && (showDailyTrendModal = false)}
         role="button"
         tabindex="-1"
         aria-label="모달 닫기"
     >
-        <div class="modal-content" on:click|stopPropagation on:keydown|stopPropagation role="dialog" tabindex="-1">
+        <div class="modal-content" use:trapFocus={() => (showDailyTrendModal = false)} on:click|stopPropagation on:keydown|stopPropagation role="dialog" aria-modal="true" tabindex="-1">
             <div class="modal-header">
                 <h3>최근 30일 방문자 추이</h3>
                 <button class="modal-close" on:click={() => showDailyTrendModal = false}>&times;</button>
@@ -176,15 +177,16 @@
 
 <!-- Top 10 Visitors Modal -->
 {#if showTopVisitorsModal}
+    <!-- 백드롭은 편의용 클릭 영역. 키보드 경로는 모달의 Escape(trapFocus)와 닫기 버튼이 담당한다. -->
+    <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
     <div 
         class="modal-backdrop" 
         on:click={() => showTopVisitorsModal = false}
-        on:keydown={(e) => e.key === 'Escape' && (showTopVisitorsModal = false)}
         role="button"
         tabindex="-1"
         aria-label="모달 닫기"
     >
-        <div class="modal-content" on:click|stopPropagation on:keydown|stopPropagation role="dialog" tabindex="-1">
+        <div class="modal-content" use:trapFocus={() => (showTopVisitorsModal = false)} on:click|stopPropagation on:keydown|stopPropagation role="dialog" aria-modal="true" tabindex="-1">
             <div class="modal-header">
                 <h3>이번 달 Top 10 방문자</h3>
                 <button class="modal-close" on:click={() => showTopVisitorsModal = false}>&times;</button>
@@ -214,15 +216,16 @@
 
 <!-- Popular Games Modal -->
 {#if showPopularGamesModal}
+    <!-- 백드롭은 편의용 클릭 영역. 키보드 경로는 모달의 Escape(trapFocus)와 닫기 버튼이 담당한다. -->
+    <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
     <div 
         class="modal-backdrop" 
         on:click={() => showPopularGamesModal = false}
-        on:keydown={(e) => e.key === 'Escape' && (showPopularGamesModal = false)}
         role="button"
         tabindex="-1"
         aria-label="모달 닫기"
     >
-        <div class="modal-content" on:click|stopPropagation on:keydown|stopPropagation role="dialog" tabindex="-1">
+        <div class="modal-content" use:trapFocus={() => (showPopularGamesModal = false)} on:click|stopPropagation on:keydown|stopPropagation role="dialog" aria-modal="true" tabindex="-1">
             <div class="modal-header">
                 <h3>인기 게임 Top 5</h3>
                 <button class="modal-close" on:click={() => showPopularGamesModal = false}>&times;</button>
@@ -337,7 +340,6 @@
     }
     .bar {
         border-radius: 4px 4px 0 0;
-        transition: height 0.3s ease;
         min-height: 2px;
         opacity: 0.8;
     }
@@ -441,6 +443,26 @@
     }
 
     /* Clickable KPI card */
+    button.kpi-card {
+        font: inherit;
+        text-align: left;
+        width: 100%;
+        color: inherit;
+    }
+    .kpi-extra-actions {
+        margin: 0.75rem 0 0;
+    }
+    .btn-drilldown {
+        min-height: 44px;
+        padding: 0 0.9rem;
+        border-radius: 6px;
+        border: 1px solid var(--border-medium, #ced4da);
+        background: var(--bg-primary, #fff);
+        color: var(--text-primary, #333);
+        font-size: 0.88rem;
+        font-weight: 600;
+        cursor: pointer;
+    }
     .kpi-card.clickable {
         cursor: pointer;
         transition: transform 0.15s, box-shadow 0.15s;
