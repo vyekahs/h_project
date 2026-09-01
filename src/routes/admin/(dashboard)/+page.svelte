@@ -93,8 +93,58 @@
         };
     }
 
-    function autofocus(node: HTMLElement) {
-        node.focus();
+    /**
+     * use:trapFocus={onClose} — 모달 컨텐츠에 적용.
+     * 열릴 때 포커스를 안으로(우선 [data-autofocus], 없으면 첫 포커스 대상),
+     * Tab을 컨텐츠 안에 가두고, Escape로 onClose 호출, 닫힐 때 이전 포커스 복원.
+     */
+    function trapFocus(node: HTMLElement, onClose?: () => void) {
+        const returnTo = document.activeElement as HTMLElement | null;
+        const SEL =
+            'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+        const focusable = () =>
+            Array.from(node.querySelectorAll<HTMLElement>(SEL)).filter(
+                (el) => el.offsetParent !== null || el === document.activeElement
+            );
+
+        queueMicrotask(() => {
+            const initial =
+                node.querySelector<HTMLElement>('[data-autofocus]') ?? focusable()[0] ?? node;
+            initial.focus();
+        });
+
+        function onKeydown(e: KeyboardEvent) {
+            if (e.key === 'Escape') {
+                e.stopPropagation();
+                onClose?.();
+                return;
+            }
+            if (e.key !== 'Tab') return;
+            const items = focusable();
+            if (items.length === 0) {
+                e.preventDefault();
+                return;
+            }
+            const first = items[0];
+            const last = items[items.length - 1];
+            const active = document.activeElement as HTMLElement;
+            if (e.shiftKey && (active === first || !node.contains(active))) {
+                e.preventDefault();
+                last.focus();
+            } else if (!e.shiftKey && (active === last || !node.contains(active))) {
+                e.preventDefault();
+                first.focus();
+            }
+        }
+
+        node.addEventListener('keydown', onKeydown);
+        return {
+            destroy() {
+                node.removeEventListener('keydown', onKeydown);
+                returnTo?.focus?.();
+            }
+        };
     }
 
     /** enhance 결과에서 실패(failure)와 전송/HTTP 에러(error)를 모두 사용자에게 노출 */
@@ -783,7 +833,7 @@
         tabindex="-1"
         aria-label="Close modal"
     >
-        <div class="modal-content" onclick={handleModalClick} onkeydown={() => {}} role="dialog" tabindex="-1">
+        <div class="modal-content" use:trapFocus={() => showModal = false} onclick={handleModalClick} onkeydown={() => {}} role="dialog" aria-modal="true" tabindex="-1">
             <h2>새 게임 시작</h2>
             <form method="POST" action="?/createGame" use:enhance={() => {
                 return async ({ result, update }: { result: any, update: (options?: { reset?: boolean }) => Promise<void> }) => {
@@ -922,7 +972,7 @@
         tabindex="-1"
         aria-label="Close modal"
     >
-        <div class="modal-content" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="dialog" tabindex="-1">
+        <div class="modal-content" use:trapFocus={() => endGameModalVisible = false} onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="dialog" aria-modal="true" tabindex="-1">
 
             <h2>
                 <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:#fab005;"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>
@@ -982,12 +1032,12 @@
         tabindex="-1"
         aria-label="확인 닫기"
     >
-        <div class="modal-content confirm-modal" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="alertdialog" aria-modal="true" tabindex="-1">
+        <div class="modal-content confirm-modal" use:trapFocus={closeConfirm} onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="alertdialog" aria-modal="true" tabindex="-1">
             <h3>{confirmState.title}</h3>
             <p>{confirmState.message}</p>
             <div class="modal-actions">
                 <button class="btn-cancel" onclick={closeConfirm}>취소</button>
-                <button class="btn-confirm-action" class:danger={confirmState.danger} use:autofocus onclick={runConfirm}>{confirmState.confirmLabel}</button>
+                <button class="btn-confirm-action" class:danger={confirmState.danger} data-autofocus onclick={runConfirm}>{confirmState.confirmLabel}</button>
             </div>
         </div>
     </div>
@@ -1003,11 +1053,11 @@
         tabindex="-1"
         aria-label="Close alert"
     >
-        <div class="modal-content alert-modal alert-{alertKind}" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="alertdialog" aria-modal="true" tabindex="-1">
+        <div class="modal-content alert-modal alert-{alertKind}" use:trapFocus={() => alertVisible = false} onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="alertdialog" aria-modal="true" tabindex="-1">
             <h3>{alertKind === 'success' ? '완료' : alertKind === 'error' ? '문제가 발생했어요' : '알림'}</h3>
             <p>{alertMessage}</p>
             <div class="modal-actions">
-                <button class="btn-primary" use:autofocus onclick={() => alertVisible = false}>확인</button>
+                <button class="btn-primary" data-autofocus onclick={() => alertVisible = false}>확인</button>
             </div>
         </div>
     </div>
@@ -1024,7 +1074,7 @@
         tabindex="-1"
         aria-label="관리 닫기"
     >
-        <div class="modal-content manage-sheet" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="dialog" aria-modal="true" tabindex="-1">
+        <div class="modal-content manage-sheet" use:trapFocus={() => manageTarget = null} onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="dialog" aria-modal="true" tabindex="-1">
             <h3>{m.name} 관리</h3>
 
             <div class="manage-row">
@@ -1109,7 +1159,7 @@
         tabindex="-1"
         aria-label="Close confirm"
     >
-        <div class="modal-content confirm-modal" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="dialog" tabindex="-1">
+        <div class="modal-content confirm-modal" use:trapFocus={() => removeModalVisible = false} onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="dialog" aria-modal="true" tabindex="-1">
             <h3>참가자 퇴장 확인</h3>
             <p><strong>{removeTarget.name}</strong>님은 현재 <strong>{removeTarget.game_name}</strong> 게임에 참여 중입니다.</p>
             <p>어떻게 처리하시겠습니까?</p>
@@ -1152,7 +1202,7 @@
         tabindex="-1"
         aria-label="Close modal"
     >
-        <div class="modal-content" onclick={handleModalClick} onkeydown={() => {}} role="dialog" tabindex="-1">
+        <div class="modal-content" use:trapFocus={() => showScheduledGameModal = false} onclick={handleModalClick} onkeydown={() => {}} role="dialog" aria-modal="true" tabindex="-1">
 
             <h2>
                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
@@ -1255,7 +1305,7 @@
 {#if selectedScheduledGame}
     {@const g = selectedScheduledGame}
     <div class="modal-backdrop" onclick={() => selectedScheduledGame = null} onkeydown={(e) => e.key === 'Escape' && (selectedScheduledGame = null)} role="button" tabindex="-1" aria-label="Close modal">
-        <div class="modal-content game-detail-modal" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="dialog" tabindex="-1">
+        <div class="modal-content game-detail-modal" use:trapFocus={() => selectedScheduledGame = null} onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="dialog" aria-modal="true" tabindex="-1">
             <div class="detail-header">
                 {#if g.image_url}
                     <img src={g.image_url} alt={g.game_name} class="detail-thumb" />
@@ -1347,7 +1397,7 @@
 {#if selectedPlayingGame}
     {@const g = selectedPlayingGame}
     <div class="modal-backdrop" onclick={() => selectedPlayingGame = null} onkeydown={(e) => e.key === 'Escape' && (selectedPlayingGame = null)} role="button" tabindex="-1" aria-label="Close modal">
-        <div class="modal-content game-detail-modal" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="dialog" tabindex="-1">
+        <div class="modal-content game-detail-modal" use:trapFocus={() => selectedPlayingGame = null} onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="dialog" aria-modal="true" tabindex="-1">
             <div class="detail-header">
                 {#if g.image_url}
                     <img src={g.image_url} alt={g.game_name} class="detail-thumb" />
