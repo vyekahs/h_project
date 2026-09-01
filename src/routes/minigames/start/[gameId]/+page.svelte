@@ -507,6 +507,11 @@
         margin: 0;
         text-align: center;
         letter-spacing: -0.5px;
+        /* 오른쪽 현황 배지가 넓어져도 제목이 헤더를 넘치지 않도록 줄어들 수 있게 한다. */
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
     }
 
     .glass-btn {
@@ -532,6 +537,21 @@
 
     .back-btn {
         justify-self: start;
+        flex-shrink: 0;
+    }
+
+    /* 좁은 화면(320px 등)에서는 제목 + 현황 배지가 헤더 폭을 넘겨 서로 겹친다.
+       제목을 줄여 배지가 들어갈 자리를 만든다. */
+    @media (max-width: 360px) {
+        .start-header h1 {
+            font-size: 1.4rem;
+        }
+    }
+
+    @media (max-width: 330px) {
+        .start-header h1 {
+            font-size: 1.2rem;
+        }
     }
 
     .header-links {
