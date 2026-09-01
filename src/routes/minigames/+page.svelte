@@ -144,7 +144,7 @@
 <div class="arcade-container">
     <header class="arcade-header">
         <div class="glass-title-badge">
-            <h1>Game Lounge</h1>
+            <h1>오락실</h1>
         </div>
     </header>
 
@@ -357,7 +357,7 @@
                     <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
                 </div>
             </div>
-            <span class="icon-label">Coming Soon</span>
+            <span class="icon-label">준비 중</span>
         </div>
     </section>
 </div>
