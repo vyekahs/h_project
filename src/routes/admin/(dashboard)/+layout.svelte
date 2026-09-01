@@ -4,6 +4,7 @@
     import { onMount, onDestroy } from 'svelte';
     import { browser } from '$app/environment';
     import type { LayoutData } from './$types';
+    import { trapFocus } from '$lib/actions/modal';
 
     let { data, children }: { data: LayoutData; children: any } = $props();
 
@@ -37,7 +38,7 @@
 <div class="admin-layout">
     <aside class="sidebar">
         <div class="sidebar-header">
-            <h2>Admin Console</h2>
+            <h2>관리자 콘솔</h2>
         </div>
         <nav class="sidebar-nav">
             <a href="/admin" class="nav-item" class:active={$page.url.pathname === '/admin'}>
@@ -46,19 +47,19 @@
             </a>
             <a href="/admin/games" class="nav-item" class:active={$page.url.pathname === '/admin/games'}>
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px;"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></svg>
-                게임 도감 관리
+                게임 도감
             </a>
             <a href="/admin/stats" class="nav-item" class:active={$page.url.pathname === '/admin/stats'}>
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px;"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
-                통계 보기
+                통계
             </a>
             <a href="/admin/monitor" class="nav-item" class:active={$page.url.pathname === '/admin/monitor'}>
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px;"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-                통합 모니터
+                모니터
             </a>
             <a href="/admin/passes" class="nav-item" class:active={$page.url.pathname === '/admin/passes'}>
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px;"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
-                정기권 관리
+                정기권
             </a>
         </nav>
         <div class="sidebar-footer">
@@ -126,7 +127,7 @@
             <span class="icon">
                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></svg>
             </span>
-            <span class="label">게임 관리</span>
+            <span class="label">게임 도감</span>
         </a>
         <a href="/admin/stats" class="bottom-nav-item" class:active={$page.url.pathname === '/admin/stats'}>
             <span class="icon">
@@ -157,15 +158,16 @@
 </div>
 
 {#if closeDayModalVisible}
+    <!-- 백드롭은 편의용 클릭 영역. 키보드 경로는 모달의 Escape(trapFocus)와 닫기 버튼이 담당한다. -->
+    <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
     <div
         class="modal-backdrop"
         onclick={() => closeDayModalVisible = false}
-        onkeydown={(e) => e.key === 'Escape' && (closeDayModalVisible = false)}
         role="button"
         tabindex="-1"
         aria-label="Close modal"
     >
-        <div class="modal-content confirm-modal" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="dialog" tabindex="-1">
+        <div class="modal-content confirm-modal" use:trapFocus={() => closeDayModalVisible = false} onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="dialog" aria-modal="true" tabindex="-1">
             <h3>
                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px; vertical-align:text-bottom;"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
                 마감 하기
@@ -173,7 +175,7 @@
             <p>정말 마감하시겠습니까?</p>
             <p class="warning-text">모든 참가자가 퇴장 처리되고, 진행 중인 게임이 종료됩니다.</p>
             <div class="modal-actions">
-                <button class="btn-secondary" onclick={() => closeDayModalVisible = false}>취소</button>
+                <button class="btn-secondary" data-autofocus onclick={() => closeDayModalVisible = false}>취소</button>
                 <form method="POST" action="/admin?/closeDay" use:enhance={() => {
                     return async ({ result, update }) => {
                         if (result.type === 'failure') {
@@ -194,15 +196,16 @@
 {/if}
 
 {#if openDayModalVisible}
+    <!-- 백드롭은 편의용 클릭 영역. 키보드 경로는 모달의 Escape(trapFocus)와 닫기 버튼이 담당한다. -->
+    <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
     <div
         class="modal-backdrop"
         onclick={() => openDayModalVisible = false}
-        onkeydown={(e) => e.key === 'Escape' && (openDayModalVisible = false)}
         role="button"
         tabindex="-1"
         aria-label="Close modal"
     >
-        <div class="modal-content confirm-modal" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="dialog" tabindex="-1">
+        <div class="modal-content confirm-modal" use:trapFocus={() => openDayModalVisible = false} onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="dialog" aria-modal="true" tabindex="-1">
             <h3>
                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px; vertical-align:text-bottom;"><circle cx="12" cy="12" r="5"/><path d="M12 1v2"/><path d="M12 21v2"/><path d="M4.22 4.22l1.42 1.42"/><path d="M18.36 18.36l1.42 1.42"/><path d="M1 12h2"/><path d="M21 12h2"/><path d="M4.22 19.78l1.42-1.42"/><path d="M18.36 5.64l1.42-1.42"/></svg>
                 오픈 하기
@@ -231,25 +234,33 @@
 
 <!-- Alert Modal -->
 {#if alertVisible}
+    <!-- 백드롭은 편의용 클릭 영역. 키보드 경로는 모달의 Escape(trapFocus)와 닫기 버튼이 담당한다. -->
+    <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
     <div
         class="modal-backdrop"
         onclick={() => alertVisible = false}
-        onkeydown={(e) => e.key === 'Escape' && (alertVisible = false)}
         role="button"
         tabindex="-1"
         aria-label="Close alert"
     >
-        <div class="modal-content alert-modal" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="alertdialog" tabindex="-1">
+        <div class="modal-content alert-modal" use:trapFocus={() => alertVisible = false} onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="alertdialog" aria-modal="true" tabindex="-1">
             <h3>알림</h3>
             <p>{alertMessage}</p>
             <div class="modal-actions">
-                <button class="btn-primary" onclick={() => alertVisible = false}>확인</button>
+                <button class="btn-primary" data-autofocus onclick={() => alertVisible = false}>확인</button>
             </div>
         </div>
     </div>
 {/if}
 
 <style>
+    /*
+     * 어드민 팔레트 — 라이트 전용으로 확정된 값이다.
+     * 사이트 전역 토큰은 <html>의 data-theme='dark'로 뒤집히는데, 어드민은
+     * 이 블록에서 토큰을 다시 선언해 그 영향을 차단한다. 즉 이 재선언이
+     * "어드민은 다크모드를 따르지 않는다"를 실제로 강제하는 장치이므로 지우면 안 된다.
+     * 어드민 안에서 색이 필요하면 하드코딩하지 말고 여기의 토큰을 쓸 것.
+     */
     .force-light {
         /* Text */
         --text-primary: #333;

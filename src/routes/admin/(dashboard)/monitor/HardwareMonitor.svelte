@@ -483,10 +483,11 @@
 
 <!-- Memory Detail Modal -->
 {#if showMemModal && metrics}
+	<!-- 백드롭은 편의용 클릭 영역. 키보드 경로는 모달의 Escape(trapFocus)와 닫기 버튼이 담당한다. -->
+	<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
 	<div 
 		class="modal-backdrop" 
-		on:click={() => showMemModal = false} 
-		on:keydown={(e) => e.key === 'Escape' && (showMemModal = false)} 
+		on:click={() => showMemModal = false}  
 		role="button" 
 		tabindex="-1"
 		aria-label="모달 닫기"
@@ -532,10 +533,11 @@
 
 <!-- SSE / Connection Detail Modal -->
 {#if showSseModal && metrics}
+	<!-- 백드롭은 편의용 클릭 영역. 키보드 경로는 모달의 Escape(trapFocus)와 닫기 버튼이 담당한다. -->
+	<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
 	<div 
 		class="modal-backdrop" 
-		on:click={() => showSseModal = false} 
-		on:keydown={(e) => e.key === 'Escape' && (showSseModal = false)} 
+		on:click={() => showSseModal = false}  
 		role="button" 
 		tabindex="-1"
 		aria-label="모달 닫기"

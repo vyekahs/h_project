@@ -22,7 +22,7 @@
 </script>
 
 <svelte:head>
-	<title>통합 모니터링 - 관리자</title>
+	<title>모니터 - 관리자</title>
 </svelte:head>
 
 <div class="monitor-page">
@@ -43,7 +43,7 @@
 				<line x1="8" y1="21" x2="16" y2="21" />
 				<line x1="12" y1="17" x2="12" y2="21" />
 			</svg>
-			통합 모니터링
+			모니터
 		</h1>
 	</div>
 
@@ -228,6 +228,7 @@
 			padding: 0.75rem 1rem;
 			font-size: 0.9rem;
 			gap: 0.5rem;
+			min-height: 44px;
 		}
 
 		.tab-btn svg {

@@ -3,6 +3,7 @@
     import { enhance } from '$app/forms';
     import { invalidateAll } from '$app/navigation';
     import { onMount, onDestroy } from 'svelte';
+    import { trapFocus } from '$lib/actions/modal';
 
     export let data: PageData;
     if (!data) throw new Error('Data is required');
@@ -48,6 +49,7 @@
         if (debounceTimer) clearTimeout(debounceTimer);
         if (sseReconnectTimer) clearTimeout(sseReconnectTimer);
         if (clockTimer) clearInterval(clockTimer);
+        if (toastTimer) clearTimeout(toastTimer);
         if (eventSource) { eventSource.close(); eventSource = null; }
     });
 
@@ -69,10 +71,13 @@
     }
 
     /**
-     * use:enhance={pending(cb?)} — 실제 요청이 끝날 때까지 제출 버튼을 잠가
+     * use:enhance={pending(cb?, success?)} — 실제 요청이 끝날 때까지 제출 버튼을 잠가
      * 더블탭 중복 제출을 막고 진행 중임을 표시한다(고정 타임아웃이 아님).
+     *
+     * cb를 넘기지 않으면 기본 경로를 탄다: 실패·에러는 알림 모달로 노출하고,
+     * success가 있으면 성공 시 토스트로 결과를 알린다. 조용히 끝나는 폼은 없다.
      */
-    function pending(cb?: (arg: any) => any) {
+    function pending(cb?: (arg: any) => any, success?: string | ((data: any) => string)) {
         return (arg: any) => {
             const release = lockFormButtons(arg.formElement);
             let inner: any;
@@ -82,10 +87,16 @@
                 release();
                 throw e;
             }
-            return async (result: any) => {
+            return async (res: any) => {
                 try {
-                    if (typeof inner === 'function') await inner(result);
-                    else await result.update();
+                    if (typeof inner === 'function') await inner(res);
+                    else {
+                        if (!reportResult(res.result) && success) {
+                            const msg = typeof success === 'function' ? success(res.result?.data) : success;
+                            if (msg) showToast(msg, 'success');
+                        }
+                        await res.update();
+                    }
                 } finally {
                     release();
                 }
@@ -94,61 +105,32 @@
     }
 
     /**
-     * use:trapFocus={onClose} — 모달 컨텐츠에 적용.
-     * 열릴 때 포커스를 안으로(우선 [data-autofocus], 없으면 첫 포커스 대상),
-     * Tab을 컨텐츠 안에 가두고, Escape로 onClose 호출, 닫힐 때 이전 포커스 복원.
+     * 게임 이름 콤보박스 키보드 조작.
+     * 기존엔 옵션이 마우스 전용이라, 타이핑 후 Enter를 치면 옵션 선택이 아니라
+     * 폼이 제출됐다. ArrowDown/Up으로 후보를 옮기고 Enter로 확정한다.
      */
-    function trapFocus(node: HTMLElement, onClose?: () => void) {
-        const returnTo = document.activeElement as HTMLElement | null;
-        const SEL =
-            'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+    let gameOptionIndex = -1;
 
-        const focusable = () =>
-            Array.from(node.querySelectorAll<HTMLElement>(SEL)).filter(
-                (el) => el.offsetParent !== null || el === document.activeElement
-            );
-
-        queueMicrotask(() => {
-            const initial =
-                node.querySelector<HTMLElement>('[data-autofocus]') ?? focusable()[0] ?? node;
-            initial.focus();
-        });
-
-        function onKeydown(e: KeyboardEvent) {
-            if (e.key === 'Escape') {
-                e.stopPropagation();
-                onClose?.();
-                return;
-            }
-            if (e.key !== 'Tab') return;
-            const items = focusable();
-            if (items.length === 0) {
-                e.preventDefault();
-                return;
-            }
-            const first = items[0];
-            const last = items[items.length - 1];
-            const active = document.activeElement as HTMLElement;
-            if (e.shiftKey && (active === first || !node.contains(active))) {
-                e.preventDefault();
-                last.focus();
-            } else if (!e.shiftKey && (active === last || !node.contains(active))) {
-                e.preventDefault();
-                first.focus();
-            }
+    function comboKeydown(e: KeyboardEvent, options: any[], select: (g: any) => void) {
+        if (!dropdownOpen || options.length === 0) return;
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            gameOptionIndex = (gameOptionIndex + 1) % options.length;
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            gameOptionIndex = (gameOptionIndex - 1 + options.length) % options.length;
+        } else if (e.key === 'Enter' && gameOptionIndex >= 0) {
+            e.preventDefault();
+            select(options[gameOptionIndex]);
+            gameOptionIndex = -1;
+        } else if (e.key === 'Escape') {
+            dropdownOpen = false;
+            gameOptionIndex = -1;
         }
-
-        node.addEventListener('keydown', onKeydown);
-        return {
-            destroy() {
-                node.removeEventListener('keydown', onKeydown);
-                returnTo?.focus?.();
-            }
-        };
     }
 
     /** enhance 결과에서 실패(failure)와 전송/HTTP 에러(error)를 모두 사용자에게 노출 */
-    function reportResult(result: any, fallback = '요청을 처리하지 못했어요. 잠시 후 다시 시도해주세요.'): boolean {
+    function reportResult(result: any, fallback = '요청을 처리하지 못했습니다. 잠시 후 다시 시도해주세요.'): boolean {
         if (result.type === 'failure') {
             showAlert(result.data?.error || fallback, 'error');
             return true;
@@ -173,22 +155,29 @@
 
     function confirmSubmit(opts: {
         title: string;
-        message: string;
+        message: string | (() => string);
         confirmLabel?: string;
         danger?: boolean;
         handle?: (opts: any) => Promise<void>;
+        success?: string | ((data: any) => string);
     }) {
         return (arg: any) => {
             if (arg.formElement.dataset.confirmed === 'true') {
                 arg.formElement.dataset.confirmed = '';
                 const release = lockFormButtons(arg.formElement);
                 const inner = opts.handle;
-                return async (result: any) => {
+                return async (res: any) => {
                     try {
-                        if (inner) await inner(result);
+                        if (inner) await inner(res);
                         else {
-                            reportResult(result);
-                            await result.update();
+                            if (!reportResult(res.result) && opts.success) {
+                                const msg =
+                                    typeof opts.success === 'function'
+                                        ? opts.success(res.result?.data)
+                                        : opts.success;
+                                if (msg) showToast(msg, 'success');
+                            }
+                            await res.update();
                         }
                     } finally {
                         release();
@@ -199,7 +188,8 @@
             pendingForm = arg.formElement;
             confirmState = {
                 title: opts.title,
-                message: opts.message,
+                // 문구는 "지금" 계산한다 — 액션 생성 시점의 값은 오래됐을 수 있다
+                message: typeof opts.message === 'function' ? opts.message() : opts.message,
                 confirmLabel: opts.confirmLabel ?? '확인',
                 danger: opts.danger ?? false,
                 handle: opts.handle
@@ -239,14 +229,53 @@
         alertVisible = true;
     }
 
+    /**
+     * 성공·완료처럼 흐름을 멈출 필요가 없는 결과는 토스트로 알린다.
+     * 실패는 showAlert(모달)로 남겨 둔다 — 성공은 지나가도 되지만 실패는 멈춰 세워야 한다.
+     * 영역 자체는 항상 DOM에 있어 스크린리더가 변화를 읽는다.
+     */
+    let toastMessage = '';
+    let toastTimer: ReturnType<typeof setTimeout> | null = null;
+
+    function showToast(msg: string, _kind: 'success' | 'info' = 'success') {
+        toastMessage = msg;
+        if (toastTimer) clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => { toastMessage = ''; }, 4500);
+    }
+
+    // 페널티 부여 사유 (관리 시트) — 시트를 열 때마다 초기화된다
+    const PENALTY_REASON_LABELS: Record<string, string> = {
+        no_show: '노쇼',
+        late: '지각',
+        other: '기타'
+    };
+    let penaltyReason = 'no_show';
+
+    /** 페널티 결과를 운영자에게 되돌려준다. 임계에 도달한 순간만 모달로 멈춰 세운다. */
+    function announcePenalty(d: any) {
+        const p = d?.penalty;
+        if (!p) {
+            showToast('페널티가 반영되었습니다.');
+            return;
+        }
+        const line = `${p.name} 페널티 ${p.points > 0 ? `+1 · ${p.reason}` : '−1 · 취소'} → ${p.total}/${p.threshold}점`;
+        if (p.blocked && p.points > 0) showAlert(`${line} — 누적 ${p.total}점이 되어 이제 예약이 제한됩니다.`, 'info');
+        else showToast(line);
+    }
+
     // Remove Confirm Modal State
     let removeModalVisible = false;
     let removeTarget: Attendee | null = null;
 
-    // 참여자 관리 시트 (블랙리스트 / 게임 권한 / 퇴장)
+    // 참여자 관리 시트 (페널티 / 블랙리스트 / 게임 권한 / 퇴장)
     let manageTarget: Attendee | null = null;
 
-    // 게임 참여 중인 참가자 퇴장 — 게임 처리 방식을 묻는 전용 모달을 연다
+    function openManage(a: Attendee) {
+        penaltyReason = 'no_show';
+        manageTarget = a;
+    }
+
+    // 게임 참여 중인 참여자 퇴장 — 게임 처리 방식을 묻는 전용 모달을 연다
     function handleRemove(attendee: Attendee) {
         removeTarget = attendee;
         removeModalVisible = true;
@@ -466,6 +495,73 @@
     $: scheduledGames = data.scheduledGames as GameSession[];
     $: savedMembers = data.savedMembers as SavedMember[];
     $: recurringSchedules = (data as any).recurringSchedules || [];
+    // 몇 점부터 예약이 막히는지 — 페널티 숫자는 이 값 없이는 의미를 알 수 없다
+    $: penaltyThreshold = parseInt((data as any).settings?.penalty_threshold ?? '3') || 3;
+    $: noShowLimitMinutes = parseInt((data as any).settings?.no_show_limit_minutes ?? '10') || 10;
+
+    /**
+     * 대기·승인 큐 — 게임별로 묶는다.
+     *
+     * 노쇼 판정: 예정 게임은 시각이 되면 autoClose가 자동으로 시작시키므로
+     * "예정인데 늦음"이라는 상태는 존재하지 않는다. 실제 노쇼는
+     * "게임이 시작됐고 판정 시간이 지났는데 확정 예약자가 방에 없음"이다.
+     * 자동 체크인이 방 재실 여부를 채우므로 attendee_status를 신뢰할 수 있다.
+     * 시스템은 판정만 하지 않고, 운영자에게 시점을 알린다.
+     */
+    $: queueGroups = (() => {
+        const rows = ((data as any).reservations || []) as any[];
+        type QueueGroup = {
+            sessionId: number;
+            gameName: string;
+            sessionStatus: string;
+            scheduledAt: string | null;
+            startTime: string | null;
+            maxPlayers: number;
+            currentPlayers: number;
+            rows: any[];
+        };
+        const bySession = new Map<number, QueueGroup>();
+        for (const r of rows) {
+            let g: QueueGroup | undefined = bySession.get(r.session_id);
+            if (!g) {
+                g = {
+                    sessionId: r.session_id,
+                    gameName: r.game_name,
+                    sessionStatus: r.session_status,
+                    scheduledAt: r.scheduled_at,
+                    startTime: r.start_time,
+                    maxPlayers: Number(r.max_players ?? 0),
+                    currentPlayers: Number(r.current_players ?? 0),
+                    rows: []
+                };
+                bySession.set(r.session_id, g);
+            }
+            const noShowAfter =
+                r.status === 'confirmed' &&
+                r.session_status === 'playing' &&
+                r.attendee_status !== 'present' &&
+                r.start_time
+                    ? new Date(r.start_time).getTime() + noShowLimitMinutes * 60000
+                    : null;
+            g.rows.push({ ...r, overdue: noShowAfter !== null && now > noShowAfter });
+        }
+        return Array.from(bySession.values());
+    })();
+
+    $: queueTotal = queueGroups.reduce((n, g) => n + g.rows.length, 0);
+    $: approvalCount = queueGroups.reduce((n, g) => n + g.rows.filter((r: any) => r.status === 'pending_approval').length, 0);
+    $: overdueCount = queueGroups.reduce((n, g) => n + g.rows.filter((r: any) => r.overdue).length, 0);
+    // 노쇼 후보는 큐 상단으로 — 개입이 필요한 것부터 본다
+    $: queueGroupsSorted = [...queueGroups].sort(
+        (a, b) => Number(b.rows.some((r: any) => r.overdue)) - Number(a.rows.some((r: any) => r.overdue))
+    );
+
+    const QUEUE_STATUS: Record<string, string> = {
+        pending_approval: '승인 대기',
+        waitlisted: '대기',
+        confirmed: '확정',
+        pending: '신청'
+    };
 
     // 관리 시트가 열려 있으면 최신 참여자 데이터로 동기화
     $: manageView = manageTarget
@@ -515,6 +611,29 @@
     }
 </script>
 
+<!-- 참여자 검색 셀렉트 — 예정/진행 두 게임 상세 모달이 공유한다 -->
+{#snippet participantPicker()}
+    <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+    <div class="search-select" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="search">
+        <input type="hidden" name="attendeeId" value={selectedParticipantId} />
+        <input
+            type="text"
+            placeholder="이름 검색..."
+            aria-label="참여자 이름 검색"
+            autocomplete="off"
+            bind:value={participantSearch}
+            onfocus={() => (participantSearchOpen = true)}
+        />
+        {#if participantSearchOpen && participantSearch.length > 0 && filteredParticipants.length > 0}
+            <div class="search-dropdown">
+                {#each filteredParticipants.slice(0, 8) as user (user.id)}
+                    <button type="button" class="search-option" onclick={() => selectParticipant(user)}>{user.name}</button>
+                {/each}
+            </div>
+        {/if}
+    </div>
+{/snippet}
+
 <section class="room-summary" aria-label="방 현황 요약">
     <span class="rs-item">
         <span class="rs-dot" class:live={attendeeCount > 0} aria-hidden="true"></span>
@@ -532,6 +651,130 @@
             <strong class:urgent={nextEndMins <= 5}>{nextEndMins}분</strong> 후 첫 종료
         {/if}
     </span>
+</section>
+
+<!-- 대기 · 승인 큐 — 개입이 필요한 것부터. 확정된 현황보다 위에 온다. -->
+<section class="section-primary queue-section" aria-label="대기 및 승인 큐">
+    <div class="section-header">
+        <h2>
+            대기 · 승인 큐 ({queueTotal})
+            {#if approvalCount > 0}<span class="queue-flag approval">승인 대기 {approvalCount}</span>{/if}
+            {#if overdueCount > 0}<span class="queue-flag overdue">노쇼 판정 초과 {overdueCount}</span>{/if}
+        </h2>
+    </div>
+
+    {#if queueGroups.length === 0}
+        <p class="empty-state queue-empty">
+            지금 처리할 예약이 없습니다. 회원이 예약하거나 진행 중인 게임에 참여를 신청하면 여기에 뜹니다.
+        </p>
+    {:else}
+        {#each queueGroupsSorted as g (g.sessionId)}
+            <div class="queue-group">
+                <div class="queue-group-head">
+                    <strong>{g.gameName}</strong>
+                    <span class="queue-meta">
+                        {g.sessionStatus === 'playing'
+                            ? g.startTime
+                                ? `${formatTime(g.startTime)} 시작`
+                                : '진행 중'
+                            : g.scheduledAt
+                              ? `${formatTime(g.scheduledAt)} 예정`
+                              : '예정'}
+                        · 참여 {g.currentPlayers}/{g.maxPlayers || '-'}
+                    </span>
+                </div>
+                <ul class="queue-list">
+                    {#each g.rows as r (r.id)}
+                        <li class="queue-row" class:is-overdue={r.overdue}>
+                            <div class="queue-who">
+                                <a href="/admin/attendees/{r.attendee_id}" class="attendee-link">{r.attendee_name}</a>
+                                <span class="queue-status queue-{r.status}">
+                                    {QUEUE_STATUS[r.status] ?? r.status}{#if r.status === 'waitlisted' && r.waitlist_position}&nbsp;{r.waitlist_position}번{/if}
+                                </span>
+                                {#if r.penalty_points >= penaltyThreshold}
+                                    <span class="badge penalty blocked">페널티 {r.penalty_points}/{penaltyThreshold}</span>
+                                {:else if r.penalty_points > 0}
+                                    <span class="badge penalty">페널티 {r.penalty_points}/{penaltyThreshold}</span>
+                                {/if}
+                                {#if r.is_blacklisted}<span class="badge blacklist">블랙</span>{/if}
+                            </div>
+                            <div class="queue-note">
+                                {#if r.overdue}
+                                    <strong class="overdue-text">시작 후 {noShowLimitMinutes}분 경과 · 방에 없음 — 노쇼 판단 필요</strong>
+                                {:else if r.is_blacklisted}
+                                    <strong class="overdue-text">블랙리스트 — 확정 불가. 해제 후 처리하세요.</strong>
+                                {:else if r.penalty_points >= penaltyThreshold}
+                                    <strong class="overdue-text">
+                                        페널티 {r.penalty_points}/{penaltyThreshold}점 — 확정 불가. 페널티 조정 후 처리하세요.
+                                    </strong>
+                                {:else}
+                                    {formatTime(r.created_at)} 신청
+                                {/if}
+                            </div>
+                            <div class="queue-actions">
+                                {#if r.overdue}
+                                    <form
+                                        method="POST"
+                                        action="?/markNoShow"
+                                        use:enhance={confirmSubmit({
+                                            title: '노쇼 처리',
+                                            message: () =>
+                                                `${r.attendee_name}님을 ${g.gameName} 노쇼로 처리합니다. 예약이 취소되고 페널티 1점이 부여됩니다(누적 ${r.penalty_points + 1}/${penaltyThreshold}점).${g.rows.some((x: any) => x.status === 'waitlisted') ? ' 대기 1번이 자동 승계됩니다.' : ''}`,
+                                            confirmLabel: '노쇼 처리',
+                                            danger: true,
+                                            handle: async (res: any) => {
+                                                if (!reportResult(res.result)) announcePenalty(res.result?.data);
+                                                await res.update();
+                                            }
+                                        })}
+                                    >
+                                        <input type="hidden" name="reservationId" value={r.id} />
+                                        <button type="submit" class="btn-queue-noshow">노쇼 처리</button>
+                                    </form>
+                                {/if}
+                                {#if r.status !== 'confirmed'}
+                                    <form method="POST" action="?/confirmReservation" use:enhance={pending(undefined, `${r.attendee_name}님을 ${g.gameName}에 확정했습니다.`)}>
+                                        <input type="hidden" name="reservationId" value={r.id} />
+                                        <button
+                                            type="submit"
+                                            class="btn-queue-confirm"
+                                            disabled={r.is_blacklisted || r.penalty_points >= penaltyThreshold}
+                                            title={r.is_blacklisted
+                                                ? '블랙리스트라 확정할 수 없습니다'
+                                                : r.penalty_points >= penaltyThreshold
+                                                  ? `페널티 ${r.penalty_points}/${penaltyThreshold}점이라 확정할 수 없습니다`
+                                                  : undefined}
+                                        >
+                                            {r.status === 'pending_approval' ? '승인' : '확정'}
+                                        </button>
+                                    </form>
+                                {/if}
+                                <form
+                                    method="POST"
+                                    action="?/cancelReservationAdmin"
+                                    use:enhance={confirmSubmit({
+                                        title: r.status === 'pending_approval' ? '참여 요청 거절' : '예약 취소',
+                                        message: () =>
+                                            r.status === 'pending_approval'
+                                                ? `${r.attendee_name}님의 ${g.gameName} 참여 요청을 거절합니다.`
+                                                : `${r.attendee_name}님의 ${g.gameName} 예약을 취소합니다.${g.rows.some((x) => x.status === 'waitlisted') ? ' 대기 1번이 자동으로 승계됩니다.' : ''}`,
+                                        confirmLabel: r.status === 'pending_approval' ? '거절' : '예약 취소',
+                                        danger: true,
+                                        success: `${r.attendee_name}님의 ${g.gameName} 예약을 처리했습니다.`
+                                    })}
+                                >
+                                    <input type="hidden" name="reservationId" value={r.id} />
+                                    <button type="submit" class="btn-queue-cancel">
+                                        {r.status === 'pending_approval' ? '거절' : '취소'}
+                                    </button>
+                                </form>
+                            </div>
+                        </li>
+                    {/each}
+                </ul>
+            </div>
+        {/each}
+    {/if}
 </section>
 
 <section class="section-primary">
@@ -567,7 +810,7 @@
             </li>
         {/each}
         {#if (games || []).length === 0}
-            <p class="empty-state">진행 중인 게임이 없습니다.</p>
+            <p class="empty-state">진행 중인 게임이 없습니다. 「+ 새 게임 시작」으로 시작할 수 있습니다.</p>
         {/if}
     </ul>
     {#if (games || []).length > 5}
@@ -593,38 +836,28 @@
                             </span>
                         {/if}
                         {#if a.penalty_points > 0}
-                            <span class="badge penalty">
+                            <span class="badge penalty" class:blocked={a.penalty_points >= penaltyThreshold}>
                                 <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:2px; vertical-align:middle;"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                                {a.penalty_points}
+                                페널티 {a.penalty_points}/{penaltyThreshold}
                             </span>
                         {/if}
                     </div>
                     <span class="arrival-time">{formatTime(a.arrival_time)} 입장</span>
                 </div>
                 <div class="attendee-actions">
-                    <div class="penalty-actions">
-                        <form method="POST" action="?/applyPenaltyAdmin" use:enhance={pending()} style="display:inline;">
-                            <input type="hidden" name="attendeeId" value={a.id} />
-                            <input type="hidden" name="points" value="-1" />
-                            <button type="submit" class="btn-penalty remove" title="페널티 -1">-1</button>
-                        </form>
-                        <form method="POST" action="?/applyPenaltyAdmin" use:enhance={pending()} style="display:inline;">
-                            <input type="hidden" name="attendeeId" value={a.id} />
-                            <input type="hidden" name="points" value="1" />
-                            <button type="submit" class="btn-penalty add" title="페널티 +1">+1</button>
-                        </form>
-                    </div>
-                    <button type="button" class="btn-manage" onclick={() => (manageTarget = a)}>관리</button>
+                    <button type="button" class="btn-manage" onclick={() => openManage(a)}>
+                        관리<span class="sr-only"> — {a.name}</span>
+                    </button>
                 </div>
             </li>
         {/each}
         {#if (attendees || []).length === 0}
-            <li class="empty-state">현재 참여 중인 인원이 없습니다.</li>
+            <li class="empty-state">아직 아무도 없습니다. 아래에서 이름을 입력하거나 등록 멤버를 눌러 입장 처리하세요.</li>
         {/if}
     </ul>
 
-    <form method="POST" action="?/addAttendee" use:enhance={pending()} class="add-form">
-        <input type="text" name="name" placeholder="이름 입력" required />
+    <form method="POST" action="?/addAttendee" use:enhance={pending(undefined, '입장 처리했습니다.')} class="add-form">
+        <input type="text" name="name" placeholder="이름 입력" aria-label="추가할 인원 이름" required />
         <button type="submit">인원 추가</button>
     </form>
 
@@ -644,7 +877,7 @@
                                 <span class="penalty-dot">({member.penalty_points})</span>
                             {/if}
                         </a>
-                        <form method="POST" action="?/addAttendee" use:enhance={pending()} style="display:inline;">
+                        <form method="POST" action="?/addAttendee" use:enhance={pending(undefined, `${member.name}님을 입장 처리했습니다.`)} style="display:inline;">
                             <input type="hidden" name="name" value={member.name} />
                             <button type="submit" class="chip-add" title="입장" disabled={member.is_blacklisted}>+</button>
                         </form>
@@ -682,7 +915,7 @@
             </li>
         {/each}
         {#if (scheduledGames || []).length === 0}
-            <p class="empty-state">예정된 게임이 없습니다.</p>
+            <p class="empty-state">예정된 게임이 없습니다. 「+ 게임 일정 등록」으로 만들 수 있습니다.</p>
         {/if}
     </ul>
     {#if (scheduledGames || []).length > 5}
@@ -728,13 +961,13 @@
         {#if data.notice}
             <div class="current-notice">
                 <strong>현재 공지:</strong> {data.notice}
-                <form method="POST" action="?/clearNotice" use:enhance={pending()} style="display:inline; margin-left: 1rem;">
+                <form method="POST" action="?/clearNotice" use:enhance={pending(undefined, '공지를 내렸습니다.')} style="display:inline; margin-left: 1rem;">
                     <button type="submit" class="btn-ghost">숨기기</button>
                 </form>
             </div>
         {/if}
-        <form method="POST" action="?/updateNotice" use:enhance={pending()} class="notice-form">
-            <input type="text" name="content" placeholder="새 공지사항 입력" required />
+        <form method="POST" action="?/updateNotice" use:enhance={pending(undefined, '공지를 저장했습니다.')} class="notice-form">
+            <input type="text" name="content" placeholder="새 공지사항 입력" aria-label="공지 내용" required />
             <button type="submit">등록</button>
         </form>
     </div>
@@ -777,7 +1010,7 @@
                                 {schedule.is_skipped_this_week ? '이번주 스킵됨' : '이번주 빼기'}
                             </button>
                         </form>
-                        <form method="POST" action="?/toggleRecurringActive" use:enhance={pending()} style="display:inline;">
+                        <form method="POST" action="?/toggleRecurringActive" use:enhance={pending(undefined, schedule.is_active ? `"${schedule.game_name}" 반복 일정을 비활성화했습니다.` : `"${schedule.game_name}" 반복 일정을 활성화했습니다.`)} style="display:inline;">
                             <input type="hidden" name="scheduleId" value={schedule.id} />
                             <button type="submit" class="btn-toggle-active">
                                 {schedule.is_active ? '비활성화' : '활성화'}
@@ -801,15 +1034,16 @@
             {/each}
         </div>
     {:else}
-        <p class="empty-state">등록된 반복 게임이 없습니다.</p>
+        <p class="empty-state">등록된 반복 게임이 없습니다. 매주 같은 요일·시간에 열리는 게임을 여기에 등록해두면 자동으로 예정에 올라갑니다.</p>
     {/if}
 </details>
 
 {#if showModal}
+    <!-- 백드롭은 편의용 클릭 영역. 키보드 경로는 모달의 Escape(trapFocus)와 닫기 버튼이 담당한다. -->
+    <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
     <div
         class="modal-backdrop"
         onclick={() => showModal = false} 
-        onkeydown={(e) => e.key === 'Escape' && (showModal = false)}
         role="button" 
         tabindex="-1"
         aria-label="Close modal"
@@ -828,23 +1062,30 @@
             }} class="game-form">
                 <input type="hidden" name="gameId" value={selectedGameId} />
                 <div class="input-group custom-dropdown">
+                    <label class="sr-only" for="newGameName">게임 이름</label>
                     <input 
                         type="text" 
+                        id="newGameName"
                         name="gameName" 
                         placeholder="게임 이름 (직접 입력 또는 선택)" 
                         bind:value={selectedGameName} 
                         bind:this={searchInput}
                         onclick={handleInputClick}
                         onfocus={handleInputClick}
+                        onkeydown={(e) => comboKeydown(e, filteredGames, selectGame)}
+                        role="combobox"
+                        aria-expanded={dropdownOpen && filteredGames.length > 0}
+                        aria-controls="newGameOptions"
+                        aria-autocomplete="list"
                         required 
                         autocomplete="off" 
                     />
                     
                     {#if dropdownOpen && filteredGames.length > 0}
-                        <ul class="dropdown-menu">
-                            {#each filteredGames as game}
-                                <li>
-                                    <button type="button" onclick={() => selectGame(game)}>
+                        <ul class="dropdown-menu" id="newGameOptions" role="listbox" aria-label="게임 후보">
+                            {#each filteredGames as game, gi}
+                                <li role="presentation">
+                                    <button type="button" role="option" aria-selected={gi === gameOptionIndex} class:active={gi === gameOptionIndex} onclick={() => selectGame(game)}>
                                         {#if game.image_url}
                                             <img src={game.image_url} alt="" class="mini-thumb" />
                                         {/if}
@@ -906,7 +1147,7 @@
                         </div>
                     {/if}
 
-                    <input type="text" class="pp-search" placeholder="이름 검색..." autocomplete="off" bind:value={playerSearch} />
+                    <input type="text" class="pp-search" placeholder="이름 검색..." aria-label="참여자 이름 검색" autocomplete="off" bind:value={playerSearch} />
 
                     <div class="pp-list">
                         {#each pickerResults as a (a.id)}
@@ -931,7 +1172,7 @@
                 <div class="input-group guest-input-group">
                     <label for="guestCount">게스트 수</label>
                     <input type="number" id="guestCount" name="guestCount" bind:value={guestCount} min="0" max="20" class="number-input" />
-                    <p class="hint">* 미등록 참가자 수 (게스트1, 게스트2... 자동 생성)</p>
+                    <p class="hint">* 회원이 아닌 사람 수 (게스트1, 게스트2… 자동 생성)</p>
                 </div>
 
                 <div class="modal-actions">
@@ -945,10 +1186,11 @@
 
 <!-- End Game Modal -->
 {#if endGameModalVisible && selectedEndGame}
+    <!-- 백드롭은 편의용 클릭 영역. 키보드 경로는 모달의 Escape(trapFocus)와 닫기 버튼이 담당한다. -->
+    <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
     <div
         class="modal-backdrop"
         onclick={() => endGameModalVisible = false} 
-        onkeydown={(e) => e.key === 'Escape' && (endGameModalVisible = false)}
         role="button" 
         tabindex="-1"
         aria-label="Close modal"
@@ -989,7 +1231,7 @@
                                     <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="7"/><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"/></svg>
                                 </span>
                             </label>
-                            <input type="number" name="score_{pl.id}" placeholder="점수" class="score-input" />
+                            <input type="number" name="score_{pl.id}" placeholder="점수" aria-label="{pl.name} 점수" class="score-input" />
                         </div>
                     {/each}
                 </div>
@@ -1005,14 +1247,11 @@
 
 <!-- 파괴적 액션 확인 모달 -->
 {#if confirmState}
+    <!-- 백드롭은 편의용 클릭 영역. 키보드 경로는 모달의 Escape(trapFocus)와 닫기 버튼이 담당한다. -->
+    <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
     <div
-        class="modal-backdrop"
-        onclick={closeConfirm}
-        onkeydown={(e) => e.key === 'Escape' && closeConfirm()}
-        role="button"
-        tabindex="-1"
-        aria-label="확인 닫기"
-    >
+        class="modal-backdrop modal-layer-confirm"
+        onclick={closeConfirm} role="presentation">
         <div class="modal-content confirm-modal" use:trapFocus={closeConfirm} onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="alertdialog" aria-modal="true" tabindex="-1">
             <h3>{confirmState.title}</h3>
             <p>{confirmState.message}</p>
@@ -1024,12 +1263,20 @@
     </div>
 {/if}
 
+<!-- 라이브 리전 — 결과 알림은 항상 여기로 들어오고, 스크린리더가 변화를 읽는다 -->
+<div class="toast-region" role="status" aria-live="polite">
+    {#if toastMessage}
+        <div class="toast">{toastMessage}</div>
+    {/if}
+</div>
+
 <!-- Alert Modal -->
 {#if alertVisible}
+    <!-- 백드롭은 편의용 클릭 영역. 키보드 경로는 모달의 Escape(trapFocus)와 닫기 버튼이 담당한다. -->
+    <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
     <div
-        class="modal-backdrop"
+        class="modal-backdrop modal-layer-alert"
         onclick={() => alertVisible = false} 
-        onkeydown={(e) => e.key === 'Escape' && (alertVisible = false)}
         role="button" 
         tabindex="-1"
         aria-label="Close alert"
@@ -1047,10 +1294,11 @@
 <!-- 참여자 관리 시트 -->
 {#if manageView}
     {@const m = manageView}
+    <!-- 백드롭은 편의용 클릭 영역. 키보드 경로는 모달의 Escape(trapFocus)와 닫기 버튼이 담당한다. -->
+    <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
     <div
         class="modal-backdrop"
         onclick={() => (manageTarget = null)}
-        onkeydown={(e) => e.key === 'Escape' && (manageTarget = null)}
         role="button"
         tabindex="-1"
         aria-label="관리 닫기"
@@ -1058,21 +1306,58 @@
         <div class="modal-content manage-sheet" use:trapFocus={() => manageTarget = null} onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="dialog" aria-modal="true" tabindex="-1">
             <h3>{m.name} 관리</h3>
 
-            <div class="manage-row">
+            <div class="manage-row manage-row-stacked">
                 <div class="manage-label">
                     <span>페널티</span>
-                    <span class="manage-sub">현재 {m.penalty_points}점</span>
+                    <span class="manage-sub">
+                        현재 {m.penalty_points}점 · {penaltyThreshold}점부터 예약 제한
+                        {#if m.penalty_points >= penaltyThreshold}<strong class="manage-flag">현재 제한 중</strong>{/if}
+                    </span>
                 </div>
-                <div class="penalty-actions">
-                    <form method="POST" action="?/applyPenaltyAdmin" use:enhance={pending()} style="display:inline;">
-                        <input type="hidden" name="attendeeId" value={m.id} />
-                        <input type="hidden" name="points" value="-1" />
-                        <button type="submit" class="btn-penalty remove">-1</button>
-                    </form>
-                    <form method="POST" action="?/applyPenaltyAdmin" use:enhance={pending()} style="display:inline;">
+                <div class="penalty-controls">
+                    <form
+                        method="POST"
+                        action="?/applyPenaltyAdmin"
+                        class="penalty-grant"
+                        use:enhance={confirmSubmit({
+                            title: '페널티 부여',
+                            message: () =>
+                                `${m.name}님에게 ${PENALTY_REASON_LABELS[penaltyReason]} 사유로 페널티 1점을 부여합니다. 누적 ${m.penalty_points + 1}점이 되며, ${
+                                    m.penalty_points + 1 >= penaltyThreshold
+                                        ? '이 시점부터 예약이 제한됩니다.'
+                                        : `${penaltyThreshold}점부터 예약이 제한됩니다.`
+                                }`,
+                            confirmLabel: '페널티 부여',
+                            danger: true,
+                            handle: async (res: any) => {
+                                if (!reportResult(res.result)) announcePenalty(res.result?.data);
+                                await res.update();
+                            }
+                        })}
+                    >
                         <input type="hidden" name="attendeeId" value={m.id} />
                         <input type="hidden" name="points" value="1" />
-                        <button type="submit" class="btn-penalty add">+1</button>
+                        <label class="sr-only" for="penalty-reason">페널티 사유</label>
+                        <select id="penalty-reason" name="reason" bind:value={penaltyReason}>
+                            {#each Object.entries(PENALTY_REASON_LABELS) as [key, label] (key)}
+                                <option value={key}>{label}</option>
+                            {/each}
+                        </select>
+                        <button type="submit" class="btn-penalty add">페널티 부여</button>
+                    </form>
+                    <form
+                        method="POST"
+                        action="?/applyPenaltyAdmin"
+                        use:enhance={pending(() => async (res: any) => {
+                            if (!reportResult(res.result)) announcePenalty(res.result?.data);
+                            await res.update();
+                        })}
+                    >
+                        <input type="hidden" name="attendeeId" value={m.id} />
+                        <input type="hidden" name="points" value="-1" />
+                        <button type="submit" class="btn-penalty remove" disabled={m.penalty_points === 0}>
+                            1점 취소
+                        </button>
                     </form>
                 </div>
             </div>
@@ -1082,7 +1367,7 @@
                     <span>블랙리스트</span>
                     <span class="manage-sub">{m.is_blacklisted ? '등록됨 — 입장·참여 제한' : '미등록'}</span>
                 </div>
-                <form method="POST" action="?/toggleBlacklist" use:enhance={m.is_blacklisted ? pending() : confirmSubmit({ title: '블랙리스트 등록', message: `${m.name}님을 블랙리스트에 등록합니다. 이후 입장·게임 참여가 제한됩니다.`, confirmLabel: '블랙 등록', danger: true })} style="display:inline;">
+                <form method="POST" action="?/toggleBlacklist" use:enhance={m.is_blacklisted ? pending(undefined, `${m.name}님을 블랙리스트에서 해제했습니다.`) : confirmSubmit({ title: '블랙리스트 등록', message: `${m.name}님을 블랙리스트에 등록합니다. 이후 입장·게임 참여가 제한되고, 진행 중이거나 예정된 참여도 막힙니다.`, confirmLabel: '블랙 등록', danger: true, success: `${m.name}님을 블랙리스트에 등록했습니다.` })} style="display:inline;">
                     <input type="hidden" name="attendeeId" value={m.id} />
                     <button type="submit" class="btn-blacklist">{m.is_blacklisted ? '해제' : '등록'}</button>
                 </form>
@@ -1093,7 +1378,7 @@
                     <span>게임 관리 권한</span>
                     <span class="manage-sub">{m.can_manage_games ? '매니저' : '일반 유저'}</span>
                 </div>
-                <form method="POST" action="?/toggleManager" use:enhance={pending()} style="display:inline;">
+                <form method="POST" action="?/toggleManager" use:enhance={pending(undefined, m.can_manage_games ? `${m.name}님의 매니저 권한을 해제했습니다.` : `${m.name}님을 매니저로 지정했습니다.`)} style="display:inline;">
                     <input type="hidden" name="attendeeId" value={m.id} />
                     <button type="submit" class="btn-manager-toggle {m.can_manage_games ? 'active' : ''}">
                         {m.can_manage_games ? '매니저 해제' : '매니저 지정'}
@@ -1112,7 +1397,7 @@
                 }
                 return confirmSubmit({
                     title: '퇴장 처리',
-                    message: `${m.name}님을 퇴장 처리합니다.`,
+                    message: `${m.name}님을 퇴장 처리합니다. 방에 없음으로 바뀌고, 대기·승인 큐의 확정 예약은 노쇼 후보로 표시됩니다.`,
                     confirmLabel: '퇴장',
                     danger: true,
                     handle: async ({ result, update }) => {
@@ -1132,16 +1417,17 @@
 
 <!-- Remove Confirm Modal -->
 {#if removeModalVisible && removeTarget}
+    <!-- 백드롭은 편의용 클릭 영역. 키보드 경로는 모달의 Escape(trapFocus)와 닫기 버튼이 담당한다. -->
+    <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
     <div
         class="modal-backdrop"
         onclick={() => removeModalVisible = false} 
-        onkeydown={(e) => e.key === 'Escape' && (removeModalVisible = false)}
         role="button" 
         tabindex="-1"
         aria-label="Close confirm"
     >
         <div class="modal-content confirm-modal" use:trapFocus={() => removeModalVisible = false} onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="dialog" aria-modal="true" tabindex="-1">
-            <h3>참가자 퇴장 확인</h3>
+            <h3>참여자 퇴장 확인</h3>
             <p><strong>{removeTarget.name}</strong>님은 현재 <strong>{removeTarget.game_name}</strong> 게임에 참여 중입니다.</p>
             <p>어떻게 처리하시겠습니까?</p>
             
@@ -1165,7 +1451,7 @@
                     };
                 }}>
                     <input type="hidden" name="id" value={removeTarget.id} />
-                    <button type="submit" class="btn-warning full-width">참가자만 퇴장</button>
+                    <button type="submit" class="btn-warning full-width">이 사람만 퇴장</button>
                 </form>
 
                 <button class="btn-cancel full-width" onclick={() => removeModalVisible = false}>취소</button>
@@ -1175,10 +1461,11 @@
 {/if}
 
 {#if showScheduledGameModal}
+    <!-- 백드롭은 편의용 클릭 영역. 키보드 경로는 모달의 Escape(trapFocus)와 닫기 버튼이 담당한다. -->
+    <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
     <div
         class="modal-backdrop"
         onclick={() => showScheduledGameModal = false} 
-        onkeydown={(e) => e.key === 'Escape' && (showScheduledGameModal = false)}
         role="button" 
         tabindex="-1"
         aria-label="Close modal"
@@ -1187,13 +1474,13 @@
 
             <h2>
                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-                시작 예정 게임 생성
+                게임 일정 등록
             </h2>
             <form method="POST" action="?/createScheduledGame" use:enhance={() => {
                 return async ({ result, update }: { result: any, update: (options?: { reset?: boolean }) => Promise<void> }) => {
                     if (!reportResult(result)) {
                         showScheduledGameModal = false;
-                        showAlert('예약 게임이 생성되었습니다.', 'success');
+                        showAlert('게임 일정을 등록했습니다.', 'success');
                     }
                     await update();
                 };
@@ -1210,15 +1497,20 @@
                         bind:this={searchInput}
                         onclick={handleInputClick}
                         onfocus={handleInputClick}
+                        onkeydown={(e) => comboKeydown(e, filteredScheduledGames, selectScheduledGame)}
+                        role="combobox"
+                        aria-expanded={dropdownOpen && filteredScheduledGames.length > 0}
+                        aria-controls="scheduledGameOptions"
+                        aria-autocomplete="list"
                         required 
                         autocomplete="off" 
                     />
                     
                     {#if dropdownOpen && filteredScheduledGames.length > 0}
-                        <ul class="dropdown-menu">
-                            {#each filteredScheduledGames as game}
-                                <li>
-                                    <button type="button" onclick={() => selectScheduledGame(game)}>
+                        <ul class="dropdown-menu" id="scheduledGameOptions" role="listbox" aria-label="게임 후보">
+                            {#each filteredScheduledGames as game, gi}
+                                <li role="presentation">
+                                    <button type="button" role="option" aria-selected={gi === gameOptionIndex} class:active={gi === gameOptionIndex} onclick={() => selectScheduledGame(game)}>
                                         {#if game.image_url}
                                             <img src={game.image_url} alt="" class="mini-thumb" />
                                         {/if}
@@ -1258,7 +1550,7 @@
                     <label for="scheduledGuestCount">게스트 수</label>
                     <input type="number" id="scheduledGuestCount" name="guestCount" bind:value={guestCount} min="0" max={maxPlayers} class="number-input"
                         oninput={() => { if (guestCount > maxPlayers) guestCount = maxPlayers; }} />
-                    <p class="hint">* 미등록 참가자 수 (최대 {maxPlayers}명, 게스트1, 게스트2... 자동 생성)</p>
+                    <p class="hint">* 회원이 아닌 사람 수 (최대 {maxPlayers}명, 게스트1, 게스트2… 자동 생성)</p>
                 </div>
 
                 <div class="admin-options">
@@ -1275,7 +1567,7 @@
 
                 <div class="modal-actions">
                     <button type="button" onclick={() => showScheduledGameModal = false} class="btn-cancel">취소</button>
-                    <button type="submit" class="btn-primary">예약 생성</button>
+                    <button type="submit" class="btn-primary">일정 등록</button>
                 </div>
             </form>
         </div>
@@ -1285,6 +1577,8 @@
 <!-- Scheduled Game Detail Modal -->
 {#if selectedScheduledGame}
     {@const g = selectedScheduledGame}
+    <!-- 백드롭은 편의용 클릭 영역. 키보드 경로는 모달의 Escape(trapFocus)와 닫기 버튼이 담당한다. -->
+    <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
     <div class="modal-backdrop" onclick={() => selectedScheduledGame = null} onkeydown={(e) => e.key === 'Escape' && (selectedScheduledGame = null)} role="button" tabindex="-1" aria-label="Close modal">
         <div class="modal-content game-detail-modal" use:trapFocus={() => selectedScheduledGame = null} onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="dialog" aria-modal="true" tabindex="-1">
             <div class="detail-header">
@@ -1311,20 +1605,7 @@
                     };
                 }} class="detail-form-row">
                     <input type="hidden" name="sessionId" value={g.id} />
-                    <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-                    <div class="search-select" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="search">
-                        <input type="hidden" name="attendeeId" value={selectedParticipantId} />
-                        <input type="text" placeholder="이름 검색..." autocomplete="off"
-                               bind:value={participantSearch}
-                               onfocus={() => participantSearchOpen = true} />
-                        {#if participantSearchOpen && participantSearch.length > 0 && filteredParticipants.length > 0}
-                            <div class="search-dropdown">
-                                {#each filteredParticipants.slice(0, 8) as user}
-                                    <button type="button" class="search-option" onclick={() => selectParticipant(user)}>{user.name}</button>
-                                {/each}
-                            </div>
-                        {/if}
-                    </div>
+                    {@render participantPicker()}
                     <button type="submit" class="btn-mini">추가</button>
                 </form>
                 <form method="POST" action="?/addGuestToGame" use:enhance={() => {
@@ -1337,7 +1618,7 @@
                     <input type="hidden" name="sessionId" value={g.id} />
                     <button type="submit" class="btn-mini btn-guest" style="width:100%;">게스트 추가</button>
                 </form>
-                <hr style="border:none; border-top:1px solid #eee; margin:0.5rem 0;" />
+                <hr class="detail-divider" />
                 <form method="POST" action="?/startScheduledGame" use:enhance={() => {
                     return async ({ result, update }) => {
                         if (!reportResult(result)) {
@@ -1349,7 +1630,7 @@
                 }} class="detail-form-row">
                     <input type="hidden" name="sessionId" value={g.id} />
                     <span class="input-label">예상(분):</span>
-                    <input type="number" name="duration" value="60" class="duration-input" />
+                    <input type="number" name="duration" value="60" aria-label="예상 진행 시간(분)" class="duration-input" />
                     <button type="submit" class="btn-primary">게임 시작</button>
                 </form>
                 <form method="POST" action="?/dissolveScheduledGame" use:enhance={confirmSubmit({
@@ -1377,6 +1658,8 @@
 <!-- Playing Game Detail Modal -->
 {#if selectedPlayingGame}
     {@const g = selectedPlayingGame}
+    <!-- 백드롭은 편의용 클릭 영역. 키보드 경로는 모달의 Escape(trapFocus)와 닫기 버튼이 담당한다. -->
+    <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
     <div class="modal-backdrop" onclick={() => selectedPlayingGame = null} onkeydown={(e) => e.key === 'Escape' && (selectedPlayingGame = null)} role="button" tabindex="-1" aria-label="Close modal">
         <div class="modal-content game-detail-modal" use:trapFocus={() => selectedPlayingGame = null} onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="dialog" aria-modal="true" tabindex="-1">
             <div class="detail-header">
@@ -1403,20 +1686,7 @@
                     };
                 }} class="detail-form-row">
                     <input type="hidden" name="sessionId" value={g.id} />
-                    <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
-                    <div class="search-select" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="search">
-                        <input type="hidden" name="attendeeId" value={selectedParticipantId} />
-                        <input type="text" placeholder="이름 검색..." autocomplete="off"
-                               bind:value={participantSearch}
-                               onfocus={() => participantSearchOpen = true} />
-                        {#if participantSearchOpen && participantSearch.length > 0 && filteredParticipants.length > 0}
-                            <div class="search-dropdown">
-                                {#each filteredParticipants.slice(0, 8) as user}
-                                    <button type="button" class="search-option" onclick={() => selectParticipant(user)}>{user.name}</button>
-                                {/each}
-                            </div>
-                        {/if}
-                    </div>
+                    {@render participantPicker()}
                     <button type="submit" class="btn-mini">추가</button>
                 </form>
                 <form method="POST" action="?/addGuestToGame" use:enhance={() => {
@@ -1429,7 +1699,7 @@
                     <input type="hidden" name="sessionId" value={g.id} />
                     <button type="submit" class="btn-mini btn-guest" style="width:100%;">게스트 추가</button>
                 </form>
-                <hr style="border:none; border-top:1px solid #eee; margin:0.5rem 0;" />
+                <hr class="detail-divider" />
                 <div class="detail-form-row" style="gap:0.5rem;">
                     <form method="POST" action="?/extendGame" use:enhance={pending(() => {
                         return async ({ result, update }: any) => {
@@ -1700,7 +1970,7 @@
         background: #a0a0a0;
     }
     .btn-delete {
-        background: #ff4444;
+        background: var(--color-red-dark);
         color: white;
         border: none;
         padding: 0.25rem 0.5rem;
@@ -1721,9 +1991,9 @@
         background: #343a40;
     }
     .btn-warning {
-        background: var(--color-orange);
-        color: white;
-        border: none;
+        background: var(--color-warning-bg);
+        color: var(--text-darker);
+        border: 1px solid var(--border-warning);
         padding: 0.25rem 0.5rem;
         border-radius: 4px;
         cursor: pointer;
@@ -1900,6 +2170,10 @@
         background: #ccc;
         color: var(--text-primary);
     }
+    /* 모달 계층 — 시트 위에 확인, 확인 위에 결과 알림.
+       같은 z-index면 DOM 순서가 이기기 때문에 확인 모달이 관리 시트 밑에 깔린다. */
+    .modal-backdrop.modal-layer-confirm { z-index: 1100; }
+    .modal-backdrop.modal-layer-alert { z-index: 1200; }
     .modal-backdrop {
         position: fixed;
         top: 0;
@@ -2073,23 +2347,220 @@
         font-weight: bold;
     }
     .badge.blacklist {
-        background: #ff5252;
-        color: white;
+        background: var(--color-error-bg);
+        color: var(--color-red-dark);
+        border: 1px solid var(--color-red-dark);
     }
     .badge.penalty {
-        background: #ffd740;
-        color: var(--text-primary);
+        background: var(--color-warning-bg);
+        color: var(--text-darker);
+        border: 1px solid var(--border-warning);
+    }
+    .badge.penalty.blocked {
+        background: var(--color-error-bg);
+        color: var(--color-red-dark);
+        border-color: var(--color-red-dark);
     }
     .attendee-actions {
         display: flex;
         gap: 0.4rem;
         align-items: center;
     }
-    .penalty-actions {
+    /* 대기 · 승인 큐 */
+    .queue-section .section-header h2 {
         display: flex;
-        gap: 0;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+    .queue-flag {
+        font-size: 0.75rem;
+        font-weight: 700;
+        padding: 0.15rem 0.5rem;
+        border-radius: 999px;
+        border: 1px solid transparent;
+    }
+    .queue-flag.approval {
+        background: var(--color-warning-bg);
+        color: var(--text-darker);
+        border-color: var(--border-warning);
+    }
+    .queue-flag.overdue {
+        background: var(--color-error-bg);
+        color: var(--color-red-dark);
+        border-color: var(--color-red-dark);
+    }
+    .queue-empty {
+        margin: 0.5rem 0 0;
+    }
+    .queue-group + .queue-group {
+        margin-top: 1rem;
+        padding-top: 1rem;
+        border-top: 1px solid var(--border-light);
+    }
+    .queue-group-head {
+        display: flex;
+        align-items: baseline;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        margin-bottom: 0.4rem;
+    }
+    .queue-group-head strong {
+        font-size: 0.95rem;
+        color: var(--text-primary);
+    }
+    .queue-meta {
+        font-size: 0.8rem;
+        color: var(--text-secondary);
+    }
+    .queue-list {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+    }
+    .queue-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        grid-template-areas: 'who actions' 'note actions';
+        align-items: center;
+        gap: 0.15rem 0.75rem;
+        padding: 0.5rem 0.6rem;
+        border-radius: 8px;
+    }
+    .queue-row + .queue-row {
+        margin-top: 0.25rem;
+    }
+    .queue-row.is-overdue {
+        background: var(--color-error-bg);
+    }
+    .queue-who {
+        grid-area: who;
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 0.35rem;
+        min-width: 0;
+    }
+    .queue-note {
+        grid-area: note;
+        font-size: 0.78rem;
+        color: var(--text-secondary);
+    }
+    .overdue-text {
+        color: var(--color-red-dark);
+        display: block;
+    }
+    .overdue-hint {
+        color: var(--text-secondary);
+    }
+    .queue-actions {
+        grid-area: actions;
+        display: flex;
+        gap: 0.4rem;
+    }
+    .queue-status {
+        font-size: 0.75rem;
+        font-weight: 700;
+        padding: 0.1rem 0.45rem;
         border-radius: 4px;
+        background: var(--bg-hover);
+        color: var(--text-dark);
+        white-space: nowrap;
+    }
+    .queue-status.queue-pending_approval {
+        background: var(--color-warning-bg);
+        color: var(--text-darker);
+    }
+    .queue-status.queue-confirmed {
+        background: var(--color-success-bg);
+        color: var(--color-green-dark);
+    }
+    .btn-queue-confirm,
+    .btn-queue-cancel {
+        min-height: 44px;
+        padding: 0 0.8rem;
+        border-radius: 6px;
+        font-size: 0.85rem;
+        font-weight: 600;
+        cursor: pointer;
+        white-space: nowrap;
+    }
+    .btn-queue-confirm {
+        background: var(--color-blue-bright);
+        color: white;
+        border: 1px solid transparent;
+    }
+    .btn-queue-cancel {
+        background: var(--bg-primary);
+        color: var(--color-red-dark);
+        border: 1px solid var(--color-red-dark);
+    }
+    .btn-queue-noshow {
+        min-height: 44px;
+        padding: 0 0.8rem;
+        border-radius: 6px;
+        font-size: 0.85rem;
+        font-weight: 600;
+        cursor: pointer;
+        white-space: nowrap;
+        background: var(--color-red-dark);
+        color: white;
+        border: 1px solid transparent;
+    }
+    .btn-queue-confirm:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+    }
+    /* 이름 링크도 손가락이 닿는 크기로 (WCAG 2.5.8) */
+    .attendee-link,
+    .chip-link,
+    .list-name {
+        display: inline-flex;
+        align-items: center;
+        min-height: 24px;
+    }
+    .queue-who .attendee-link {
+        display: inline-flex;
+        align-items: center;
+        min-height: 24px;
+    }
+
+    /* 결과 토스트 — 흐름을 막지 않는 확인. 실패는 모달이 맡는다 */
+    .toast-region {
+        position: fixed;
+        left: 50%;
+        bottom: 1.5rem;
+        transform: translateX(-50%);
+        z-index: 900;
+        pointer-events: none;
+        width: min(28rem, calc(100vw - 2rem));
+        display: flex;
+        justify-content: center;
+    }
+    .toast {
+        background: var(--text-darker);
+        color: var(--bg-primary);
+        padding: 0.7rem 1.1rem;
+        border-radius: 8px;
+        font-size: 0.88rem;
+        line-height: 1.45;
+        box-shadow: var(--shadow-lg);
+        text-align: center;
+        word-break: keep-all;
+        overflow-wrap: anywhere;
+    }
+
+    /* 스크린리더 전용 — 시각적으로는 감추되 접근성 트리에는 남긴다 */
+    .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
         overflow: hidden;
+        clip: rect(0 0 0 0);
+        white-space: nowrap;
+        border: 0;
     }
     .btn-manage {
         background: var(--bg-hover);
@@ -2135,22 +2606,58 @@
         border-top: 1px solid var(--border-light);
         margin: 1rem 0 0.75rem;
     }
+    /* 페널티 조작 — 부여(무거움)와 취소(가벼움)를 무게로 구분한다 */
+    .manage-row-stacked {
+        display: block;
+    }
+    .manage-flag {
+        display: inline-block;
+        margin-left: 0.35rem;
+        color: var(--color-red-dark);
+        font-weight: 700;
+    }
+    .penalty-controls {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.5rem;
+        margin-top: 0.6rem;
+    }
+    .penalty-grant {
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+    }
+    .penalty-grant select {
+        min-height: 44px;
+        padding: 0 0.5rem;
+        border: 1px solid var(--border-medium);
+        border-radius: 6px;
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        font-size: 0.85rem;
+    }
     .btn-penalty {
-        border: none;
-        padding: 0.25rem 0.5rem;
+        border: 1px solid transparent;
+        min-height: 44px;
+        padding: 0 0.85rem;
+        border-radius: 6px;
         cursor: pointer;
-        font-size: 0.8rem;
-        font-weight: bold;
+        font-size: 0.85rem;
+        font-weight: 600;
     }
     .btn-penalty.add {
-        background: #ffd740;
-        color: var(--text-primary);
-        border-radius: 0 4px 4px 0;
+        background: var(--color-red-dark);
+        color: white;
     }
     .btn-penalty.remove {
-        background: #ff5252;
-        color: white;
-        border-radius: 4px 0 0 4px;
+        background: var(--bg-hover);
+        color: var(--text-primary);
+        border-color: var(--border-medium);
+    }
+    .btn-penalty.remove:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
     }
     .btn-blacklist {
         background: #424242;
@@ -2223,6 +2730,11 @@
         cursor: pointer;
         transition: background 0.2s;
     }
+    .dropdown-menu button.active {
+        background: var(--bg-hover);
+        outline: 2px solid var(--color-blue-bright);
+        outline-offset: -2px;
+    }
     .dropdown-menu button:hover {
         background: var(--bg-surface);
     }
@@ -2274,7 +2786,7 @@
         font-size: 0.85rem;
     }
     .btn-guest {
-        background: #868e96;
+        background: var(--text-dark);
     }
     .btn-guest:hover {
         background: #495057;
@@ -2298,7 +2810,7 @@
         opacity: 0.9;
     }
     .btn-extend {
-        background: #4caf50;
+        background: #216e39;
     }
     .btn-extend:hover {
         background: #43a047;
@@ -2393,9 +2905,9 @@
         align-items: center;
     }
     .btn-skip {
-        background: var(--color-orange);
-        color: white;
-        border: none;
+        background: var(--color-warning-bg);
+        color: var(--text-darker);
+        border: 1px solid var(--border-warning);
         padding: 0.3rem 0.6rem;
         border-radius: 4px;
         cursor: pointer;
@@ -2619,6 +3131,11 @@
         flex-direction: column;
         gap: 0.5rem;
     }
+    .detail-divider {
+        border: none;
+        border-top: 1px solid var(--border-light);
+        margin: 0.5rem 0;
+    }
     .detail-form-row {
         display: flex;
         align-items: center;
@@ -2677,6 +3194,8 @@
 
     /* 모바일 최적화 */
     @media (max-width: 768px) {
+        /* 모바일 하단 탭 위로 띄운다 */
+        .toast-region { bottom: 5rem; }
         section {
             margin-bottom: 1.5rem;
             padding: 1rem;
@@ -2690,9 +3209,20 @@
             align-items: stretch;
             gap: 0.5rem;
         }
+        /* 폰은 서서 한 손으로 쓰는 주 사용 장면 — 탭 타깃을 44px 아래로 줄이지 않는다 */
         button, .btn-primary, .btn-delete, .btn-mini {
             padding: 0.4rem 0.75rem;
             font-size: 0.85rem;
+            min-height: 44px;
+        }
+        input:not([type='hidden']):not([type='checkbox']),
+        select {
+            min-height: 44px;
+        }
+        .chip-add,
+        .toggle-header,
+        .btn-manage {
+            min-height: 44px;
         }
         .attendee-list li {
             padding: 0.4rem 0.25rem;
@@ -2700,14 +3230,13 @@
         }
         .attendee-info { gap: 0.25rem; }
         .attendee-actions { gap: 0.15rem; }
-        .btn-penalty { padding: 0.2rem 0.4rem; font-size: 0.75rem; }
         .badge { font-size: 0.65rem; padding: 0.05rem 0.3rem; }
         .arrival-time { font-size: 0.7rem; }
         .duration-input { width: 50px; }
         .input-label { font-size: 0.8rem; }
         .chip-container { font-size: 0.8rem; }
         .chip-link { font-size: 0.8rem; }
-        .chip-add { font-size: 0.8rem; padding: 0.2rem 0.5rem; }
+        .chip-add { font-size: 0.8rem; padding: 0.2rem 0.6rem; }
         .recurring-item { font-size: 0.85rem; }
         .modal-content { width: 95%; padding: 1.25rem; }
         .player-select { gap: 0.5rem; }

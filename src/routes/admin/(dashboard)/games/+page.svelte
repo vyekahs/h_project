@@ -1,6 +1,7 @@
 <script lang="ts">
     import { enhance } from '$app/forms';
     import type { PageData } from './$types';
+    import { trapFocus } from '$lib/actions/modal';
 
     export let data: PageData;
     export let form;
@@ -105,7 +106,7 @@
     <div class="header">
         <h1>
             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:10px; vertical-align:text-bottom;"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></svg>
-            보드게임 도감 관리
+            게임 도감
         </h1>
         <div class="header-actions">
             <button class="btn-secondary" on:click={() => showBggModal = true}>
@@ -118,7 +119,7 @@
 
     <div class="search-bar">
         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-        <input type="text" placeholder="게임 이름 검색..." bind:value={gameSearch} />
+        <input type="text" placeholder="게임 이름 검색..." aria-label="게임 이름 검색" bind:value={gameSearch} />
         {#if gameSearch}
             <button class="btn-clear-search" on:click={() => gameSearch = ''} aria-label="검색어 지우기">
                 <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -204,15 +205,12 @@
 </div>
 
 {#if showDetailModal && selectedDetailGame}
+    <!-- 백드롭은 편의용 클릭 영역. 키보드 경로는 모달의 Escape(trapFocus)와 닫기 버튼이 담당한다. -->
+    <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
     <div 
         class="modal-backdrop" 
-        on:click={closeDetailModal}
-        on:keydown={(e) => e.key === 'Escape' && closeDetailModal()}
-        role="button"
-        tabindex="-1"
-        aria-label="모달 닫기"
-    >
-        <div class="modal detail-modal" on:click|stopPropagation role="presentation">
+        on:click={closeDetailModal} role="presentation">
+        <div class="modal detail-modal" use:trapFocus={closeDetailModal} on:click|stopPropagation on:keydown|stopPropagation role="dialog" aria-modal="true" tabindex="-1">
             <div class="detail-header">
                 <h2>{selectedDetailGame.name}</h2>
                 <button class="btn-close" on:click={closeDetailModal} aria-label="닫기">
@@ -296,15 +294,12 @@
 {/if}
 
 {#if showModal}
+    <!-- 백드롭은 편의용 클릭 영역. 키보드 경로는 모달의 Escape(trapFocus)와 닫기 버튼이 담당한다. -->
+    <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
     <div 
         class="modal-backdrop" 
-        on:click={closeModal}
-        on:keydown={(e) => e.key === 'Escape' && closeModal()}
-        role="button"
-        tabindex="-1"
-        aria-label="모달 닫기"
-    >
-        <div class="modal" on:click|stopPropagation role="presentation">
+        on:click={closeModal} role="presentation">
+        <div class="modal" use:trapFocus={closeModal} on:click|stopPropagation on:keydown|stopPropagation role="dialog" aria-modal="true" tabindex="-1">
             <h2>{isEditing ? '게임 수정' : '새 게임 등록'}</h2>
             <form method="POST" action={isEditing ? '?/update' : '?/create'} use:enhance>
                 {#if isEditing}
@@ -377,8 +372,10 @@
 {/if}
 
 {#if showBggModal}
-    <div class="modal-backdrop" on:click={closeBggModal} on:keydown={(e) => e.key === 'Escape' && closeBggModal()} role="button" tabindex="0" aria-label="Close modal">
-        <div class="modal bgg-modal" on:click|stopPropagation role="presentation">
+    <!-- 백드롭은 편의용 클릭 영역. 키보드 경로는 모달의 Escape(trapFocus)와 닫기 버튼이 담당한다. -->
+    <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+    <div class="modal-backdrop" on:click={closeBggModal} role="presentation">
+        <div class="modal bgg-modal" use:trapFocus={closeBggModal} on:click|stopPropagation on:keydown|stopPropagation role="dialog" aria-modal="true" tabindex="-1">
             <h2>
                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px; vertical-align:text-bottom;"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
                 BGG 게임 검색
@@ -391,7 +388,7 @@
                 };
             }} class="search-form">
                 <div class="search-row">
-                    <input type="text" name="query" bind:value={bggQuery} placeholder="게임 이름 (영어)" required />
+                    <input type="text" name="query" bind:value={bggQuery} placeholder="게임 이름 (영어)" aria-label="BGG 검색어 (영어 게임 이름)" required />
                     <button type="submit" class="btn-primary" disabled={isSearching}>
                         {isSearching ? '검색 중...' : '검색'}
                     </button>
@@ -856,5 +853,13 @@
         background: #e8f5e9;
         border-radius: 6px;
         white-space: nowrap;
+    }
+
+    /* 폰은 서서 한 손으로 쓰는 주 사용 장면 — 탭 타깃을 44px 아래로 줄이지 않는다 */
+    @media (max-width: 768px) {
+        button,
+        input:not([type='hidden']):not([type='checkbox']) {
+            min-height: 44px;
+        }
     }
 </style>

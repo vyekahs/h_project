@@ -76,12 +76,21 @@ export const load: PageServerLoad = async () => {
             ORDER BY gs.scheduled_at ASC
         `),
         db.execute(sql`
-            SELECT r.*, a.name as attendee_name, gs.game_name
+            SELECT r.id, r.status, r.created_at, r.attendee_id,
+                   a.name AS attendee_name, a.penalty_points, a.is_blacklisted,
+                   a.status AS attendee_status,
+                   gs.id AS session_id, gs.game_name,
+                   gs.status AS session_status, gs.scheduled_at, gs.start_time, gs.max_players,
+                   (SELECT COUNT(*) FROM session_participants sp WHERE sp.session_id = gs.id) AS current_players,
+                   CASE WHEN r.status = 'waitlisted'
+                        THEN ROW_NUMBER() OVER (PARTITION BY r.session_id, r.status ORDER BY r.created_at ASC)
+                   END AS waitlist_position
             FROM reservations r
             JOIN attendees a ON r.attendee_id = a.id
             JOIN game_sessions gs ON r.session_id = gs.id
-            WHERE r.status IN ('pending', 'waitlisted', 'confirmed')
-            ORDER BY r.created_at ASC
+            WHERE r.status IN ('pending', 'waitlisted', 'confirmed', 'pending_approval')
+              AND gs.status IN ('scheduled', 'playing')
+            ORDER BY gs.scheduled_at ASC NULLS LAST, r.created_at ASC
         `),
         db.execute(sql`
             SELECT DISTINCT ON (game_name)
@@ -165,6 +174,13 @@ export const load: PageServerLoad = async () => {
         dailyVisitPlans: dailyVisitPlansResult as any[],
         todayScheduledParticipants: todayScheduledParticipantsResult as any[]
     };
+};
+
+/** 페널티 사유 — 키는 penalty_logs.reason에 저장되고, 라벨은 운영자 피드백 문구에 쓰인다. */
+const PENALTY_REASONS: Record<string, string> = {
+    no_show: '노쇼',
+    late: '지각',
+    other: '기타'
 };
 
 export const actions: Actions = {
@@ -463,29 +479,152 @@ export const actions: Actions = {
         }
     },
 
+    /**
+     * 예약 확정 — 승인 대기(pending_approval)면 참가자 편입까지 한다.
+     * 게임 소유자의 메인 화면 승인과 결과가 같아야 하므로 같은 트랜잭션을 쓴다.
+     */
     confirmReservation: async ({ request }) => {
+        const sessionToken = request.headers.get('cookie')?.match(/admin_session=([^;]+)/)?.[1];
+        if (!sessionToken || !(await verifyAdminSession(sessionToken))) return fail(403, { error: '권한이 없습니다.' });
+
         const data = await request.formData();
         const reservationId = data.get('reservationId');
         if (!reservationId) return fail(400, { error: '잘못된 요청입니다.' });
 
-        await db.execute(sql`UPDATE reservations SET status = 'confirmed' WHERE id = ${reservationId}`);
-        return { success: true };
+        const info = await db.execute(sql`
+            SELECT r.status, r.session_id, r.attendee_id,
+                   a.name AS attendee_name, a.is_blacklisted, a.penalty_points,
+                   gs.game_name
+            FROM reservations r
+            JOIN attendees a ON a.id = r.attendee_id
+            JOIN game_sessions gs ON gs.id = r.session_id
+            WHERE r.id = ${reservationId}
+        `);
+        const row = (info as any[])[0];
+        if (!row) return fail(404, { error: '이미 처리되었거나 없는 예약입니다.' });
+        if (row.status === 'confirmed') return fail(400, { error: `${row.attendee_name}님은 이미 확정 상태입니다.` });
+        if (row.is_blacklisted)
+            return fail(403, { error: `${row.attendee_name}님은 블랙리스트라 확정할 수 없습니다. 먼저 블랙리스트를 해제해주세요.` });
+
+        const thresholdRow = await db.execute(sql`SELECT value FROM system_settings WHERE key = 'penalty_threshold'`);
+        const penaltyThreshold = parseInt((thresholdRow as any[])[0]?.value ?? '3');
+        if (row.penalty_points >= penaltyThreshold)
+            return fail(403, {
+                error: `${row.attendee_name}님은 페널티 ${row.penalty_points}점(제한 ${penaltyThreshold}점)이라 확정할 수 없습니다. 페널티를 먼저 조정해주세요.`
+            });
+
+        try {
+            await db.transaction(async (tx) => {
+                await tx.execute(sql`UPDATE reservations SET status = 'confirmed' WHERE id = ${reservationId}`);
+                const already = await tx.execute(sql`
+                    SELECT 1 FROM session_participants
+                    WHERE session_id = ${row.session_id} AND attendee_id = ${row.attendee_id}
+                `);
+                if ((already as any[]).length === 0) {
+                    await tx.execute(sql`
+                        INSERT INTO session_participants (session_id, attendee_id)
+                        VALUES (${row.session_id}, ${row.attendee_id})
+                    `);
+                }
+            });
+        } catch (e) {
+            return fail(500, { error: '예약 확정에 실패했습니다. 잠시 후 다시 시도해주세요.' });
+        }
+
+        emitLiveEvent('games');
+        return { success: true, queue: { name: row.attendee_name as string, game: row.game_name as string, kind: 'confirm' } };
     },
 
-    cancelReservationAdmin: async ({ request }) => {
+    /**
+     * 노쇼 처리 — 예약 취소 + 페널티 1점 + 대기열 승계를 한 번에 한다.
+     * 운영자가 큐에서 발견한 것을 큐에서 끝내게 하려는 것이 목적이다.
+     */
+    markNoShow: async ({ request }) => {
+        const sessionToken = request.headers.get('cookie')?.match(/admin_session=([^;]+)/)?.[1];
+        if (!sessionToken || !(await verifyAdminSession(sessionToken))) return fail(403, { error: '권한이 없습니다.' });
+
         const data = await request.formData();
         const reservationId = data.get('reservationId');
         if (!reservationId) return fail(400, { error: '잘못된 요청입니다.' });
 
-        const res = await db.execute(sql`SELECT session_id FROM reservations WHERE id = ${reservationId}`);
-        const sessionId = (res[0] as any)?.session_id;
+        const info = await db.execute(sql`
+            SELECT r.session_id, r.attendee_id, r.status, a.name AS attendee_name, gs.game_name
+            FROM reservations r
+            JOIN attendees a ON a.id = r.attendee_id
+            JOIN game_sessions gs ON gs.id = r.session_id
+            WHERE r.id = ${reservationId}
+        `);
+        const row = (info as any[])[0];
+        if (!row) return fail(404, { error: '이미 처리되었거나 없는 예약입니다.' });
 
-        await db.execute(sql`DELETE FROM reservations WHERE id = ${reservationId}`);
-        if (sessionId) {
-            const { promoteWaitlist } = await import('$lib/server/reservations');
-            await promoteWaitlist(sessionId);
-        }
-        return { success: true };
+        const { applyPenalty, promoteWaitlist } = await import('$lib/server/reservations');
+
+        await db.transaction(async (tx) => {
+            await tx.execute(sql`DELETE FROM reservations WHERE id = ${reservationId}`);
+            await tx.execute(sql`
+                DELETE FROM session_participants
+                WHERE session_id = ${row.session_id} AND attendee_id = ${row.attendee_id}
+            `);
+        });
+
+        const total = await applyPenalty(Number(row.attendee_id), 1);
+        await db.execute(sql`
+            INSERT INTO penalty_logs (attendee_id, points, reason, total_after)
+            VALUES (${row.attendee_id}, 1, 'no_show', ${total})
+        `);
+        await promoteWaitlist(row.session_id);
+
+        const thresholdRow = await db.execute(sql`SELECT value FROM system_settings WHERE key = 'penalty_threshold'`);
+        const threshold = parseInt((thresholdRow as any[])[0]?.value ?? '3');
+
+        emitLiveEvent('games');
+        return {
+            success: true,
+            penalty: {
+                name: row.attendee_name as string,
+                points: 1,
+                total,
+                threshold,
+                reason: '노쇼',
+                blocked: total >= threshold
+            }
+        };
+    },
+
+    /** 예약 강제 취소 — 자리가 비면 대기열 다음 사람이 자동 승계된다. */
+    cancelReservationAdmin: async ({ request }) => {
+        const sessionToken = request.headers.get('cookie')?.match(/admin_session=([^;]+)/)?.[1];
+        if (!sessionToken || !(await verifyAdminSession(sessionToken))) return fail(403, { error: '권한이 없습니다.' });
+
+        const data = await request.formData();
+        const reservationId = data.get('reservationId');
+        if (!reservationId) return fail(400, { error: '잘못된 요청입니다.' });
+
+        const info = await db.execute(sql`
+            SELECT r.session_id, r.attendee_id, r.status, a.name AS attendee_name, gs.game_name
+            FROM reservations r
+            JOIN attendees a ON a.id = r.attendee_id
+            JOIN game_sessions gs ON gs.id = r.session_id
+            WHERE r.id = ${reservationId}
+        `);
+        const row = (info as any[])[0];
+        if (!row) return fail(404, { error: '이미 처리되었거나 없는 예약입니다.' });
+
+        await db.transaction(async (tx) => {
+            await tx.execute(sql`DELETE FROM reservations WHERE id = ${reservationId}`);
+            if (row.status === 'confirmed') {
+                await tx.execute(sql`
+                    DELETE FROM session_participants
+                    WHERE session_id = ${row.session_id} AND attendee_id = ${row.attendee_id}
+                `);
+            }
+        });
+
+        const { promoteWaitlist } = await import('$lib/server/reservations');
+        await promoteWaitlist(row.session_id);
+
+        emitLiveEvent('games');
+        return { success: true, queue: { name: row.attendee_name as string, game: row.game_name as string, kind: 'cancel' } };
     },
 
     dissolveScheduledGame: async ({ request }) => {
@@ -544,15 +683,46 @@ export const actions: Actions = {
     },
 
     applyPenaltyAdmin: async ({ request }) => {
+        const sessionToken = request.headers.get('cookie')?.match(/admin_session=([^;]+)/)?.[1];
+        if (!sessionToken || !(await verifyAdminSession(sessionToken))) return fail(403, { error: '권한이 없습니다.' });
+
         const data = await request.formData();
         const attendeeId = data.get('attendeeId');
         const points = parseInt(data.get('points')?.toString() || '1');
+        const reason = data.get('reason')?.toString() || '';
 
         if (!attendeeId) return fail(400, { error: '잘못된 요청입니다.' });
+        if (points !== 1 && points !== -1) return fail(400, { error: '페널티는 한 번에 1점씩만 조정할 수 있습니다.' });
+        if (points === 1 && !PENALTY_REASONS[reason]) return fail(400, { error: '페널티 사유를 선택해주세요.' });
+
+        const targetRows = await db.execute(sql`SELECT name, penalty_points FROM attendees WHERE id = ${attendeeId}`);
+        const target = (targetRows as any[])[0];
+        if (!target) return fail(404, { error: '해당 인원을 찾을 수 없습니다.' });
+        if (points === -1 && target.penalty_points <= 0)
+            return fail(400, { error: `${target.name}님은 현재 페널티가 없습니다.` });
 
         const { applyPenalty } = await import('$lib/server/reservations');
-        await applyPenalty(Number(attendeeId), points);
-        return { success: true };
+        const total = await applyPenalty(Number(attendeeId), points);
+
+        await db.execute(sql`
+            INSERT INTO penalty_logs (attendee_id, points, reason, total_after)
+            VALUES (${attendeeId}, ${points}, ${points === 1 ? reason : 'revoke'}, ${total})
+        `);
+
+        const thresholdRows = await db.execute(sql`SELECT value FROM system_settings WHERE key = 'penalty_threshold'`);
+        const threshold = parseInt((thresholdRows as any[])[0]?.value ?? '3');
+
+        return {
+            success: true,
+            penalty: {
+                name: target.name as string,
+                points,
+                total,
+                threshold,
+                reason: points === 1 ? PENALTY_REASONS[reason] : '취소',
+                blocked: total >= threshold
+            }
+        };
     },
 
     toggleBlacklist: async ({ request }) => {
