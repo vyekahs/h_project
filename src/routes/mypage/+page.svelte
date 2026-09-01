@@ -310,6 +310,13 @@
 
     let partyModalError = '';
     let showPartyAdvanced = false;
+    let partyMemberSearch = '';
+
+    // 이미 선택된 사람은 검색어와 안 맞아도 계속 렌더링한다 — 그래야 체크박스가
+    // DOM에서 사라져 폼 제출 시 memberIds에서 조용히 빠지는 걸 막을 수 있다.
+    $: filteredPartyMembers = (data.allAttendees || []).filter((a: any) =>
+        partyMemberIds.includes(a.id) || a.name.toLowerCase().includes(partyMemberSearch.toLowerCase())
+    );
 
     function openCreatePartyModal() {
         editingParty = null;
@@ -321,6 +328,7 @@
         partyMemberIds = data.user ? [data.user.id] : [];
         partyGameDropdownOpen = false;
         partyGameSearch = '';
+        partyMemberSearch = '';
         partyModalError = '';
         showPartyAdvanced = false;
         showPartyModal = true;
@@ -339,6 +347,7 @@
         }
         partyGameDropdownOpen = false;
         partyGameSearch = '';
+        partyMemberSearch = '';
         partyModalError = '';
         // 이미 값이 있으면 접어두지 않고 바로 보여준다 (수정하러 들어왔는데 숨어있으면 안 됨)
         showPartyAdvanced = !!(party.duration || party.guest_count);
@@ -1014,8 +1023,17 @@
 
                 <div class="form-group">
                     <span class="label-heading">초대할 멤버 선택 <span class="member-hint">지금까지 같이 게임을 한 적 있는 사람만 표시돼요</span></span>
+                    {#if (data.allAttendees || []).length > 4}
+                        <input
+                            type="text"
+                            class="member-search-input"
+                            placeholder="이름으로 찾기..."
+                            bind:value={partyMemberSearch}
+                            aria-label="초대할 멤버 검색"
+                        />
+                    {/if}
                     <div class="member-select-list">
-                        {#each (data.allAttendees || []) as attendee}
+                        {#each filteredPartyMembers as attendee}
                             <label class="member-checkbox" class:owner={data.user && attendee.id === data.user.id}>
                                 <input
                                     type="checkbox"
@@ -1030,6 +1048,8 @@
                                     <span class="owner-badge">(나)</span>
                                 {/if}
                             </label>
+                        {:else}
+                            <p class="member-search-empty">검색 결과가 없어요</p>
                         {/each}
                     </div>
                 </div>
@@ -2140,6 +2160,22 @@
     .game-time {
         color: var(--text-tertiary);
         font-size: 0.8rem;
+    }
+    .member-search-input {
+        width: 100%;
+        padding: 0.5rem;
+        border: 1px solid var(--border-default);
+        border-radius: 6px;
+        font-size: 0.9rem;
+        box-sizing: border-box;
+        margin-bottom: 0.4rem;
+    }
+    .member-search-empty {
+        margin: 0;
+        padding: 0.5rem;
+        text-align: center;
+        color: var(--text-hint);
+        font-size: 0.85rem;
     }
     .member-select-list {
         max-height: 200px;
