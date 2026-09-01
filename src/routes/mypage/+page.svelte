@@ -256,6 +256,7 @@
     let showFeedbackModal = false;
     let showSuccessModal = false;
     let feedbackMessage = '';
+    let feedbackSendError = '';
 
     onMount(() => {
         if(data.user) {
@@ -266,30 +267,40 @@
     async function submitFeedback() {
         const message = feedbackMessage.trim();
         if (!message) return;
-        
+
         // UI Immediate Response
         feedbackMessage = '';
         showFeedbackModal = false;
         showSuccessModal = true;
-        
+
         // Auto-close success modal after 2 seconds (optional, but good UX)
         setTimeout(() => {
             showSuccessModal = false;
         }, 2000);
 
         // Background Send (Server handles storage)
-        sendFeedback(message);
+        const ok = await sendFeedback(message);
+        if (!ok) {
+            // 실제로 실패하면 조용히 넘어가지 않고 다시 알려준다 — 성공 모달을
+            // 되돌리고 입력했던 내용을 복원해 재시도할 수 있게 함
+            showSuccessModal = false;
+            feedbackMessage = message;
+            feedbackSendError = '전송에 실패했습니다. 네트워크 상태를 확인하고 다시 시도해주세요.';
+            showFeedbackModal = true;
+        }
     }
 
-    async function sendFeedback(message: string) {
+    async function sendFeedback(message: string): Promise<boolean> {
         try {
-            await fetch('/api/feedback', {
+            const res = await fetch('/api/feedback', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ message })
             });
+            return res.ok;
         } catch (e) {
             console.error('Feedback send failed (server should have logged it):', e);
+            return false;
         }
     }
 
@@ -562,7 +573,7 @@
                 </div>
 
                 <div class="feedback-section">
-                    <button class="btn-feedback-block" on:click={() => showFeedbackModal = true}>
+                    <button class="btn-feedback-block" on:click={() => { feedbackSendError = ''; showFeedbackModal = true; }}>
                         <div class="feedback-content">
                             <span class="feedback-icon">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
@@ -894,7 +905,10 @@
                 더 좋은 서비스를 위해 여러분의 의견을 들려주세요.<br>
                 버그 제보나 기능 요청도 환영합니다!
             </p>
-            <textarea 
+            {#if feedbackSendError}
+                <p class="inline-error">{feedbackSendError}</p>
+            {/if}
+            <textarea
                 bind:value={feedbackMessage} 
                 placeholder="내용을 입력해주세요..." 
                 rows="5"
