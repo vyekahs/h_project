@@ -7,8 +7,7 @@
 
 <div class="container">
     <header>
-        <h1>⚙️ 설정</h1>
-        <a href="/admin" class="btn-back">← 대시보드로 돌아가기</a>
+        <h1>설정</h1>
     </header>
 
     <div class="settings-grid">
@@ -38,7 +37,10 @@
         </form>
 
         <form method="POST" action="?/updateSettings" use:enhance class="settings-card">
-            <h3>⚖️ 예약 및 페널티 정책</h3>
+            <h3>
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m16 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"/><path d="m2 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z"/><path d="M7 21h10"/><path d="M12 3v18"/><path d="M3 7h2c2 0 5-1 7-2 2 1 5 2 7 2h2"/></svg>
+                예약 및 페널티 정책
+            </h3>
             <div class="setting-item">
                 <label for="noShowLimit">노쇼 판단 (분)</label>
                 <input type="number" id="noShowLimit" name="no_show_limit_minutes" value={data.settings.no_show_limit_minutes} />
@@ -78,9 +80,7 @@
 
 <style>
     .container {
-        max-width: 800px;
-        margin: 0 auto;
-        padding: 2rem;
+        max-width: 900px;
     }
     header {
         display: flex;
@@ -91,39 +91,23 @@
     h1 {
         margin: 0;
     }
-    .btn-back {
-        text-decoration: none;
-        color: #666;
-        display: inline-flex;
-        align-items: center;
-        min-height: 44px;
-        padding: 0.5rem 1rem;
-        border: 1px solid #ddd;
-        border-radius: 4px;
-        transition: all 0.2s;
-    }
-    .btn-back:hover {
-        background: #f5f5f5;
-        color: #333;
-    }
     .settings-grid {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
         gap: 2rem;
     }
     .settings-card {
-        background: white;
-        padding: 1.5rem;
-        border-radius: 8px;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        border: 1px solid #eee;
+        background: var(--bg-primary);
+        padding: var(--space-5);
+        border-radius: var(--radius-card);
+        border: 1px solid var(--border-default);
     }
     h3 {
         margin-top: 0;
         margin-bottom: 1.5rem;
         padding-bottom: 0.5rem;
         border-bottom: 1px solid #eee;
-        font-size: 1.2rem;
+        font-size: var(--text-lg);
         display: flex;
         align-items: center;
         gap: 0.5rem;
@@ -141,12 +125,12 @@
         width: 100%;
         padding: 0.5rem;
         border: 1px solid #ddd;
-        border-radius: 4px;
-        font-size: 1rem;
+        border-radius: var(--radius-control);
+        font-size: var(--text-base);
     }
     .hint {
         margin: 0.25rem 0 0;
-        font-size: 0.85rem;
+        font-size: var(--text-sm);
         color: #666;
     }
     .account-hint {
@@ -158,8 +142,8 @@
         border: 1px solid var(--color-red-dark, #d32f2f);
         padding: 0.75rem;
         min-height: 44px;
-        border-radius: 4px;
-        font-size: 1rem;
+        border-radius: var(--radius-control);
+        font-size: var(--text-base);
         font-weight: 600;
         cursor: pointer;
     }
@@ -167,12 +151,12 @@
         background: var(--color-error-bg, #ffebee);
     }
     .btn-primary {
-        background: #007bff;
+        background: var(--color-blue-bright);
         color: white;
         border: none;
         padding: 0.75rem;
-        border-radius: 4px;
-        font-size: 1rem;
+        border-radius: var(--radius-control);
+        font-size: var(--text-base);
         cursor: pointer;
         transition: background 0.2s;
     }

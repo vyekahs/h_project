@@ -3,6 +3,15 @@
     import { trapFocus } from '$lib/actions/modal';
     export let data: PageData;
 
+    /** 분 단위 수치를 사람이 읽는 형태로 — 799분은 읽히지 않는다 */
+    function formatDuration(mins: number | string): string {
+        const n = Math.round(Number(mins) || 0);
+        if (n < 60) return `${n}분`;
+        const h = Math.floor(n / 60);
+        const m = n % 60;
+        return m === 0 ? `${h}시간` : `${h}시간 ${m}분`;
+    }
+
     // Modal states
     let showDailyTrendModal = false;
     let showTopVisitorsModal = false;
@@ -39,7 +48,7 @@
         </button>
         <div class="kpi-card">
             <h3>평균 체류</h3>
-            <div class="value">{data.kpis.avgDuration}분</div>
+            <div class="value">{formatDuration(data.kpis.avgDuration)}</div>
             <div class="label">1회 방문당 평균 머문 시간</div>
         </div>
     </div>
@@ -145,13 +154,13 @@
                                 const y = 200 - (parseInt(d.count) / maxDailyTrend) * 200;
                                 return `${x},${y}`;
                             }).join(' ')}
-                            fill="none" stroke="#007bff" stroke-width="2"
+                            fill="none" stroke="var(--color-blue-bright)" stroke-width="2"
                         />
                         {#each data.dailyTrend as item, i}
                             <circle
                                 cx={(i / (data.dailyTrend.length - 1 || 1)) * 1000}
                                 cy={200 - (parseInt(item.count) / maxDailyTrend) * 200}
-                                r="4" fill="#007bff" stroke="white" stroke-width="2"
+                                r="4" fill="var(--color-blue-bright)" stroke="white" stroke-width="2"
                             >
                                 <title>{item.date}: {item.count}명</title>
                             </circle>
@@ -268,14 +277,13 @@
     .kpi-card {
         background: white;
         padding: 1.5rem;
-        border-radius: 12px;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        border-radius: var(--radius-card);
         text-align: center;
         border: 1px solid #eee;
     }
     .kpi-card h3 {
         margin: 0;
-        font-size: 0.9rem;
+        font-size: var(--text-sm);
         color: #666;
         font-weight: normal;
     }
@@ -286,7 +294,7 @@
         margin: 0.5rem 0;
     }
     .kpi-card .label {
-        font-size: 0.8rem;
+        font-size: var(--text-xs);
         color: #999;
     }
 
@@ -317,7 +325,7 @@
     .x-axis .label {
         position: absolute;
         transform: translateX(-50%);
-        font-size: 0.75rem;
+        font-size: var(--text-xs);
         color: #666;
         white-space: nowrap;
     }
@@ -354,7 +362,7 @@
         bottom: -20px;
         left: 50%;
         transform: translateX(-50%);
-        font-size: 0.7rem;
+        font-size: var(--text-xs);
         color: #666;
         white-space: nowrap;
     }
@@ -373,7 +381,7 @@
     .rank-info {
         display: flex;
         justify-content: space-between;
-        font-size: 0.9rem;
+        font-size: var(--text-sm);
     }
     .rank-num {
         font-weight: bold;
@@ -386,18 +394,18 @@
     }
     .play-count {
         color: #666;
-        font-size: 0.8rem;
+        font-size: var(--text-xs);
     }
     .progress-bg {
         height: 8px;
         background: #eee;
-        border-radius: 4px;
+        border-radius: var(--radius-control);
         overflow: hidden;
     }
     .progress-bar {
         height: 100%;
         background: #4caf50;
-        border-radius: 4px;
+        border-radius: var(--radius-control);
     }
     .empty-chart {
         height: 100%;
@@ -405,7 +413,7 @@
         align-items: center;
         justify-content: center;
         color: #999;
-        font-size: 0.9rem;
+        font-size: var(--text-sm);
     }
 
     /* Section Header */
@@ -418,11 +426,11 @@
     }
     .section-header h2 {
         margin: 0;
-        font-size: 1.3rem;
+        font-size: var(--text-lg);
         color: #333;
     }
     .section-hint {
-        font-size: 0.8rem;
+        font-size: var(--text-xs);
         color: #999;
     }
 
@@ -431,13 +439,13 @@
         grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
     }
     .kpi-card .unit {
-        font-size: 1.2rem;
+        font-size: var(--text-lg);
         font-weight: normal;
         color: #666;
         margin-left: 2px;
     }
     .kpi-card .sub-value {
-        font-size: 1rem;
+        font-size: var(--text-base);
         font-weight: normal;
         color: #999;
     }
@@ -455,11 +463,11 @@
     .btn-drilldown {
         min-height: 44px;
         padding: 0 0.9rem;
-        border-radius: 6px;
+        border-radius: var(--radius-control);
         border: 1px solid var(--border-medium, #ced4da);
         background: var(--bg-primary, #fff);
         color: var(--text-primary, #333);
-        font-size: 0.88rem;
+        font-size: var(--text-sm);
         font-weight: 600;
         cursor: pointer;
     }
@@ -470,12 +478,12 @@
     .kpi-card.clickable:hover {
         transform: translateY(-2px);
         box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-        border-color: #007bff;
+        border-color: var(--color-blue-bright);
     }
 
     /* Visitor progress bar color */
     .visitor-bar {
-        background: #007bff;
+        background: var(--color-blue-bright);
     }
 
     /* Modal */
@@ -493,7 +501,7 @@
     }
     .modal-content {
         background: white;
-        border-radius: 16px;
+        border-radius: var(--radius-card);
         width: 90%;
         max-width: 600px;
         max-height: 80vh;
@@ -509,13 +517,13 @@
     }
     .modal-header h3 {
         margin: 0;
-        font-size: 1.1rem;
+        font-size: var(--text-lg);
         color: #333;
     }
     .modal-close {
         background: none;
         border: none;
-        font-size: 1.5rem;
+        font-size: var(--text-xl);
         color: #999;
         cursor: pointer;
         padding: 0;

@@ -264,10 +264,10 @@
 
 <div class="monitor-page">
 	<div class="header">
-		<h1>
+		<h2 class="panel-title">
 			<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:10px; vertical-align:text-bottom;"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
 			서버 모니터
-		</h1>
+		</h2>
 		<div class="connection-status" class:connected>
 			<span class="dot"></span>
 			{connected ? '실시간 연결됨' : '연결 끊김'}
@@ -578,17 +578,18 @@
 		align-items: center;
 		margin-bottom: 2rem;
 	}
-	.header h1 {
+	.header .panel-title {
 		margin: 0;
+		font-size: var(--text-lg);
 	}
 	.connection-status {
 		display: flex;
 		align-items: center;
 		gap: 0.5rem;
-		font-size: 0.85rem;
+		font-size: var(--text-sm);
 		color: #999;
 		padding: 0.4rem 0.8rem;
-		border-radius: 20px;
+		border-radius: var(--radius-card);
 		background: #f5f5f5;
 	}
 	.connection-status.connected {
@@ -620,8 +621,7 @@
 	.chart-card {
 		background: white;
 		padding: 1.25rem;
-		border-radius: 12px;
-		box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+		border-radius: var(--radius-card);
 		border: 1px solid #eee;
 		text-align: left;
 		width: 100%;
@@ -641,12 +641,12 @@
 		margin-bottom: 0.75rem;
 	}
 	.chart-title {
-		font-size: 0.85rem;
+		font-size: var(--text-sm);
 		color: #666;
 		font-weight: normal;
 	}
 	.tap-hint {
-		font-size: 0.7rem;
+		font-size: var(--text-xs);
 		color: #aaa;
 		margin-left: 4px;
 	}
@@ -656,12 +656,12 @@
 		line-height: 1.2;
 	}
 	.chart-unit {
-		font-size: 1rem;
+		font-size: var(--text-base);
 		font-weight: 600;
 		margin-left: 2px;
 	}
 	.chart-sub {
-		font-size: 0.75rem;
+		font-size: var(--text-xs);
 		color: #999;
 		margin-top: 2px;
 	}
@@ -680,14 +680,13 @@
 	.kpi-card {
 		background: white;
 		padding: 1.25rem;
-		border-radius: 12px;
-		box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+		border-radius: var(--radius-card);
 		text-align: center;
 		border: 1px solid #eee;
 	}
 	.kpi-card h3 {
 		margin: 0;
-		font-size: 0.85rem;
+		font-size: var(--text-sm);
 		color: #666;
 		font-weight: normal;
 	}
@@ -698,17 +697,17 @@
 		margin: 0.5rem 0;
 	}
 	.kpi-card .value.uptime {
-		font-size: 1.3rem;
+		font-size: var(--text-lg);
 	}
 	.kpi-card .label {
-		font-size: 0.75rem;
+		font-size: var(--text-xs);
 		color: #999;
 	}
 	.db-details {
 		display: flex;
 		justify-content: center;
 		gap: 0.75rem;
-		font-size: 0.8rem;
+		font-size: var(--text-xs);
 		color: #666;
 		margin: 0.25rem 0;
 	}
@@ -717,13 +716,12 @@
 	.detail-card {
 		background: white;
 		padding: 1.5rem;
-		border-radius: 12px;
-		box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+		border-radius: var(--radius-card);
 		border: 1px solid #eee;
 	}
 	.detail-card h3 {
 		margin: 0 0 1rem 0;
-		font-size: 1rem;
+		font-size: var(--text-base);
 		color: #333;
 	}
 	.log-card {
@@ -752,7 +750,7 @@
 	}
 	.abandoned-hint {
 		margin: 0 0 0.75rem 0;
-		font-size: 0.8rem;
+		font-size: var(--text-xs);
 		color: #8d6e63;
 	}
 	@keyframes pulse-border {
@@ -766,7 +764,7 @@
 	.log-table {
 		width: 100%;
 		border-collapse: collapse;
-		font-size: 0.85rem;
+		font-size: var(--text-sm);
 	}
 	.log-table thead {
 		position: sticky;
@@ -779,7 +777,7 @@
 		border-bottom: 2px solid #eee;
 		color: #666;
 		font-weight: 600;
-		font-size: 0.8rem;
+		font-size: var(--text-xs);
 	}
 	.log-table td {
 		padding: 0.4rem 0.75rem;
@@ -795,8 +793,8 @@
 	.log-badge {
 		display: inline-block;
 		padding: 0.15rem 0.5rem;
-		border-radius: 10px;
-		font-size: 0.75rem;
+		border-radius: var(--radius-card);
+		font-size: var(--text-xs);
 		font-weight: 600;
 	}
 	.log-checkin {
@@ -814,8 +812,8 @@
 	.log-source {
 		display: inline-block;
 		padding: 0.1rem 0.4rem;
-		border-radius: 4px;
-		font-size: 0.75rem;
+		border-radius: var(--radius-control);
+		font-size: var(--text-xs);
 		background: #e3f2fd;
 		color: #1565c0;
 		font-weight: 600;
@@ -839,7 +837,7 @@
 	}
 	.modal {
 		background: white;
-		border-radius: 16px;
+		border-radius: var(--radius-card);
 		padding: 1.5rem;
 		width: 100%;
 		max-width: 420px;
@@ -853,13 +851,13 @@
 	}
 	.modal-header h3 {
 		margin: 0;
-		font-size: 1.1rem;
+		font-size: var(--text-lg);
 		color: #333;
 	}
 	.modal-close {
 		background: none;
 		border: none;
-		font-size: 1.5rem;
+		font-size: var(--text-xl);
 		color: #999;
 		cursor: pointer;
 		padding: 0 0.25rem;
@@ -876,7 +874,7 @@
 	.detail-row {
 		display: flex;
 		justify-content: space-between;
-		font-size: 0.9rem;
+		font-size: var(--text-sm);
 		color: #555;
 		padding: 0.25rem 0;
 	}
@@ -892,7 +890,7 @@
 
 	.last-update {
 		text-align: center;
-		font-size: 0.8rem;
+		font-size: var(--text-xs);
 		color: #999;
 	}
 	.loading {

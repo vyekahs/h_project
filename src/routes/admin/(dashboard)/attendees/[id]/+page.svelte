@@ -364,7 +364,7 @@
     }
     .status-card {
         padding: 2rem;
-        border-radius: 12px;
+        border-radius: var(--radius-card);
         background: white;
         border: 1px solid #eee;
         margin-bottom: 2rem;
@@ -377,7 +377,7 @@
     .status-badge {
         display: inline-block;
         padding: 0.5rem 1rem;
-        border-radius: 20px;
+        border-radius: var(--radius-card);
         font-weight: bold;
         margin-bottom: 1rem;
     }
@@ -407,12 +407,12 @@
 
     .btn-grant {
         padding: 1rem 2rem;
-        font-size: 1.1rem;
+        font-size: var(--text-lg);
         font-weight: bold;
         color: white;
         background: #4caf50;
         border: none;
-        border-radius: 8px;
+        border-radius: var(--radius-control);
         cursor: pointer;
         flex: 1; /* Equal width */
         transition: background 0.2s;
@@ -423,12 +423,12 @@
 
     .btn-cancel-pass {
         padding: 1rem 2rem;
-        font-size: 1.1rem;
+        font-size: var(--text-lg);
         font-weight: bold;
         color: white;
         background: #f44336;
         border: none;
-        border-radius: 8px;
+        border-radius: var(--radius-control);
         cursor: pointer;
         flex: 1; /* Equal width */
         transition: background 0.2s;
@@ -445,16 +445,16 @@
         margin-top: 1rem;
     }
     .adjust-label {
-        font-size: 0.9rem;
+        font-size: var(--text-sm);
         color: #666;
     }
     .btn-adjust {
         width: 60px;
         height: 40px;
-        font-size: 1rem;
+        font-size: var(--text-base);
         font-weight: bold;
         border: 1px solid #ddd;
-        border-radius: 8px;
+        border-radius: var(--radius-control);
         cursor: pointer;
         transition: all 0.2s;
     }
@@ -489,7 +489,7 @@
     .modal {
         background: white;
         padding: 2rem;
-        border-radius: 12px;
+        border-radius: var(--radius-card);
         width: 90%;
         max-width: 400px;
         box-shadow: 0 4px 12px rgba(0,0,0,0.15);
@@ -507,7 +507,7 @@
         padding: 0.75rem;
         border: 1px solid #ddd;
         background: white;
-        border-radius: 6px;
+        border-radius: var(--radius-control);
         cursor: pointer;
     }
     .btn-cancel:hover {
@@ -520,7 +520,7 @@
     .back-link {
         text-decoration: none;
         color: #666;
-        font-size: 0.9rem;
+        font-size: var(--text-sm);
         display: inline-block;
         margin-bottom: 1rem;
     }
@@ -532,18 +532,18 @@
     .stat-card {
         background: #f5f5f5;
         padding: 1rem;
-        border-radius: 8px;
+        border-radius: var(--radius-control);
         flex: 1;
         text-align: center;
     }
     .stat-card .label {
         display: block;
-        font-size: 0.8rem;
+        font-size: var(--text-xs);
         color: #666;
         margin-bottom: 0.25rem;
     }
     .stat-card .value {
-        font-size: 1.5rem;
+        font-size: var(--text-xl);
         font-weight: bold;
         color: #333;
     }
@@ -558,12 +558,12 @@
         border: none;
         border-bottom: 2px solid transparent;
         cursor: pointer;
-        font-size: 1rem;
+        font-size: var(--text-base);
         color: #666;
     }
     .tabs button.active {
-        color: #007bff;
-        border-bottom-color: #007bff;
+        color: var(--color-blue-bright);
+        border-bottom-color: var(--color-blue-bright);
         font-weight: bold;
     }
     .view-controls {
@@ -576,12 +576,12 @@
         padding: 0.25rem 0.75rem;
         background: #eee;
         border: none;
-        border-radius: 4px;
+        border-radius: var(--radius-control);
         cursor: pointer;
-        font-size: 0.85rem;
+        font-size: var(--text-sm);
     }
     .view-controls button.active {
-        background: #007bff;
+        background: var(--color-blue-bright);
         color: white;
     }
     .history-table {
@@ -599,8 +599,8 @@
     }
     .status-badge {
         padding: 0.25rem 0.5rem;
-        border-radius: 12px;
-        font-size: 0.75rem;
+        border-radius: var(--radius-card);
+        font-size: var(--text-xs);
     }
     .status-badge.playing {
         background: #e3f2fd;
@@ -614,7 +614,7 @@
     /* Calendar Styles */
     .calendar-view {
         border: 1px solid #eee;
-        border-radius: 8px;
+        border-radius: var(--radius-control);
         padding: 1rem;
     }
     .calendar-header {
@@ -626,7 +626,7 @@
     .calendar-header button {
         background: none;
         border: 1px solid #ddd;
-        border-radius: 4px;
+        border-radius: var(--radius-control);
         padding: 0.25rem 0.75rem;
         cursor: pointer;
     }
@@ -643,7 +643,7 @@
     }
     .day {
         border: 1px solid #eee;
-        border-radius: 4px;
+        border-radius: var(--radius-control);
         min-height: 80px;
         padding: 0.25rem;
         position: relative;
@@ -657,7 +657,7 @@
         border-color: #90caf9;
     }
     .day-number {
-        font-size: 0.8rem;
+        font-size: var(--text-xs);
         color: #666;
         position: absolute;
         top: 4px;
@@ -676,7 +676,7 @@
         border-radius: 50%;
     }
     .game-count {
-        font-size: 0.7rem;
+        font-size: var(--text-xs);
         color: #1976d2;
         margin-top: 0.25rem;
         text-align: center;
@@ -693,7 +693,7 @@
         padding: 1rem;
         background: white;
         border: 1px solid #eee;
-        border-radius: 8px;
+        border-radius: var(--radius-control);
     }
     .rank {
         width: 30px;
@@ -713,11 +713,11 @@
     
     .info .name {
         font-weight: bold;
-        font-size: 1.1rem;
+        font-size: var(--text-lg);
     }
     .info .count {
         color: #666;
-        font-size: 0.9rem;
+        font-size: var(--text-sm);
     }
     .empty {
         text-align: center;
@@ -731,7 +731,7 @@
         margin: 0 auto;
         padding: 2rem;
         background: white;
-        border-radius: 8px;
+        border-radius: var(--radius-control);
         border: 1px solid #eee;
         text-align: center;
     }
@@ -741,7 +741,7 @@
     .account-section .description {
         color: #666;
         margin-bottom: 2rem;
-        font-size: 0.9rem;
+        font-size: var(--text-sm);
     }
     .form-group {
         text-align: left;
@@ -757,20 +757,20 @@
         width: 100%;
         padding: 0.75rem;
         border: 1px solid #ddd;
-        border-radius: 6px;
-        font-size: 1rem;
+        border-radius: var(--radius-control);
+        font-size: var(--text-base);
         box-sizing: border-box;
     }
     .btn-primary {
         width: 100%;
         padding: 0.75rem;
-        background: #007bff;
+        background: var(--color-blue-bright);
         color: white;
         border: none;
-        border-radius: 6px;
+        border-radius: var(--radius-control);
         font-weight: bold;
         cursor: pointer;
-        font-size: 1rem;
+        font-size: var(--text-base);
     }
     .btn-primary:hover {
         background: #0056b3;
