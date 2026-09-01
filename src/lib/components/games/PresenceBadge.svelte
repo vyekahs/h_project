@@ -52,7 +52,7 @@
         if (data.present > 0) {
             const names = data.presentNames.join(', ');
             const more = data.present > data.presentNames.length ? ' 외' : '';
-            parts.push(`카페에 ${data.present}명${names ? ` (${names}${more})` : ''}`);
+            parts.push(`혼놀에 ${data.present}명${names ? ` (${names}${more})` : ''}`);
         }
         if (data.online > 0) parts.push(`앱에 ${data.online}명 접속 중`);
         return `${parts.join(', ')}. 현황 보러 가기`;
@@ -65,7 +65,7 @@
             {#if data.present > 0}
                 <span class="seg">
                     <span class="dot cafe" aria-hidden="true"></span>
-                    <span class="txt">카페 {data.present}</span>
+                    <span class="txt">혼놀 {data.present}</span>
                 </span>
             {/if}
             {#if data.online > 0}
