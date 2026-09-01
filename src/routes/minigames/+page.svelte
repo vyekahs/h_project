@@ -113,11 +113,9 @@
         // }
     ];
 
-    const popularGames = $derived(
-        data.popularGames
-            .map((pg: { gameId: string }) => games.find(g => g.id === pg.gameId))
-            .filter(Boolean) as typeof games
-    );
+    // 인기 게임을 별도 섹션으로 안 보여주고, "전체 게임" 그리드 안에서
+    // 해당 아이콘에 금/은/동 배지로만 표시한다 — 순서 그대로 순위를 뜻함
+    const popularGameIds = $derived(data.popularGames.map((pg: { gameId: string }) => pg.gameId));
 
     // 게임이 늘어날수록(로드맵상 18개+) "전체 게임"을 한 번에 다 훑어야
     // 하는 부담이 커진다 — 장르 칩으로 좁혀볼 수 있게 함
@@ -141,52 +139,6 @@
         <ActivityTicker activities={data.activityFeed} />
     </div>
 
-    {#if popularGames.length > 0}
-    <div class="featured-row">
-            <section class="featured-section">
-                <h2 class="section-title"><span class="section-emoji"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg></span> 인기 게임</h2>
-                <div class="featured-list">
-                    {#each popularGames as game}
-                        <a href={game.url} class="featured-card" style="--accent: {game.accentColor}">
-                            <div class="featured-icon">
-                                <div class="featured-icon-box">
-                                    {#if game.id === 'sudoku'}
-                                        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 9h18" /><path d="M3 15h18" /><path d="M9 3v18" /><path d="M15 3v18" /></svg>
-                                    {:else if game.id === 'killer-sudoku'}
-                                        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2" stroke-dasharray="3 3"/><text x="5.5" y="9" font-size="4.5" font-weight="bold" fill="currentColor" stroke="none">20</text></svg>
-                                    {:else if game.id === 'unblock-me'}
-                                        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="9" width="10" height="6" rx="1.5" fill="currentColor" stroke="none"/><path d="M16 12h5m-2-2l2 2l-2 2" stroke-width="2.5"/></svg>
-                                    {:else if game.id === 'tichu'}
-                                        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="2" width="12" height="17" rx="2"/><rect x="9" y="5" width="12" height="17" rx="2" fill="rgba(255,255,255,0.3)"/><text x="7" y="13" font-size="7" font-weight="bold" fill="currentColor" stroke="none">T</text></svg>
-                                    {:else if game.id === 'energy'}
-                                        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4" stroke-width="1.5"/><path d="M12 4v-2M12 12v2M8 8H6M18 8h-2" stroke-width="1.5"/><path d="M11 14l-1.5 4h5L13 14" fill="rgba(255,255,255,0.3)" stroke-width="1.5"/></svg>
-                                    {:else if game.id === 'water-sort'}
-                                        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="18" rx="3.5" stroke-width="1.5"/><rect x="14" y="3" width="7" height="18" rx="3.5" stroke-width="1.5"/></svg>
-                                    {:else if game.id === 'triple-tile'}
-                                        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="10" width="8" height="8" rx="2" fill="rgba(255,255,255,0.3)"/><rect x="8" y="7" width="8" height="8" rx="2" fill="rgba(255,255,255,0.5)"/><rect x="14" y="4" width="8" height="8" rx="2" fill="rgba(255,255,255,0.7)"/></svg>
-                                    {:else if game.id === 'train-tracks'}
-                                        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="4" x2="5" y2="20"/><line x1="19" y1="4" x2="19" y2="20"/><line x1="5" y1="7" x2="19" y2="7"/><line x1="5" y1="12" x2="19" y2="12"/><line x1="5" y1="17" x2="19" y2="17"/></svg>
-                                    {:else if game.id === '2048'}
-                                        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="8" rx="1.5" fill="rgba(255,255,255,0.15)"/><rect x="3" y="13" width="8" height="8" rx="1.5" fill="rgba(255,255,255,0.3)"/><rect x="13" y="13" width="8" height="8" rx="1.5" fill="rgba(255,255,255,0.45)"/><text x="7" y="7" dy=".35em" font-size="4.5" font-weight="bold" fill="currentColor" stroke="none" text-anchor="middle">2</text><text x="17" y="7" dy=".35em" font-size="4.5" font-weight="bold" fill="currentColor" stroke="none" text-anchor="middle">0</text><text x="7" y="17" dy=".35em" font-size="4.5" font-weight="bold" fill="currentColor" stroke="none" text-anchor="middle">4</text><text x="17" y="17" dy=".35em" font-size="4.5" font-weight="bold" fill="currentColor" stroke="none" text-anchor="middle">8</text></svg>
-                                    {:else if game.id === 'freecell'}
-                                        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="3" fill="rgba(255,255,255,0.1)"/><text x="9" y="11" font-size="9" font-weight="bold" fill="currentColor" stroke="none" text-anchor="middle">K</text><path d="M15 13 L18 16 L15 19 L12 16 Z" fill="currentColor" stroke="none"/></svg>
-                                    {:else if game.id === 'regicide'}
-                                        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="3" fill="rgba(255,255,255,0.1)"/><path d="M8 14 l 2 -5 l 2 2 l 2 -2 l 2 5 z" fill="currentColor" stroke="none"/><line x1="8" y1="16.5" x2="16" y2="16.5" stroke="currentColor" stroke-width="1.5"/></svg>
-                                    {:else if game.id === 'block-blaster'}
-                                        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="16" width="16" height="4" rx="1" fill="rgba(255,255,255,0.2)"/><rect x="4" y="10" width="4" height="4" rx="1" fill="rgba(255,255,255,0.4)"/><rect x="16" y="4" width="4" height="10" rx="1" fill="rgba(255,255,255,0.15)"/><rect x="10" y="5" width="4" height="4" rx="1" fill="rgba(255,255,255,0.6)"/></svg>
-                                    {:else if game.id === 'match-crash'}
-                                        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="12" r="4" fill="rgba(231,76,60,0.6)"/><circle cx="12" cy="12" r="4" fill="rgba(46,204,113,0.6)"/><circle cx="18" cy="12" r="4" fill="rgba(52,152,219,0.6)"/></svg>
-                                    {/if}
-                                </div>
-                            </div>
-                            <span class="featured-name">{game.name}</span>
-                        </a>
-                    {/each}
-                </div>
-            </section>
-    </div>
-    {/if}
-
     <section class="section-title-row">
         <h2 class="section-title"><span class="section-emoji"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="12" x2="10" y2="12"/><line x1="8" y1="10" x2="8" y2="14"/><line x1="15" y1="13" x2="15.01" y2="13"/><line x1="18" y1="11" x2="18.01" y2="11"/><rect x="2" y="6" width="20" height="12" rx="2"/></svg></span> 전체 게임</h2>
     </section>
@@ -208,6 +160,7 @@
     <section class="games-grid">
         {#each filteredGames as game}
             {@const rank = data.userRanks[game.id]}
+            {@const popularRank = popularGameIds.indexOf(game.id) + 1}
             <a href={game.url} class="game-icon-item" style="--accent: {game.accentColor}">
                 <div class="icon-wrapper glass-panel">
                     <div class="icon-box">
@@ -304,6 +257,12 @@
                 {#if rank}
                     <div class="rank-badge" class:rank-first={rank === 1}>#{rank}</div>
                 {/if}
+                {#if popularRank >= 1 && popularRank <= 3}
+                    <div
+                        class="popular-badge tier-{popularRank}"
+                        aria-label={`이번 달 인기 게임 ${popularRank}위`}
+                    >{popularRank}</div>
+                {/if}
                 <span class="icon-label">{game.name}</span>
             </a>
         {:else}
@@ -389,24 +348,6 @@
         margin-bottom: 2rem;
     }
 
-    /* Featured Row - side by side */
-    .featured-row {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 0.75rem;
-        margin-bottom: 1.5rem;
-    }
-
-    /* 인기/신규 게임 중 하나만 데이터가 있으면 나머지 칸이 빈 채로
-       남았다 — 하나뿐일 때는 그 섹션이 전체 폭을 채우게 함 */
-    .featured-section:only-child {
-        grid-column: 1 / -1;
-    }
-
-    .featured-section {
-        margin-bottom: 0;
-    }
-
     .section-title-row {
         margin-bottom: 0.75rem;
     }
@@ -423,66 +364,6 @@
 
     .section-emoji {
         font-size: 1rem;
-    }
-
-    .featured-list {
-        display: flex;
-        flex-direction: column;
-        gap: 0.5rem;
-    }
-
-    .featured-card {
-        display: flex;
-        align-items: center;
-        gap: 0.6rem;
-        padding: 0.55rem 0.7rem;
-        background: var(--glass-surface-strong);
-        backdrop-filter: blur(12px);
-        -webkit-backdrop-filter: blur(12px);
-        border: 1px solid var(--glass-border-strong);
-        border-radius: 14px;
-        text-decoration: none;
-        color: var(--text-primary);
-        transition: transform 0.15s ease, box-shadow 0.15s ease;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
-    }
-
-    .featured-card:active {
-        transform: scale(0.97);
-    }
-
-    .featured-icon {
-        flex-shrink: 0;
-        width: 36px;
-        height: 36px;
-    }
-
-    .featured-icon-box {
-        width: 100%;
-        height: 100%;
-        border-radius: 10px;
-        background: linear-gradient(135deg, var(--accent, var(--color-blue)) 0%, white 200%);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        /* var(--bg-primary)는 다크 테마에서 거의 검정이 되어 아이콘이 안 보임 —
-           이 아이콘은 페이지 배경이 아니라 게임별 accent 그라데이션 위에 있으므로
-           테마와 무관하게 항상 흰색이어야 함 */
-        color: #fff;
-    }
-
-    .featured-icon-box svg {
-        width: 55%;
-        height: 55%;
-    }
-
-    .featured-name {
-        font-size: 0.8rem;
-        font-weight: 700;
-        color: var(--text-primary);
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
     }
 
     /* Category Filter Chips */
@@ -637,6 +518,46 @@
     @keyframes crownPulse {
         0%, 100% { transform: scale(1); }
         50% { transform: scale(1.1); }
+    }
+
+    /* Popular Badge - 이번 달 전체 인기 게임 1~3위. rank-badge(개인 순위,
+       오른쪽 위)와 헷갈리지 않게 반대쪽(왼쪽 위)에 금/은/동으로 표시 */
+    .popular-badge {
+        position: absolute;
+        top: -3px;
+        left: -3px;
+        z-index: 3;
+        font-size: 0.65rem;
+        font-weight: 800;
+        min-width: 1.3rem;
+        height: 1.3rem;
+        border-radius: 100px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0 0.25rem;
+        box-shadow: 0 2px 6px var(--shadow-md);
+        border: 1.5px solid var(--bg-primary);
+        line-height: 1;
+    }
+
+    /* 그라데이션 두 색 중 어느 쪽에 텍스트가 걸리든 대비를 보장하기
+       어려워(작은 배지라 10px대 텍스트, large-text 예외 못 받음) 단색 +
+       실측 검증된 조합으로 확정 */
+    .popular-badge.tier-1 {
+        background: #f59e0b;
+        color: #451a03;
+        animation: crownPulse 2s ease-in-out infinite;
+    }
+
+    .popular-badge.tier-2 {
+        background: #9ca3af;
+        color: #1f2937;
+    }
+
+    .popular-badge.tier-3 {
+        background: #92400e;
+        color: #fff;
     }
 
     /* Icon Label */
