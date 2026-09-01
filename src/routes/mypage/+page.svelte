@@ -214,6 +214,7 @@
     function closeDropdowns() {
         isYearOpen = false;
         isMonthOpen = false;
+        partyGameDropdownOpen = false;
     }
     
     // Pagination
