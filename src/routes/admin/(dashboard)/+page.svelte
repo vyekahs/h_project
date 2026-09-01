@@ -135,17 +135,10 @@
     // 참여자 관리 시트 (블랙리스트 / 게임 권한 / 퇴장)
     let manageTarget: Attendee | null = null;
 
-    async function handleRemove(attendee: Attendee) {
-        if (attendee.is_playing) {
-            removeTarget = attendee;
-            removeModalVisible = true;
-        } else {
-            // Instant remove for non-playing users
-            const formData = new FormData();
-            formData.append('id', String(attendee.id));
-            await fetch('?/removeAttendee', { method: 'POST', body: formData });
-            await invalidateAll();
-        }
+    // 게임 참여 중인 참가자 퇴장 — 게임 처리 방식을 묻는 전용 모달을 연다
+    function handleRemove(attendee: Attendee) {
+        removeTarget = attendee;
+        removeModalVisible = true;
     }
 
     // End Game Modal State
@@ -420,11 +413,6 @@
     }
 </script>
 
-
-
-
-
-
 <section class="room-summary" aria-label="방 현황 요약">
     <span class="rs-item">
         <span class="rs-dot" class:live={attendeeCount > 0} aria-hidden="true"></span>
@@ -666,7 +654,7 @@
                                 | <span class="badge-main">메인표시</span>
                             {/if}
                         </span>
-                        <span class="recurring-status">
+                        <span class="recurring-status" class:active={schedule.is_active}>
                             {schedule.is_active ? '활성' : '비활성'}
                         </span>
                     </div>
@@ -1275,7 +1263,7 @@
                 {/if}
                 <div>
                     <h3>{g.game_name}</h3>
-                    <p class="detail-sub">종료 예정: {new Date(g.end_time).toLocaleTimeString()}</p>
+                    <p class="detail-sub">종료 예정: {formatTime(g.end_time)}</p>
                     <p class="detail-sub time-remaining">{getTimeRemaining(g.end_time, now)}</p>
                 </div>
             </div>
@@ -1441,6 +1429,8 @@
     .attendee-list li {
         display: flex;
         justify-content: space-between;
+        align-items: center;
+        gap: 0.75rem;
         padding: 0.5rem;
         border-bottom: 1px solid #ddd;
     }
@@ -1448,13 +1438,16 @@
         display: flex;
         align-items: center;
         gap: 0.5rem;
+        min-width: 0;
     }
     .attendee-link {
         text-decoration: none;
         color: #333;
         font-weight: 500;
-        display: flex;
-        align-items: center;
+        display: block;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
     }
     .attendee-link:hover {
         color: #007bff;
@@ -1670,9 +1663,9 @@
         color: #6b7280;
         text-align: center;
         padding: 2rem;
-        background: rgba(255,255,255,0.5);
+        background: rgba(255, 255, 255, 0.5);
         border-radius: 8px;
-        grid-column: 1 / -1;
+        list-style: none;
     }
     .notice-manager {
         display: flex;
@@ -1681,9 +1674,9 @@
     }
     .current-notice {
         background: #fff3e0;
+        border: 1px solid #ffe0b2;
         padding: 1rem;
-        border-radius: 4px;
-        border-left: 4px solid #ff9800;
+        border-radius: 6px;
         display: flex;
         justify-content: space-between;
         align-items: center;
@@ -1715,14 +1708,20 @@
         .notice-manager {
             gap: 0.5rem;
         }
-        .notice-manager {
-            gap: 0.5rem;
-        }
         .notice-form {
             flex-direction: column;
         }
         .notice-form button {
             width: 100%;
+        }
+        .recurring-item {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 0.5rem;
+        }
+        .recurring-actions {
+            width: 100%;
+            justify-content: flex-end;
         }
     }
     .winner-option {
@@ -1759,6 +1758,13 @@
         display: flex;
         align-items: center;
         gap: 0.5rem;
+        min-width: 0;
+    }
+    .name-row .attendee-link {
+        min-width: 0;
+    }
+    .name-row .badge {
+        flex-shrink: 0;
     }
     .badge {
         font-size: 0.7rem;
@@ -2047,11 +2053,9 @@
         background: white;
         border-radius: 8px;
         border: 1px solid #e0e0e0;
-        border-left: 4px solid #4caf50;
     }
     .recurring-item.inactive {
         opacity: 0.6;
-        border-left-color: #9e9e9e;
     }
     .recurring-info {
         display: flex;
@@ -2063,8 +2067,17 @@
         color: #666;
     }
     .recurring-status {
-        font-size: 0.75rem;
-        color: #666;
+        align-self: flex-start;
+        font-size: 0.72rem;
+        font-weight: 700;
+        padding: 0.1rem 0.45rem;
+        border-radius: 4px;
+        background: #e9ecef;
+        color: #555;
+    }
+    .recurring-status.active {
+        background: #e8f5e9;
+        color: #2b8a3e;
     }
     .badge-main {
         background: #e3f2fd;
@@ -2101,18 +2114,6 @@
         cursor: pointer;
         font-size: 0.8rem;
     }
-    @media (max-width: 600px) {
-        .recurring-item {
-            flex-direction: column;
-            align-items: flex-start;
-            gap: 0.5rem;
-        }
-        .recurring-actions {
-            width: 100%;
-            justify-content: flex-end;
-        }
-    }
-
     .admin-options {
         background: #f0f4ff;
         border: 1px solid #d0d9f0;
