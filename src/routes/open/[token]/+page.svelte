@@ -7,9 +7,30 @@
 
     let status = $state('loading');
 
+    /**
+     * QR은 보통 카메라 앱에서 찍히지만, 링크가 카카오톡 등으로 공유되면
+     * 인앱 브라우저에서 열린다. 인앱 브라우저는 로그인 쿠키와 권한이 따로 놀아
+     * 회원가입 흐름이 끊긴다. 카카오톡은 openExternalBrowser=1 을 붙이면
+     * 시스템 기본 브라우저로 빠져나가 주므로, 커스텀 스킴보다 먼저 시도한다.
+     */
+    function isKakaoInApp(ua: string) {
+        return /kakaotalk/i.test(ua);
+    }
+
+    function escapeKakao() {
+        const target = window.location.origin + checkinPath;
+        window.location.href = `kakaotalk://web/openExternal?url=${encodeURIComponent(target)}`;
+    }
+
     onMount(() => {
         const ua = navigator.userAgent;
         const fullUrl = window.location.origin + checkinPath;
+
+        if (isKakaoInApp(ua)) {
+            escapeKakao();
+            setTimeout(() => { status = 'fallback'; }, 2000);
+            return;
+        }
 
         if (/android/i.test(ua)) {
             // Android: intent scheme → Chrome
@@ -31,7 +52,9 @@
         const ua = navigator.userAgent;
         const fullUrl = window.location.origin + checkinPath;
 
-        if (/android/i.test(ua)) {
+        if (isKakaoInApp(ua)) {
+            escapeKakao();
+        } else if (/android/i.test(ua)) {
             window.location.href = `intent://${window.location.host}${checkinPath}#Intent;scheme=https;package=com.android.chrome;end`;
         } else if (/iphone|ipad|ipod/i.test(ua)) {
             window.location.href = fullUrl.replace('https://', 'googlechromes://').replace('http://', 'googlechrome://');
@@ -43,14 +66,14 @@
     <div class="card">
         {#if status === 'loading'}
             <div class="spinner"></div>
-            <h2>Chrome으로 여는 중...</h2>
+            <h2>브라우저를 여는 중…</h2>
             <p class="sub">잠시만 기다려주세요</p>
         {:else}
             <div class="icon">🌐</div>
-            <h2>Chrome으로 열기</h2>
+            <h2>브라우저에서 열기</h2>
             <p class="sub">자동으로 열리지 않았다면 아래 버튼을 눌러주세요</p>
             <button class="btn-chrome" onclick={openInChrome}>
-                Chrome으로 열기
+                브라우저에서 열기
             </button>
         {/if}
 

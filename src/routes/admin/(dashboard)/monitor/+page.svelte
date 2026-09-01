@@ -109,7 +109,7 @@
 		display: flex;
 		align-items: center;
 		gap: 0.75rem;
-		font-size: 1.75rem;
+		font-size: var(--text-xl);
 		font-weight: 700;
 		color: var(--text-primary);
 	}
@@ -124,7 +124,7 @@
 		margin-bottom: 1.5rem;
 		background: var(--bg-secondary);
 		padding: 0.5rem;
-		border-radius: 12px;
+		border-radius: var(--radius-card);
 		box-shadow: 0 2px 4px var(--shadow-sm);
 	}
 
@@ -134,7 +134,7 @@
 		border: none;
 		padding: 0.875rem 1.5rem;
 		cursor: pointer;
-		font-size: 1rem;
+		font-size: var(--text-base);
 		font-weight: 600;
 		color: var(--text-secondary);
 		display: flex;
@@ -143,7 +143,7 @@
 		gap: 0.625rem;
 		transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 		font-family: inherit;
-		border-radius: 8px;
+		border-radius: var(--radius-control);
 		position: relative;
 	}
 
@@ -152,7 +152,7 @@
 		position: absolute;
 		inset: 0;
 		background: var(--bg-hover);
-		border-radius: 8px;
+		border-radius: var(--radius-control);
 		opacity: 0;
 		transition: opacity 0.25s;
 	}
@@ -215,7 +215,7 @@
 		}
 
 		.header h1 {
-			font-size: 1.5rem;
+			font-size: var(--text-xl);
 			gap: 0.5rem;
 		}
 
@@ -226,7 +226,7 @@
 
 		.tab-btn {
 			padding: 0.75rem 1rem;
-			font-size: 0.9rem;
+			font-size: var(--text-sm);
 			gap: 0.5rem;
 			min-height: 44px;
 		}

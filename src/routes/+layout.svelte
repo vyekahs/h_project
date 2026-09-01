@@ -109,7 +109,7 @@
 	<link rel="icon" href={favicon} />
 </svelte:head>
 
-<div class="app-layout">
+<div class="app-layout" class:is-admin={$page.url.pathname.startsWith('/admin')}>
     <!-- Top Bar for Points (Shop Button) - Temporarily hidden for initial release -->
     <!-- {#if $page.url.pathname === '/minigames'}
         <div class="top-bar">
@@ -388,6 +388,10 @@
 		padding-bottom: calc(96px + env(safe-area-inset-bottom));
 		display: flex;
 		flex-direction: column;
+	}
+	/* 어드민은 사이트 하단 네비를 쓰지 않으므로 그 자리를 비워둘 이유가 없다 */
+	.app-layout.is-admin {
+		padding-bottom: 0;
 	}
 	.content {
 		flex: 1;

@@ -304,7 +304,11 @@
 
         /* Brand colors */
         --color-blue: #339af0;
-        --color-blue-bright: #007bff;
+        /* 흰 글자를 얹는 기본 파랑. #007bff는 3.98:1로 AA 미달이라 5.1:1인 값으로 내렸다.
+           밝은 파랑이 필요한 곳(배경/테두리)은 --color-blue를 쓸 것. */
+        --color-blue-bright: #0b5ed7;
+        --focus-ring: #0b5ed7;
+        --focus-ring-on-dark: #9ec5fe;
         --color-amber: #fbbf24;
         --color-amber-dark: #f59e0b;
         --color-amber-darker: #d97706;
@@ -328,21 +332,77 @@
 
         color-scheme: light;
         color: #333;
+
+        /* ── Type scale ──
+           6단계. 이전에는 0.65–1.2rem 사이 14개 값이 있었고 0.78/0.8/0.82rem처럼
+           0.3px 차이로 갈라진 것들이 있었다. 11px과 12px도 결국 한 결정이라 12px으로 합쳤다.
+           데이터가 자기 라벨보다 커야 하므로
+           가장 큰 단계(--text-stat)는 숫자 전용이다. */
+        --text-xs: 0.75rem;     /* 12px — 배지, 메타 */
+        --text-sm: 0.875rem;    /* 14px — 컨트롤, 목록 */
+        --text-base: 1rem;      /* 16px — 본문 */
+        --text-lg: 1.25rem;     /* 20px — 섹션 제목 */
+        --text-xl: 1.5rem;      /* 24px — 페이지 제목 */
+        --text-stat: 2.5rem;    /* 40px — 라이브 수치 전용 */
+
+        /* 굵기는 400 / 600 / 700 세 단계만 쓴다 */
+        --weight-normal: 400;
+        --weight-medium: 600;
+        --weight-bold: 700;
+
+        /* ── Spacing ── 0.25rem 스케일 6단 */
+        --space-1: 0.25rem;
+        --space-2: 0.5rem;
+        --space-3: 0.75rem;
+        --space-4: 1rem;
+        --space-5: 1.5rem;
+        --space-6: 2rem;
+
+        /* ── Radius ── 컨트롤과 카드 두 종류 + 알약 */
+        --radius-control: 6px;
+        --radius-card: 12px;
+        --radius-pill: 999px;
+
+        /* ── Font ── 한 벌만 쓴다 (이전에는 sans-serif / Arial / -apple-system 혼재) */
+        --font-sans: -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Malgun Gothic',
+            system-ui, 'Segoe UI', Roboto, sans-serif;
+
+        /* 표 형태 숫자 — 30초마다 갱신되는 카운트다운이 가로로 흔들리지 않게 */
+        --numeric: tabular-nums;
+    }
+
+    /* 포커스 링 — 이전에는 UA 기본 링에 의존했고, 네이비 사이드바 위에서
+       1.55:1까지 떨어져 키보드 사용자가 자기 위치를 볼 수 없었다. */
+    :global(.force-light :focus-visible) {
+        outline: 2px solid var(--focus-ring);
+        outline-offset: 2px;
+        border-radius: 2px;
+    }
+    .sidebar :global(:focus-visible),
+    .mobile-bottom-nav :global(:focus-visible) {
+        outline-color: var(--focus-ring-on-dark);
     }
 
     .admin-layout {
         display: flex;
+        align-items: flex-start;
         min-height: 100vh;
-        font-family: sans-serif;
+        font-family: var(--font-sans);
     }
+    /* 대시보드가 2000px를 넘으므로 사이드바를 붙여 둔다.
+       이전에는 문서 끝에서 96px 모자라 네이비가 끊기고 맨 body가 드러났다. */
     .sidebar {
         width: 250px;
         background: #2c3e50;
         color: white;
         display: flex;
         flex-direction: column;
-        padding: 1.5rem;
+        padding: var(--space-5);
         flex-shrink: 0;
+        position: sticky;
+        top: 0;
+        height: 100vh;
+        overflow-y: auto;
     }
     .sidebar-header {
         margin-bottom: 2rem;
@@ -350,7 +410,7 @@
     }
     .sidebar-header h2 {
         margin: 0;
-        font-size: 1.5rem;
+        font-size: var(--text-xl);
         color: #ecf0f1;
     }
     .sidebar-nav {
@@ -363,7 +423,7 @@
         color: #ecf0f1;
         text-decoration: none;
         padding: 0.75rem 1rem;
-        border-radius: 4px;
+        border-radius: var(--radius-control);
         transition: background 0.2s;
     }
     .nav-item:hover, .nav-item.active {
@@ -383,20 +443,27 @@
         color: #ecf0f1;
         border: none;
         padding: 0.75rem;
-        border-radius: 4px;
+        border-radius: var(--radius-control);
         cursor: pointer;
         text-align: left;
         text-decoration: none;
         display: block;
+            font-size: var(--text-sm);
     }
     .btn-sidebar:hover {
         background: #2c3e50;
     }
+    /* 페이지 제목은 24px. 32px 이상은 데이터 전용으로 비워 둔다. */
+    .main-content :global(h1) {
+        font-size: var(--text-xl);
+        font-weight: var(--weight-bold);
+        margin: 0 0 var(--space-4);
+    }
     .main-content {
         flex: 1;
-        padding: 2rem;
-        background: #f5f5f5;
-        overflow-y: auto;
+        min-width: 0;
+        padding: var(--space-6);
+        background: var(--bg-surface);
     }
     .header {
         display: flex;
@@ -419,6 +486,8 @@
             flex-direction: column;
         }
         .sidebar {
+            position: static;
+            height: auto;
             width: 100%;
             padding: 1rem;
             box-sizing: border-box;
@@ -432,7 +501,7 @@
             text-align: center;
         }
         .sidebar-header h2 {
-            font-size: 1.2rem;
+            font-size: var(--text-lg);
         }
         
         /* Hide Desktop Nav & Footer on Mobile */
@@ -476,19 +545,20 @@
             flex-direction: column;
             align-items: center;
             text-decoration: none;
-            color: #888;
+            /* #888은 흰 배경에서 3.54:1로 AA 미달 */
+            color: var(--text-secondary);
             background: none;
             border: none;
-            font-size: 0.75rem;
+            font-size: var(--text-xs);
             gap: 0.25rem;
             padding: 0.5rem;
             flex: 1;
         }
         .bottom-nav-item .icon {
-            font-size: 1.5rem;
+            font-size: var(--text-xl);
         }
         .bottom-nav-item.active, .bottom-nav-item:active {
-            color: #007bff;
+            color: var(--color-blue-bright);
         }
     }
     .btn-secondary {
@@ -496,7 +566,7 @@
         color: #333;
         border: 1px solid #ddd;
         padding: 0.75rem 1.5rem;
-        border-radius: 4px;
+        border-radius: var(--radius-control);
         text-decoration: none;
         font-weight: bold;
         display: flex;
@@ -507,11 +577,11 @@
         background: #f5f5f5;
     }
     .btn-primary {
-        background: #007bff;
+        background: var(--color-blue-bright);
         color: white;
         border: none;
         padding: 0.75rem 1.5rem;
-        border-radius: 4px;
+        border-radius: var(--radius-control);
         cursor: pointer;
         font-weight: bold;
     }
@@ -520,9 +590,10 @@
         color: white;
         border: none;
         padding: 0.75rem 1.5rem;
-        border-radius: 4px;
+        border-radius: var(--radius-control);
         cursor: pointer;
         font-weight: bold;
+            font-size: var(--text-sm);
     }
     .btn-danger:hover {
         background: #b71c1c;
@@ -530,11 +601,11 @@
     .closing-info {
         margin: 0.5rem 0 0 0;
         color: #666;
-        font-size: 0.95rem;
+        font-size: var(--text-sm);
     }
     .warning-text {
         color: #d32f2f;
-        font-size: 0.9rem;
+        font-size: var(--text-sm);
         margin-top: 0.5rem;
     }
     .modal-backdrop {
@@ -552,14 +623,14 @@
     .modal-content {
         background: white;
         padding: 2rem;
-        border-radius: 12px;
+        border-radius: var(--radius-card);
         width: 90%;
         max-width: 420px;
         box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
     }
     .modal-content h3 {
         margin: 0 0 1rem;
-        font-size: 1.2rem;
+        font-size: var(--text-lg);
     }
     .modal-content p {
         margin: 0.5rem 0;

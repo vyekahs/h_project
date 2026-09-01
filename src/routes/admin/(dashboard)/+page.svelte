@@ -338,7 +338,6 @@
     let scheduledAt = '';
     let minPlayers = 2;
     let maxPlayers = 4;
-    let isRecurring = false;
 
     function openScheduledGameModal() {
         showScheduledGameModal = true;
@@ -494,7 +493,6 @@
     $: games = data.games as GameSession[];
     $: scheduledGames = data.scheduledGames as GameSession[];
     $: savedMembers = data.savedMembers as SavedMember[];
-    $: recurringSchedules = (data as any).recurringSchedules || [];
     // 몇 점부터 예약이 막히는지 — 페널티 숫자는 이 값 없이는 의미를 알 수 없다
     $: penaltyThreshold = parseInt((data as any).settings?.penalty_threshold ?? '3') || 3;
     $: noShowLimitMinutes = parseInt((data as any).settings?.no_show_limit_minutes ?? '10') || 10;
@@ -634,23 +632,29 @@
     </div>
 {/snippet}
 
+<!-- 방 현황 — 제품의 존재 이유가 시인성이므로 이 세 숫자가 화면에서 가장 크다 -->
 <section class="room-summary" aria-label="방 현황 요약">
-    <span class="rs-item">
-        <span class="rs-dot" class:live={attendeeCount > 0} aria-hidden="true"></span>
-        <strong>{attendeeCount}명</strong> 현재
-    </span>
-    <span class="rs-sep" aria-hidden="true">·</span>
-    <span class="rs-item"><strong>게임 {playingCount}개</strong> 진행 중</span>
-    <span class="rs-sep" aria-hidden="true">·</span>
-    <span class="rs-item">
+    <div class="rs-stat">
+        <span class="rs-label">
+            <span class="rs-dot" class:live={attendeeCount > 0} aria-hidden="true"></span>
+            지금 방에
+        </span>
+        <span class="rs-value">{attendeeCount}<span class="rs-unit">명</span></span>
+    </div>
+    <div class="rs-stat">
+        <span class="rs-label">진행 중인 게임</span>
+        <span class="rs-value">{playingCount}<span class="rs-unit">판</span></span>
+    </div>
+    <div class="rs-stat">
+        <span class="rs-label">첫 종료까지</span>
         {#if nextEndMins === null}
-            종료 예정 <strong>없음</strong>
+            <span class="rs-value rs-value-none">없음</span>
         {:else if nextEndMins <= 0}
-            <strong class="urgent">종료 임박</strong>
+            <span class="rs-value urgent">임박</span>
         {:else}
-            <strong class:urgent={nextEndMins <= 5}>{nextEndMins}분</strong> 후 첫 종료
+            <span class="rs-value" class:urgent={nextEndMins <= 5}>{nextEndMins}<span class="rs-unit">분</span></span>
         {/if}
-    </span>
+    </div>
 </section>
 
 <!-- 대기 · 승인 큐 — 개입이 필요한 것부터. 확정된 현황보다 위에 온다. -->
@@ -800,7 +804,9 @@
                     {#if game.image_url}
                         <img src={game.image_url} alt={game.game_name} width="32" height="32" class="list-thumb" />
                     {:else}
-                        <div class="list-thumb placeholder">🎲</div>
+                        <div class="list-thumb placeholder" aria-hidden="true">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1"/><circle cx="15.5" cy="15.5" r="1"/><circle cx="15.5" cy="8.5" r="1"/><circle cx="8.5" cy="15.5" r="1"/></svg>
+                        </div>
                     {/if}
                     <span class="list-name">{game.game_name}</span>
                     <span class="list-meta">{game.players.length}명</span>
@@ -856,15 +862,21 @@
         {/if}
     </ul>
 
-    <form method="POST" action="?/addAttendee" use:enhance={pending(undefined, '입장 처리했습니다.')} class="add-form">
-        <input type="text" name="name" placeholder="이름 입력" aria-label="추가할 인원 이름" required />
-        <button type="submit">인원 추가</button>
-    </form>
+    <div class="add-row">
+        <form method="POST" action="?/addAttendee" use:enhance={pending(undefined, '입장 처리했습니다.')} class="add-form">
+            <input type="text" name="name" placeholder="이름 입력" aria-label="추가할 인원 이름" required />
+            <button type="submit">인원 추가</button>
+        </form>
+        <!-- 처음 온 사람은 QR로 직접 가입·입장한다. 그 순간이 바로 여기다. -->
+        <a href="/admin/qr" class="btn-qr">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
+            QR 보여주기
+        </a>
+    </div>
 
     {#if (data.savedMembers || []).length > 0}
         <div class="quick-add">
-            <button type="button" class="toggle-header" onclick={() => savedMembersOpen = !savedMembersOpen}>
-                <span class="toggle-icon">{savedMembersOpen ? '▾' : '▸'}</span>
+            <button type="button" class="toggle-header" aria-expanded={savedMembersOpen} onclick={() => savedMembersOpen = !savedMembersOpen}>
                 저장된 멤버 ({(savedMembers || []).length})
             </button>
             {#if savedMembersOpen}
@@ -905,7 +917,9 @@
                     {#if g.image_url}
                         <img src={g.image_url} alt={g.game_name} width="32" height="32" class="list-thumb" />
                     {:else}
-                        <div class="list-thumb placeholder">🎲</div>
+                        <div class="list-thumb placeholder" aria-hidden="true">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1"/><circle cx="15.5" cy="15.5" r="1"/><circle cx="15.5" cy="8.5" r="1"/><circle cx="8.5" cy="15.5" r="1"/></svg>
+                        </div>
                     {/if}
                     <span class="list-name">{g.game_name}</span>
                     <span class="list-meta">{formatScheduledTime(g.scheduled_at)}</span>
@@ -951,92 +965,6 @@
 </section>
 {/if}
 
-<details class="section section-collapsible">
-    <summary>
-        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg>
-        공지사항 관리
-        {#if data.notice}<span class="summary-tag">게시 중</span>{/if}
-    </summary>
-    <div class="notice-manager">
-        {#if data.notice}
-            <div class="current-notice">
-                <strong>현재 공지:</strong> {data.notice}
-                <form method="POST" action="?/clearNotice" use:enhance={pending(undefined, '공지를 내렸습니다.')} style="display:inline; margin-left: 1rem;">
-                    <button type="submit" class="btn-ghost">숨기기</button>
-                </form>
-            </div>
-        {/if}
-        <form method="POST" action="?/updateNotice" use:enhance={pending(undefined, '공지를 저장했습니다.')} class="notice-form">
-            <input type="text" name="content" placeholder="새 공지사항 입력" aria-label="공지 내용" required />
-            <button type="submit">등록</button>
-        </form>
-    </div>
-</details>
-
-<details class="section section-collapsible">
-    <summary>
-        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>
-        반복 게임 관리 ({recurringSchedules.length})
-    </summary>
-    {#if recurringSchedules.length > 0}
-        <div class="recurring-list">
-            {#each recurringSchedules as schedule (schedule.id)}
-                <div class="recurring-item" class:inactive={!schedule.is_active}>
-                    <div class="recurring-info">
-                        <strong>{schedule.game_name}</strong>
-                        <span class="recurring-meta">
-                            매주 {dayNames[schedule.day_of_week]}요일 {schedule.scheduled_time.slice(0, 5)}
-                            | {schedule.min_players}-{schedule.max_players}인
-                            {#if schedule.show_on_main}
-                                | <span class="badge-main">메인표시</span>
-                            {/if}
-                        </span>
-                        <span class="recurring-status" class:active={schedule.is_active}>
-                            {schedule.is_active ? '활성' : '비활성'}
-                        </span>
-                    </div>
-                    <div class="recurring-actions">
-                        <form method="POST" action="?/skipRecurringWeek" use:enhance={() => {
-                            return async ({ result, update }) => {
-                                if (!reportResult(result)) {
-                                    const msg = (result as any).data?.message || (schedule.is_skipped_this_week ? '스킵 해제됨' : '스킵 처리됨');
-                                    showAlert(msg);
-                                }
-                                await update();
-                            };
-                        }} style="display:inline;">
-                            <input type="hidden" name="scheduleId" value={schedule.id} />
-                            <button type="submit" class="btn-skip" class:skipped={schedule.is_skipped_this_week}>
-                                {schedule.is_skipped_this_week ? '이번주 스킵됨' : '이번주 빼기'}
-                            </button>
-                        </form>
-                        <form method="POST" action="?/toggleRecurringActive" use:enhance={pending(undefined, schedule.is_active ? `"${schedule.game_name}" 반복 일정을 비활성화했습니다.` : `"${schedule.game_name}" 반복 일정을 활성화했습니다.`)} style="display:inline;">
-                            <input type="hidden" name="scheduleId" value={schedule.id} />
-                            <button type="submit" class="btn-toggle-active">
-                                {schedule.is_active ? '비활성화' : '활성화'}
-                            </button>
-                        </form>
-                        <form method="POST" action="?/deleteRecurringSchedule" use:enhance={confirmSubmit({
-                            title: '반복 게임 삭제',
-                            message: `"${schedule.game_name}" 매주 반복 일정을 삭제합니다. 되돌릴 수 없습니다.`,
-                            confirmLabel: '삭제',
-                            danger: true,
-                            handle: async ({ result, update }) => {
-                                reportResult(result, '삭제에 실패했습니다.');
-                                await update();
-                            }
-                        })} style="display:inline;">
-                            <input type="hidden" name="scheduleId" value={schedule.id} />
-                            <button type="submit" class="btn-delete">삭제</button>
-                        </form>
-                    </div>
-                </div>
-            {/each}
-        </div>
-    {:else}
-        <p class="empty-state">등록된 반복 게임이 없습니다. 매주 같은 요일·시간에 열리는 게임을 여기에 등록해두면 자동으로 예정에 올라갑니다.</p>
-    {/if}
-</details>
 
 {#if showModal}
     <!-- 백드롭은 편의용 클릭 영역. 키보드 경로는 모달의 Escape(trapFocus)와 닫기 버튼이 담당한다. -->
@@ -1369,7 +1297,9 @@
                 </div>
                 <form method="POST" action="?/toggleBlacklist" use:enhance={m.is_blacklisted ? pending(undefined, `${m.name}님을 블랙리스트에서 해제했습니다.`) : confirmSubmit({ title: '블랙리스트 등록', message: `${m.name}님을 블랙리스트에 등록합니다. 이후 입장·게임 참여가 제한되고, 진행 중이거나 예정된 참여도 막힙니다.`, confirmLabel: '블랙 등록', danger: true, success: `${m.name}님을 블랙리스트에 등록했습니다.` })} style="display:inline;">
                     <input type="hidden" name="attendeeId" value={m.id} />
-                    <button type="submit" class="btn-blacklist">{m.is_blacklisted ? '해제' : '등록'}</button>
+                    <button type="submit" class="btn-role {m.is_blacklisted ? 'is-secondary' : 'is-destructive'}">
+                        {m.is_blacklisted ? '블랙 해제' : '블랙 등록'}
+                    </button>
                 </form>
             </div>
 
@@ -1380,7 +1310,7 @@
                 </div>
                 <form method="POST" action="?/toggleManager" use:enhance={pending(undefined, m.can_manage_games ? `${m.name}님의 매니저 권한을 해제했습니다.` : `${m.name}님을 매니저로 지정했습니다.`)} style="display:inline;">
                     <input type="hidden" name="attendeeId" value={m.id} />
-                    <button type="submit" class="btn-manager-toggle {m.can_manage_games ? 'active' : ''}">
+                    <button type="submit" class="btn-role is-secondary">
                         {m.can_manage_games ? '매니저 해제' : '매니저 지정'}
                     </button>
                 </form>
@@ -1407,10 +1337,12 @@
                 })(arg);
             }}>
                 <input type="hidden" name="id" value={m.id} />
-                <button type="submit" class="btn-delete full-width">퇴장</button>
+                <button type="submit" class="btn-role is-secondary full-width">퇴장 처리</button>
             </form>
 
-            <button class="btn-cancel full-width" onclick={() => (manageTarget = null)}>닫기</button>
+            <button type="button" class="btn-role is-quiet manage-close" onclick={() => (manageTarget = null)}>
+                닫기
+            </button>
         </div>
     </div>
 {/if}
@@ -1558,10 +1490,6 @@
                     <label class="checkbox-option">
                         <input type="checkbox" name="showOnMain" value="true" />
                         메인페이지에 보이기
-                    </label>
-                    <label class="checkbox-option">
-                        <input type="checkbox" name="isRecurring" value="true" bind:checked={isRecurring} />
-                        매주 반복 (같은 요일에 자동 생성)
                     </label>
                 </div>
 
@@ -1736,104 +1664,80 @@
         margin-bottom: 2rem;
         padding: 1.5rem;
         border: 1px solid var(--border-light);
-        border-radius: 8px;
-        background: #f9f9f9;
+        border-radius: var(--radius-control);
+        background: var(--bg-primary);
     }
-    section h2, details.section > summary {
+    /* 라벨이 데이터를 이기지 않도록 — 32px은 숫자 전용으로 비워 둔다 */
+    section h2 {
         display: flex;
         align-items: center;
-        gap: 0.75rem;
+        gap: var(--space-3);
+        font-size: var(--text-lg);
+        font-weight: var(--weight-bold);
+        margin: 0 0 var(--space-3);
     }
 
     /* 라이브 블록 우위 */
     .section-primary {
         background: var(--bg-primary);
         border-color: #e0e0e0;
-        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
     }
 
     /* 저빈도 관리 섹션 — 기본 접힘 */
-    details.section {
-        padding: 0;
-        background: #f4f4f5;
-        border-color: #e6e6e8;
-    }
-    details.section > summary {
-        list-style: none;
-        cursor: pointer;
-        padding: 0.9rem 1.25rem;
-        font-size: 1rem;
-        font-weight: 700;
-        color: var(--text-darker);
-        user-select: none;
-    }
-    details.section > summary::-webkit-details-marker {
-        display: none;
-    }
-    details.section > summary::after {
-        content: '▾';
-        margin-left: auto;
-        font-size: 0.8rem;
-        color: var(--text-muted);
-        transition: transform 0.15s;
-    }
-    details.section[open] > summary::after {
-        transform: rotate(180deg);
-    }
-    details.section[open] > summary {
-        border-bottom: 1px solid #e6e6e8;
-    }
-    details.section > :not(summary) {
-        margin: 1rem 1.25rem 1.25rem;
-    }
-    .summary-tag {
-        font-size: 0.72rem;
-        font-weight: 700;
-        color: #b45309;
-        background: var(--color-warning-bg);
-        border-radius: 4px;
-        padding: 0.1rem 0.4rem;
-    }
 
     /* 방 현황 요약 스트립 */
     .room-summary {
-        margin-bottom: 1.5rem;
-        padding: 0.9rem 1.25rem;
-        border: 1px solid #d0d7de;
-        border-radius: 8px;
+        margin-bottom: var(--space-5);
+        padding: var(--space-4) var(--space-5);
+        border: 1px solid var(--border-default);
+        border-radius: var(--radius-card);
         background: var(--bg-primary);
-        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: var(--space-4);
+    }
+    .rs-stat {
         display: flex;
-        flex-wrap: wrap;
-        align-items: center;
-        gap: 0.4rem 0.9rem;
-        font-size: 1rem;
-        color: var(--text-primary);
+        flex-direction: column;
+        gap: var(--space-1);
+        min-width: 0;
     }
-    .room-summary strong {
-        font-weight: 700;
-        color: #1a1a1a;
-    }
-    .room-summary .rs-item {
+    .rs-label {
         display: inline-flex;
         align-items: center;
-        gap: 0.4rem;
+        gap: var(--space-1);
+        font-size: var(--text-xs);
+        font-weight: var(--weight-medium);
+        color: var(--text-secondary);
     }
-    .room-summary .rs-sep {
-        color: #bbb;
+    .rs-value {
+        font-size: var(--text-stat);
+        font-weight: var(--weight-bold);
+        line-height: 1;
+        color: var(--text-primary);
+        font-variant-numeric: var(--numeric);
     }
-    .room-summary .rs-dot {
+    .rs-unit {
+        font-size: var(--text-lg);
+        font-weight: var(--weight-medium);
+        margin-left: 0.15em;
+        color: var(--text-secondary);
+    }
+    .rs-value-none {
+        color: var(--text-secondary);
+    }
+    .rs-dot {
         width: 8px;
         height: 8px;
-        border-radius: 50%;
-        background: #bbb;
+        border-radius: var(--radius-pill);
+        background: var(--text-muted);
         flex-shrink: 0;
     }
-    .room-summary .rs-dot.live {
+    .rs-dot.live {
         background: var(--color-green-dark);
-        box-shadow: 0 0 0 3px rgba(43, 138, 62, 0.15);
     }
-    .room-summary .urgent {
+    .rs-value.urgent,
+    .rs-value.urgent .rs-unit {
         color: var(--color-red-dark);
     }
 
@@ -1842,7 +1746,7 @@
         border: 1px solid var(--border-medium);
         color: var(--text-secondary);
         padding: 0.25rem 0.5rem;
-        border-radius: 4px;
+        border-radius: var(--radius-control);
         cursor: pointer;
     }
     .btn-ghost:hover {
@@ -1854,7 +1758,7 @@
         color: white;
         border: none;
         padding: 0.5rem 1.25rem;
-        border-radius: 4px;
+        border-radius: var(--radius-control);
         cursor: pointer;
         font-weight: 700;
     }
@@ -1896,12 +1800,46 @@
         color: var(--color-blue-bright);
         text-decoration: underline;
     }
+    .time-remaining,
+    .queue-note {
+        font-variant-numeric: var(--numeric);
+    }
     .arrival-time {
-        font-size: 0.8rem;
+        font-size: var(--text-xs);
         color: var(--text-secondary);
+        font-variant-numeric: var(--numeric);
         background: #eee;
         padding: 0.1rem 0.4rem;
-        border-radius: 4px;
+        border-radius: var(--radius-control);
+    }
+    .add-row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: var(--space-2);
+    }
+    .add-row .add-form {
+        flex: 1 1 16rem;
+        min-width: 0;
+    }
+    /* 처음 온 사람 안내용 — 이름을 직접 넣는 것과 나란히 둔다 */
+    .btn-qr {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--space-2);
+        min-height: 44px;
+        padding: 0 var(--space-3);
+        border: 1px solid var(--border-medium);
+        border-radius: var(--radius-control);
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        font-size: var(--text-sm);
+        font-weight: var(--weight-medium);
+        text-decoration: none;
+        white-space: nowrap;
+    }
+    .btn-qr:hover {
+        background: var(--bg-hover);
     }
     .add-form, .game-form {
         margin-top: 1rem;
@@ -1914,6 +1852,17 @@
         padding-top: 1rem;
         border-top: 1px dashed var(--border-default);
     }
+    /* 접기 표시는 details > summary 와 같은 방식으로 한 번만 정의한다 */
+    .toggle-header::after {
+        content: '▾';
+        font-size: var(--text-xs);
+        color: var(--text-secondary);
+        transition: transform 0.15s ease;
+        display: inline-block;
+    }
+    .toggle-header[aria-expanded='false']::after {
+        transform: rotate(-90deg);
+    }
     .toggle-header {
         cursor: pointer;
         user-select: none;
@@ -1924,13 +1873,8 @@
     .toggle-header:hover {
         color: var(--color-blue-bright);
     }
-    .toggle-icon {
-        font-size: 0.85rem;
-        width: 1rem;
-        display: inline-block;
-    }
     .quick-add .toggle-header {
-        font-size: 0.9rem;
+        font-size: var(--text-sm);
         margin-bottom: 0.5rem;
     }
     .member-chips {
@@ -1942,14 +1886,14 @@
         display: flex;
         align-items: center;
         background: #e0e0e0;
-        border-radius: 16px;
+        border-radius: var(--radius-card);
         padding-left: 0.75rem;
         overflow: hidden;
     }
     .chip-link {
         text-decoration: none;
         color: var(--text-primary);
-        font-size: 0.85rem;
+        font-size: var(--text-sm);
         margin-right: 0.5rem;
     }
     .chip-link:hover {
@@ -1961,7 +1905,7 @@
         color: var(--text-primary);
         border: none;
         padding: 0.25rem 0.6rem;
-        font-size: 0.85rem;
+        font-size: var(--text-sm);
         cursor: pointer;
         transition: background 0.2s;
         border-left: 1px solid var(--border-medium);
@@ -1974,7 +1918,7 @@
         color: white;
         border: none;
         padding: 0.25rem 0.5rem;
-        border-radius: 4px;
+        border-radius: var(--radius-control);
         cursor: pointer;
     }
     /* 파괴적이지 않은 세션 종료 — 빨강과 구분 */
@@ -1983,7 +1927,7 @@
         color: white;
         border: none;
         padding: 0.5rem 1rem;
-        border-radius: 4px;
+        border-radius: var(--radius-control);
         cursor: pointer;
         font-weight: 700;
     }
@@ -1995,7 +1939,7 @@
         color: var(--text-darker);
         border: 1px solid var(--border-warning);
         padding: 0.25rem 0.5rem;
-        border-radius: 4px;
+        border-radius: var(--radius-control);
         cursor: pointer;
     }
     button {
@@ -2003,7 +1947,7 @@
         background: var(--color-blue-bright);
         color: white;
         border: none;
-        border-radius: 4px;
+        border-radius: var(--radius-control);
         cursor: pointer;
         text-decoration: none;
         display: inline-block;
@@ -2029,7 +1973,7 @@
         white-space: nowrap;
     }
     .status-text {
-        font-size: 0.8rem;
+        font-size: var(--text-xs);
         color: var(--color-orange);
         margin-left: 0.25rem;
     }
@@ -2039,7 +1983,7 @@
         width: 100%;
         margin: 1rem 0;
         border: 1px solid var(--border-default);
-        border-radius: 8px;
+        border-radius: var(--radius-control);
         padding: 0.75rem;
     }
     .pp-head {
@@ -2051,7 +1995,7 @@
     }
     .pp-label {
         font-weight: 600;
-        font-size: 0.9rem;
+        font-size: var(--text-sm);
     }
     .pp-head-actions {
         display: flex;
@@ -2069,9 +2013,9 @@
         gap: 0.3rem;
         background: #e7f1ff;
         color: #0b5ed7;
-        border-radius: 14px;
+        border-radius: var(--radius-card);
         padding: 0.15rem 0.3rem 0.15rem 0.6rem;
-        font-size: 0.82rem;
+        font-size: var(--text-sm);
     }
     .pp-chip button {
         all: unset;
@@ -2079,7 +2023,7 @@
         line-height: 1;
         padding: 0 0.25rem;
         border-radius: 50%;
-        font-size: 0.95rem;
+        font-size: var(--text-sm);
         color: #0b5ed7;
     }
     .pp-chip button:hover {
@@ -2090,8 +2034,8 @@
         box-sizing: border-box;
         padding: 0.4rem 0.5rem;
         border: 1px solid var(--border-default);
-        border-radius: 4px;
-        font-size: 0.9rem;
+        border-radius: var(--radius-control);
+        font-size: var(--text-sm);
     }
     .pp-list {
         margin-top: 0.5rem;
@@ -2109,8 +2053,8 @@
         width: 100%;
         padding: 0.4rem 0.5rem;
         cursor: pointer;
-        border-radius: 4px;
-        font-size: 0.9rem;
+        border-radius: var(--radius-control);
+        font-size: var(--text-sm);
     }
     .pp-option:hover:not(:disabled),
     .pp-option:focus-visible {
@@ -2138,7 +2082,7 @@
         cursor: pointer;
         display: block;
         margin-top: 0.5rem;
-        font-size: 0.82rem;
+        font-size: var(--text-sm);
         color: #0b5ed7;
     }
     .pp-toggle:hover {
@@ -2162,7 +2106,7 @@
         color: white;
         border: none;
         padding: 0.75rem 1.5rem;
-        border-radius: 4px;
+        border-radius: var(--radius-control);
         cursor: pointer;
         font-weight: bold;
     }
@@ -2189,7 +2133,7 @@
     .modal-content {
         background: var(--bg-primary);
         padding: 2rem;
-        border-radius: 12px;
+        border-radius: var(--radius-card);
         width: 100%;
         max-width: 500px;
         max-height: 90vh;
@@ -2231,39 +2175,15 @@
     .full-width {
         width: 100%;
         padding: 0.75rem;
-        font-size: 1rem;
+        font-size: var(--text-base);
     }
     .empty-state {
         color: #6b7280;
         text-align: center;
         padding: 2rem;
         background: rgba(255, 255, 255, 0.5);
-        border-radius: 8px;
+        border-radius: var(--radius-control);
         list-style: none;
-    }
-    .notice-manager {
-        display: flex;
-        flex-direction: column;
-        gap: 1rem;
-    }
-    .current-notice {
-        background: var(--color-warning-bg);
-        border: 1px solid var(--border-warning);
-        padding: 1rem;
-        border-radius: 6px;
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-    }
-    .notice-form {
-        display: flex;
-        gap: 0.5rem;
-    }
-    .notice-form input {
-        flex: 1;
-        padding: 0.5rem;
-        border: 1px solid var(--border-default);
-        border-radius: 4px;
     }
     @media (max-width: 600px) {
         /* 행 액션이 「관리」 하나뿐이라 줄을 따로 쓸 이유가 없다.
@@ -2282,23 +2202,8 @@
             width: 100%; /* Keep specific override or reset if needed */
             margin-top: 0.5rem;
         }
-        .notice-manager {
-            gap: 0.5rem;
-        }
-        .notice-form {
-            flex-direction: column;
-        }
         .notice-form button {
             width: 100%;
-        }
-        .recurring-item {
-            flex-direction: column;
-            align-items: flex-start;
-            gap: 0.5rem;
-        }
-        .recurring-actions {
-            width: 100%;
-            justify-content: flex-end;
         }
     }
     .winner-option {
@@ -2307,7 +2212,7 @@
         gap: 0.5rem;
         padding: 0.75rem;
         border: 1px solid var(--border-default);
-        border-radius: 8px;
+        border-radius: var(--radius-control);
         cursor: pointer;
         transition: background 0.2s;
     }
@@ -2344,14 +2249,16 @@
         flex-shrink: 0;
     }
     .badge {
-        font-size: 0.7rem;
+        font-size: var(--text-xs);
         padding: 0.1rem 0.4rem;
-        border-radius: 4px;
+        border-radius: var(--radius-control);
         font-weight: bold;
     }
+    /* 블랙리스트는 경고가 아니라 하드 블록이다. 페널티 배지와 절대 같은
+       공식(연한 배경 + 빨강 아웃라인)을 쓰지 않는다 — 처방이 서로 다르다. */
     .badge.blacklist {
-        background: var(--color-error-bg);
-        color: var(--color-red-dark);
+        background: var(--color-red-dark);
+        color: #fff;
         border: 1px solid var(--color-red-dark);
     }
     .badge.penalty {
@@ -2377,10 +2284,10 @@
         gap: 0.5rem;
     }
     .queue-flag {
-        font-size: 0.75rem;
+        font-size: var(--text-xs);
         font-weight: 700;
         padding: 0.15rem 0.5rem;
-        border-radius: 999px;
+        border-radius: var(--radius-pill);
         border: 1px solid transparent;
     }
     .queue-flag.approval {
@@ -2409,11 +2316,11 @@
         margin-bottom: 0.4rem;
     }
     .queue-group-head strong {
-        font-size: 0.95rem;
+        font-size: var(--text-sm);
         color: var(--text-primary);
     }
     .queue-meta {
-        font-size: 0.8rem;
+        font-size: var(--text-xs);
         color: var(--text-secondary);
     }
     .queue-list {
@@ -2428,7 +2335,7 @@
         align-items: center;
         gap: 0.15rem 0.75rem;
         padding: 0.5rem 0.6rem;
-        border-radius: 8px;
+        border-radius: var(--radius-control);
     }
     .queue-row + .queue-row {
         margin-top: 0.25rem;
@@ -2446,7 +2353,7 @@
     }
     .queue-note {
         grid-area: note;
-        font-size: 0.78rem;
+        font-size: var(--text-xs);
         color: var(--text-secondary);
     }
     .overdue-text {
@@ -2462,10 +2369,10 @@
         gap: 0.4rem;
     }
     .queue-status {
-        font-size: 0.75rem;
+        font-size: var(--text-xs);
         font-weight: 700;
         padding: 0.1rem 0.45rem;
-        border-radius: 4px;
+        border-radius: var(--radius-control);
         background: var(--bg-hover);
         color: var(--text-dark);
         white-space: nowrap;
@@ -2482,8 +2389,8 @@
     .btn-queue-cancel {
         min-height: 44px;
         padding: 0 0.8rem;
-        border-radius: 6px;
-        font-size: 0.85rem;
+        border-radius: var(--radius-control);
+        font-size: var(--text-sm);
         font-weight: 600;
         cursor: pointer;
         white-space: nowrap;
@@ -2501,8 +2408,8 @@
     .btn-queue-noshow {
         min-height: 44px;
         padding: 0 0.8rem;
-        border-radius: 6px;
-        font-size: 0.85rem;
+        border-radius: var(--radius-control);
+        font-size: var(--text-sm);
         font-weight: 600;
         cursor: pointer;
         white-space: nowrap;
@@ -2515,17 +2422,15 @@
         cursor: not-allowed;
     }
     /* 이름 링크도 손가락이 닿는 크기로 (WCAG 2.5.8) */
+    /* 탭 타깃 24px은 padding으로 확보한다. inline-flex로 바꾸면
+       .attendee-link 의 text-overflow: ellipsis 가 죽는다. */
     .attendee-link,
     .chip-link,
     .list-name {
-        display: inline-flex;
-        align-items: center;
-        min-height: 24px;
+        padding-block: var(--space-1);
     }
     .queue-who .attendee-link {
-        display: inline-flex;
-        align-items: center;
-        min-height: 24px;
+        padding-block: var(--space-1);
     }
 
     /* 결과 토스트 — 흐름을 막지 않는 확인. 실패는 모달이 맡는다 */
@@ -2544,8 +2449,8 @@
         background: var(--text-darker);
         color: var(--bg-primary);
         padding: 0.7rem 1.1rem;
-        border-radius: 8px;
-        font-size: 0.88rem;
+        border-radius: var(--radius-control);
+        font-size: var(--text-sm);
         line-height: 1.45;
         box-shadow: var(--shadow-lg);
         text-align: center;
@@ -2570,8 +2475,8 @@
         color: var(--text-primary);
         border: 1px solid #ced4da;
         padding: 0.3rem 0.7rem;
-        border-radius: 4px;
-        font-size: 0.8rem;
+        border-radius: var(--radius-control);
+        font-size: var(--text-xs);
         cursor: pointer;
     }
     .btn-manage:hover {
@@ -2598,11 +2503,15 @@
     .manage-label > span:first-child {
         font-weight: 600;
         color: var(--text-primary);
-        font-size: 0.9rem;
+        font-size: var(--text-sm);
     }
     .manage-sub {
-        font-size: 0.78rem;
+        font-size: var(--text-xs);
         color: var(--text-secondary);
+    }
+    .manage-close {
+        display: block;
+        margin: var(--space-3) auto 0;
     }
     .manage-divider {
         border: none;
@@ -2635,18 +2544,18 @@
         min-height: 44px;
         padding: 0 0.5rem;
         border: 1px solid var(--border-medium);
-        border-radius: 6px;
+        border-radius: var(--radius-control);
         background: var(--bg-primary);
         color: var(--text-primary);
-        font-size: 0.85rem;
+        font-size: var(--text-sm);
     }
     .btn-penalty {
         border: 1px solid transparent;
         min-height: 44px;
         padding: 0 0.85rem;
-        border-radius: 6px;
+        border-radius: var(--radius-control);
         cursor: pointer;
-        font-size: 0.85rem;
+        font-size: var(--text-sm);
         font-weight: 600;
     }
     .btn-penalty.add {
@@ -2662,21 +2571,56 @@
         opacity: 0.5;
         cursor: not-allowed;
     }
-    .btn-blacklist {
-        background: #424242;
-        color: white;
-        border: none;
-        padding: 0.25rem 0.5rem;
-        border-radius: 4px;
+    /* ── 버튼 역할 4개 ──
+       primary(진행) / secondary(대안) / destructive(되돌릴 수 없음) / quiet(무동작).
+       한 파일에 .btn-* 21종이 흩어져 있었고 같은 모달 안에서 높이 정책이
+       26 / 28 / 44px 세 가지로 갈렸다. 시각적 무게는 결과의 무게를 따라간다. */
+    /* 모든 어드민 버튼/입력의 바닥.
+       폼 컨트롤은 폰트를 상속하지 않아 UA 기본 13.33px이 스케일 밖으로 새어나온다. */
+    button:not(.game-list-item):not(.kpi-card):not(.bottom-nav-item) {
+        min-height: 44px;
+    }
+    button,
+    input,
+    select {
+        font-family: inherit;
+        font-size: var(--text-sm);
+    }
+    .btn-role {
+        min-height: 44px;
+        padding: 0 var(--space-3);
+        border-radius: var(--radius-control);
+        font-size: var(--text-sm);
+        font-weight: var(--weight-medium);
+        border: 1px solid transparent;
         cursor: pointer;
-        font-size: 0.8rem;
+        line-height: 1.2;
+    }
+    .btn-role.is-destructive {
+        background: var(--color-red-dark);
+        color: #fff;
+    }
+    .btn-role.is-secondary {
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        border-color: var(--border-medium);
+    }
+    .btn-role.is-quiet {
+        background: none;
+        color: var(--text-secondary);
+        border-color: transparent;
+        text-decoration: underline;
+        text-underline-offset: 3px;
+    }
+    .btn-role.is-quiet:hover {
+        color: var(--text-primary);
     }
     .chip-container.blacklisted {
         opacity: 0.5;
         background: #bdbdbd;
     }
     .penalty-dot {
-        font-size: 0.7rem;
+        font-size: var(--text-xs);
         color: #f44336;
         margin-left: 0.2rem;
     }
@@ -2684,9 +2628,9 @@
     .duration-input {
         width: 60px;
         padding: 0.4rem;
-        border-radius: 4px;
+        border-radius: var(--radius-control);
         border: 1px solid var(--border-default);
-        font-size: 0.9rem;
+        font-size: var(--text-sm);
     }
 
 
@@ -2708,7 +2652,7 @@
         overflow-y: auto;
         background: var(--bg-primary);
         border: 1px solid var(--border-default);
-        border-radius: 4px;
+        border-radius: var(--radius-control);
         box-shadow: 0 4px 12px var(--shadow-md);
         z-index: 1000;
         list-style: none;
@@ -2744,7 +2688,7 @@
     .mini-thumb {
         width: 40px;
         height: 40px;
-        border-radius: 4px;
+        border-radius: var(--radius-control);
         object-fit: cover;
         background: #eee;
     }
@@ -2757,7 +2701,7 @@
         color: var(--text-primary);
     }
     .game-option-info .meta {
-        font-size: 0.8rem;
+        font-size: var(--text-xs);
         color: var(--text-secondary);
     }
 
@@ -2776,7 +2720,7 @@
         width: 80px;
         padding: 0.75rem;
         border: 1px solid var(--border-default);
-        border-radius: 8px;
+        border-radius: var(--radius-control);
     }
 
     .btn-mini {
@@ -2784,30 +2728,15 @@
         background: #4c6ef5;
         color: white;
         border: none;
-        border-radius: 6px;
+        border-radius: var(--radius-control);
         cursor: pointer;
-        font-size: 0.85rem;
+        font-size: var(--text-sm);
     }
     .btn-guest {
         background: var(--text-dark);
     }
     .btn-guest:hover {
         background: #495057;
-    }
-    .btn-manager-toggle {
-        background: var(--bg-hover);
-        color: var(--text-dark);
-        border: 1px solid #ced4da;
-        padding: 0.2rem 0.4rem;
-        border-radius: 4px;
-        font-size: 0.8rem;
-        cursor: pointer;
-    }
-    .btn-manager-toggle.active {
-        background: #ffd43b;
-        color: #212529;
-        border-color: #fcc419;
-        font-weight: bold;
     }
     .btn-manager-toggle:hover {
         opacity: 0.9;
@@ -2819,7 +2748,7 @@
         background: #43a047;
     }
     .input-label {
-        font-size: 0.85rem;
+        font-size: var(--text-sm);
         font-weight: 600;
         color: var(--text-darker);
     }
@@ -2832,7 +2761,7 @@
         border-radius: 50%;
         background: #868e96;
         color: white;
-        font-size: 10px;
+        font-size: var(--text-xs);
         font-weight: bold;
         margin-left: 4px;
         vertical-align: middle;
@@ -2846,99 +2775,25 @@
         width: 80px;
         padding: 0.5rem;
         border: 1px solid var(--border-default);
-        border-radius: 4px;
+        border-radius: var(--radius-control);
     }
     .hint {
-        font-size: 0.8rem;
+        font-size: var(--text-xs);
         color: var(--text-secondary);
         margin-top: 0.25rem;
     }
 
     /* Recurring Game Management */
-    .recurring-list {
-        display: flex;
-        flex-direction: column;
-        gap: 0.5rem;
-    }
-    .recurring-item {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 0.75rem 1rem;
-        background: var(--bg-primary);
-        border-radius: 8px;
-        border: 1px solid #e0e0e0;
-    }
-    .recurring-item.inactive {
-        opacity: 0.6;
-    }
-    .recurring-info {
-        display: flex;
-        flex-direction: column;
-        gap: 0.25rem;
-    }
-    .recurring-meta {
-        font-size: 0.85rem;
-        color: var(--text-secondary);
-    }
-    .recurring-status {
-        align-self: flex-start;
-        font-size: 0.72rem;
-        font-weight: 700;
-        padding: 0.1rem 0.45rem;
-        border-radius: 4px;
-        background: var(--bg-hover);
-        color: var(--text-darker);
-    }
-    .recurring-status.active {
-        background: var(--color-success-bg);
-        color: var(--color-green-dark);
-    }
-    .badge-main {
-        background: #e3f2fd;
-        color: #1565c0;
-        padding: 0.1rem 0.4rem;
-        border-radius: 4px;
-        font-size: 0.75rem;
-        font-weight: 600;
-    }
-    .recurring-actions {
-        display: flex;
-        gap: 0.25rem;
-        align-items: center;
-    }
-    .btn-skip {
-        background: var(--color-warning-bg);
-        color: var(--text-darker);
-        border: 1px solid var(--border-warning);
-        padding: 0.3rem 0.6rem;
-        border-radius: 4px;
-        cursor: pointer;
-        font-size: 0.8rem;
-    }
-    .btn-skip.skipped {
-        background: var(--color-red);
-        opacity: 0.9;
-    }
-    .btn-toggle-active {
-        background: #607d8b;
-        color: white;
-        border: none;
-        padding: 0.3rem 0.6rem;
-        border-radius: 4px;
-        cursor: pointer;
-        font-size: 0.8rem;
-    }
     .admin-options {
         background: #f0f4ff;
         border: 1px solid #d0d9f0;
-        border-radius: 8px;
+        border-radius: var(--radius-control);
         padding: 1rem;
         margin-top: 0.5rem;
     }
 
     .admin-options-title {
-        font-size: 0.85rem;
+        font-size: var(--text-sm);
         color: #4a5568;
         margin: 0 0 0.5rem 0;
         font-weight: 600;
@@ -2948,7 +2803,7 @@
         display: flex;
         align-items: center;
         gap: 0.5rem;
-        font-size: 0.9rem;
+        font-size: var(--text-sm);
         color: var(--text-primary);
         cursor: pointer;
         padding: 0.25rem 0;
@@ -2975,24 +2830,24 @@
         gap: 0.35rem;
         background: var(--bg-primary);
         border: 1px solid #e0e0e0;
-        border-radius: 20px;
+        border-radius: var(--radius-card);
         padding: 0.35rem 0.75rem;
-        font-size: 0.85rem;
+        font-size: var(--text-sm);
     }
     .vp-name {
         font-weight: 600;
         color: var(--text-primary);
     }
     .vp-party {
-        font-size: 0.65rem;
+        font-size: var(--text-xs);
         background: #e3f2fd;
         color: #1565c0;
         padding: 0.1rem 0.35rem;
-        border-radius: 4px;
+        border-radius: var(--radius-control);
         font-weight: 700;
     }
     .vp-time {
-        font-size: 0.75rem;
+        font-size: var(--text-xs);
         color: #c2410c;
         font-weight: 500;
     }
@@ -3041,33 +2896,33 @@
     .list-thumb {
         width: 32px;
         height: 32px;
-        border-radius: 6px;
+        border-radius: var(--radius-control);
         object-fit: cover;
         flex-shrink: 0;
     }
     .list-thumb.placeholder {
-        background: var(--bg-elevated);
-        display: flex;
+        display: inline-flex;
         align-items: center;
         justify-content: center;
-        font-size: 1rem;
+        background: var(--bg-hover);
+        color: var(--text-muted);
     }
     .list-name {
         flex: 1;
         font-weight: 600;
-        font-size: 0.9rem;
+        font-size: var(--text-sm);
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
     }
     .list-meta {
-        font-size: 0.8rem;
+        font-size: var(--text-xs);
         color: var(--text-secondary);
         white-space: nowrap;
     }
     .list-arrow {
         color: var(--text-muted);
-        font-size: 1.2rem;
+        font-size: var(--text-lg);
         font-weight: bold;
     }
     .show-more-btn {
@@ -3077,14 +2932,14 @@
         margin-top: 0.5rem;
         background: none;
         border: 1px dashed var(--border-medium);
-        border-radius: 6px;
+        border-radius: var(--radius-control);
         color: var(--text-secondary);
-        font-size: 0.85rem;
+        font-size: var(--text-sm);
         cursor: pointer;
         text-align: center;
     }
     .show-more-btn:hover {
-        background: #f9f9f9;
+        background: var(--bg-primary);
         border-color: #999;
     }
 
@@ -3100,33 +2955,33 @@
     }
     .detail-header h3 {
         margin: 0 0 0.25rem 0;
-        font-size: 1.1rem;
+        font-size: var(--text-lg);
     }
     .detail-thumb {
         width: 56px;
         height: 56px;
-        border-radius: 8px;
+        border-radius: var(--radius-control);
         object-fit: cover;
         flex-shrink: 0;
     }
     .detail-sub {
         margin: 0.15rem 0;
-        font-size: 0.85rem;
+        font-size: var(--text-sm);
         color: var(--text-secondary);
     }
     .detail-section {
         margin-bottom: 1rem;
         padding: 0.75rem;
-        background: #f9f9f9;
-        border-radius: 8px;
+        background: var(--bg-primary);
+        border-radius: var(--radius-control);
     }
     .detail-section strong {
-        font-size: 0.85rem;
+        font-size: var(--text-sm);
         color: var(--text-darker);
     }
     .detail-participants {
         margin: 0.25rem 0 0;
-        font-size: 0.9rem;
+        font-size: var(--text-sm);
         color: var(--text-primary);
     }
     .detail-actions {
@@ -3153,8 +3008,8 @@
         width: 100%;
         padding: 0.4rem 0.5rem;
         border: 1px solid var(--border-default);
-        border-radius: 4px;
-        font-size: 0.9rem;
+        border-radius: var(--radius-control);
+        font-size: var(--text-sm);
         box-sizing: border-box;
     }
     .search-dropdown {
@@ -3164,7 +3019,7 @@
         right: 0;
         background: var(--bg-primary);
         border: 1px solid var(--border-default);
-        border-radius: 4px;
+        border-radius: var(--radius-control);
         max-height: 200px;
         overflow-y: auto;
         z-index: 100;
@@ -3180,7 +3035,7 @@
         padding: 0.5rem 0.75rem;
         cursor: pointer;
         font: inherit;
-        font-size: 0.9rem;
+        font-size: var(--text-sm);
         color: inherit;
         background: transparent;
         border: none;
@@ -3204,7 +3059,7 @@
             padding: 1rem;
         }
         section h2 {
-            font-size: 1rem;
+            font-size: var(--text-base);
             gap: 0.5rem;
         }
         .section-header {
@@ -3215,7 +3070,7 @@
         /* 폰은 서서 한 손으로 쓰는 주 사용 장면 — 탭 타깃을 44px 아래로 줄이지 않는다 */
         button, .btn-primary, .btn-delete, .btn-mini {
             padding: 0.4rem 0.75rem;
-            font-size: 0.85rem;
+            font-size: var(--text-sm);
             min-height: 44px;
         }
         input:not([type='hidden']):not([type='checkbox']),
@@ -3229,22 +3084,21 @@
         }
         .attendee-list li {
             padding: 0.4rem 0.25rem;
-            font-size: 0.85rem;
+            font-size: var(--text-sm);
         }
         .attendee-info { gap: 0.25rem; }
         .attendee-actions { gap: 0.15rem; }
-        .badge { font-size: 0.65rem; padding: 0.05rem 0.3rem; }
-        .arrival-time { font-size: 0.7rem; }
+        .badge { font-size: var(--text-xs); padding: 0.05rem 0.3rem; }
+        .arrival-time { font-size: var(--text-xs); }
         .duration-input { width: 50px; }
-        .input-label { font-size: 0.8rem; }
-        .chip-container { font-size: 0.8rem; }
-        .chip-link { font-size: 0.8rem; }
-        .chip-add { font-size: 0.8rem; padding: 0.2rem 0.6rem; }
-        .recurring-item { font-size: 0.85rem; }
+        .input-label { font-size: var(--text-xs); }
+        .chip-container { font-size: var(--text-xs); }
+        .chip-link { font-size: var(--text-xs); }
+        .chip-add { font-size: var(--text-xs); padding: 0.2rem 0.6rem; }
         .modal-content { width: 95%; padding: 1.25rem; }
         .player-select { gap: 0.5rem; }
-        .empty-state { font-size: 0.85rem; }
-        .visit-plan-chip { font-size: 0.8rem; padding: 0.3rem 0.6rem; }
+        .empty-state { font-size: var(--text-sm); }
+        .visit-plan-chip { font-size: var(--text-xs); padding: 0.3rem 0.6rem; }
     }
 
 </style>

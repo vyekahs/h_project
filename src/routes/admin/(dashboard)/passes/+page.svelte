@@ -283,17 +283,17 @@
         align-items: center;
         margin-bottom: 2rem;
     }
-    .page-header h1 { margin: 0; font-size: 1.5rem; }
+    .page-header h1 { margin: 0; font-size: var(--text-xl); }
 
     .section { margin-bottom: 2rem; }
     .section h2 {
-        font-size: 1.1rem;
+        font-size: var(--text-lg);
         color: #555;
         margin-bottom: 0.75rem;
         padding-bottom: 0.5rem;
         border-bottom: 1px solid #eee;
     }
-    .empty { color: #999; font-size: 0.95rem; }
+    .empty { color: #999; font-size: var(--text-sm); }
 
     .card-list { display: flex; flex-direction: column; gap: 0.5rem; }
 
@@ -303,9 +303,8 @@
         align-items: center;
         background: white;
         padding: 0.75rem 1rem;
-        border-radius: 8px;
+        border-radius: var(--radius-control);
         border-left: 1px solid #ddd;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.06);
     }
     .pass-card.warning { border-left-color: #ff9800; }
     .pass-card.expired { border-left-color: #ccc; opacity: 0.7; }
@@ -320,7 +319,7 @@
         text-decoration: none;
     }
     .pass-name:hover { text-decoration: underline; }
-    .pass-expiry { font-size: 0.8rem; color: #888; }
+    .pass-expiry { font-size: var(--text-xs); color: #888; }
 
     .pass-actions { display: flex; align-items: center; gap: 0.5rem; }
 
@@ -328,9 +327,9 @@
         background: #e8f5e9;
         color: #2e7d32;
         padding: 0.25rem 0.6rem;
-        border-radius: 12px;
+        border-radius: var(--radius-card);
         font-weight: 700;
-        font-size: 0.85rem;
+        font-size: var(--text-sm);
         min-width: 45px;
         text-align: center;
     }
@@ -340,8 +339,8 @@
     .btn-sm {
         padding: 0.3rem 0.6rem;
         border: none;
-        border-radius: 4px;
-        font-size: 0.8rem;
+        border-radius: var(--radius-control);
+        font-size: var(--text-xs);
         cursor: pointer;
         font-weight: 600;
     }
@@ -359,7 +358,7 @@
         border: none;
         padding: 0.6rem 1rem;
         min-height: 44px;
-        border-radius: 6px;
+        border-radius: var(--radius-control);
         font-weight: 600;
         cursor: pointer;
     }
@@ -367,11 +366,11 @@
     .btn-revoke:hover { background: #ffcdd2; }
 
     .btn-primary {
-        background: #007bff;
+        background: var(--color-blue-bright);
         color: white;
         border: none;
         padding: 0.6rem 1.2rem;
-        border-radius: 6px;
+        border-radius: var(--radius-control);
         cursor: pointer;
         font-weight: 600;
     }
@@ -380,7 +379,7 @@
         color: #333;
         border: 1px solid #ddd;
         padding: 0.6rem 1.2rem;
-        border-radius: 6px;
+        border-radius: var(--radius-control);
         cursor: pointer;
     }
 
@@ -394,7 +393,7 @@
     .modal-content {
         background: white;
         padding: 1.5rem;
-        border-radius: 12px;
+        border-radius: var(--radius-card);
         width: 90%;
         max-width: 400px;
     }
@@ -412,19 +411,19 @@
         display: block;
         margin-bottom: 0.4rem;
         font-weight: 600;
-        font-size: 0.9rem;
+        font-size: var(--text-sm);
     }
     .form-group select, .form-group input[type="date"] {
         width: 100%;
         padding: 0.5rem;
         border: 1px solid #ddd;
-        border-radius: 6px;
-        font-size: 1rem;
+        border-radius: var(--radius-control);
+        font-size: var(--text-base);
         box-sizing: border-box;
     }
     .modal-desc {
         color: #666;
-        font-size: 0.9rem;
+        font-size: var(--text-sm);
         margin: 0 0 1rem 0;
     }
 

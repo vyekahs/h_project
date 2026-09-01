@@ -451,9 +451,8 @@
     }
     .game-card {
         background: white;
-        border-radius: 12px;
+        border-radius: var(--radius-card);
         overflow: hidden;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
         border: 1px solid #eee;
         display: flex;
         flex-direction: column;
@@ -488,29 +487,29 @@
     }
     .game-info h3 {
         margin: 0 0 0.5rem 0;
-        font-size: 1.1rem;
+        font-size: var(--text-lg);
     }
     .meta {
         display: flex;
         gap: 0.5rem;
-        font-size: 0.85rem;
+        font-size: var(--text-sm);
         color: #666;
         margin-bottom: 0.5rem;
     }
     .complexity-badge {
         padding: 0 6px;
-        border-radius: 4px;
+        border-radius: var(--radius-control);
         font-weight: bold;
     }
 
     .dlc-info {
-        font-size: 0.85rem;
+        font-size: var(--text-sm);
         color: #4caf50;
         margin: 0 0 0.5rem 0;
         font-weight: 500;
     }
     .desc {
-        font-size: 0.9rem;
+        font-size: var(--text-sm);
         color: #555;
         margin: 0 0 1rem 0;
         flex: 1;
@@ -528,14 +527,14 @@
     button {
         cursor: pointer;
         border: none;
-        border-radius: 6px;
+        border-radius: var(--radius-control);
         padding: 0.5rem 1rem;
-        font-size: 0.9rem;
+        font-size: var(--text-sm);
     }
-    .btn-primary { background: #007bff; color: white; font-weight: bold; }
+    .btn-primary { background: var(--color-blue-bright); color: white; font-weight: bold; }
     .btn-edit { background: #f0f0f0; color: #333; }
-    .btn-delete { background: #ffebee; color: #d32f2f; }
-    .btn-restore { background: #e8f5e9; color: #2e7d32; font-weight: bold; }
+    .btn-delete { background: #ffebee; color: #b3261e; }  /* #d32f2f 는 이 배경에서 4.36:1 */
+    .btn-restore { background: #e8f5e9; color: #216e39; font-weight: bold; }
 
     .game-card.inactive {
         filter: grayscale(0.8);
@@ -553,7 +552,7 @@
         align-items: center;
         justify-content: center;
         font-weight: bold;
-        font-size: 1.2rem;
+        font-size: var(--text-lg);
     }
     .title-row {
         display: flex;
@@ -563,11 +562,11 @@
     }
     .title-row h3 { margin: 0; }
     .badge-inactive {
-        font-size: 0.75rem;
+        font-size: var(--text-xs);
         background: #666;
         color: white;
         padding: 2px 6px;
-        border-radius: 4px;
+        border-radius: var(--radius-control);
     }
     
     /* Modal */
@@ -583,7 +582,7 @@
     .modal {
         background: white;
         padding: 2rem;
-        border-radius: 12px;
+        border-radius: var(--radius-card);
         width: 90%;
         max-width: 500px;
         max-height: 90vh;
@@ -604,7 +603,7 @@
     .btn-close {
         background: none;
         border: none;
-        font-size: 1.5rem;
+        font-size: var(--text-xl);
         cursor: pointer;
         padding: 0;
         color: #666;
@@ -617,7 +616,7 @@
     .detail-image {
         flex: 0 0 250px;
         height: 250px;
-        border-radius: 8px;
+        border-radius: var(--radius-control);
         overflow: hidden;
         background: #f5f5f5;
         display: flex;
@@ -638,26 +637,26 @@
         margin-bottom: 1.5rem;
         background: #f8f9fa;
         padding: 1rem;
-        border-radius: 8px;
+        border-radius: var(--radius-control);
     }
     .info-item {
         display: flex;
         flex-direction: column;
     }
     .info-item .label {
-        font-size: 0.85rem;
+        font-size: var(--text-sm);
         color: #666;
         margin-bottom: 0.25rem;
     }
     .info-item .value {
         font-weight: bold;
-        font-size: 1.1rem;
+        font-size: var(--text-lg);
     }
     .best-players {
         margin-bottom: 1.5rem;
         padding: 0.75rem;
         background: #e3f2fd;
-        border-radius: 6px;
+        border-radius: var(--radius-control);
         color: #1565c0;
     }
     .dlc-section, .description-section {
@@ -665,7 +664,7 @@
     }
     .dlc-section h4, .description-section h4 {
         margin: 0 0 0.5rem 0;
-        font-size: 1rem;
+        font-size: var(--text-base);
         color: #333;
     }
     .dlc-section p, .description-section p {
@@ -688,13 +687,13 @@
     .form-group { margin-bottom: 1rem; }
     .row { display: flex; gap: 1rem; }
     .row .form-group { flex: 1; }
-    label { display: block; margin-bottom: 0.5rem; font-weight: bold; font-size: 0.9rem; }
+    label { display: block; margin-bottom: 0.5rem; font-weight: bold; font-size: var(--text-sm); }
     input, textarea {
         width: 100%;
         padding: 0.75rem;
         border: 1px solid #ddd;
-        border-radius: 6px;
-        font-size: 1rem;
+        border-radius: var(--radius-control);
+        font-size: var(--text-base);
         box-sizing: border-box;
     }
     .playtime-input-group {
@@ -722,7 +721,7 @@
         margin-top: 2rem;
     }
     .btn-cancel { background: #eee; color: #333; }
-    .btn-submit { background: #007bff; color: white; font-weight: bold; }
+    .btn-submit { background: var(--color-blue-bright); color: white; font-weight: bold; }
     .btn-secondary { background: #6c757d; color: white; }
 
     /* BGG Modal Styles */
@@ -746,7 +745,7 @@
         flex: 1;
         overflow-y: auto;
         border: 1px solid #eee;
-        border-radius: 8px;
+        border-radius: var(--radius-control);
         padding: 0.5rem;
     }
     .search-results ul {
@@ -772,7 +771,7 @@
         font-weight: bold;
     }
     .result-info .year {
-        font-size: 0.85rem;
+        font-size: var(--text-sm);
         color: #666;
     }
     .no-results {
@@ -793,7 +792,7 @@
         margin-bottom: 1.5rem;
         background: white;
         border: 1px solid #ddd;
-        border-radius: 8px;
+        border-radius: var(--radius-control);
         padding: 0.5rem 0.75rem;
     }
     .search-bar svg {
@@ -804,7 +803,7 @@
         flex: 1;
         border: none;
         outline: none;
-        font-size: 0.95rem;
+        font-size: var(--text-sm);
         padding: 0.25rem 0;
         background: transparent;
     }
@@ -821,7 +820,7 @@
         color: #666;
     }
     .search-count {
-        font-size: 0.85rem;
+        font-size: var(--text-sm);
         color: #888;
         white-space: nowrap;
     }
@@ -834,8 +833,8 @@
         margin-top: 1.5rem;
         background: white;
         border: 1px solid #ddd;
-        border-radius: 8px;
-        font-size: 0.9rem;
+        border-radius: var(--radius-control);
+        font-size: var(--text-sm);
         color: #555;
         cursor: pointer;
         transition: background 0.2s;
@@ -847,11 +846,11 @@
     /* Imported Badge */
     .imported-badge {
         color: #2e7d32;
-        font-size: 0.85rem;
+        font-size: var(--text-sm);
         font-weight: 600;
         padding: 0.4rem 0.75rem;
         background: #e8f5e9;
-        border-radius: 6px;
+        border-radius: var(--radius-control);
         white-space: nowrap;
     }
 

@@ -411,9 +411,8 @@
 	.card {
 		background: var(--bg-primary);
 		border: 1px solid var(--border-default);
-		border-radius: 12px;
+		border-radius: var(--radius-card);
 		padding: 1.5rem;
-		box-shadow: 0 2px 8px var(--shadow-sm);
 		margin-bottom: 1.5rem;
 		transition: box-shadow 0.2s;
 	}
@@ -424,7 +423,7 @@
 
 	.card h2 {
 		color: var(--text-primary);
-		font-size: 1.125rem;
+		font-size: var(--text-lg);
 		font-weight: 700;
 		margin: 0 0 1.25rem 0;
 	}
@@ -446,12 +445,12 @@
 	.stat-card {
 		background: var(--bg-secondary);
 		padding: 1.25rem;
-		border-radius: 10px;
+		border-radius: var(--radius-card);
 		border: 1px solid var(--border-light);
 	}
 
 	.stat-label {
-		font-size: 0.8125rem;
+		font-size: var(--text-sm);
 		color: var(--text-secondary);
 		margin-bottom: 0.5rem;
 		font-weight: 500;
@@ -489,7 +488,7 @@
 	:global(th) {
 		padding: 0.875rem 1rem;
 		text-align: left;
-		font-size: 0.75rem;
+		font-size: var(--text-xs);
 		font-weight: 700;
 		color: var(--text-secondary);
 		text-transform: uppercase;
@@ -499,7 +498,7 @@
 	:global(td) {
 		padding: 0.875rem 1rem;
 		color: var(--text-primary);
-		font-size: 0.875rem;
+		font-size: var(--text-sm);
 		border-bottom: 1px solid var(--border-light);
 	}
 
@@ -513,7 +512,7 @@
 
 	:global(.font-mono) {
 		font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
-		font-size: 0.8125rem;
+		font-size: var(--text-sm);
 	}
 
 	/* Info Box */
@@ -522,12 +521,12 @@
 		padding: 1.25rem;
 		background: var(--color-info-bg);
 		border: 1px solid var(--color-blue);
-		border-radius: 10px;
+		border-radius: var(--radius-card);
 	}
 
 	.info-box h3 {
 		margin: 0 0 0.75rem 0;
-		font-size: 1rem;
+		font-size: var(--text-base);
 		font-weight: 700;
 		color: var(--text-primary);
 	}
@@ -540,7 +539,7 @@
 
 	.info-box li {
 		padding: 0.375rem 0;
-		font-size: 0.875rem;
+		font-size: var(--text-sm);
 		color: var(--text-secondary);
 		display: flex;
 		align-items: center;
@@ -548,7 +547,7 @@
 	}
 
 	.info-box li span {
-		font-size: 1.25rem;
+		font-size: var(--text-lg);
 		line-height: 1;
 	}
 
@@ -557,7 +556,7 @@
 		padding: 1rem;
 		background: var(--color-info-bg);
 		border: 1px solid var(--color-blue);
-		border-radius: 8px;
+		border-radius: var(--radius-control);
 		margin-bottom: 1.25rem;
 	}
 
@@ -571,7 +570,7 @@
 		gap: 0.375rem;
 		background: var(--bg-secondary);
 		padding: 0.375rem;
-		border-radius: 10px;
+		border-radius: var(--radius-card);
 		border: 1px solid var(--border-light);
 	}
 
@@ -580,7 +579,7 @@
 		border: none;
 		padding: 0.625rem 1.25rem;
 		border-radius: 7px;
-		font-size: 0.875rem;
+		font-size: var(--text-sm);
 		font-weight: 600;
 		color: var(--text-secondary);
 		cursor: pointer;
@@ -596,7 +595,6 @@
 	.toggle-btn.active {
 		background: var(--bg-primary);
 		color: var(--color-blue-bright);
-		box-shadow: 0 2px 6px var(--shadow-md);
 	}
 
 	/* Loading State */
@@ -608,7 +606,7 @@
 
 	.loading-state p {
 		margin-top: 1rem;
-		font-size: 0.95rem;
+		font-size: var(--text-sm);
 	}
 
 	.spinner {
@@ -634,7 +632,7 @@
 		text-align: center;
 		padding: 3rem;
 		color: var(--text-tertiary);
-		font-size: 0.95rem;
+		font-size: var(--text-sm);
 	}
 
 	/* Overflow handling */
@@ -669,11 +667,11 @@
 	@media (max-width: 768px) {
 		.card {
 			padding: 1rem;
-			border-radius: 10px;
+			border-radius: var(--radius-card);
 		}
 
 		.card h2 {
-			font-size: 1rem;
+			font-size: var(--text-base);
 			margin-bottom: 1rem;
 		}
 
@@ -685,7 +683,7 @@
 
 		.toggle-btn {
 			padding: 0.625rem 1rem;
-			font-size: 0.8125rem;
+			font-size: var(--text-sm);
 			width: 100%;
 		}
 
@@ -701,26 +699,26 @@
 		}
 
 		.stat-label {
-			font-size: 0.75rem;
+			font-size: var(--text-xs);
 		}
 
 		.stat-value {
-			font-size: 1.5rem;
+			font-size: var(--text-xl);
 		}
 
 		/* Table responsive */
 		:global(th),
 		:global(td) {
 			padding: 0.625rem 0.75rem;
-			font-size: 0.8125rem;
+			font-size: var(--text-sm);
 		}
 
 		:global(th) {
-			font-size: 0.6875rem;
+			font-size: var(--text-xs);
 		}
 
 		:global(.font-mono) {
-			font-size: 0.75rem;
+			font-size: var(--text-xs);
 		}
 
 		/* Compact table on mobile */
@@ -734,17 +732,17 @@
 		}
 
 		.info-box h3 {
-			font-size: 0.9375rem;
+			font-size: var(--text-sm);
 		}
 
 		.info-box li {
-			font-size: 0.8125rem;
+			font-size: var(--text-sm);
 			padding: 0.25rem 0;
 		}
 
 		.history-stats {
 			padding: 0.875rem;
-			font-size: 0.8125rem;
+			font-size: var(--text-sm);
 		}
 	}
 
@@ -756,11 +754,11 @@
 		}
 
 		.stat-value {
-			font-size: 1.375rem;
+			font-size: var(--text-xl);
 		}
 
 		.view-toggle {
-			font-size: 0.75rem;
+			font-size: var(--text-xs);
 		}
 
 		.toggle-btn {
