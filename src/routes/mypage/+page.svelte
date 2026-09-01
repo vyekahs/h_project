@@ -1373,24 +1373,36 @@
     }
     .stat-card {
         background: var(--bg-primary);
-        padding: 1.5rem;
-        border-radius: 12px;
+        padding: 1.75rem 1.5rem;
+        border-radius: 16px;
         text-align: center;
-        box-shadow: 0 2px 10px var(--shadow-sm);
+        box-shadow: 0 4px 16px var(--shadow-sm);
     }
     .stat-card.highlight {
-        background: var(--color-info-bg);
+        /* 승리 카드: 이 페이지의 활동 기록 탭이 승리 표시에 이미 쓰는
+           amber 톤(.history-card.winner)을 그대로 가져와, "승리 = 금빛"이라는
+           같은 브랜드 언어를 대시보드 첫 화면에서도 반복한다 */
+        background: linear-gradient(135deg, var(--color-warning-bg) 0%, var(--bg-primary) 70%);
+        box-shadow: 0 6px 20px var(--shadow-md);
     }
     .stat-value {
         display: block;
-        font-size: 1.8rem;
+        font-size: 3rem;
         font-weight: 800;
-        color: var(--text-primary);
-        margin-bottom: 0.25rem;
+        line-height: 1;
+        letter-spacing: -0.02em;
+        font-variant-numeric: tabular-nums;
+        color: var(--color-blue);
+        margin-bottom: 0.35rem;
+    }
+    .stat-card.highlight .stat-value {
+        color: var(--color-amber-darker);
     }
     .stat-label {
         color: var(--text-secondary);
-        font-size: 0.9rem;
+        font-size: 0.85rem;
+        font-weight: 600;
+        letter-spacing: 0.01em;
     }
 
     .analysis-row {
