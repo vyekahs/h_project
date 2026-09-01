@@ -552,7 +552,7 @@
     </span>
 </section>
 
-<section>
+<section class="section-primary">
     <div class="section-header">
         <h2>진행 중인 게임 ({(games || []).length})</h2>
         <button class="btn-primary" onclick={() => {
@@ -595,8 +595,8 @@
     {/if}
 </section>
 
-<section>
-    <h2>현재 참여 인원</h2>
+<section class="section-primary">
+    <h2>현재 참여 인원 ({(attendees || []).length})</h2>
     <ul class="attendee-list">
         {#each (attendees || []) as attendee (attendee.id)}
             {@const a = attendee as Attendee}
@@ -736,11 +736,12 @@
 </section>
 {/if}
 
-<section>
-    <h2>
+<details class="section section-collapsible">
+    <summary>
         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg>
         공지사항 관리
-    </h2>
+        {#if data.notice}<span class="summary-tag">게시 중</span>{/if}
+    </summary>
     <div class="notice-manager">
         {#if data.notice}
             <div class="current-notice">
@@ -755,15 +756,13 @@
             <button type="submit">등록</button>
         </form>
     </div>
-</section>
+</details>
 
-<section>
-    <div class="section-header">
-        <h2>
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>
-            반복 게임 관리 ({recurringSchedules.length})
-        </h2>
-    </div>
+<details class="section section-collapsible">
+    <summary>
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>
+        반복 게임 관리 ({recurringSchedules.length})
+    </summary>
     {#if recurringSchedules.length > 0}
         <div class="recurring-list">
             {#each recurringSchedules as schedule (schedule.id)}
@@ -822,7 +821,7 @@
     {:else}
         <p class="empty-state">등록된 반복 게임이 없습니다.</p>
     {/if}
-</section>
+</details>
 
 {#if showModal}
     <div
@@ -1482,31 +1481,82 @@
 
 <style>
     section {
-        margin-bottom: 3rem;
+        margin-bottom: 2rem;
         padding: 1.5rem;
         border: 1px solid #eee;
         border-radius: 8px;
         background: #f9f9f9;
     }
-    section h2 {
+    section h2, details.section > summary {
         display: flex;
         align-items: center;
         gap: 0.75rem;
     }
 
+    /* 라이브 블록 우위 */
+    .section-primary {
+        background: #fff;
+        border-color: #e0e0e0;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+    }
+
+    /* 저빈도 관리 섹션 — 기본 접힘 */
+    details.section {
+        padding: 0;
+        background: #f4f4f5;
+        border-color: #e6e6e8;
+    }
+    details.section > summary {
+        list-style: none;
+        cursor: pointer;
+        padding: 0.9rem 1.25rem;
+        font-size: 1rem;
+        font-weight: 700;
+        color: #555;
+        user-select: none;
+    }
+    details.section > summary::-webkit-details-marker {
+        display: none;
+    }
+    details.section > summary::after {
+        content: '▾';
+        margin-left: auto;
+        font-size: 0.8rem;
+        color: #999;
+        transition: transform 0.15s;
+    }
+    details.section[open] > summary::after {
+        transform: rotate(180deg);
+    }
+    details.section[open] > summary {
+        border-bottom: 1px solid #e6e6e8;
+    }
+    details.section > :not(summary) {
+        margin: 1rem 1.25rem 1.25rem;
+    }
+    .summary-tag {
+        font-size: 0.72rem;
+        font-weight: 700;
+        color: #b45309;
+        background: #fff3e0;
+        border-radius: 4px;
+        padding: 0.1rem 0.4rem;
+    }
+
     /* 방 현황 요약 스트립 */
     .room-summary {
         margin-bottom: 1.5rem;
-        padding: 0.85rem 1.25rem;
-        border: 1px solid #e0e0e0;
+        padding: 0.9rem 1.25rem;
+        border: 1px solid #d0d7de;
         border-radius: 8px;
         background: #fff;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
         display: flex;
         flex-wrap: wrap;
         align-items: center;
         gap: 0.4rem 0.9rem;
-        font-size: 0.95rem;
-        color: #444;
+        font-size: 1rem;
+        color: #333;
     }
     .room-summary strong {
         font-weight: 700;
