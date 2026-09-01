@@ -10,8 +10,6 @@
             tagline: '논리 퍼즐의 정석',
             url: '/minigames/start/sudoku',
             accentColor: '#60a5fa',
-            releasedAt: '2024-12-01',
-            forceNew: false,
             category: '퍼즐'
         },
         {
@@ -20,8 +18,6 @@
             tagline: '스도쿠에 연산 한 스푼',
             url: '/minigames/start/killer-sudoku',
             accentColor: '#facc15',
-            releasedAt: '2025-01-10',
-            forceNew: false,
             category: '퍼즐'
         },
         // {
@@ -39,8 +35,6 @@
             tagline: '2:2 트릭테이킹 카드게임',
             url: '/minigames/tichu',
             accentColor: '#22c55e',
-            releasedAt: '2025-01-20',
-            forceNew: false,
             category: '카드'
         },
         {
@@ -49,8 +43,6 @@
             tagline: '회로를 연결하여 전구를 켜세요',
             url: '/minigames/start/energy',
             accentColor: '#f59e0b',
-            releasedAt: '2025-02-01',
-            forceNew: false,
             category: '퍼즐'
         },
         {
@@ -59,8 +51,6 @@
             tagline: '색깔 물을 정리하세요',
             url: '/minigames/start/water-sort',
             accentColor: '#6366f1',
-            releasedAt: '2025-02-10',
-            forceNew: false,
             category: '퍼즐'
         },
         {
@@ -69,8 +59,6 @@
             tagline: '3개를 모아 타일을 제거하세요',
             url: '/minigames/start/triple-tile',
             accentColor: '#ec4899',
-            releasedAt: '2025-03-01',
-            forceNew: false,
             category: '캐주얼'
         },
         {
@@ -79,8 +67,6 @@
             tagline: '선로를 연결하여 기차길을 완성하세요',
             url: '/minigames/start/train-tracks',
             accentColor: '#78716c',
-            releasedAt: '2026-03-12',
-            forceNew: false,
             category: '퍼즐'
         },
         {
@@ -89,8 +75,6 @@
             tagline: '타일을 합쳐 2048을 만드세요',
             url: '/minigames/start/2048',
             accentColor: '#edc22e',
-            releasedAt: '2026-03-16',
-            forceNew: false,
             category: '캐주얼'
         },
         {
@@ -99,8 +83,6 @@
             tagline: '전략적 카드 퍼즐',
             url: '/minigames/start/freecell',
             accentColor: '#059669',
-            releasedAt: '2026-03-23',
-            forceNew: true,
             category: '카드'
         },
         // {
@@ -118,8 +100,6 @@
             tagline: '블록을 채워 줄을 완성하세요',
             url: '/minigames/start/block-blaster',
             accentColor: '#8b5cf6',
-            releasedAt: '2026-04-15',
-            forceNew: true,
             category: '캐주얼'
         },
         // {
@@ -132,15 +112,6 @@
         //     forceNew: true
         // }
     ];
-
-    const TWO_WEEKS = 14 * 24 * 60 * 60 * 1000;
-    const now = Date.now();
-
-    function isNewGame(game: typeof games[0]) {
-        return game.forceNew || (now - new Date(game.releasedAt).getTime()) <= TWO_WEEKS;
-    }
-
-    const newGames = games.filter(isNewGame);
 
     const popularGames = $derived(
         data.popularGames
@@ -170,9 +141,8 @@
         <ActivityTicker activities={data.activityFeed} />
     </div>
 
-    {#if popularGames.length > 0 || newGames.length > 0}
+    {#if popularGames.length > 0}
     <div class="featured-row">
-        {#if popularGames.length > 0}
             <section class="featured-section">
                 <h2 class="section-title"><span class="section-emoji"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg></span> 인기 게임</h2>
                 <div class="featured-list">
@@ -214,51 +184,6 @@
                     {/each}
                 </div>
             </section>
-        {/if}
-
-        {#if newGames.length > 0}
-            <section class="featured-section">
-                <h2 class="section-title"><span class="section-emoji"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/><path d="M5 3v4"/><path d="M19 17v4"/><path d="M3 5h4"/><path d="M17 19h4"/></svg></span> 새로운 게임</h2>
-                <div class="featured-list">
-                    {#each newGames as game}
-                        <a href={game.url} class="featured-card" style="--accent: {game.accentColor}">
-                            <div class="featured-icon">
-                                <div class="featured-icon-box">
-                                    {#if game.id === 'sudoku'}
-                                        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 9h18" /><path d="M3 15h18" /><path d="M9 3v18" /><path d="M15 3v18" /></svg>
-                                    {:else if game.id === 'killer-sudoku'}
-                                        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2" stroke-dasharray="3 3"/><text x="5.5" y="9" font-size="4.5" font-weight="bold" fill="currentColor" stroke="none">20</text></svg>
-                                    {:else if game.id === 'unblock-me'}
-                                        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="9" width="10" height="6" rx="1.5" fill="currentColor" stroke="none"/><path d="M16 12h5m-2-2l2 2l-2 2" stroke-width="2.5"/></svg>
-                                    {:else if game.id === 'tichu'}
-                                        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="2" width="12" height="17" rx="2"/><rect x="9" y="5" width="12" height="17" rx="2" fill="rgba(255,255,255,0.3)"/><text x="7" y="13" font-size="7" font-weight="bold" fill="currentColor" stroke="none">T</text></svg>
-                                    {:else if game.id === 'energy'}
-                                        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4" stroke-width="1.5"/><path d="M12 4v-2M12 12v2M8 8H6M18 8h-2" stroke-width="1.5"/><path d="M11 14l-1.5 4h5L13 14" fill="rgba(255,255,255,0.3)" stroke-width="1.5"/></svg>
-                                    {:else if game.id === 'water-sort'}
-                                        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="18" rx="3.5" stroke-width="1.5"/><rect x="14" y="3" width="7" height="18" rx="3.5" stroke-width="1.5"/></svg>
-                                    {:else if game.id === 'triple-tile'}
-                                        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="10" width="8" height="8" rx="2" fill="rgba(255,255,255,0.3)"/><rect x="8" y="7" width="8" height="8" rx="2" fill="rgba(255,255,255,0.5)"/><rect x="14" y="4" width="8" height="8" rx="2" fill="rgba(255,255,255,0.7)"/></svg>
-                                    {:else if game.id === 'train-tracks'}
-                                        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="4" x2="5" y2="20"/><line x1="19" y1="4" x2="19" y2="20"/><line x1="5" y1="7" x2="19" y2="7"/><line x1="5" y1="12" x2="19" y2="12"/><line x1="5" y1="17" x2="19" y2="17"/></svg>
-                                    {:else if game.id === '2048'}
-                                        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="8" rx="1.5" fill="rgba(255,255,255,0.15)"/><rect x="3" y="13" width="8" height="8" rx="1.5" fill="rgba(255,255,255,0.3)"/><rect x="13" y="13" width="8" height="8" rx="1.5" fill="rgba(255,255,255,0.45)"/><text x="7" y="7" dy=".35em" font-size="4.5" font-weight="bold" fill="currentColor" stroke="none" text-anchor="middle">2</text><text x="17" y="7" dy=".35em" font-size="4.5" font-weight="bold" fill="currentColor" stroke="none" text-anchor="middle">0</text><text x="7" y="17" dy=".35em" font-size="4.5" font-weight="bold" fill="currentColor" stroke="none" text-anchor="middle">4</text><text x="17" y="17" dy=".35em" font-weight="bold" font-size="4.5" fill="currentColor" stroke="none" text-anchor="middle">8</text></svg>
-                                    {:else if game.id === 'freecell'}
-                                        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="3" fill="rgba(255,255,255,0.1)"/><text x="9" y="11" font-size="9" font-weight="bold" fill="currentColor" stroke="none" text-anchor="middle">K</text><path d="M15 13 L18 16 L15 19 L12 16 Z" fill="currentColor" stroke="none"/></svg>
-                                    {:else if game.id === 'regicide'}
-                                        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="3" fill="rgba(255,255,255,0.1)"/><path d="M8 14 l 2 -5 l 2 2 l 2 -2 l 2 5 z" fill="currentColor" stroke="none"/><line x1="8" y1="16.5" x2="16" y2="16.5" stroke="currentColor" stroke-width="1.5"/></svg>
-                                    {:else if game.id === 'block-blaster'}
-                                        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="16" width="16" height="4" rx="1" fill="rgba(255,255,255,0.2)"/><rect x="4" y="10" width="4" height="4" rx="1" fill="rgba(255,255,255,0.4)"/><rect x="16" y="4" width="4" height="10" rx="1" fill="rgba(255,255,255,0.15)"/><rect x="10" y="5" width="4" height="4" rx="1" fill="rgba(255,255,255,0.6)"/></svg>
-                                    {:else if game.id === 'match-crash'}
-                                        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="12" r="4" fill="rgba(231,76,60,0.6)"/><circle cx="12" cy="12" r="4" fill="rgba(46,204,113,0.6)"/><circle cx="18" cy="12" r="4" fill="rgba(52,152,219,0.6)"/></svg>
-                                    {/if}
-                                </div>
-                            </div>
-                            <span class="featured-name">{game.name}</span>
-                        </a>
-                    {/each}
-                </div>
-            </section>
-        {/if}
     </div>
     {/if}
 
