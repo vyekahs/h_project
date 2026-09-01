@@ -11,7 +11,8 @@
             url: '/minigames/start/sudoku',
             accentColor: '#60a5fa',
             releasedAt: '2024-12-01',
-            forceNew: false
+            forceNew: false,
+            category: '퍼즐'
         },
         {
             id: 'killer-sudoku',
@@ -20,7 +21,8 @@
             url: '/minigames/start/killer-sudoku',
             accentColor: '#facc15',
             releasedAt: '2025-01-10',
-            forceNew: false
+            forceNew: false,
+            category: '퍼즐'
         },
         // {
         //     id: 'unblock-me',
@@ -38,7 +40,8 @@
             url: '/minigames/tichu',
             accentColor: '#22c55e',
             releasedAt: '2025-01-20',
-            forceNew: false
+            forceNew: false,
+            category: '카드'
         },
         {
             id: 'energy',
@@ -47,7 +50,8 @@
             url: '/minigames/start/energy',
             accentColor: '#f59e0b',
             releasedAt: '2025-02-01',
-            forceNew: false
+            forceNew: false,
+            category: '퍼즐'
         },
         {
             id: 'water-sort',
@@ -56,7 +60,8 @@
             url: '/minigames/start/water-sort',
             accentColor: '#6366f1',
             releasedAt: '2025-02-10',
-            forceNew: false
+            forceNew: false,
+            category: '퍼즐'
         },
         {
             id: 'triple-tile',
@@ -65,7 +70,8 @@
             url: '/minigames/start/triple-tile',
             accentColor: '#ec4899',
             releasedAt: '2025-03-01',
-            forceNew: false
+            forceNew: false,
+            category: '캐주얼'
         },
         {
             id: 'train-tracks',
@@ -74,7 +80,8 @@
             url: '/minigames/start/train-tracks',
             accentColor: '#78716c',
             releasedAt: '2026-03-12',
-            forceNew: false
+            forceNew: false,
+            category: '퍼즐'
         },
         {
             id: '2048',
@@ -83,7 +90,8 @@
             url: '/minigames/start/2048',
             accentColor: '#edc22e',
             releasedAt: '2026-03-16',
-            forceNew: false
+            forceNew: false,
+            category: '캐주얼'
         },
         {
             id: 'freecell',
@@ -92,7 +100,8 @@
             url: '/minigames/start/freecell',
             accentColor: '#059669',
             releasedAt: '2026-03-23',
-            forceNew: true
+            forceNew: true,
+            category: '카드'
         },
         // {
         //     id: 'regicide',
@@ -110,7 +119,8 @@
             url: '/minigames/start/block-blaster',
             accentColor: '#8b5cf6',
             releasedAt: '2026-04-15',
-            forceNew: true
+            forceNew: true,
+            category: '캐주얼'
         },
         // {
         //     id: 'match-crash',
@@ -136,6 +146,14 @@
         data.popularGames
             .map((pg: { gameId: string }) => games.find(g => g.id === pg.gameId))
             .filter(Boolean) as typeof games
+    );
+
+    // 게임이 늘어날수록(로드맵상 18개+) "전체 게임"을 한 번에 다 훑어야
+    // 하는 부담이 커진다 — 장르 칩으로 좁혀볼 수 있게 함
+    const categories = ['전체', ...Array.from(new Set(games.map(g => g.category)))];
+    let selectedCategory = $state('전체');
+    const filteredGames = $derived(
+        selectedCategory === '전체' ? games : games.filter(g => g.category === selectedCategory)
     );
 </script>
 
@@ -248,8 +266,22 @@
         <h2 class="section-title"><span class="section-emoji"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="12" x2="10" y2="12"/><line x1="8" y1="10" x2="8" y2="14"/><line x1="15" y1="13" x2="15.01" y2="13"/><line x1="18" y1="11" x2="18.01" y2="11"/><rect x="2" y="6" width="20" height="12" rx="2"/></svg></span> 전체 게임</h2>
     </section>
 
+    <div class="category-chips" role="group" aria-label="게임 장르 필터">
+        {#each categories as category}
+            <button
+                type="button"
+                class="category-chip"
+                class:active={selectedCategory === category}
+                aria-pressed={selectedCategory === category}
+                onclick={() => selectedCategory = category}
+            >
+                {category}
+            </button>
+        {/each}
+    </div>
+
     <section class="games-grid">
-        {#each games as game}
+        {#each filteredGames as game}
             {@const rank = data.userRanks[game.id]}
             <a href={game.url} class="game-icon-item" style="--accent: {game.accentColor}">
                 <div class="icon-wrapper glass-panel">
@@ -349,8 +381,11 @@
                 {/if}
                 <span class="icon-label">{game.name}</span>
             </a>
+        {:else}
+            <p class="no-results">이 장르의 게임이 아직 없어요</p>
         {/each}
 
+        {#if selectedCategory === '전체'}
         <div class="game-icon-item coming-soon">
             <div class="icon-wrapper glass-panel">
                 <div class="icon-box disabled">
@@ -359,6 +394,7 @@
             </div>
             <span class="icon-label">준비 중</span>
         </div>
+        {/if}
     </section>
 </div>
 
@@ -522,6 +558,43 @@
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
+    }
+
+    /* Category Filter Chips */
+    .category-chips {
+        display: flex;
+        gap: 0.5rem;
+        overflow-x: auto;
+        margin-bottom: 1.25rem;
+        padding-bottom: 0.1rem;
+    }
+
+    .category-chip {
+        flex-shrink: 0;
+        border: 1px solid var(--glass-border-strong);
+        background: var(--glass-surface-medium);
+        color: var(--text-secondary);
+        font-size: 0.85rem;
+        font-weight: 600;
+        padding: 0.45rem 0.9rem;
+        border-radius: 100px;
+        cursor: pointer;
+        min-height: 36px;
+        transition: all 0.15s ease;
+    }
+
+    .category-chip.active {
+        background: var(--color-blue);
+        border-color: var(--color-blue);
+        color: #fff;
+    }
+
+    .no-results {
+        grid-column: 1 / -1;
+        text-align: center;
+        color: var(--text-tertiary);
+        padding: 2rem 0;
+        font-size: 0.9rem;
     }
 
     /* Grid Layout - App Icon Grid */
