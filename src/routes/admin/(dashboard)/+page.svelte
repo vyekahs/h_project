@@ -456,17 +456,18 @@
     <ul class="game-list">
         {#each (showAllPlaying ? playingSorted : playingSorted.slice(0, 5)) as game (game.id)}
             {@const endingSoon = new Date(game.end_time).getTime() - now < 5 * 60000}
-            <!-- svelte-ignore a11y_no_noninteractive_element_interactions a11y_no_noninteractive_tabindex -->
-            <li class="game-list-item" class:ending-soon={endingSoon} onclick={() => { selectedPlayingGame = game; resetParticipantSearch(); }} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { selectedPlayingGame = game; resetParticipantSearch(); }}} tabindex="0">
-                {#if game.image_url}
-                    <img src={game.image_url} alt={game.game_name} class="list-thumb" />
-                {:else}
-                    <div class="list-thumb placeholder">🎲</div>
-                {/if}
-                <span class="list-name">{game.game_name}</span>
-                <span class="list-meta">{game.players.length}명</span>
-                <span class="list-meta time-remaining">{getTimeRemaining(game.end_time, now)}</span>
-                <span class="list-arrow">›</span>
+            <li>
+                <button type="button" class="game-list-item" class:ending-soon={endingSoon} onclick={() => { selectedPlayingGame = game; resetParticipantSearch(); }}>
+                    {#if game.image_url}
+                        <img src={game.image_url} alt={game.game_name} class="list-thumb" />
+                    {:else}
+                        <div class="list-thumb placeholder">🎲</div>
+                    {/if}
+                    <span class="list-name">{game.game_name}</span>
+                    <span class="list-meta">{game.players.length}명</span>
+                    <span class="list-meta time-remaining">{getTimeRemaining(game.end_time, now)}</span>
+                    <span class="list-arrow" aria-hidden="true">›</span>
+                </button>
             </li>
         {/each}
         {#if (games || []).length === 0}
@@ -570,17 +571,18 @@
     <ul class="game-list">
         {#each (showAllScheduled ? (scheduledGames || []) : (scheduledGames || []).slice(0, 5)) as game (game.id)}
             {@const g = game as GameSession}
-            <!-- svelte-ignore a11y_no_noninteractive_element_interactions a11y_no_noninteractive_tabindex -->
-            <li class="game-list-item" onclick={() => { selectedScheduledGame = g; resetParticipantSearch(); }} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { selectedScheduledGame = g; resetParticipantSearch(); }}} tabindex="0">
-                {#if g.image_url}
-                    <img src={g.image_url} alt={g.game_name} class="list-thumb" />
-                {:else}
-                    <div class="list-thumb placeholder">🎲</div>
-                {/if}
-                <span class="list-name">{g.game_name}</span>
-                <span class="list-meta">{formatScheduledTime(g.scheduled_at)}</span>
-                <span class="list-meta">{(g.participants || []).length}/{g.max_players}</span>
-                <span class="list-arrow">›</span>
+            <li>
+                <button type="button" class="game-list-item" onclick={() => { selectedScheduledGame = g; resetParticipantSearch(); }}>
+                    {#if g.image_url}
+                        <img src={g.image_url} alt={g.game_name} class="list-thumb" />
+                    {:else}
+                        <div class="list-thumb placeholder">🎲</div>
+                    {/if}
+                    <span class="list-name">{g.game_name}</span>
+                    <span class="list-meta">{formatScheduledTime(g.scheduled_at)}</span>
+                    <span class="list-meta">{(g.participants || []).length}/{g.max_players}</span>
+                    <span class="list-arrow" aria-hidden="true">›</span>
+                </button>
             </li>
         {/each}
         {#if (scheduledGames || []).length === 0}
@@ -1199,12 +1201,11 @@
                                bind:value={participantSearch}
                                onfocus={() => participantSearchOpen = true} />
                         {#if participantSearchOpen && participantSearch.length > 0 && filteredParticipants.length > 0}
-                            <ul class="search-dropdown">
+                            <div class="search-dropdown">
                                 {#each filteredParticipants.slice(0, 8) as user}
-                                    <!-- svelte-ignore a11y_no_noninteractive_element_interactions a11y_no_noninteractive_tabindex -->
-                                    <li onclick={() => selectParticipant(user)} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') selectParticipant(user); }} tabindex="0">{user.name}</li>
+                                    <button type="button" class="search-option" onclick={() => selectParticipant(user)}>{user.name}</button>
                                 {/each}
-                            </ul>
+                            </div>
                         {/if}
                     </div>
                     <button type="submit" class="btn-mini">추가</button>
@@ -1296,12 +1297,11 @@
                                bind:value={participantSearch}
                                onfocus={() => participantSearchOpen = true} />
                         {#if participantSearchOpen && participantSearch.length > 0 && filteredParticipants.length > 0}
-                            <ul class="search-dropdown">
+                            <div class="search-dropdown">
                                 {#each filteredParticipants.slice(0, 8) as user}
-                                    <!-- svelte-ignore a11y_no_noninteractive_element_interactions a11y_no_noninteractive_tabindex -->
-                                    <li onclick={() => selectParticipant(user)} onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ') selectParticipant(user); }} tabindex="0">{user.name}</li>
+                                    <button type="button" class="search-option" onclick={() => selectParticipant(user)}>{user.name}</button>
                                 {/each}
-                            </ul>
+                            </div>
                         {/if}
                     </div>
                     <button type="submit" class="btn-mini">추가</button>
@@ -1655,7 +1655,7 @@
         font-size: 1rem;
     }
     .empty-state {
-        color: #999;
+        color: #6b7280;
         text-align: center;
         padding: 2rem;
         background: rgba(255,255,255,0.5);
@@ -1810,7 +1810,7 @@
     }
     .manage-sub {
         font-size: 0.78rem;
-        color: #777;
+        color: #666;
     }
     .manage-divider {
         border: none;
@@ -1925,7 +1925,7 @@
     }
     .game-option-info .meta {
         font-size: 0.8rem;
-        color: #888;
+        color: #666;
     }
 
     .winner-row {
@@ -2017,7 +2017,7 @@
     }
     .hint {
         font-size: 0.8rem;
-        color: #888;
+        color: #666;
         margin-top: 0.25rem;
     }
 
@@ -2052,7 +2052,7 @@
     }
     .recurring-status {
         font-size: 0.75rem;
-        color: #888;
+        color: #666;
     }
     .badge-main {
         background: #e3f2fd;
@@ -2175,12 +2175,22 @@
         padding: 0;
         margin: 0;
     }
+    .game-list li {
+        list-style: none;
+    }
     .game-list-item {
         display: flex;
         align-items: center;
         gap: 0.75rem;
+        width: 100%;
         padding: 0.6rem 0.5rem;
+        border: none;
         border-bottom: 1px solid #eee;
+        border-radius: 0;
+        background: transparent;
+        color: inherit;
+        font: inherit;
+        text-align: left;
         cursor: pointer;
         transition: background 0.15s;
     }
@@ -2228,7 +2238,7 @@
         white-space: nowrap;
     }
     .list-arrow {
-        color: #ccc;
+        color: #999;
         font-size: 1.2rem;
         font-weight: bold;
     }
@@ -2330,16 +2340,25 @@
         margin: 2px 0 0;
         box-shadow: 0 4px 12px rgba(0,0,0,0.1);
     }
-    .search-dropdown li {
+    .search-option {
+        display: block;
+        width: 100%;
+        text-align: left;
         padding: 0.5rem 0.75rem;
         cursor: pointer;
+        font: inherit;
         font-size: 0.9rem;
+        color: inherit;
+        background: transparent;
+        border: none;
         border-bottom: 1px solid #f0f0f0;
+        border-radius: 0;
     }
-    .search-dropdown li:last-child {
+    .search-option:last-child {
         border-bottom: none;
     }
-    .search-dropdown li:hover {
+    .search-option:hover,
+    .search-option:focus-visible {
         background: #f5f5f5;
     }
 
