@@ -312,12 +312,22 @@
     let partyModalError = '';
     let showPartyAdvanced = false;
     let partyMemberSearch = '';
+    let showAllPartyMembers = false;
 
     // 이미 선택된 사람은 검색어와 안 맞아도 계속 렌더링한다 — 그래야 체크박스가
     // DOM에서 사라져 폼 제출 시 memberIds에서 조용히 빠지는 걸 막을 수 있다.
     $: filteredPartyMembers = (data.allAttendees || []).filter((a: any) =>
         partyMemberIds.includes(a.id) || a.name.toLowerCase().includes(partyMemberSearch.toLowerCase())
     );
+
+    // 검색창은 있지만 검색 전(빈 문자열)엔 전부 통과라 사실상 무의미했던 문제 수정:
+    // 검색 중이 아니고 "더 보기"도 안 눌렀으면 이미 체크된 사람만 기본 노출한다.
+    // 후보가 4명 이하면 애초에 검색창도 없으니 이 축소를 적용하지 않는다.
+    $: partyMembersToShow = ((data.allAttendees || []).length <= 4 || partyMemberSearch || showAllPartyMembers)
+        ? filteredPartyMembers
+        : filteredPartyMembers.filter((a: any) => partyMemberIds.includes(a.id));
+
+    $: hiddenPartyMemberCount = filteredPartyMembers.length - partyMembersToShow.length;
 
     function openCreatePartyModal() {
         editingParty = null;
@@ -330,6 +340,7 @@
         partyGameDropdownOpen = false;
         partyGameSearch = '';
         partyMemberSearch = '';
+        showAllPartyMembers = false;
         partyModalError = '';
         showPartyAdvanced = false;
         showPartyModal = true;
@@ -349,6 +360,7 @@
         partyGameDropdownOpen = false;
         partyGameSearch = '';
         partyMemberSearch = '';
+        showAllPartyMembers = false;
         partyModalError = '';
         // 이미 값이 있으면 접어두지 않고 바로 보여준다 (수정하러 들어왔는데 숨어있으면 안 됨)
         showPartyAdvanced = !!(party.duration || party.guest_count);
@@ -1034,7 +1046,7 @@
                         />
                     {/if}
                     <div class="member-select-list">
-                        {#each filteredPartyMembers as attendee}
+                        {#each partyMembersToShow as attendee}
                             <label class="member-checkbox" class:owner={data.user && attendee.id === data.user.id}>
                                 <input
                                     type="checkbox"
@@ -1052,6 +1064,11 @@
                         {:else}
                             <p class="member-search-empty">검색 결과가 없어요</p>
                         {/each}
+                        {#if hiddenPartyMemberCount > 0}
+                            <button type="button" class="btn-show-more-members" on:click={() => showAllPartyMembers = true}>
+                                + {hiddenPartyMemberCount}명 더 보기
+                            </button>
+                        {/if}
                     </div>
                 </div>
 
@@ -2180,6 +2197,21 @@
         text-align: center;
         color: var(--text-hint);
         font-size: 0.85rem;
+    }
+    .btn-show-more-members {
+        width: 100%;
+        background: none;
+        border: 1px dashed var(--border-default);
+        border-radius: 6px;
+        padding: 0.45rem;
+        margin-top: 0.3rem;
+        color: var(--color-blue);
+        font-size: 0.85rem;
+        font-weight: 600;
+        cursor: pointer;
+    }
+    .btn-show-more-members:hover {
+        background: var(--bg-secondary);
     }
     .member-select-list {
         max-height: 200px;
