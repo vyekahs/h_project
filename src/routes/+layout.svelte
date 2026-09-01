@@ -262,8 +262,8 @@
         /* Text */
         --text-primary: #e5e7eb;
         --text-secondary: #9ca3af;
-        --text-tertiary: #6b7280;
-        --text-muted: #6b7280;
+        --text-tertiary: #8a94a3; /* #6b7280은 --bg-primary(#1a1b1e) 위에서 3.56:1로 AA(4.5:1) 미달이었음 */
+        --text-muted: #8a94a3;
         --text-hint: #4b5563;
         --text-dark: #d1d5db;
         --text-darker: #d1d5db;
