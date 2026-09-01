@@ -2,6 +2,7 @@
     import { goto } from '$app/navigation';
     import { browser } from '$app/environment';
     import RankingBoard from '$lib/components/gamification/RankingBoard.svelte';
+    import PresenceBadge from '$lib/components/games/PresenceBadge.svelte';
 
     import type { GameConfig } from '$lib/games/gameRegistry';
     import { formatTime } from '$lib/games/utils';
@@ -184,7 +185,9 @@
                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
             </a>
             <h1>{gameConfig.displayTitle}</h1>
-            <div class="header-links"></div>
+            <div class="header-links">
+                <PresenceBadge />
+            </div>
         </div>
 
         <!-- Glass Panel Container -->
@@ -533,7 +536,10 @@
 
     .header-links {
         justify-self: end;
-        width: 40px;
+        display: flex;
+        justify-content: flex-end;
+        align-items: center;
+        min-width: 40px;
     }
 
     /* Main Glass Panel */
