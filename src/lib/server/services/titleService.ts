@@ -33,7 +33,7 @@ export const TitleService = {
             db.execute(sql`
                 SELECT
                     p.total_points,
-                    a.created_at
+                    a.arrival_time
                 FROM minigame_user_points p
                 RIGHT JOIN attendees a ON p.user_id = a.id
                 WHERE a.id = ${userId}
