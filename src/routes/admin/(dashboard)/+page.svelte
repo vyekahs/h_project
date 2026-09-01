@@ -129,6 +129,9 @@
     let removeModalVisible = false;
     let removeTarget: Attendee | null = null;
 
+    // 참여자 관리 시트 (블랙리스트 / 게임 권한 / 퇴장)
+    let manageTarget: Attendee | null = null;
+
     async function handleRemove(attendee: Attendee) {
         if (attendee.is_playing) {
             removeTarget = attendee;
@@ -375,6 +378,11 @@
     $: savedMembers = data.savedMembers as SavedMember[];
     $: recurringSchedules = (data as any).recurringSchedules || [];
 
+    // 관리 시트가 열려 있으면 최신 참여자 데이터로 동기화
+    $: manageView = manageTarget
+        ? ((attendees || []).find((x) => x.id === manageTarget!.id) as Attendee | undefined) ?? manageTarget
+        : null;
+
     // 방 현황 요약 스트립
     $: playingCount = (games || []).length;
     $: attendeeCount = (attendees || []).length;
@@ -509,33 +517,7 @@
                             <button type="submit" class="btn-penalty add" title="페널티 +1">+1</button>
                         </form>
                     </div>
-                    <form method="POST" action="?/toggleblacklist" use:enhance={a.is_blacklisted ? undefined : confirmSubmit({ title: '블랙리스트 등록', message: `${a.name}님을 블랙리스트에 등록합니다. 이후 입장·게임 참여가 제한됩니다.`, confirmLabel: '블랙 등록', danger: true })} style="display:inline;">
-                        <input type="hidden" name="attendeeId" value={a.id} />
-                        <button type="submit" class="btn-blacklist" title={a.is_blacklisted ? '블랙리스트 해제' : '블랙리스트 등록'}>
-                            {a.is_blacklisted ? '해제' : '블랙'}
-                        </button>
-                    </form>
-                    <form method="POST" action="?/toggleManager" use:enhance style="display:inline;">
-                        <input type="hidden" name="attendeeId" value={a.id} />
-                        <button type="submit" class="btn-manager-toggle {a.can_manage_games ? 'active' : ''}" title="게임 관리 권한 토글">
-                            {#if a.can_manage_games}
-                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px; vertical-align:middle;"><path d="m2 4 3 12h14l3-12-6 7-4-7-4 7-6-7zm3 16h14"/></svg> 매니저
-                            {:else}
-                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px; vertical-align:middle;"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg> 유저
-                            {/if}
-                        </button>
-                    </form>
-                    <form method="POST" action="?/removeAttendee" use:enhance={(arg) => {
-                        if (a.is_playing) {
-                            arg.cancel(); // 게임 중이면 전용 모달로
-                            handleRemove(a);
-                            return;
-                        }
-                        return confirmSubmit({ title: '퇴장 처리', message: `${a.name}님을 퇴장 처리합니다.`, confirmLabel: '퇴장', danger: true })(arg);
-                    }} style="display:inline;">
-                        <input type="hidden" name="id" value={a.id} />
-                        <button type="submit" class="btn-delete">퇴장</button>
-                    </form>
+                    <button type="button" class="btn-manage" onclick={() => (manageTarget = a)}>관리</button>
                 </div>
             </li>
         {/each}
@@ -939,6 +921,89 @@
             <div class="modal-actions">
                 <button class="btn-primary" onclick={() => alertVisible = false}>확인</button>
             </div>
+        </div>
+    </div>
+{/if}
+
+<!-- 참여자 관리 시트 -->
+{#if manageView}
+    {@const m = manageView}
+    <div
+        class="modal-backdrop"
+        onclick={() => (manageTarget = null)}
+        onkeydown={(e) => e.key === 'Escape' && (manageTarget = null)}
+        role="button"
+        tabindex="-1"
+        aria-label="관리 닫기"
+    >
+        <div class="modal-content manage-sheet" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="dialog" aria-modal="true" tabindex="-1">
+            <h3>{m.name} 관리</h3>
+
+            <div class="manage-row">
+                <div class="manage-label">
+                    <span>페널티</span>
+                    <span class="manage-sub">현재 {m.penalty_points}점</span>
+                </div>
+                <div class="penalty-actions">
+                    <form method="POST" action="?/applyPenaltyAdmin" use:enhance use:submitLock style="display:inline;">
+                        <input type="hidden" name="attendeeId" value={m.id} />
+                        <input type="hidden" name="points" value="-1" />
+                        <button type="submit" class="btn-penalty remove">-1</button>
+                    </form>
+                    <form method="POST" action="?/applyPenaltyAdmin" use:enhance use:submitLock style="display:inline;">
+                        <input type="hidden" name="attendeeId" value={m.id} />
+                        <input type="hidden" name="points" value="1" />
+                        <button type="submit" class="btn-penalty add">+1</button>
+                    </form>
+                </div>
+            </div>
+
+            <div class="manage-row">
+                <div class="manage-label">
+                    <span>블랙리스트</span>
+                    <span class="manage-sub">{m.is_blacklisted ? '등록됨 — 입장·참여 제한' : '미등록'}</span>
+                </div>
+                <form method="POST" action="?/toggleblacklist" use:enhance={m.is_blacklisted ? undefined : confirmSubmit({ title: '블랙리스트 등록', message: `${m.name}님을 블랙리스트에 등록합니다. 이후 입장·게임 참여가 제한됩니다.`, confirmLabel: '블랙 등록', danger: true })} style="display:inline;">
+                    <input type="hidden" name="attendeeId" value={m.id} />
+                    <button type="submit" class="btn-blacklist">{m.is_blacklisted ? '해제' : '등록'}</button>
+                </form>
+            </div>
+
+            <div class="manage-row">
+                <div class="manage-label">
+                    <span>게임 관리 권한</span>
+                    <span class="manage-sub">{m.can_manage_games ? '매니저' : '일반 유저'}</span>
+                </div>
+                <form method="POST" action="?/toggleManager" use:enhance style="display:inline;">
+                    <input type="hidden" name="attendeeId" value={m.id} />
+                    <button type="submit" class="btn-manager-toggle {m.can_manage_games ? 'active' : ''}">
+                        {m.can_manage_games ? '매니저 해제' : '매니저 지정'}
+                    </button>
+                </form>
+            </div>
+
+            <hr class="manage-divider" />
+
+            <form method="POST" action="?/removeAttendee" use:enhance={(arg) => {
+                if (m.is_playing) {
+                    arg.cancel();
+                    manageTarget = null;
+                    handleRemove(m);
+                    return;
+                }
+                return confirmSubmit({
+                    title: '퇴장 처리',
+                    message: `${m.name}님을 퇴장 처리합니다.`,
+                    confirmLabel: '퇴장',
+                    danger: true,
+                    handle: async ({ update }) => { manageTarget = null; await update(); }
+                })(arg);
+            }}>
+                <input type="hidden" name="id" value={m.id} />
+                <button type="submit" class="btn-delete full-width">퇴장</button>
+            </form>
+
+            <button class="btn-cancel full-width" onclick={() => (manageTarget = null)}>닫기</button>
         </div>
     </div>
 {/if}
@@ -1699,13 +1764,58 @@
     }
     .attendee-actions {
         display: flex;
-        gap: 0.25rem;
+        gap: 0.4rem;
+        align-items: center;
     }
     .penalty-actions {
         display: flex;
         gap: 0;
         border-radius: 4px;
         overflow: hidden;
+    }
+    .btn-manage {
+        background: #e9ecef;
+        color: #333;
+        border: 1px solid #ced4da;
+        padding: 0.3rem 0.7rem;
+        border-radius: 4px;
+        font-size: 0.8rem;
+        cursor: pointer;
+    }
+    .btn-manage:hover {
+        background: #dee2e6;
+    }
+
+    /* 참여자 관리 시트 */
+    .manage-sheet {
+        max-width: 380px;
+    }
+    .manage-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        padding: 0.75rem 0;
+        border-bottom: 1px solid #eee;
+    }
+    .manage-label {
+        display: flex;
+        flex-direction: column;
+        gap: 0.15rem;
+    }
+    .manage-label > span:first-child {
+        font-weight: 600;
+        color: #333;
+        font-size: 0.9rem;
+    }
+    .manage-sub {
+        font-size: 0.78rem;
+        color: #777;
+    }
+    .manage-divider {
+        border: none;
+        border-top: 1px solid #eee;
+        margin: 1rem 0 0.75rem;
     }
     .btn-penalty {
         border: none;
