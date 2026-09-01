@@ -460,7 +460,7 @@
                                 <ul>
                                     {#each topOpponents as [name, count]}
                                         <li>
-                                            <span class="name">{name}</span>
+                                            <span class="name text-truncate" title={name}>{name}</span>
                                             <span class="count">{count}회</span>
                                         </li>
                                     {:else}
