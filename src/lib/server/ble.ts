@@ -435,8 +435,14 @@ export async function processAutoCheckin(detectedAttendeeIds: Set<number>, isWit
             `);
             if (existing.length > 0) {
                 console.log(`[${kstTime()}][${source}] User ${attendeeId} already has open visit today, updating status only`);
-                await db.execute(sql`UPDATE attendees SET status = 'present', updated_at = NOW() WHERE id = ${attendeeId}`);
+                await db.transaction(async (tx) => {
+                    await tx.execute(sql`UPDATE attendees SET status = 'present', updated_at = NOW() WHERE id = ${attendeeId}`);
+                    // 신규 체크인 경로와 동일하게 "오늘 갈 예정"에서도 제거해야 함 —
+                    // 여기서 빠져있어서 체크인됐는데도 갈 예정 목록에 계속 남아있던 버그
+                    await tx.execute(sql`DELETE FROM daily_visit_plans WHERE attendee_id = ${attendeeId} AND plan_date = CURRENT_DATE`);
+                });
                 attendee.status = 'present';
+                pushAutoLog('checkin', source, attendee.name, attendeeId);
                 emitLiveEvent('visitors');
                 continue;
             }
