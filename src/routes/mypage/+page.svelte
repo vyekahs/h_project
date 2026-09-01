@@ -1,7 +1,7 @@
 <script lang="ts">
     import { invalidateAll } from '$app/navigation';
     import { page } from '$app/stores';
-    import { onMount } from 'svelte';
+    import { onMount, tick } from 'svelte';
     import { fade } from 'svelte/transition';
     import SettingsPanel from '$lib/components/settings/SettingsPanel.svelte';
     import NotificationBell from '$lib/components/notifications/NotificationBell.svelte';
@@ -324,6 +324,15 @@
     let showPartyAdvanced = false;
     let partyMemberSearch = '';
     let showAllPartyMembers = false;
+    let memberSelectListEl: HTMLElement;
+
+    function expandPartyMembers() {
+        showAllPartyMembers = true;
+        // "더 보기" 버튼 자신이 DOM에서 사라지면서 포커스가 모달 밖(body)으로 새면
+        // trapFocus의 keydown 리스너가 더 이상 안 걸려 Escape가 안 먹는다 — 목록
+        // 컨테이너로 포커스를 명시적으로 옮겨서 모달 안에 붙잡아둔다.
+        tick().then(() => memberSelectListEl?.focus());
+    }
 
     // 이미 선택된 사람은 검색어와 안 맞아도 계속 렌더링한다 — 그래야 체크박스가
     // DOM에서 사라져 폼 제출 시 memberIds에서 조용히 빠지는 걸 막을 수 있다.
@@ -1059,7 +1068,7 @@
                             aria-label="초대할 멤버 검색"
                         />
                     {/if}
-                    <div class="member-select-list">
+                    <div class="member-select-list" tabindex="-1" bind:this={memberSelectListEl}>
                         {#each partyMembersToShow as attendee}
                             <label class="member-checkbox" class:owner={data.user && attendee.id === data.user.id}>
                                 <input
@@ -1079,7 +1088,7 @@
                             <p class="member-search-empty">검색 결과가 없어요</p>
                         {/each}
                         {#if hiddenPartyMemberCount > 0}
-                            <button type="button" class="btn-show-more-members" on:click={() => showAllPartyMembers = true}>
+                            <button type="button" class="btn-show-more-members" on:click={expandPartyMembers}>
                                 + {hiddenPartyMemberCount}명 더 보기
                             </button>
                         {/if}
