@@ -862,10 +862,17 @@
         {/if}
     </ul>
 
-    <form method="POST" action="?/addAttendee" use:enhance={pending(undefined, '입장 처리했습니다.')} class="add-form">
-        <input type="text" name="name" placeholder="이름 입력" aria-label="추가할 인원 이름" required />
-        <button type="submit">인원 추가</button>
-    </form>
+    <div class="add-row">
+        <form method="POST" action="?/addAttendee" use:enhance={pending(undefined, '입장 처리했습니다.')} class="add-form">
+            <input type="text" name="name" placeholder="이름 입력" aria-label="추가할 인원 이름" required />
+            <button type="submit">인원 추가</button>
+        </form>
+        <!-- 처음 온 사람은 QR로 직접 가입·입장한다. 그 순간이 바로 여기다. -->
+        <a href="/admin/qr" class="btn-qr">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
+            QR 보여주기
+        </a>
+    </div>
 
     {#if (data.savedMembers || []).length > 0}
         <div class="quick-add">
@@ -1804,6 +1811,35 @@
         background: #eee;
         padding: 0.1rem 0.4rem;
         border-radius: var(--radius-control);
+    }
+    .add-row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: var(--space-2);
+    }
+    .add-row .add-form {
+        flex: 1 1 16rem;
+        min-width: 0;
+    }
+    /* 처음 온 사람 안내용 — 이름을 직접 넣는 것과 나란히 둔다 */
+    .btn-qr {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--space-2);
+        min-height: 44px;
+        padding: 0 var(--space-3);
+        border: 1px solid var(--border-medium);
+        border-radius: var(--radius-control);
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        font-size: var(--text-sm);
+        font-weight: var(--weight-medium);
+        text-decoration: none;
+        white-space: nowrap;
+    }
+    .btn-qr:hover {
+        background: var(--bg-hover);
     }
     .add-form, .game-form {
         margin-top: 1rem;
