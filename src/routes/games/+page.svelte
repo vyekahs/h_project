@@ -192,7 +192,7 @@
         </div>
     </div>
 
-    <p class="result-count">총 {data.games.length}개 중 {filteredGames.length}개 표시</p>
+    <p class="result-count">총 {data.games.length}개 중 {Math.min(visibleCount, filteredGames.length)}개 표시</p>
 
     <div class="games-grid" class:list-view={viewMode === 'list'}>
         {#each filteredGames.slice(0, visibleCount) as game}
