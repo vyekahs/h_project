@@ -51,15 +51,46 @@
         if (eventSource) { eventSource.close(); eventSource = null; }
     });
 
-    /** 폼 제출 시 제출 버튼을 잠깐 비활성화해 더블탭 중복 제출 방지 */
-    function submitLock(form: HTMLFormElement) {
-        function onSubmit() {
-            const btns = form.querySelectorAll<HTMLButtonElement>('button:not([type]), button[type="submit"]');
-            btns.forEach((b) => (b.disabled = true));
-            setTimeout(() => btns.forEach((b) => (b.disabled = false)), 2500);
-        }
-        form.addEventListener('submit', onSubmit);
-        return { destroy() { form.removeEventListener('submit', onSubmit); } };
+    /** 폼의 제출 버튼을 잠그고, 잠금 해제 함수를 돌려준다 */
+    function lockFormButtons(form: HTMLFormElement) {
+        const btns = Array.from(form.querySelectorAll<HTMLButtonElement>('button')).filter((b) => {
+            const t = b.getAttribute('type');
+            return !t || t === 'submit';
+        });
+        btns.forEach((b) => {
+            b.disabled = true;
+            b.setAttribute('aria-busy', 'true');
+        });
+        return () =>
+            btns.forEach((b) => {
+                b.disabled = false;
+                b.removeAttribute('aria-busy');
+            });
+    }
+
+    /**
+     * use:enhance={pending(cb?)} — 실제 요청이 끝날 때까지 제출 버튼을 잠가
+     * 더블탭 중복 제출을 막고 진행 중임을 표시한다(고정 타임아웃이 아님).
+     */
+    function pending(cb?: (arg: any) => any) {
+        return (arg: any) => {
+            const release = lockFormButtons(arg.formElement);
+            let inner: any;
+            try {
+                inner = cb ? cb(arg) : undefined;
+            } catch (e) {
+                release();
+                throw e;
+            }
+            return async (result: any) => {
+                try {
+                    if (typeof inner === 'function') await inner(result);
+                    else await result.update();
+                } finally {
+                    release();
+                }
+            };
+        };
     }
 
     function autofocus(node: HTMLElement) {
@@ -100,10 +131,18 @@
         return (arg: any) => {
             if (arg.formElement.dataset.confirmed === 'true') {
                 arg.formElement.dataset.confirmed = '';
-                if (opts.handle) return opts.handle;
-                return async ({ result, update }: any) => {
-                    reportResult(result);
-                    await update();
+                const release = lockFormButtons(arg.formElement);
+                const inner = opts.handle;
+                return async (result: any) => {
+                    try {
+                        if (inner) await inner(result);
+                        else {
+                            reportResult(result);
+                            await result.update();
+                        }
+                    } finally {
+                        release();
+                    }
                 };
             }
             arg.cancel();
@@ -515,12 +554,12 @@
                 </div>
                 <div class="attendee-actions">
                     <div class="penalty-actions">
-                        <form method="POST" action="?/applyPenaltyAdmin" use:enhance use:submitLock style="display:inline;">
+                        <form method="POST" action="?/applyPenaltyAdmin" use:enhance={pending()} style="display:inline;">
                             <input type="hidden" name="attendeeId" value={a.id} />
                             <input type="hidden" name="points" value="-1" />
                             <button type="submit" class="btn-penalty remove" title="페널티 -1">-1</button>
                         </form>
-                        <form method="POST" action="?/applyPenaltyAdmin" use:enhance use:submitLock style="display:inline;">
+                        <form method="POST" action="?/applyPenaltyAdmin" use:enhance={pending()} style="display:inline;">
                             <input type="hidden" name="attendeeId" value={a.id} />
                             <input type="hidden" name="points" value="1" />
                             <button type="submit" class="btn-penalty add" title="페널티 +1">+1</button>
@@ -535,7 +574,7 @@
         {/if}
     </ul>
 
-    <form method="POST" action="?/addAttendee" use:enhance use:submitLock class="add-form">
+    <form method="POST" action="?/addAttendee" use:enhance={pending()} class="add-form">
         <input type="text" name="name" placeholder="이름 입력" required />
         <button type="submit">인원 추가</button>
     </form>
@@ -556,7 +595,7 @@
                                 <span class="penalty-dot">({member.penalty_points})</span>
                             {/if}
                         </a>
-                        <form method="POST" action="?/addAttendee" use:enhance use:submitLock style="display:inline;">
+                        <form method="POST" action="?/addAttendee" use:enhance={pending()} style="display:inline;">
                             <input type="hidden" name="name" value={member.name} />
                             <button type="submit" class="chip-add" title="입장" disabled={member.is_blacklisted}>+</button>
                         </form>
@@ -639,12 +678,12 @@
         {#if data.notice}
             <div class="current-notice">
                 <strong>현재 공지:</strong> {data.notice}
-                <form method="POST" action="?/clearNotice" use:enhance style="display:inline; margin-left: 1rem;">
+                <form method="POST" action="?/clearNotice" use:enhance={pending()} style="display:inline; margin-left: 1rem;">
                     <button type="submit" class="btn-ghost">숨기기</button>
                 </form>
             </div>
         {/if}
-        <form method="POST" action="?/updateNotice" use:enhance class="notice-form">
+        <form method="POST" action="?/updateNotice" use:enhance={pending()} class="notice-form">
             <input type="text" name="content" placeholder="새 공지사항 입력" required />
             <button type="submit">등록</button>
         </form>
@@ -690,7 +729,7 @@
                                 {schedule.is_skipped_this_week ? '이번주 스킵됨' : '이번주 빼기'}
                             </button>
                         </form>
-                        <form method="POST" action="?/toggleRecurringActive" use:enhance style="display:inline;">
+                        <form method="POST" action="?/toggleRecurringActive" use:enhance={pending()} style="display:inline;">
                             <input type="hidden" name="scheduleId" value={schedule.id} />
                             <button type="submit" class="btn-toggle-active">
                                 {schedule.is_active ? '비활성화' : '활성화'}
@@ -940,12 +979,12 @@
                     <span class="manage-sub">현재 {m.penalty_points}점</span>
                 </div>
                 <div class="penalty-actions">
-                    <form method="POST" action="?/applyPenaltyAdmin" use:enhance use:submitLock style="display:inline;">
+                    <form method="POST" action="?/applyPenaltyAdmin" use:enhance={pending()} style="display:inline;">
                         <input type="hidden" name="attendeeId" value={m.id} />
                         <input type="hidden" name="points" value="-1" />
                         <button type="submit" class="btn-penalty remove">-1</button>
                     </form>
-                    <form method="POST" action="?/applyPenaltyAdmin" use:enhance use:submitLock style="display:inline;">
+                    <form method="POST" action="?/applyPenaltyAdmin" use:enhance={pending()} style="display:inline;">
                         <input type="hidden" name="attendeeId" value={m.id} />
                         <input type="hidden" name="points" value="1" />
                         <button type="submit" class="btn-penalty add">+1</button>
@@ -958,7 +997,7 @@
                     <span>블랙리스트</span>
                     <span class="manage-sub">{m.is_blacklisted ? '등록됨 — 입장·참여 제한' : '미등록'}</span>
                 </div>
-                <form method="POST" action="?/toggleBlacklist" use:enhance={m.is_blacklisted ? undefined : confirmSubmit({ title: '블랙리스트 등록', message: `${m.name}님을 블랙리스트에 등록합니다. 이후 입장·게임 참여가 제한됩니다.`, confirmLabel: '블랙 등록', danger: true })} style="display:inline;">
+                <form method="POST" action="?/toggleBlacklist" use:enhance={m.is_blacklisted ? pending() : confirmSubmit({ title: '블랙리스트 등록', message: `${m.name}님을 블랙리스트에 등록합니다. 이후 입장·게임 참여가 제한됩니다.`, confirmLabel: '블랙 등록', danger: true })} style="display:inline;">
                     <input type="hidden" name="attendeeId" value={m.id} />
                     <button type="submit" class="btn-blacklist">{m.is_blacklisted ? '해제' : '등록'}</button>
                 </form>
@@ -969,7 +1008,7 @@
                     <span>게임 관리 권한</span>
                     <span class="manage-sub">{m.can_manage_games ? '매니저' : '일반 유저'}</span>
                 </div>
-                <form method="POST" action="?/toggleManager" use:enhance style="display:inline;">
+                <form method="POST" action="?/toggleManager" use:enhance={pending()} style="display:inline;">
                     <input type="hidden" name="attendeeId" value={m.id} />
                     <button type="submit" class="btn-manager-toggle {m.can_manage_games ? 'active' : ''}">
                         {m.can_manage_games ? '매니저 해제' : '매니저 지정'}
@@ -1307,24 +1346,24 @@
                 </form>
                 <hr style="border:none; border-top:1px solid #eee; margin:0.5rem 0;" />
                 <div class="detail-form-row" style="gap:0.5rem;">
-                    <form method="POST" action="?/extendGame" use:enhance={() => {
-                        return async ({ result, update }) => {
+                    <form method="POST" action="?/extendGame" use:enhance={pending(() => {
+                        return async ({ result, update }: any) => {
                             reportResult(result);
                             await update();
                             refreshSelectedPlayingGame();
                         };
-                    }} use:submitLock style="flex:1;">
+                    })} style="flex:1;">
                         <input type="hidden" name="id" value={g.id} />
                         <input type="hidden" name="minutes" value="10" />
                         <button type="submit" class="btn-extend" style="width:100%;">+10분</button>
                     </form>
-                    <form method="POST" action="?/extendGame" use:enhance={() => {
-                        return async ({ result, update }) => {
+                    <form method="POST" action="?/extendGame" use:enhance={pending(() => {
+                        return async ({ result, update }: any) => {
                             reportResult(result);
                             await update();
                             refreshSelectedPlayingGame();
                         };
-                    }} use:submitLock style="flex:1;">
+                    })} style="flex:1;">
                         <input type="hidden" name="id" value={g.id} />
                         <input type="hidden" name="minutes" value="30" />
                         <button type="submit" class="btn-extend" style="width:100%;">+30분</button>
@@ -1549,6 +1588,13 @@
         cursor: pointer;
         text-decoration: none;
         display: inline-block;
+    }
+    button:disabled {
+        cursor: default;
+        opacity: 0.55;
+    }
+    button:global([aria-busy="true"]) {
+        cursor: progress;
     }
     .player-select {
         width: 100%;
