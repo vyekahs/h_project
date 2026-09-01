@@ -245,6 +245,16 @@
         --color-warning-bg: #fff3e0;
         --color-info-bg: #e7f5ff;
 
+        /* Glass surfaces (오락실 등 glassmorphism 카드용) — 흰색 반투명을
+           하드코딩하면 다크 테마에서 뿌연 얼룩이 되어 테마별로 분리 */
+        --glass-surface-strong: rgba(255, 255, 255, 0.7);
+        --glass-surface-medium: rgba(255, 255, 255, 0.65);
+        --glass-surface-soft: rgba(255, 255, 255, 0.2);
+        --glass-surface-faint: rgba(255, 255, 255, 0.4);
+        --glass-border-soft: rgba(255, 255, 255, 0.3);
+        --glass-border-strong: rgba(255, 255, 255, 0.8);
+        --glass-inset-highlight: rgba(255, 255, 255, 0.5);
+
         /* Additional Colors */
         --border-warning: #ffe0b2;
         --color-purple-bg: #e8d5f5;
@@ -325,6 +335,16 @@
         --color-error-bg: rgba(239,68,68,0.12);
         --color-warning-bg: rgba(251,191,36,0.12);
         --color-info-bg: rgba(59,130,246,0.12);
+
+        /* 다크 테마의 글래스 표면 — 흰색을 아주 낮은 불투명도로 유지해
+           "서리 낀 유리" 느낌은 살리되 하얗게 뜨지 않게 함 */
+        --glass-surface-strong: rgba(255, 255, 255, 0.08);
+        --glass-surface-medium: rgba(255, 255, 255, 0.06);
+        --glass-surface-soft: rgba(255, 255, 255, 0.05);
+        --glass-surface-faint: rgba(255, 255, 255, 0.04);
+        --glass-border-soft: rgba(255, 255, 255, 0.1);
+        --glass-border-strong: rgba(255, 255, 255, 0.14);
+        --glass-inset-highlight: rgba(255, 255, 255, 0.08);
 
         /* Additional Colors */
         --border-warning: rgba(251,191,36,0.25);

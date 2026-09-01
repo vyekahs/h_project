@@ -398,10 +398,10 @@
     }
 
     .glass-title-badge {
-        background: rgba(255, 255, 255, 0.2);
+        background: var(--glass-surface-soft);
         backdrop-filter: blur(8px);
         -webkit-backdrop-filter: blur(8px);
-        border: 1px solid rgba(255, 255, 255, 0.3);
+        border: 1px solid var(--glass-border-soft);
         padding: 0.5rem 1.5rem;
         border-radius: 100px;
         text-align: center;
@@ -467,10 +467,10 @@
         align-items: center;
         gap: 0.6rem;
         padding: 0.55rem 0.7rem;
-        background: rgba(255, 255, 255, 0.7);
+        background: var(--glass-surface-strong);
         backdrop-filter: blur(12px);
         -webkit-backdrop-filter: blur(12px);
-        border: 1px solid rgba(255, 255, 255, 0.8);
+        border: 1px solid var(--glass-border-strong);
         border-radius: 14px;
         text-decoration: none;
         color: var(--text-primary);
@@ -496,7 +496,10 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        color: var(--bg-primary);
+        /* var(--bg-primary)는 다크 테마에서 거의 검정이 되어 아이콘이 안 보임 —
+           이 아이콘은 페이지 배경이 아니라 게임별 accent 그라데이션 위에 있으므로
+           테마와 무관하게 항상 흰색이어야 함 */
+        color: #fff;
     }
 
     .featured-icon-box svg {
@@ -523,14 +526,14 @@
 
     /* Glass Panel Utility */
     .glass-panel {
-        background: rgba(255, 255, 255, 0.65);
+        background: var(--glass-surface-medium);
         backdrop-filter: blur(16px);
         -webkit-backdrop-filter: blur(16px);
-        border: 1px solid rgba(255, 255, 255, 0.8);
+        border: 1px solid var(--glass-border-strong);
         box-shadow:
             0 4px 6px -1px var(--overlay-light),
             0 2px 4px -1px var(--shadow-sm),
-            inset 0 0 0 1px rgba(255, 255, 255, 0.5);
+            inset 0 0 0 1px var(--glass-inset-highlight);
         border-radius: 24px;
     }
 
@@ -577,7 +580,9 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        color: var(--bg-primary);
+        /* var(--bg-primary)는 다크 테마에서 거의 검정이 되어 아이콘이 안 보임 —
+           accent 그라데이션 위 아이콘이라 테마와 무관하게 항상 흰색이어야 함 */
+        color: #fff;
     }
 
     .icon-box svg {
@@ -609,7 +614,11 @@
 
     .rank-badge.rank-first {
         background: linear-gradient(135deg, var(--color-amber), var(--color-amber-dark));
-        color: var(--bg-primary);
+        /* var(--bg-primary)는 라이트 테마에서도 흰 배지 텍스트 대 amber
+           배경이 1.67:1로 이미 AA 미달이었고, 다크 테마에선 거의 검정이 되어
+           또 다른 방식으로 실패했다. amber는 테마별로 안 바뀌는 고정 색이라
+           고정 진한 색으로 확실히 대비를 확보 */
+        color: #451a03;
         border-color: var(--color-amber);
         font-size: 0.75rem;
         box-shadow: 0 2px 8px rgba(245, 158, 11, 0.4);
@@ -670,7 +679,7 @@
 
     .game-icon-item.coming-soon .icon-wrapper.glass-panel {
         border-style: dashed;
-        background: rgba(255, 255, 255, 0.4);
+        background: var(--glass-surface-faint);
     }
 
     .icon-box.disabled {
