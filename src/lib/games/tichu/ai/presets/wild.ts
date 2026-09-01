@@ -4,6 +4,7 @@ import type { AiDecisionContext } from '../types';
 import { findAllPlayableCombinations, findBeatablePlays, findBombs, estimateSimpleTurns } from '../handEvaluator';
 import { getTeam, getPartnerSeat } from '../../constants';
 import { canBeat, isBomb } from '../../combinations';
+import { buildCardTracker, comboLikelyToWin } from '../cardTracker';
 
 /**
  * 변칙적 (Wild) 프리셋 고유 행동
@@ -58,57 +59,29 @@ export const wildBehavior: PresetBehavior = {
 		return !mahjongInCombo;
 	},
 
-	onPartnerWinning(hand, lastCombo, context) {
-		const partnerSeat = getPartnerSeat(context.currentSeat);
-		const partner = context.players[partnerSeat];
+	// onPartnerWinning 오버라이드는 제거했다.
+	//
+	// 기존 구현은 "파트너가 티츄/10+ 카드/5장 이하가 아니면 무조건 가장 약한 카드로 뺏기"
+	// 였는데, 약한 카드로 뺏으면 바로 다음 상대가 다시 뺏어가 파트너가 이기던 트릭을
+	// 통째로 상대에게 넘겨주는 순손실 행동이었다(변칙적 팀 라운드 평균 33.6점 vs 밸런스 102.1점).
+	//
+	// "자기 위주"라는 성격은 이미 공용 로직이 partnerAwareness로 표현하고 있다:
+	//   passThreshold = 14 - partnerAwareness*10  →  변칙적(0.3)은 11로 5개 중 가장 낮아
+	//   파트너가 J 미만을 냈으면 뺏으러 간다(수비적 0.7은 7이라 거의 안 뺏음).
+	// 별도 오버라이드는 그 위에 손해만 얹는 중복이었으므로 공용 경로에 맡긴다.
 
-		// 예외: 파트너가 티츄 선언 → 안 뺏음
-		if (partner.grandTichu === true || partner.smallTichu) {
-			return null; // 기본 로직 (패스)
-		}
-		// 예외: 파트너가 10 이상의 카드를 냈다
-		if (lastCombo.rank >= 10) {
-			return null; // 기본 로직 (패스)
-		}
-		// 예외: 파트너가 5장 이하의 카드를 지니고 있다
-		if (partner.hand.length <= 5) {
-			return null; // 기본 로직 (패스)
-		}
-
-		// 그 외에는 뺏음 — 이길 수 있는 가장 약한 카드로
-		const beatable = findBeatablePlays(hand, lastCombo);
-		const nonBombs = beatable.filter(c => !isBomb(c));
-		if (nonBombs.length > 0) {
-			nonBombs.sort((a, b) => a.rank - b.rank);
-			return nonBombs[0].cards.map(c => c.id);
-		}
-		return 'pass';
-	},
-
-	shouldPlayDog(hand, partner, context) {
-		// 개를 주고도 선을 잡을 수 있으면 사용
-		// "선먹기 카드" = A, K, dragon 등 높은 싱글
-		const handWithoutDog = hand.filter(
-			c => !(c.type === 'special' && c.special === 'dog')
-		);
-		const normalCards = handWithoutDog.filter(c => c.type === 'normal') as NormalCard[];
-		const hasDragon = handWithoutDog.some(
-			c => c.type === 'special' && c.special === 'dragon'
-		);
-		const highSingles = normalCards.filter(c => c.rank >= 13).length;
-
-		// 드래곤이 있거나 A/K 가 2장 이상이면 선 잡을 수 있다고 판단
-		if (hasDragon || highSingles >= 2) {
-			return true;
-		}
-		// 피닉스 + A/K 조합도 선 확보 가능
-		const hasPhoenix = handWithoutDog.some(
-			c => c.type === 'special' && c.special === 'phoenix'
-		);
-		if (hasPhoenix && highSingles >= 1) {
-			return true;
-		}
-		return false; // 선 잡기 어려우면 사용하지 않음
+	shouldPlayDog() {
+		// 기본 로직 사용.
+		//
+		// 개(dog)는 자기 카드 한 장을 쓰면서 **선을 파트너에게 넘기는** 수다.
+		// 기존 구현은 "내가 드래곤이나 A/K를 2장 이상 들고 있으면 사용"이었는데,
+		// 이는 선을 되찾을 수 있다는 이유만 볼 뿐 파트너가 그 선을 살릴 수 있는지는
+		// 보지 않았고, 결과적으로 파트너를 무시한다는 성격과도 반대로 움직였다.
+		// (절제 실험: 이 훅을 끄면 팀 점수차 +8.7 개선 — 변칙적에서 가장 큰 손해였다)
+		//
+		// 공용 로직은 partnerAwareness를 기준으로 판단하는데, 변칙적은 0.3이라
+		// "파트너가 티츄를 선언한 경우"에만 개를 쓰게 된다. 자기 위주 성격과 일치한다.
+		return null;
 	},
 
 	scoreLeadCandidate(combo, hand, context) {
@@ -185,6 +158,23 @@ export const wildBehavior: PresetBehavior = {
 			}
 		}
 
+		// 고득점 트릭은 회수 — 아끼기만 하면 라운드 종료 시 손패에 남아 상대 점수가 된다
+		const trickPoints = (context.trick?.plays ?? [])
+			.flatMap(p => p.combination.cards)
+			.reduce((sum, c) => {
+				if (c.type === 'special') return sum + (c.special === 'dragon' ? 25 : c.special === 'phoenix' ? -25 : 0);
+				if (c.rank === 5) return sum + 5;
+				if (c.rank === 10 || c.rank === 13) return sum + 10;
+				return sum;
+			}, 0);
+		if (trickPoints >= 15) {
+			const beatable = bombs.filter(b => canBeat(lastPlay.combination, b));
+			if (beatable.length > 0) {
+				beatable.sort((a, b) => a.rank - b.rank);
+				return beatable[0];
+			}
+		}
+
 		// 내가 나갈 것 같을 때 (폭탄 쓰고도 나갈 수 있으면)
 		if (hand.length <= 6) {
 			for (const bomb of bombs) {
@@ -218,45 +208,10 @@ export const wildBehavior: PresetBehavior = {
 		return opponents[0].seat;
 	},
 
-	decideWishOverride(hand, context, givenToOpponents) {
-		// 교환 때 상대에게 준 카드 랭크를 부름
-		if (givenToOpponents.length > 0) {
-			// 내가 가지고 있지 않은 랭크 중에서 준 카드 선택
-			const myRanks = new Set<number>(
-				hand.filter(c => c.type === 'normal').map(c => (c as NormalCard).rank as number)
-			);
-			const validWishes = givenToOpponents.filter(r => !myRanks.has(r));
-			if (validWishes.length > 0) {
-				return validWishes[0];
-			}
-			// 내가 가지고 있어도 2장 이상이면 OK
-			for (const rank of givenToOpponents) {
-				const count = hand.filter(
-					c => c.type === 'normal' && (c as NormalCard).rank === rank
-				).length;
-				if (count >= 2) return rank;
-			}
-		}
-
-		// 낮은 스트레이트 완성 중간숫자 부르기
-		const normalCards = hand.filter(c => c.type === 'normal') as NormalCard[];
-		const sortedRanks = [...new Set(normalCards.map(c => c.rank))].sort((a, b) => a - b);
-
-		// 낮은 연속 카드 찾기 (스트레이트 후보)
-		if (sortedRanks.length >= 3) {
-			for (let i = 0; i < sortedRanks.length - 1; i++) {
-				const gap = sortedRanks[i + 1] - sortedRanks[i];
-				if (gap === 2) {
-					// 중간에 빈 숫자가 있음 → 그 숫자를 부름
-					const middleRank = sortedRanks[i] + 1;
-					if (middleRank >= 2 && middleRank <= 14) {
-						return middleRank;
-					}
-				}
-			}
-		}
-
-		return 'default'; // 기본 로직으로 폴백
+	decideWishOverride() {
+		// 기본 로직 사용 — 사유는 tricky와 동일(교환으로 준 낮은 카드를 부르면 소원이
+		// 헐값에 소진되고 파트너만 구속된다). 절제 실험: 끄면 팀 점수차 +4.7 개선.
+		return 'default';
 	},
 
 	shouldLeadDragon(hand, context) {

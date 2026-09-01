@@ -22,15 +22,15 @@
             releasedAt: '2025-01-10',
             forceNew: false
         },
-        {
-            id: 'unblock-me',
-            name: '언블록미',
-            tagline: '슬라이딩 블록 퍼즐',
-            url: '/minigames/start/unblock-me',
-            accentColor: '#f87171',
-            releasedAt: '2025-01-15',
-            forceNew: false
-        },
+        // {
+        //     id: 'unblock-me',
+        //     name: '언블록미',
+        //     tagline: '슬라이딩 블록 퍼즐',
+        //     url: '/minigames/start/unblock-me',
+        //     accentColor: '#f87171',
+        //     releasedAt: '2025-01-15',
+        //     forceNew: false
+        // },
         {
             id: 'tichu',
             name: '티츄',
@@ -94,15 +94,15 @@
             releasedAt: '2026-03-23',
             forceNew: true
         },
-        {
-            id: 'regicide',
-            name: '레지사이드',
-            tagline: '12명의 적을 무찔러라',
-            url: '/minigames/start/regicide',
-            accentColor: '#dc2626',
-            releasedAt: '2026-03-26',
-            forceNew: true
-        },
+        // {
+        //     id: 'regicide',
+        //     name: '레지사이드',
+        //     tagline: '12명의 적을 무찔러라',
+        //     url: '/minigames/start/regicide',
+        //     accentColor: '#dc2626',
+        //     releasedAt: '2026-03-26',
+        //     forceNew: true
+        // },
         {
             id: 'block-blaster',
             name: '블럭블라스터',

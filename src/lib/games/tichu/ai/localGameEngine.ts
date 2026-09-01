@@ -441,14 +441,15 @@ export class LocalGameEngine {
 			const ai = this.aiPlayers.get(seat);
 			if (!ai) continue;
 
-			// AI small tichu decision
-			const context = this.createAiContext(seat);
-			if (!this.state.players[seat].grandTichu && ai.makeSmallTichuDecision(this.state.players[seat].hand, context)) {
-				this.state.players[seat].smallTichu = true;
-				this.emitEvent({ type: 'tichu_declare', seat, tichuType: 'small' });
-			}
+			// 스몰 티츄는 여기서 결정하지 않는다.
+			// 규칙상 "자신의 첫 카드를 내기 전"까지 언제든 선언할 수 있으므로,
+			// 교환 전(= 손패가 아직 바뀌기도 전, 아무 카드도 안 나온 시점)에 확정해버리면
+			// (1) 교환으로 바뀔 손패를 기준으로 판단하게 되고
+			// (2) 앞선 플레이에서 어떤 카드가 빠졌는지 정보를 전혀 활용하지 못한다.
+			// 실제 선언은 processAiTurns()의 자기 차례 직전 체크에서 이뤄진다.
 
 			// AI exchange — 파트너가 티츄 선언했으면 최고 카드를 줘야 함
+			// (이 시점에 알 수 있는 건 그랜드 티츄뿐 — 실제 규칙과 동일)
 			const partnerSeat = ((seat + 2) % 4) as SeatIndex;
 			const partnerPlayer = this.state.players[partnerSeat];
 			const partnerDeclaredTichu = partnerPlayer.grandTichu === true || partnerPlayer.smallTichu === true;
@@ -1022,11 +1023,14 @@ export class LocalGameEngine {
 				}
 
 				// Check for small tichu before first card
+				// (첫 카드를 내기 전이라면 매 차례 재평가 — 앞선 플레이로 빠진 카드를 보고
+				//  가능성이 생기면 그때 선언할 수 있어야 하므로)
 				const player = this.state.players[currentSeat];
 				if (!player.hasPlayedFirstCard && !player.smallTichu && !player.grandTichu) {
 					const context = this.createAiContext(currentSeat);
 					if (ai.makeSmallTichuDecision(player.hand, context)) {
 						player.smallTichu = true;
+						this.emitEvent({ type: 'tichu_declare', seat: currentSeat, tichuType: 'small' });
 						this.notifyStateChange();
 					}
 				}

@@ -66,9 +66,37 @@ export function searchBestPlay(
 		for (const card of mc.cards) cardsInMultiCombo.add(card.id);
 	}
 
+	// === 프리셋 훅 점수 정규화 ===
+	// 프리셋마다 훅의 반환 스케일이 크게 다르다(공격적: cards.length*8 → 수십 단위,
+	// 수비적: -rank*2+len*2 → 한 자릿수). 고정 계수(×0.01)를 곱하면 스케일이 큰
+	// 프리셋만 상한(±0.3)에 도달해 성격이 반영되고, 작은 프리셋은 기여가 0.02~0.06에
+	// 그쳐 기본 점수에 묻혔다. 후보 집합 안에서 상대 순위로 정규화해 모든 프리셋에
+	// 동일한 표현력을 준다.
+	const rawPresetScores: (number | null)[] = candidates.map(combo => {
+		let s: number | null | undefined;
+		if (mode === 'lead') {
+			s = behavior.scoreLeadCandidate?.(combo, hand, context);
+		} else if (context.trick) {
+			const trick = context.trick;
+			const lastPlay = trick.plays[trick.plays.length - 1];
+			const opponentWinning = getTeam(lastPlay.seat) !== getTeam(context.currentSeat);
+			const effectiveRank = (combo.type === 'single' &&
+				combo.cards[0].type === 'special' &&
+				combo.cards[0].special === 'phoenix') ? 14.5 : combo.rank;
+			const trickPoints = getTrickPoints(trick.plays.flatMap(p => p.combination.cards));
+			s = behavior.scoreFollowCandidate?.(
+				effectiveRank !== combo.rank ? { ...combo, rank: effectiveRank } : combo,
+				hand, context, trickPoints, opponentWinning
+			);
+		}
+		return s ?? null;
+	});
+	const presetBiases = normalizePresetScores(rawPresetScores);
+
 	const results: PlayCandidate[] = [];
 
-	for (const combo of candidates) {
+	for (let ci = 0; ci < candidates.length; ci++) {
+		const combo = candidates[ci];
 		// 1. 이 콤보로 이 트릭을 이길 확률
 		const winProb = comboLikelyToWin(combo, tracker, hand);
 
@@ -90,7 +118,8 @@ export function searchBestPlay(
 
 		// 3. 상황 보정
 		const contextMod = calcContextModifier(
-			combo, hand, remainingHand, context, tracker, weights, behavior, mode, finishTurns, cardsInMultiCombo
+			combo, hand, remainingHand, context, tracker, weights, behavior, mode, finishTurns,
+			cardsInMultiCombo, presetBiases[ci]
 		);
 
 		// 4. 최종 점수 계산
@@ -104,17 +133,21 @@ export function searchBestPlay(
 			// (1 - winProb)가 높으면 팔로우로 이기기 어려운 카드 → 리드에서 먼저 처리
 			totalScore = exitRate * 0.5 + (1 - winProb) * 0.3 + contextMod;
 
-			// 나갈 수 있으면 대폭 보너스 (파트너 티츄면 억제)
+			// 나갈 수 있으면 대폭 보너스 (파트너 티츄면 사실상 금지 — 파트너 대신 내가
+			// 먼저 나가버리면 파트너의 티츄가 확정 실패하므로, 다른 대안이 있는 한 절대
+			// 선택되면 안 됨. 강제 상황(이 수밖에 없음)에서만 최후 수단으로 선택됨)
 			if (remainingHand.length === 0) {
-				totalScore = (partnerTichuActive ? -0.5 : 2.0) + contextMod;
+				totalScore = (partnerTichuActive ? -100 : 2.0) + contextMod;
 			}
 		} else {
 			// 팔로우: winProb과 exitRate 균형
 			totalScore = winProb * 0.3 + exitRate * 0.4 + contextMod;
 
-			// 나갈 수 있으면 대폭 보너스 (파트너 티츄면 억제)
+			// 나갈 수 있으면 대폭 보너스 (파트너 티츄면 사실상 금지 — 파트너 대신 내가
+			// 먼저 나가버리면 파트너의 티츄가 확정 실패하므로, 다른 대안이 있는 한 절대
+			// 선택되면 안 됨. 강제 상황(이 수밖에 없음)에서만 최후 수단으로 선택됨)
 			if (remainingHand.length === 0) {
-				totalScore = (partnerTichuActive ? -0.5 : 2.0) + contextMod;
+				totalScore = (partnerTichuActive ? -100 : 2.0) + contextMod;
 			}
 		}
 
@@ -208,9 +241,11 @@ function calcContextModifier(
 	behavior: PresetBehavior,
 	mode: 'lead' | 'follow',
 	finishTurns: number,
-	cardsInMultiCombo: Set<string>
+	cardsInMultiCombo: Set<string>,
+	presetBias: number
 ): number {
-	let mod = 0;
+	// 프리셋 고유 성향 (searchBestPlay에서 후보 전체 대비 정규화된 값)
+	let mod = presetBias;
 
 	const myTeam = getTeam(context.currentSeat);
 	const partnerSeat = getPartnerSeat(context.currentSeat);
@@ -234,11 +269,7 @@ function calcContextModifier(
 	if (mode === 'lead') {
 		// === 리드 상황 보정 ===
 
-		// 프리셋 훅: 리드 스코어링 (additive — 상황 보정과 합산)
-		const presetScore = behavior.scoreLeadCandidate?.(combo, hand, context);
-		if (presetScore !== null && presetScore !== undefined) {
-			mod += clamp(presetScore * 0.01, -0.3, 0.3);
-		}
+		// (프리셋 리드 스코어링은 searchBestPlay에서 정규화되어 presetBias로 이미 반영됨)
 
 		// 특수 카드 보정
 		if (combo.type === 'single' && combo.cards[0].type === 'special') {
@@ -307,8 +338,10 @@ function calcContextModifier(
 		}
 		if (partnerDeclaredTichu && !partnerFinished) {
 			// 파트너 티츄: 낮은 카드로 리드 → 파트너가 선 잡기 쉬움
-			if (combo.rank <= 6) mod += 0.08;
-			else mod -= combo.rank * 0.01;
+			// 그랜드 티츄는 판돈이 2배(±200점)라 스몰 티츄보다 더 적극적으로 지원
+			const partnerGrand = partner.grandTichu === true;
+			if (combo.rank <= 6) mod += partnerGrand ? 0.14 : 0.08;
+			else mod -= combo.rank * (partnerGrand ? 0.018 : 0.01);
 		}
 
 		// 파트너 카드 1~3장 → 낮은 리드로 지원
@@ -360,17 +393,9 @@ function calcContextModifier(
 			combo.cards[0].type === 'special' &&
 			combo.cards[0].special === 'phoenix') ? 14.5 : combo.rank;
 
-		// 프리셋 훅: 팔로우 스코어링
+		// (프리셋 팔로우 스코어링은 searchBestPlay에서 정규화되어 presetBias로 이미 반영됨)
 		const trickCards = trick.plays.flatMap(p => p.combination.cards);
 		const trickPoints = getTrickPoints(trickCards);
-
-		const presetScore = behavior.scoreFollowCandidate?.(
-			effectiveRank !== combo.rank ? { ...combo, rank: effectiveRank } : combo,
-			hand, context, trickPoints, opponentWinning
-		);
-		if (presetScore !== null && presetScore !== undefined) {
-			mod += clamp(presetScore * 0.01, -0.3, 0.3);
-		}
 
 		if (opponentWinning) {
 			// 상대가 이기고 있으면 트릭 뺏기 보너스
@@ -464,8 +489,9 @@ function calcContextModifier(
 			const afterCombo = detectCombination(remainingHand);
 			if (partnerDeclaredTichu && !partnerFinished) {
 				// 파트너 티츄: 나가기 보너스 대신 패널티 (파트너보다 먼저 나가면 안 됨)
+				// 그랜드 티츄는 판돈이 2배라 더 강하게 억제
 				if (afterCombo || remainingHand.length === 1) {
-					mod -= 0.15;
+					mod -= partner.grandTichu === true ? 0.3 : 0.15;
 				}
 			} else {
 				if (afterCombo) {
@@ -505,6 +531,22 @@ function calcContextModifier(
 
 function clamp(v: number, min: number, max: number): number {
 	return Math.max(min, Math.min(max, v));
+}
+
+/** 프리셋 훅의 원시 점수를 후보 집합 내 최대 절댓값으로 나눠 [-AMP, +AMP]로 스케일링.
+ *
+ *  min–max로 [-AMP,+AMP]에 펼치는 방식은 쓰지 않는다. 그 방식은 훅이 모든 후보에
+ *  같은 부호를 주는 경우(예: 전부 양수)에도 강제로 음수 구간을 만들어 점수의 전체
+ *  레벨을 끌어내리고, 그 결과 pickBestFollow의 절대 패스 임계값에 걸려 모든 프리셋이
+ *  일제히 패스해버렸다(팔로우 완전일치 40%→100% 회귀).
+ *  최대 절댓값 기준 스케일링은 부호 구조를 그대로 두면서 크기만 맞춰준다. */
+function normalizePresetScores(raw: (number | null)[]): number[] {
+	const AMP = 0.25;
+	const vals = raw.filter((v): v is number => v !== null);
+	if (vals.length === 0) return raw.map(() => 0);
+	const maxAbs = Math.max(...vals.map(v => Math.abs(v)));
+	if (maxAbs < 1e-9) return raw.map(() => 0);
+	return raw.map(v => (v === null ? 0 : (v / maxAbs) * AMP));
 }
 
 function getTrickPoints(cards: Card[]): number {

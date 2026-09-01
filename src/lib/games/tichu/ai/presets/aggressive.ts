@@ -139,24 +139,12 @@ export const aggressiveBehavior: PresetBehavior = {
 		return null;
 	},
 
-	decideWishOverride(hand, context, givenToOpponents) {
-		// 내가 나갈 때 방해될 것 같은 카드: 내 손패에 없는 높은 랭크
-		const myRanks = new Set<number>(
-			hand.filter(c => c.type === 'normal').map(c => (c as NormalCard).rank as number)
-		);
-
-		// 밖에 아직 남아있는(소진되지 않은) 랭크만 선언 — 다 소진됐으면 아무도 못 채우는 죽은 소원이 됨
-		const tracker = buildCardTracker(context);
-
-		// 내 손패에 없는 높은 랭크 (A → K → Q → J 순)
-		const highRanks = [14, 13, 12, 11];
-		for (const rank of highRanks) {
-			if (!myRanks.has(rank) && (tracker.remainingByRank.get(rank) || 0) >= 1) {
-				return rank;
-			}
-		}
-
-		// 내가 다 갖고 있거나 남은 카드가 없으면 기본 로직
+	decideWishOverride() {
+		// 기본 로직 사용.
+		// 기존에는 "내 손패에 없는 높은 랭크(A→K→Q→J)"를 소원으로 불렀는데, 소원은
+		// 상대뿐 아니라 **파트너도** 구속한다. 높은 랭크를 부르면 파트너가 아껴둬야 할
+		// A/K를 원치 않는 시점에 강제로 내게 되고, 상대는 어차피 트릭을 먹으려 낼 카드라
+		// 방해 효과도 작다. (절제 실험: 이 훅을 끄면 팀 점수차 +8.4 개선)
 		return 'default';
 	},
 

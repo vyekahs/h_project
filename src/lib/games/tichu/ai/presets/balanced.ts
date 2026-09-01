@@ -172,22 +172,16 @@ export const balancedBehavior: PresetBehavior = {
 	},
 
 	shouldDeclareGrandTichu() {
-		// 보수적: 거의 안 부름
-		return false;
+		// '밸런스'는 기본 로직 그대로 — tichoPropensity 0.5가 중간 성향을 이미 표현한다.
+		// (기존에는 return false로 하드코딩되어 그랜드 티츄를 절대 부르지 않았음)
+		return null;
 	},
 
-	shouldDeclareSmallTichu(hand, context) {
-		// 보수적: 매우 확실할 때만
-		const turnsNeeded = estimateSimpleTurns(hand);
-
-		if (turnsNeeded <= 3) {
-			const normalCards = hand.filter(c => c.type === 'normal') as NormalCard[];
-			const hasAce = normalCards.some(c => c.rank === 14);
-			const hasDragon = hand.some(c => c.type === 'special' && c.special === 'dragon');
-			if (hasDragon || hasAce) return true;
-		}
-
-		return false;
+	shouldDeclareSmallTichu() {
+		// '밸런스'는 순수 기본 판단(손패 강도 기준). 별도 가산 경로를 두지 않아
+		// '전략적'(효율 좋은 손패면 적극 선언)과 성향이 구분된다.
+		// (기존에는 turnsNeeded<=3 + A/드래곤이 아니면 return false로 기본 로직을 차단했음)
+		return null;
 	},
 
 	decideDragonGiftOverride() {
