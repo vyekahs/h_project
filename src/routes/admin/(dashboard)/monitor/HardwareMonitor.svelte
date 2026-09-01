@@ -46,6 +46,8 @@
 			idleCount: number;
 			waitingCount: number;
 			latencyMs: number;
+			maxCount?: number;
+			allInstancesCount?: number;
 		};
 		connections: { sse: number };
 		stuckRequests?: StuckRequest[];
@@ -560,6 +562,18 @@
 					<span>DB 대기 요청</span>
 					<span class="detail-value">{metrics.db.waitingCount}개</span>
 				</div>
+				{#if metrics.db.maxCount}
+					<div class="detail-row">
+						<span>내 풀 사용량</span>
+						<span class="detail-value">{metrics.db.totalCount} / {metrics.db.maxCount}개</span>
+					</div>
+				{/if}
+				{#if metrics.db.allInstancesCount !== undefined}
+					<div class="detail-row">
+						<span>DB 전체 연결 <small>(다른 인스턴스 포함)</small></span>
+						<span class="detail-value">{metrics.db.allInstancesCount}개</span>
+					</div>
+				{/if}
 				<div class="detail-row">
 					<span>DB 응답 시간</span>
 					<span class="detail-value">{metrics.db.latencyMs >= 0 ? metrics.db.latencyMs + 'ms' : 'Error'}</span>

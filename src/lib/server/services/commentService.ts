@@ -198,19 +198,17 @@ export const CommentService = {
 		for (const row of recipients) {
 			emitPartyChatMessage(row.attendee_id, { partyId, comment });
 		}
-		await Promise.all(recipients.map((row) =>
-			NotificationService.upsertNotify(
-				row.attendee_id,
-				{
-					type: 'party_message',
-					title: '고정팟 대화',
-					body: `${fromName}님이 "${partyName}" 대화방에 메시지를 보냈습니다`,
-					url: `/party/${partyId}/chat`,
-				},
-				fromUserId,
-				referenceId
-			)
-		));
+		await NotificationService.upsertNotifyMany(
+			recipients.map((row) => row.attendee_id),
+			{
+				type: 'party_message',
+				title: '고정팟 대화',
+				body: `${fromName}님이 "${partyName}" 대화방에 메시지를 보냈습니다`,
+				url: `/party/${partyId}/chat`,
+			},
+			fromUserId,
+			referenceId
+		);
 	},
 
 	async notifyWtpParticipants(fromUserId: number, gameId: string, comment: CommentWithUser, fromName: string) {
@@ -228,19 +226,17 @@ export const CommentService = {
 			// SSE 실시간 채팅 메시지 전달 (모달을 열어둔 상태에서도 바로 보이도록)
 			emitWtpChatMessage(row.attendee_id, { wtpId, comment });
 		}
-		await Promise.all(recipients.map((row) =>
-			NotificationService.upsertNotify(
-				row.attendee_id,
-				{
-					type: 'wtp_message',
-					title: '같이하기 대화',
-					body: `${fromName}님이 "${gameName}" 대화방에 메시지를 보냈습니다`,
-					url: `/?wtp=${wtpId}`,
-				},
-				fromUserId,
-				referenceId
-			)
-		));
+		await NotificationService.upsertNotifyMany(
+			recipients.map((row) => row.attendee_id),
+			{
+				type: 'wtp_message',
+				title: '같이하기 대화',
+				body: `${fromName}님이 "${gameName}" 대화방에 메시지를 보냈습니다`,
+				url: `/?wtp=${wtpId}`,
+			},
+			fromUserId,
+			referenceId
+		);
 	},
 
 	async processMentions(fromUserId: number, gameId: string, commentId: number, mentionedNames: string[], fromName: string) {
@@ -266,18 +262,16 @@ export const CommentService = {
 		}
 
 		const recipients = (users as any[]).filter((u) => u.id !== fromUserId);
-		await Promise.all(recipients.map((u) =>
-			NotificationService.notify(
-				u.id,
-				{
-					type: 'mention',
-					title: '멘션 알림',
-					body: `${fromName}님이 ${gameName} 댓글에서 당신을 언급했습니다`,
-					url: mentionUrl,
-				},
-				fromUserId,
-				`game:${gameId}:comment:${commentId}`
-			)
-		));
+		await NotificationService.notifyMany(
+			recipients.map((u) => u.id),
+			{
+				type: 'mention',
+				title: '멘션 알림',
+				body: `${fromName}님이 ${gameName} 댓글에서 당신을 언급했습니다`,
+				url: mentionUrl,
+			},
+			fromUserId,
+			`game:${gameId}:comment:${commentId}`
+		);
 	},
 };

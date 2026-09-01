@@ -5,6 +5,7 @@ import { verifyAttendeeSession } from '$lib/server/auth';
 import { db } from '$lib/server/db/index';
 import { sql } from 'drizzle-orm';
 import { NotificationService } from '$lib/server/services/notificationService';
+import { mapWithConcurrency } from '$lib/server/concurrency';
 import { GAME_REGISTRY } from '$lib/games/gameRegistry';
 
 import type { RequestHandler } from './$types';
@@ -91,7 +92,9 @@ export const POST: RequestHandler = async ({ request, locals, cookies }) => {
 
                     const displayName = GAME_REGISTRY[gameId]?.name ?? gameId;
 
-                    await Promise.all((displacedUsers as any[]).map((du) =>
+                    // 수신자마다 본문이 달라(닉네임 포함) 일괄 INSERT로 묶을 수 없다.
+                    // 대신 동시 실행 수를 제한해 커넥션 풀이 한 번에 바닥나지 않게 한다.
+                    await mapWithConcurrency(displacedUsers as any[], 4, (du) =>
                         NotificationService.notify(
                             du.user_id,
                             {
@@ -103,7 +106,7 @@ export const POST: RequestHandler = async ({ request, locals, cookies }) => {
                             userId,
                             `ranking:${gameId}:${monthKey}`
                         )
-                    ));
+                    );
                 }
             }
         })().catch((e) => console.error('[API] Rank change notification failed:', e));
