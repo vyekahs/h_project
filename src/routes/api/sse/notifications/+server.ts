@@ -1,4 +1,5 @@
 import { getLiveEmitter } from '$lib/server/liveEvents';
+import { addOnlineConnection, removeOnlineConnection } from '$lib/server/onlinePresence';
 import { verifyAttendeeSession } from '$lib/server/auth';
 
 export function GET({ request, cookies }: { request: Request; cookies: any }) {
@@ -72,6 +73,9 @@ export function GET({ request, cookies }: { request: Request; cookies: any }) {
 			emitter.on('party_chat', onPartyChat);
 			emitter.on('wtp_chat', onWtpChat);
 
+			// 이 연결이 살아있는 동안 해당 유저를 "접속 중"으로 집계한다.
+			addOnlineConnection(userId);
+
 			// 연결 직후 바로 한 바이트 보내서 즉시 flush시킨다.
 			// (첫 데이터가 올 때까지 브라우저의 EventSource가 open 상태로 전환되지 않고
 			//  30초 하트비트 전까지 통신이 없어 보여 연결이 불안정하게 끊기는 문제 방지)
@@ -91,6 +95,7 @@ export function GET({ request, cookies }: { request: Request; cookies: any }) {
 			function cleanup() {
 				if (closed) return;
 				closed = true;
+				if (userId !== null) removeOnlineConnection(userId);
 				emitter.off('notification', onNotification);
 				emitter.off('party_chat', onPartyChat);
 				emitter.off('wtp_chat', onWtpChat);
