@@ -681,7 +681,6 @@
     /* Coming Soon State */
     .game-icon-item.coming-soon {
         cursor: default;
-        opacity: 0.5;
     }
 
     .game-icon-item.coming-soon:active {
@@ -691,6 +690,14 @@
     .game-icon-item.coming-soon .icon-wrapper.glass-panel {
         border-style: dashed;
         background: var(--glass-surface-faint);
+    }
+
+    /* 예전엔 아이템 전체에 opacity: 0.5를 걸어서 "비활성" 느낌을 냈는데,
+       그 opacity가 라벨 텍스트에도 그대로 곱해져 실제 대비가 ~2.3:1까지
+       떨어졌었다 — 아이콘/테두리는 이미 disabled 스타일로 충분히 흐릿하니
+       라벨은 opacity 대신 톤 다운된 색상만으로 은은하게 표시 */
+    .game-icon-item.coming-soon .icon-label {
+        color: var(--text-tertiary);
     }
 
     .icon-box.disabled {
