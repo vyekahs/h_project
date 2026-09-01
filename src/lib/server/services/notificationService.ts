@@ -2,7 +2,7 @@ import { db } from '$lib/server/db/index';
 import { sql } from 'drizzle-orm';
 import { emitNotification } from '$lib/server/liveEvents';
 import type { NotificationPayload, NotificationChannel } from './notificationChannel';
-import { PushNotificationChannel } from './pushNotificationChannel';
+import { PushNotificationChannel, sendPushToMany } from './pushNotificationChannel';
 
 class SSENotificationChannel implements NotificationChannel {
 	async send(userId: number, notification: NotificationPayload) {
@@ -19,6 +19,45 @@ const channels: NotificationChannel[] = [new SSENotificationChannel(), new PushN
 
 // mention은 기존 호환: 행 없으면 ON. 나머지 새 알림은 행 없으면 OFF.
 const DEFAULT_ON_TYPES = ['mention', 'wtp_message', 'party_message', 'party_invite'];
+
+function normalizeIds(userIds: number[]): number[] {
+	return [...new Set(userIds.map(Number))].filter((id) => Number.isInteger(id));
+}
+
+// (VALUES (1::int), (2::int), ...) — 파라미터만 넘기면 Postgres가 타입을 못 정하므로 캐스팅한다
+function idValues(ids: number[]) {
+	return sql.join(
+		ids.map((id) => sql`(${id}::int)`),
+		sql`, `
+	);
+}
+
+function idList(ids: number[]) {
+	return sql.join(
+		ids.map((id) => sql`${id}`),
+		sql`, `
+	);
+}
+
+/** 알림 생성 후 실제 전달 (SSE는 인메모리, 푸시는 일괄 조회 후 전송) */
+async function deliver(userIds: number[], payload: NotificationPayload) {
+	if (userIds.length === 0) return;
+
+	for (const id of userIds) {
+		emitNotification(id, {
+			type: payload.type,
+			title: payload.title,
+			body: payload.body,
+			url: payload.url,
+		});
+	}
+
+	try {
+		await sendPushToMany(userIds, payload);
+	} catch (e) {
+		console.error('[Notify] 푸시 일괄 전송 실패:', e);
+	}
+}
 
 export const NotificationService = {
 	async notify(userId: number, payload: NotificationPayload, fromUserId?: number, referenceId?: string) {
@@ -42,6 +81,92 @@ export const NotificationService = {
 
 		// 2. Send via all channels
 		await Promise.allSettled(channels.map(ch => ch.send(userId, payload)));
+	},
+
+	/**
+	 * 여러 사용자에게 같은 내용의 알림을 보낸다 (일괄 처리).
+	 *
+	 * notify()를 인원수만큼 Promise.all로 돌리면 1인당 쿼리 3개(설정 조회 →
+	 * INSERT → 푸시 구독 조회)가 동시에 터져서, 전 회원 브로드캐스트 한 번에
+	 * 커넥션 풀(max 20)이 그대로 바닥났다. 여기서는 설정 필터와 알림 생성을
+	 * INSERT ... SELECT 하나로 합쳐 인원수와 무관하게 쿼리 2~3개로 끝낸다.
+	 */
+	async notifyMany(
+		userIds: number[],
+		payload: NotificationPayload,
+		fromUserId?: number,
+		referenceId?: string
+	) {
+		const targets = normalizeIds(userIds);
+		if (targets.length === 0) return;
+
+		const defaultOn = DEFAULT_ON_TYPES.includes(payload.type);
+
+		const inserted = await db.execute(sql`
+			INSERT INTO notifications (user_id, type, message, from_user_id, reference_id)
+			SELECT t.id, ${payload.type}, ${payload.body}, ${fromUserId ?? null}, ${referenceId ?? null}
+			FROM (VALUES ${idValues(targets)}) AS t(id)
+			LEFT JOIN notification_preferences np
+				ON np.attendee_id = t.id AND np.notification_type = ${payload.type}
+			WHERE COALESCE(np.enabled, ${defaultOn}::boolean) = true
+			RETURNING user_id
+		`);
+
+		await deliver((inserted as any[]).map((r) => Number(r.user_id)), payload);
+	},
+
+	/**
+	 * upsertNotify의 일괄 처리 버전.
+	 * 같은 reference_id의 안 읽은 알림은 갱신하고, 없는 대상에게만 새로 생성한다.
+	 */
+	async upsertNotifyMany(
+		userIds: number[],
+		payload: NotificationPayload,
+		fromUserId?: number,
+		referenceId?: string
+	) {
+		const targets = normalizeIds(userIds);
+		if (targets.length === 0) return;
+
+		const defaultOn = DEFAULT_ON_TYPES.includes(payload.type);
+
+		// 1. 알림 설정상 수신 가능한 대상만 추린다
+		const allowedRes = await db.execute(sql`
+			SELECT t.id
+			FROM (VALUES ${idValues(targets)}) AS t(id)
+			LEFT JOIN notification_preferences np
+				ON np.attendee_id = t.id AND np.notification_type = ${payload.type}
+			WHERE COALESCE(np.enabled, ${defaultOn}::boolean) = true
+		`);
+		const allowed = (allowedRes as any[]).map((r) => Number(r.id));
+		if (allowed.length === 0) return;
+
+		// 2. 기존 안 읽은 알림 일괄 갱신
+		let remaining = allowed;
+		if (referenceId) {
+			const updated = await db.execute(sql`
+				UPDATE notifications
+				SET message = ${payload.body}, from_user_id = ${fromUserId ?? null}, created_at = NOW()
+				WHERE reference_id = ${referenceId}
+				  AND is_read = false
+				  AND user_id IN (${idList(allowed)})
+				RETURNING user_id
+			`);
+			const updatedIds = new Set((updated as any[]).map((r) => Number(r.user_id)));
+			remaining = allowed.filter((id) => !updatedIds.has(id));
+		}
+
+		// 3. 갱신되지 않은 대상에게만 새로 생성
+		if (remaining.length > 0) {
+			await db.execute(sql`
+				INSERT INTO notifications (user_id, type, message, from_user_id, reference_id)
+				SELECT t.id, ${payload.type}, ${payload.body}, ${fromUserId ?? null}, ${referenceId ?? null}
+				FROM (VALUES ${idValues(remaining)}) AS t(id)
+			`);
+		}
+
+		// 갱신/신규 모두 실시간 알림은 받아야 하므로 allowed 전체에 전달
+		await deliver(allowed, payload);
 	},
 
 	/**

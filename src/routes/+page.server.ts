@@ -408,19 +408,17 @@ export const actions: Actions = {
                 SELECT sp.attendee_id FROM session_participants sp
                 WHERE sp.session_id = ${sessionId} AND sp.attendee_id != ${finalAttendeeId} AND sp.attendee_id IS NOT NULL
             `);
-            await Promise.all((existingParticipants as any[]).map((p) =>
-                NotificationService.notify(
-                    p.attendee_id,
-                    {
-                        type: 'game_join',
-                        title: '게임 참가 알림',
-                        body: `${joinerName}님이 ${gameName}에 참가했습니다`,
-                        url: '/',
-                    },
-                    finalAttendeeId,
-                    `game_session:${sessionId}`
-                )
-            ));
+            await NotificationService.notifyMany(
+                (existingParticipants as any[]).map((p) => p.attendee_id),
+                {
+                    type: 'game_join',
+                    title: '게임 참가 알림',
+                    body: `${joinerName}님이 ${gameName}에 참가했습니다`,
+                    url: '/',
+                },
+                finalAttendeeId,
+                `game_session:${sessionId}`
+            );
         })().catch((e) => console.error('[joinScheduledGame] game_join notification failed:', e));
 
         // 5. Auto-register daily visit plan (고정팟 제외, 오늘 날짜만)
@@ -444,19 +442,17 @@ export const actions: Actions = {
                     const joinerName2 = (joinerInfo2[0] as any)?.name ?? '누군가';
                     const allUsers = await db.execute(sql`SELECT id FROM attendees WHERE id != ${finalAttendeeId}`);
                     const today = new Date().toISOString().slice(0, 10);
-                    await Promise.all((allUsers as any[]).map((u) =>
-                        NotificationService.notify(
-                            u.id,
-                            {
-                                type: 'visit_plan',
-                                title: '방문 예정 알림',
-                                body: `${joinerName2}님이 오늘 방문 예정에 추가했습니다`,
-                                url: '/',
-                            },
-                            finalAttendeeId,
-                            `visit_plan:${today}`
-                        )
-                    ));
+                    await NotificationService.notifyMany(
+                        (allUsers as any[]).map((u) => u.id),
+                        {
+                            type: 'visit_plan',
+                            title: '방문 예정 알림',
+                            body: `${joinerName2}님이 오늘 방문 예정에 추가했습니다`,
+                            url: '/',
+                        },
+                        finalAttendeeId,
+                        `visit_plan:${today}`
+                    );
                 })().catch((e) => console.error('[joinScheduledGame] visit_plan notification failed:', e));
             }
         }
@@ -1120,19 +1116,17 @@ export const actions: Actions = {
                 (async () => {
                     const allUsers = await db.execute(sql`SELECT id FROM attendees WHERE id != ${user.id}`);
                     const today = new Date().toISOString().slice(0, 10);
-                    await Promise.all((allUsers as any[]).map((u) =>
-                        NotificationService.notify(
-                            u.id,
-                            {
-                                type: 'visit_plan',
-                                title: '방문 예정 알림',
-                                body: `${user.name}님이 오늘 방문 예정에 추가했습니다`,
-                                url: '/',
-                            },
-                            user.id,
-                            `visit_plan:${today}`
-                        )
-                    ));
+                    await NotificationService.notifyMany(
+                        (allUsers as any[]).map((u) => u.id),
+                        {
+                            type: 'visit_plan',
+                            title: '방문 예정 알림',
+                            body: `${user.name}님이 오늘 방문 예정에 추가했습니다`,
+                            url: '/',
+                        },
+                        user.id,
+                        `visit_plan:${today}`
+                    );
                 })().catch((e) => console.error('[toggleVisitPlan] visit_plan notification failed:', e));
             }
 
