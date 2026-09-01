@@ -104,17 +104,21 @@ export function searchBestPlay(
 			// (1 - winProb)가 높으면 팔로우로 이기기 어려운 카드 → 리드에서 먼저 처리
 			totalScore = exitRate * 0.5 + (1 - winProb) * 0.3 + contextMod;
 
-			// 나갈 수 있으면 대폭 보너스 (파트너 티츄면 억제)
+			// 나갈 수 있으면 대폭 보너스 (파트너 티츄면 사실상 금지 — 파트너 대신 내가
+			// 먼저 나가버리면 파트너의 티츄가 확정 실패하므로, 다른 대안이 있는 한 절대
+			// 선택되면 안 됨. 강제 상황(이 수밖에 없음)에서만 최후 수단으로 선택됨)
 			if (remainingHand.length === 0) {
-				totalScore = (partnerTichuActive ? -0.5 : 2.0) + contextMod;
+				totalScore = (partnerTichuActive ? -100 : 2.0) + contextMod;
 			}
 		} else {
 			// 팔로우: winProb과 exitRate 균형
 			totalScore = winProb * 0.3 + exitRate * 0.4 + contextMod;
 
-			// 나갈 수 있으면 대폭 보너스 (파트너 티츄면 억제)
+			// 나갈 수 있으면 대폭 보너스 (파트너 티츄면 사실상 금지 — 파트너 대신 내가
+			// 먼저 나가버리면 파트너의 티츄가 확정 실패하므로, 다른 대안이 있는 한 절대
+			// 선택되면 안 됨. 강제 상황(이 수밖에 없음)에서만 최후 수단으로 선택됨)
 			if (remainingHand.length === 0) {
-				totalScore = (partnerTichuActive ? -0.5 : 2.0) + contextMod;
+				totalScore = (partnerTichuActive ? -100 : 2.0) + contextMod;
 			}
 		}
 
@@ -307,8 +311,10 @@ function calcContextModifier(
 		}
 		if (partnerDeclaredTichu && !partnerFinished) {
 			// 파트너 티츄: 낮은 카드로 리드 → 파트너가 선 잡기 쉬움
-			if (combo.rank <= 6) mod += 0.08;
-			else mod -= combo.rank * 0.01;
+			// 그랜드 티츄는 판돈이 2배(±200점)라 스몰 티츄보다 더 적극적으로 지원
+			const partnerGrand = partner.grandTichu === true;
+			if (combo.rank <= 6) mod += partnerGrand ? 0.14 : 0.08;
+			else mod -= combo.rank * (partnerGrand ? 0.018 : 0.01);
 		}
 
 		// 파트너 카드 1~3장 → 낮은 리드로 지원
@@ -464,8 +470,9 @@ function calcContextModifier(
 			const afterCombo = detectCombination(remainingHand);
 			if (partnerDeclaredTichu && !partnerFinished) {
 				// 파트너 티츄: 나가기 보너스 대신 패널티 (파트너보다 먼저 나가면 안 됨)
+				// 그랜드 티츄는 판돈이 2배라 더 강하게 억제
 				if (afterCombo || remainingHand.length === 1) {
-					mod -= 0.15;
+					mod -= partner.grandTichu === true ? 0.3 : 0.15;
 				}
 			} else {
 				if (afterCombo) {

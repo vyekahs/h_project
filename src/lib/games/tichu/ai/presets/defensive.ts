@@ -115,7 +115,6 @@ export const defensiveBehavior: PresetBehavior = {
 		const leftSeat = getLeftSeat(seat) as SeatIndex;
 		const rightSeat = getRightSeat(seat) as SeatIndex;
 
-		// 왼쪽 상대에게
 		const leftPlayer = context.players[leftSeat];
 		const rightPlayer = context.players[rightSeat];
 
@@ -124,16 +123,23 @@ export const defensiveBehavior: PresetBehavior = {
 		const rightIsOpponent = getTeam(rightSeat) !== myTeam;
 
 		if (leftIsOpponent && rightIsOpponent) {
-			// 왼쪽 5장 이하면 오른쪽에게
-			if (leftPlayer.finishOrder !== null || leftPlayer.hand.length <= 5) {
-				return rightSeat;
-			}
+			const leftFinished = leftPlayer.finishOrder !== null;
+			const rightFinished = rightPlayer.finishOrder !== null;
+
+			// 이미 나간 상대에게 주지 않도록 함 — 둘 다 나갔으면 기본 로직(safe fallback)에 맡김.
+			// (기존 코드는 왼쪽이 나갔으면 오른쪽 상태를 확인 안 하고 무조건 오른쪽으로 보냈음)
+			if (leftFinished && rightFinished) return null;
+			if (leftFinished) return rightSeat;
+			if (rightFinished) return leftSeat;
+
+			// 둘 다 진행 중: 카드 적은(5장 이하) 쪽은 피하고 반대쪽에게
+			if (leftPlayer.hand.length <= 5) return rightSeat;
 			return leftSeat;
 		}
 
-		// 상대가 한 명만 남은 경우
-		if (leftIsOpponent) return leftSeat;
-		if (rightIsOpponent) return rightSeat;
+		// 상대가 한 명만 남은 경우 (이 게임의 고정 대각선 팀 배치상 실제로는 도달하지 않지만 방어적으로 처리)
+		if (leftIsOpponent) return leftPlayer.finishOrder !== null ? null : leftSeat;
+		if (rightIsOpponent) return rightPlayer.finishOrder !== null ? null : rightSeat;
 
 		return null; // 기본 로직
 	},
