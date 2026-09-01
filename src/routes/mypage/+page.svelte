@@ -1213,8 +1213,10 @@
         color: var(--text-darker);
     }
     .tab-item.active {
-        background: var(--color-info-bg);
-        color: var(--color-blue);
+        /* 다른 곳(.btn-submit 등)이 이미 쓰는 "solid blue = 지금 활성 액션"
+           언어를 그대로 가져온다 — 옅은 틴트 대신 실제 확신을 준다 */
+        background: var(--color-blue);
+        color: var(--bg-primary);
     }
 
     .tab-content {
@@ -1277,8 +1279,10 @@
     .user-title {
         font-size: 0.7rem;
         font-weight: 700;
-        color: var(--color-amber-darker);
-        background: rgba(255, 255, 255, 0.5);
+        color: var(--color-achievement-text);
+        /* 반투명 흰색 오버레이는 다크 테마에서 회색 얼룩처럼 떴다 —
+           칭호 카드/통계 카드와 같은 amber 틴트 배경으로 통일 */
+        background: var(--color-warning-bg);
         border: 1px solid var(--color-amber);
         padding: 2px 7px;
         border-radius: 6px;
@@ -1396,7 +1400,8 @@
         margin-bottom: 0.35rem;
     }
     .stat-card.highlight .stat-value {
-        color: var(--color-amber-darker);
+        /* amber-darker는 그라데이션의 크림색 쪽 끝에서 3:1 미만으로 떨어진다 */
+        color: var(--color-achievement-text);
     }
     .stat-label {
         color: var(--text-secondary);
@@ -1804,9 +1809,14 @@
         transition: all 0.2s;
     }
     .title-card.equipped {
-        border-color: var(--text-primary);
-        background: var(--bg-primary);
-        box-shadow: 0 2px 8px var(--overlay-light);
+        /* 지금 장착 중인 칭호 = 이 페이지의 또 다른 "성취" 순간이라
+           통계 카드의 승리와 같은 amber 언어를 재사용한다 */
+        border-color: var(--color-amber-dark);
+        background: linear-gradient(135deg, var(--color-warning-bg) 0%, var(--bg-primary) 65%);
+        box-shadow: 0 4px 14px var(--shadow-md);
+    }
+    .title-card.equipped .title-name {
+        color: var(--color-achievement-text);
     }
     .title-header {
         display: flex;
@@ -2063,7 +2073,7 @@
         border: 1px solid var(--border-light);
         border-radius: 12px;
         padding: 1rem;
-        box-shadow: 0 2px 8px var(--shadow-sm);
+        box-shadow: 0 4px 14px var(--shadow-sm);
     }
     .party-name-row {
         display: flex;
@@ -2073,7 +2083,8 @@
         flex-wrap: wrap;
     }
     .party-name-row strong {
-        font-size: 1.05rem;
+        font-size: 1.15rem;
+        font-weight: 800;
         color: var(--text-primary);
     }
     .party-game-label {

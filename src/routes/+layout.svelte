@@ -235,6 +235,9 @@
         /* 흰 텍스트를 얹는 배경 전용 — --color-red-dark는 다크 테마에서 --color-red와
            같은 값(밝은 레드)으로 앨리어싱되어 배경으로 쓰면 흰 텍스트 대비가 깨진다 */
         --status-danger-bg: #d32f2f;
+        /* 밝은 amber 틴트 배경 위에 얹는 텍스트 전용 — --color-amber-darker는
+           흰/크림 배경에서 ~3:1이라 일반 크기 텍스트로 쓰면 AA(4.5:1) 미달 */
+        --color-achievement-text: #92400e;
 
         /* State Backgrounds */
         --color-success-bg: #e8f5e9;
@@ -311,6 +314,9 @@
         --color-red-dark: #f87171;
         /* --color-red-dark와 달리 다크 테마에서도 실제로 어둡게 유지 — 흰 텍스트 대비 확보용 */
         --status-danger-bg: #c62828;
+        /* 다크 테마의 어두운 배경 위에서는 밝은 amber가 이미 대비를 확보하므로
+           --color-amber-darker를 그대로 재사용 */
+        --color-achievement-text: #f59e0b;
         --color-orange: #ffb74d;
         --color-orange-dark: #ff9800;
 
