@@ -215,7 +215,7 @@ export const actions: Actions = {
         const endGame = data.get('endGame') === 'true';
         const gameId = data.get('gameId');
 
-        if (!id) return fail(400, { error: 'Invalid ID' });
+        if (!id) return fail(400, { error: '잘못된 요청입니다.' });
 
         try {
             await db.transaction(async (tx) => {
@@ -233,7 +233,7 @@ export const actions: Actions = {
             emitLiveEvent('visitors');
             if (endGame && gameId) emitLiveEvent('games');
         } catch (e) {
-            return fail(500, { error: 'Failed to remove attendee' });
+            return fail(500, { error: '퇴장 처리에 실패했습니다.' });
         }
     },
 
@@ -296,7 +296,7 @@ export const actions: Actions = {
             emitLiveEvent('games');
         } catch (error) {
             console.error('Failed to create game:', error);
-            return fail(500, { error: 'Failed to create game' });
+            return fail(500, { error: '게임 생성에 실패했습니다.' });
         }
     },
     endGame: async ({ request }) => {
@@ -304,7 +304,7 @@ export const actions: Actions = {
         const id = data.get('id')?.toString();
 
         if (!id) return fail(400, { missing: true });
-        if (!(await canModifyGame(request, id))) return fail(403, { error: 'Unauthorized' });
+        if (!(await canModifyGame(request, id))) return fail(403, { error: '권한이 없습니다.' });
 
         const winnerIds = data.getAll('winnerIds').map(id => id.toString());
 
@@ -350,7 +350,7 @@ export const actions: Actions = {
             });
             emitLiveEvent('games');
         } catch (error) {
-            return fail(500, { error: 'Failed to end game' });
+            return fail(500, { error: '게임 종료에 실패했습니다.' });
         }
     },
     updateNotice: async ({ request }) => {
@@ -367,14 +367,14 @@ export const actions: Actions = {
                 await tx.execute(sql`INSERT INTO notices (content) VALUES (${content})`);
             });
         } catch (error) {
-            return fail(500, { error: 'Failed to update notice' });
+            return fail(500, { error: '공지 등록에 실패했습니다.' });
         }
     },
     clearNotice: async () => {
         try {
             await db.execute(sql`UPDATE notices SET is_active = false`);
         } catch (error) {
-            return fail(500, { error: 'Failed to clear notice' });
+            return fail(500, { error: '공지 숨김 처리에 실패했습니다.' });
         }
     },
     extendGame: async ({ request }) => {
@@ -385,7 +385,7 @@ export const actions: Actions = {
         if (!id || minutes <= 0) {
             return fail(400, { missing: true });
         }
-        if (!(await canModifyGame(request, id))) return fail(403, { error: 'Unauthorized' });
+        if (!(await canModifyGame(request, id))) return fail(403, { error: '권한이 없습니다.' });
 
         try {
             await db.execute(sql`
@@ -393,7 +393,7 @@ export const actions: Actions = {
             `);
             emitLiveEvent('games');
         } catch (error) {
-            return fail(500, { error: 'Failed to extend game' });
+            return fail(500, { error: '게임 시간 연장에 실패했습니다.' });
         }
     },
     updateSettings: async ({ request }) => {
@@ -415,7 +415,7 @@ export const actions: Actions = {
                 if (penaltyThreshold) await tx.execute(sql`INSERT INTO system_settings (key, value) VALUES ('penalty_threshold', ${penaltyThreshold}) ON CONFLICT (key) DO UPDATE SET value = ${penaltyThreshold}`);
             });
         } catch (error) {
-            return fail(500, { error: 'Failed to update settings' });
+            return fail(500, { error: '설정 저장에 실패했습니다.' });
         }
     },
     closeDay: async () => {
@@ -450,7 +450,7 @@ export const actions: Actions = {
             emitLiveEvent('visitors');
             emitLiveEvent('games');
         } catch (error) {
-            return fail(500, { error: 'Failed to close day' });
+            return fail(500, { error: '마감 처리에 실패했습니다.' });
         }
     },
     openDay: async () => {
@@ -459,14 +459,14 @@ export const actions: Actions = {
             updateSettingsCache(true);
             emitLiveEvent('visitors');
         } catch (error) {
-            return fail(500, { error: 'Failed to open day' });
+            return fail(500, { error: '오픈 처리에 실패했습니다.' });
         }
     },
 
     confirmReservation: async ({ request }) => {
         const data = await request.formData();
         const reservationId = data.get('reservationId');
-        if (!reservationId) return fail(400, { error: 'Invalid ID' });
+        if (!reservationId) return fail(400, { error: '잘못된 요청입니다.' });
 
         await db.execute(sql`UPDATE reservations SET status = 'confirmed' WHERE id = ${reservationId}`);
         return { success: true };
@@ -475,7 +475,7 @@ export const actions: Actions = {
     cancelReservationAdmin: async ({ request }) => {
         const data = await request.formData();
         const reservationId = data.get('reservationId');
-        if (!reservationId) return fail(400, { error: 'Invalid ID' });
+        if (!reservationId) return fail(400, { error: '잘못된 요청입니다.' });
 
         const res = await db.execute(sql`SELECT session_id FROM reservations WHERE id = ${reservationId}`);
         const sessionId = (res[0] as any)?.session_id;
@@ -491,8 +491,8 @@ export const actions: Actions = {
     dissolveScheduledGame: async ({ request }) => {
         const data = await request.formData();
         const sessionId = data.get('sessionId');
-        if (!sessionId) return fail(400, { error: 'Invalid ID' });
-        if (!(await canModifyGame(request, sessionId.toString()))) return fail(403, { error: 'Unauthorized' });
+        if (!sessionId) return fail(400, { error: '잘못된 요청입니다.' });
+        if (!(await canModifyGame(request, sessionId.toString()))) return fail(403, { error: '권한이 없습니다.' });
 
         try {
             await db.transaction(async (tx) => {
@@ -516,7 +516,7 @@ export const actions: Actions = {
             emitLiveEvent('games');
             return { success: true };
         } catch (e) {
-            return fail(500, { error: 'Failed to dissolve game' });
+            return fail(500, { error: '게임 폭파에 실패했습니다.' });
         }
     },
 
@@ -525,8 +525,8 @@ export const actions: Actions = {
         const sessionId = data.get('sessionId');
         const duration = parseInt(data.get('duration')?.toString() || '60');
 
-        if (!sessionId) return fail(400, { error: 'Invalid ID' });
-        if (!(await canModifyGame(request, sessionId.toString()))) return fail(403, { error: 'Unauthorized' });
+        if (!sessionId) return fail(400, { error: '잘못된 요청입니다.' });
+        if (!(await canModifyGame(request, sessionId.toString()))) return fail(403, { error: '권한이 없습니다.' });
 
         try {
             await db.transaction(async (tx) => {
@@ -539,7 +539,7 @@ export const actions: Actions = {
             emitLiveEvent('games');
             return { success: true };
         } catch (e) {
-            return fail(500, { error: 'Failed to start game' });
+            return fail(500, { error: '게임 시작에 실패했습니다.' });
         }
     },
 
@@ -548,7 +548,7 @@ export const actions: Actions = {
         const attendeeId = data.get('attendeeId');
         const points = parseInt(data.get('points')?.toString() || '1');
 
-        if (!attendeeId) return fail(400, { error: 'Invalid ID' });
+        if (!attendeeId) return fail(400, { error: '잘못된 요청입니다.' });
 
         const { applyPenalty } = await import('$lib/server/reservations');
         await applyPenalty(Number(attendeeId), points);
@@ -557,11 +557,11 @@ export const actions: Actions = {
 
     toggleBlacklist: async ({ request }) => {
         const sessionToken = request.headers.get('cookie')?.match(/admin_session=([^;]+)/)?.[1];
-        if (!sessionToken || !(await verifyAdminSession(sessionToken))) return fail(403, { error: 'Unauthorized' });
+        if (!sessionToken || !(await verifyAdminSession(sessionToken))) return fail(403, { error: '권한이 없습니다.' });
 
         const data = await request.formData();
         const attendeeId = data.get('attendeeId');
-        if (!attendeeId) return fail(400, { error: 'Invalid ID' });
+        if (!attendeeId) return fail(400, { error: '잘못된 요청입니다.' });
 
         await db.execute(sql`UPDATE attendees SET is_blacklisted = NOT is_blacklisted WHERE id = ${attendeeId}`);
         return { success: true };
@@ -569,11 +569,11 @@ export const actions: Actions = {
 
     toggleManager: async ({ request }) => {
         const sessionToken = request.headers.get('cookie')?.match(/admin_session=([^;]+)/)?.[1];
-        if (!sessionToken || !(await verifyAdminSession(sessionToken))) return fail(403, { error: 'Unauthorized' });
+        if (!sessionToken || !(await verifyAdminSession(sessionToken))) return fail(403, { error: '권한이 없습니다.' });
 
         const data = await request.formData();
         const attendeeId = data.get('attendeeId');
-        if (!attendeeId) return fail(400, { error: 'Invalid ID' });
+        if (!attendeeId) return fail(400, { error: '잘못된 요청입니다.' });
 
         await db.execute(sql`UPDATE attendees SET can_manage_games = NOT can_manage_games WHERE id = ${attendeeId}`);
         return { success: true };
@@ -584,10 +584,10 @@ export const actions: Actions = {
         const sessionId = data.get('sessionId');
         const attendeeId = data.get('attendeeId');
 
-        if (!sessionId || !attendeeId) return fail(400, { error: 'Invalid ID' });
+        if (!sessionId || !attendeeId) return fail(400, { error: '잘못된 요청입니다.' });
 
         const sessionToken = cookies.get('admin_session');
-        if (!sessionToken || !(await verifyAdminSession(sessionToken))) return fail(403, { error: 'Unauthorized' });
+        if (!sessionToken || !(await verifyAdminSession(sessionToken))) return fail(403, { error: '권한이 없습니다.' });
 
         const finalAttendeeId = parseInt(attendeeId.toString());
 
@@ -612,7 +612,7 @@ export const actions: Actions = {
                 await tx.execute(sql`UPDATE reservations SET status = 'confirmed' WHERE session_id = ${sessionId} AND attendee_id = ${finalAttendeeId} AND status != 'cancelled'`);
             });
         } catch (e) {
-            return fail(500, { error: 'Failed to join game' });
+            return fail(500, { error: '참여자 추가에 실패했습니다.' });
         }
         return { success: true };
     },
@@ -621,10 +621,10 @@ export const actions: Actions = {
         const sessionId = data.get('sessionId');
         const customName = data.get('guestName')?.toString().trim();
 
-        if (!sessionId) return fail(400, { error: 'Invalid session ID' });
+        if (!sessionId) return fail(400, { error: '잘못된 요청입니다.' });
 
         const sessionToken = cookies.get('admin_session');
-        if (!sessionToken || !(await verifyAdminSession(sessionToken))) return fail(403, { error: 'Unauthorized' });
+        if (!sessionToken || !(await verifyAdminSession(sessionToken))) return fail(403, { error: '권한이 없습니다.' });
 
         const existingGuests = await db.execute(sql`
             SELECT guest_name FROM session_participants
@@ -652,7 +652,7 @@ export const actions: Actions = {
     removeTable: async ({ request }) => {
         const data = await request.formData();
         const id = data.get('id');
-        if (!id) return fail(400, { error: 'Invalid ID' });
+        if (!id) return fail(400, { error: '잘못된 요청입니다.' });
 
         await db.execute(sql`UPDATE tables SET is_active = false WHERE id = ${id}`);
         return { success: true };
@@ -661,7 +661,7 @@ export const actions: Actions = {
     skipRecurringWeek: async ({ request }) => {
         const data = await request.formData();
         const scheduleId = data.get('scheduleId');
-        if (!scheduleId) return fail(400, { error: 'Invalid ID' });
+        if (!scheduleId) return fail(400, { error: '잘못된 요청입니다.' });
 
         try {
             const schedule = await db.execute(sql`SELECT day_of_week FROM recurring_game_schedules WHERE id = ${scheduleId}`);
@@ -710,7 +710,7 @@ export const actions: Actions = {
     toggleRecurringActive: async ({ request }) => {
         const data = await request.formData();
         const scheduleId = data.get('scheduleId');
-        if (!scheduleId) return fail(400, { error: 'Invalid ID' });
+        if (!scheduleId) return fail(400, { error: '잘못된 요청입니다.' });
 
         try {
             await db.execute(sql`UPDATE recurring_game_schedules SET is_active = NOT is_active WHERE id = ${scheduleId}`);
@@ -774,7 +774,7 @@ export const actions: Actions = {
     deleteRecurringSchedule: async ({ request }) => {
         const data = await request.formData();
         const scheduleId = data.get('scheduleId');
-        if (!scheduleId) return fail(400, { error: 'Invalid ID' });
+        if (!scheduleId) return fail(400, { error: '잘못된 요청입니다.' });
 
         try {
             await db.transaction(async (tx) => {
