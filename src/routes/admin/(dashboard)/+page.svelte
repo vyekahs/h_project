@@ -172,6 +172,11 @@
 
     let selectedGameId = '';
 
+    // 새 게임 참여자 선택 (검색형 멀티셀렉트)
+    let selectedPlayerIds: number[] = [];
+    let playerSearch = '';
+    let showPlayingInPicker = false;
+
     // Alert Modal State
     type AlertKind = 'success' | 'error' | 'info';
     let alertVisible = false;
@@ -447,6 +452,15 @@
         : null;
     $: nextEndMins = nextGameEndTs !== null ? Math.round((nextGameEndTs - now) / 60000) : null;
 
+    // 새 게임 참여자 피커
+    $: availableAttendees = (attendees || []).filter((a: Attendee) => !a.is_playing);
+    $: pickerResults = (attendees || []).filter((a: Attendee) => {
+        if (!showPlayingInPicker && a.is_playing) return false;
+        if (playerSearch && !a.name.toLowerCase().includes(playerSearch.toLowerCase())) return false;
+        return true;
+    });
+    $: selectedPlayers = (attendees || []).filter((a: Attendee) => selectedPlayerIds.includes(a.id));
+
     // 오늘 갈 예정 merge
     $: checkedInIds = new Set((attendees || []).map((a: Attendee) => a.id));
     $: visitPlanIds = new Set(((data as any).dailyVisitPlans || []).map((p: any) => p.attendee_id));
@@ -498,6 +512,9 @@
             selectedGameId = '';
             guestCount = 0;
             dropdownOpen = false;
+            selectedPlayerIds = [];
+            playerSearch = '';
+            showPlayingInPicker = false;
         }}>+ 새 게임 시작</button>
     </div>
     <ul class="game-list">
@@ -830,17 +847,54 @@
                     />
                 </div>
 
-                <div class="player-select">
-                    <p>참여자 선택:</p>
-                    {#each (attendees || []) as attendee (attendee.id)}
-                        <label class:disabled={attendee.is_playing}>
-                            <input type="checkbox" name="players" value={attendee.id} disabled={attendee.is_playing} />
-                            {attendee.name}
-                            {#if attendee.is_playing}
-                                <span class="status-text">(게임 중)</span>
+                <div class="player-picker">
+                    <div class="pp-head">
+                        <span class="pp-label">참여자 ({selectedPlayerIds.length})</span>
+                        <div class="pp-head-actions">
+                            {#if availableAttendees.length > 0}
+                                <button type="button" class="btn-mini" onclick={() => selectedPlayerIds = availableAttendees.map((a) => a.id)}>참석자 전원</button>
                             {/if}
-                        </label>
+                            {#if selectedPlayerIds.length > 0}
+                                <button type="button" class="btn-ghost" onclick={() => selectedPlayerIds = []}>비우기</button>
+                            {/if}
+                        </div>
+                    </div>
+
+                    {#each selectedPlayerIds as id (id)}
+                        <input type="hidden" name="players" value={id} />
                     {/each}
+
+                    {#if selectedPlayers.length > 0}
+                        <div class="pp-chips">
+                            {#each selectedPlayers as p (p.id)}
+                                <span class="pp-chip">
+                                    {p.name}
+                                    <button type="button" aria-label="{p.name} 제외" onclick={() => selectedPlayerIds = selectedPlayerIds.filter((x) => x !== p.id)}>×</button>
+                                </span>
+                            {/each}
+                        </div>
+                    {/if}
+
+                    <input type="text" class="pp-search" placeholder="이름 검색..." autocomplete="off" bind:value={playerSearch} />
+
+                    <div class="pp-list">
+                        {#each pickerResults as a (a.id)}
+                            {@const checked = selectedPlayerIds.includes(a.id)}
+                            <button type="button" class="pp-option" class:checked={checked} disabled={a.is_playing}
+                                onclick={() => selectedPlayerIds = checked ? selectedPlayerIds.filter((x) => x !== a.id) : [...selectedPlayerIds, a.id]}>
+                                <span class="pp-check" aria-hidden="true">{checked ? '✓' : ''}</span>
+                                <span class="pp-name">{a.name}</span>
+                                {#if a.is_playing}<span class="status-text">게임 중</span>{/if}
+                            </button>
+                        {/each}
+                        {#if pickerResults.length === 0}
+                            <p class="hint">일치하는 참여자가 없습니다.</p>
+                        {/if}
+                    </div>
+
+                    {#if !showPlayingInPicker && (attendees || []).some((a) => a.is_playing)}
+                        <button type="button" class="pp-toggle" onclick={() => showPlayingInPicker = true}>게임 중인 인원도 보기</button>
+                    {/if}
                 </div>
 
                 <div class="input-group guest-input-group">
@@ -1609,14 +1663,121 @@
         margin-left: 0.5rem;
         white-space: nowrap;
     }
-    .player-select label.disabled {
-        color: #999;
-        cursor: not-allowed;
-    }
     .status-text {
         font-size: 0.8rem;
         color: #ff9800;
         margin-left: 0.25rem;
+    }
+
+    /* 새 게임 참여자 피커 */
+    .player-picker {
+        width: 100%;
+        margin: 1rem 0;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        padding: 0.75rem;
+    }
+    .pp-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 0.5rem;
+        margin-bottom: 0.5rem;
+    }
+    .pp-label {
+        font-weight: 600;
+        font-size: 0.9rem;
+    }
+    .pp-head-actions {
+        display: flex;
+        gap: 0.35rem;
+    }
+    .pp-chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.35rem;
+        margin-bottom: 0.5rem;
+    }
+    .pp-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+        background: #e7f1ff;
+        color: #0b5ed7;
+        border-radius: 14px;
+        padding: 0.15rem 0.3rem 0.15rem 0.6rem;
+        font-size: 0.82rem;
+    }
+    .pp-chip button {
+        all: unset;
+        cursor: pointer;
+        line-height: 1;
+        padding: 0 0.25rem;
+        border-radius: 50%;
+        font-size: 0.95rem;
+        color: #0b5ed7;
+    }
+    .pp-chip button:hover {
+        background: rgba(11, 94, 215, 0.15);
+    }
+    .pp-search {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 0.4rem 0.5rem;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        font-size: 0.9rem;
+    }
+    .pp-list {
+        margin-top: 0.5rem;
+        max-height: 180px;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+    }
+    .pp-option {
+        all: unset;
+        box-sizing: border-box;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        width: 100%;
+        padding: 0.4rem 0.5rem;
+        cursor: pointer;
+        border-radius: 4px;
+        font-size: 0.9rem;
+    }
+    .pp-option:hover:not(:disabled),
+    .pp-option:focus-visible {
+        background: #f1f3f5;
+    }
+    .pp-option.checked {
+        background: #e7f1ff;
+        color: #0b5ed7;
+        font-weight: 600;
+    }
+    .pp-option:disabled {
+        color: #999;
+        cursor: not-allowed;
+    }
+    .pp-check {
+        width: 1rem;
+        text-align: center;
+        color: #0b5ed7;
+    }
+    .pp-name {
+        flex: 1;
+    }
+    .pp-toggle {
+        all: unset;
+        cursor: pointer;
+        display: block;
+        margin-top: 0.5rem;
+        font-size: 0.82rem;
+        color: #0b5ed7;
+    }
+    .pp-toggle:hover {
+        text-decoration: underline;
     }
     .section-header {
         display: flex;
