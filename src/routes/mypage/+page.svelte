@@ -1836,11 +1836,14 @@
         cursor: not-allowed;
     }
     .btn-danger {
-        background: var(--color-red, #ef4444);
+        /* --color-red 자체(라이트 3.76:1)와 --color-red-dark(다크에서 --color-red와
+           동일값으로 앨리어싱)는 흰 텍스트 배경으로 쓰면 두 테마 다 AA 미달이라
+           전용 --status-danger-bg를 쓴다 */
+        background: var(--status-danger-bg, #d32f2f);
         color: #fff;
     }
     .btn-danger:hover {
-        background: var(--color-red-dark, #d32f2f);
+        filter: brightness(0.9);
     }
     .confirm-modal {
         max-width: 340px;

@@ -339,7 +339,7 @@
 		position: absolute;
 		top: 0;
 		right: -2px;
-		background: var(--color-red-dark, #d32f2f); /* --color-red 자체는 흰 텍스트와 3.76:1로 AA(4.5:1) 미달 */
+		background: var(--status-danger-bg, #d32f2f); /* --color-red-dark는 다크 테마에서 --color-red와 앨리어싱돼 흰 텍스트 배경으로는 부적합 */
 		color: white;
 		font-size: 0.6rem;
 		font-weight: 700;

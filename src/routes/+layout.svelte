@@ -232,6 +232,9 @@
         --color-red-dark: #d32f2f;
         --color-orange: #ff9800;
         --color-orange-dark: #c2410c;
+        /* 흰 텍스트를 얹는 배경 전용 — --color-red-dark는 다크 테마에서 --color-red와
+           같은 값(밝은 레드)으로 앨리어싱되어 배경으로 쓰면 흰 텍스트 대비가 깨진다 */
+        --status-danger-bg: #d32f2f;
 
         /* State Backgrounds */
         --color-success-bg: #e8f5e9;
@@ -306,6 +309,8 @@
         --color-green-dark: #34d399;
         --color-red: #f87171;
         --color-red-dark: #f87171;
+        /* --color-red-dark와 달리 다크 테마에서도 실제로 어둡게 유지 — 흰 텍스트 대비 확보용 */
+        --status-danger-bg: #c62828;
         --color-orange: #ffb74d;
         --color-orange-dark: #ff9800;
 
