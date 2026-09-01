@@ -117,11 +117,14 @@
     let selectedGameId = '';
 
     // Alert Modal State
+    type AlertKind = 'success' | 'error' | 'info';
     let alertVisible = false;
     let alertMessage = '';
+    let alertKind: AlertKind = 'info';
 
-    function showAlert(msg: string) {
+    function showAlert(msg: string, kind: AlertKind = 'info') {
         alertMessage = msg;
+        alertKind = kind;
         alertVisible = true;
     }
 
@@ -671,7 +674,7 @@
                         <form method="POST" action="?/skipRecurringWeek" use:enhance={() => {
                             return async ({ result, update }) => {
                                 if (result.type === 'failure') {
-                                    showAlert((result as any).data?.error || '오류가 발생했습니다.');
+                                    showAlert((result as any).data?.error || '오류가 발생했습니다.', 'error');
                                 } else {
                                     const msg = (result as any).data?.message || (schedule.is_skipped_this_week ? '스킵 해제됨' : '스킵 처리됨');
                                     showAlert(msg);
@@ -697,7 +700,7 @@
                             danger: true,
                             handle: async ({ result, update }) => {
                                 if (result.type === 'failure') {
-                                    showAlert((result as any).data?.error || '삭제 실패');
+                                    showAlert((result as any).data?.error || '삭제에 실패했습니다.', 'error');
                                 }
                                 await update();
                             }
@@ -730,9 +733,9 @@
                     if (result.type === 'failure') {
                         const data = result.data as { error?: string, missing?: boolean };
                         if (data?.missing) {
-                            showAlert('필수 입력 항목을 입력해주세요.');
+                            showAlert('필수 입력 항목을 입력해주세요.', 'error');
                         } else {
-                            showAlert(data?.error || '오류가 발생했습니다.');
+                            showAlert(data?.error || '오류가 발생했습니다.', 'error');
                         }
                     } else {
                         showModal = false;
@@ -844,14 +847,14 @@
                     if (result.type === 'failure') {
                         const data = result.data as { error?: string, missing?: boolean };
                         if (data?.missing) {
-                            showAlert('필수 입력 항목을 입력해주세요.');
+                            showAlert('필수 입력 항목을 입력해주세요.', 'error');
                         } else {
-                            showAlert(data?.error || '오류가 발생했습니다.');
+                            showAlert(data?.error || '오류가 발생했습니다.', 'error');
                         }
                     } else {
                         endGameModalVisible = false;
 
-                        showAlert('게임이 종료되고 승자가 기록되었습니다!');
+                        showAlert('게임이 종료되고 승자가 기록되었습니다.', 'success');
                     }
                     await update();
                 };
@@ -917,11 +920,11 @@
         tabindex="-1"
         aria-label="Close alert"
     >
-        <div class="modal-content alert-modal" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="alertdialog" tabindex="-1">
-            <h3>알림</h3>
+        <div class="modal-content alert-modal alert-{alertKind}" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="alertdialog" aria-modal="true" tabindex="-1">
+            <h3>{alertKind === 'success' ? '완료' : alertKind === 'error' ? '문제가 발생했어요' : '알림'}</h3>
             <p>{alertMessage}</p>
             <div class="modal-actions">
-                <button class="btn-primary" onclick={() => alertVisible = false}>확인</button>
+                <button class="btn-primary" use:autofocus onclick={() => alertVisible = false}>확인</button>
             </div>
         </div>
     </div>
@@ -1073,10 +1076,10 @@
                 return async ({ result, update }: { result: any, update: (options?: { reset?: boolean }) => Promise<void> }) => {
                     if (result.type === 'failure') {
                         const data = result.data as { error?: string };
-                        showAlert(data?.error || '오류가 발생했습니다.');
+                        showAlert(data?.error || '오류가 발생했습니다.', 'error');
                     } else {
                         showScheduledGameModal = false;
-                        showAlert('예약 게임이 생성되었습니다.');
+                        showAlert('예약 게임이 생성되었습니다.', 'success');
                     }
                     await update();
                 };
@@ -1187,7 +1190,7 @@
             <div class="detail-actions">
                 <form method="POST" action="?/joinGame" use:enhance={() => {
                     return async ({ result, update }) => {
-                        if (result.type === 'failure') showAlert((result as any).data?.error || '오류');
+                        if (result.type === 'failure') showAlert((result as any).data?.error || '오류가 발생했습니다.', 'error');
                         resetParticipantSearch();
                         await update();
                         refreshSelectedScheduledGame();
@@ -1212,7 +1215,7 @@
                 </form>
                 <form method="POST" action="?/addGuestToGame" use:enhance={() => {
                     return async ({ result, update }) => {
-                        if (result.type === 'failure') showAlert((result as any).data?.error || '오류');
+                        if (result.type === 'failure') showAlert((result as any).data?.error || '오류가 발생했습니다.', 'error');
                         await update();
                         refreshSelectedScheduledGame();
                     };
@@ -1224,10 +1227,10 @@
                 <form method="POST" action="?/startScheduledGame" use:enhance={() => {
                     return async ({ result, update }) => {
                         if (result.type === 'failure') {
-                            showAlert((result as any).data?.error || '오류');
+                            showAlert((result as any).data?.error || '오류가 발생했습니다.', 'error');
                         } else {
                             selectedScheduledGame = null;
-                            showAlert('게임이 시작되었습니다!');
+                            showAlert('게임이 시작되었습니다.', 'success');
                         }
                         await update();
                     };
@@ -1244,10 +1247,10 @@
                     danger: true,
                     handle: async ({ result, update }) => {
                         if (result.type === 'failure') {
-                            showAlert((result as any).data?.error || '오류');
+                            showAlert((result as any).data?.error || '오류가 발생했습니다.', 'error');
                         } else {
                             selectedScheduledGame = null;
-                            showAlert('게임이 폭파되었습니다.');
+                            showAlert('게임이 폭파되었습니다.', 'success');
                         }
                         await update();
                     }
@@ -1283,7 +1286,7 @@
             <div class="detail-actions">
                 <form method="POST" action="?/joinGame" use:enhance={() => {
                     return async ({ result, update }) => {
-                        if (result.type === 'failure') showAlert((result as any).data?.error || '오류');
+                        if (result.type === 'failure') showAlert((result as any).data?.error || '오류가 발생했습니다.', 'error');
                         resetParticipantSearch();
                         await update();
                         refreshSelectedPlayingGame();
@@ -1308,7 +1311,7 @@
                 </form>
                 <form method="POST" action="?/addGuestToGame" use:enhance={() => {
                     return async ({ result, update }) => {
-                        if (result.type === 'failure') showAlert((result as any).data?.error || '오류');
+                        if (result.type === 'failure') showAlert((result as any).data?.error || '오류가 발생했습니다.', 'error');
                         await update();
                         refreshSelectedPlayingGame();
                     };
@@ -1320,7 +1323,7 @@
                 <div class="detail-form-row" style="gap:0.5rem;">
                     <form method="POST" action="?/extendGame" use:enhance={() => {
                         return async ({ result, update }) => {
-                            if (result.type === 'failure') showAlert((result as any).data?.error || '오류');
+                            if (result.type === 'failure') showAlert((result as any).data?.error || '오류가 발생했습니다.', 'error');
                             await update();
                             refreshSelectedPlayingGame();
                         };
@@ -1331,7 +1334,7 @@
                     </form>
                     <form method="POST" action="?/extendGame" use:enhance={() => {
                         return async ({ result, update }) => {
-                            if (result.type === 'failure') showAlert((result as any).data?.error || '오류');
+                            if (result.type === 'failure') showAlert((result as any).data?.error || '오류가 발생했습니다.', 'error');
                             await update();
                             refreshSelectedPlayingGame();
                         };
@@ -1635,6 +1638,15 @@
     .alert-modal {
         max-width: 400px;
         text-align: center;
+    }
+    .alert-modal h3 {
+        margin-top: 0;
+    }
+    .alert-modal.alert-success h3 {
+        color: #2b8a3e;
+    }
+    .alert-modal.alert-error h3 {
+        color: #d32f2f;
     }
     .confirm-modal {
         max-width: 400px;
