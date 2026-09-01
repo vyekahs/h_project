@@ -8,13 +8,16 @@
     import type { PageData } from './$types';
     export let data: PageData;
 
+    // trapFocus와 게임 검색 콤보박스의 수동 포커스 이동이 같은 기준을 써야
+    // 서로 다른 목록의 요소를 focusable로 착각하지 않는다.
+    const focusableSelector = 'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
     // 모달 5개(가이드/피드백/성공/확인/고정팟)가 전부 이 백드롭 패턴을 공유한다.
     // 이전엔 백드롭 자체에 role="button"+keydown을 달았지만 포커스가 실제로
     // 그 요소로 간 적이 없어 Escape가 먹지 않았다 — 다이얼로그(.modal-content)에
     // 직접 포커스를 옮기고 여기서 Tab 순환/Escape를 처리해야 한다.
     function trapFocus(node: HTMLElement, { onEscape }: { onEscape: () => void }) {
         const previouslyFocused = document.activeElement as HTMLElement | null;
-        const focusableSelector = 'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
         function getFocusable(): HTMLElement[] {
             return Array.from(node.querySelectorAll<HTMLElement>(focusableSelector));
@@ -325,6 +328,38 @@
     let partyMemberSearch = '';
     let showAllPartyMembers = false;
     let memberSelectListEl: HTMLElement;
+
+    // closeDropdowns()의 window 클릭 리스너는 마우스로 다른 곳을 클릭할 때만
+    // 걸린다 — Tab으로 다음 필드로 넘어가면 드롭다운이 열린 채 남아있고, 브라우저
+    // 기본 Tab 동작은 (아직 안 지워진) 게임 옵션 목록 속으로 포커스를 옮겨버린다.
+    // 그래서 여기서 Tab을 가로채 드롭다운을 먼저 닫고, DOM이 갱신된 뒤 직접
+    // 다음/이전 포커스 대상을 계산해서 옮긴다.
+    function handleGameSearchKeydown(e: KeyboardEvent) {
+        if (e.key === 'Escape') {
+            if (partyGameDropdownOpen) {
+                e.stopPropagation();
+                partyGameDropdownOpen = false;
+            }
+            return;
+        }
+        if (e.key !== 'Tab' || !partyGameDropdownOpen) return;
+        e.preventDefault();
+        e.stopPropagation();
+        const inputEl = e.currentTarget as HTMLElement;
+        const shiftKey = e.shiftKey;
+        partyGameDropdownOpen = false;
+        tick().then(() => {
+            const modal = inputEl.closest('.modal-content');
+            if (!modal) return;
+            const focusable = Array.from(modal.querySelectorAll<HTMLElement>(focusableSelector));
+            const currentIndex = focusable.indexOf(inputEl as HTMLElement);
+            if (currentIndex === -1) return;
+            const nextIndex = shiftKey
+                ? (currentIndex - 1 + focusable.length) % focusable.length
+                : (currentIndex + 1) % focusable.length;
+            focusable[nextIndex]?.focus();
+        });
+    }
 
     function expandPartyMembers() {
         showAllPartyMembers = true;
@@ -1019,6 +1054,7 @@
                             bind:value={partyGameSearch}
                             on:focus={() => partyGameDropdownOpen = true}
                             on:input={() => partyGameDropdownOpen = true}
+                            on:keydown={handleGameSearchKeydown}
                         />
                         {#if partyGameName && !partyGameDropdownOpen}
                             <div class="selected-game-tag">
