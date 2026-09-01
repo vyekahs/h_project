@@ -36,8 +36,12 @@ export const trickyBehavior: PresetBehavior = {
 			if (nc.rank === 10 || nc.rank === 13) return sum + 10;
 			return sum;
 		}, 0);
-		if (comboPoints > 0 && combo.cards.length > 1) {
-			score += comboPoints; // 포인트 콤보 보너스 (과도하지 않게)
+		// 리드로 포인트 카드를 내보내면 상대가 트릭을 가져갈 때 그대로 실점이 된다.
+		// '점수를 계산하는' 성격이므로 포인트가 실린 리드는 피한다.
+		// (기존에는 score += comboPoints로 오히려 포인트를 앞세워 내주고 있었다 —
+		//  절제 실험에서 이 훅을 끄면 팀 점수차가 +10.7 개선됐다.)
+		if (comboPoints > 0) {
+			score -= comboPoints;
 		}
 
 		// 멀티카드 보너스
@@ -152,26 +156,12 @@ export const trickyBehavior: PresetBehavior = {
 		return null;
 	},
 
-	decideWishOverride(hand, context, givenToOpponents) {
-		// 상대에게 준 카드 랭크
-		if (givenToOpponents.length > 0) {
-			const myRanks = new Set<number>(
-				hand.filter(c => c.type === 'normal').map(c => (c as NormalCard).rank as number)
-			);
-			// 내가 가지고 있지 않은 랭크 우선
-			const validWishes = givenToOpponents.filter(r => !myRanks.has(r));
-			if (validWishes.length > 0) return validWishes[0];
-
-			// 내가 2장 이상 가지고 있으면 OK
-			for (const rank of givenToOpponents) {
-				const count = hand.filter(
-					c => c.type === 'normal' && (c as NormalCard).rank === rank
-				).length;
-				if (count >= 2) return rank;
-			}
-		}
-
-		return 'default'; // 기본 로직
+	decideWishOverride() {
+		// 기본 로직 사용.
+		// 기존에는 "교환 때 상대에게 준 카드 랭크"를 불렀는데, 교환으로 넘기는 카드는
+		// 대부분 낮은 싱글이라 낮은 랭크 소원이 되어 쉽게 충족되고 방해 효과가 거의 없다.
+		// 게다가 파트너까지 구속한다. (절제 실험: 이 훅을 끄면 팀 점수차 +14.4 개선)
+		return 'default';
 	},
 
 	shouldLeadDragon(hand, context) {

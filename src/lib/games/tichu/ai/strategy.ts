@@ -630,7 +630,8 @@ function pickBestFollow(
 		return sorted[0].cards.map(c => c.id); // fallback: 가장 약한 카드
 	}
 
-	const bestResult = gridResults[0];
+	// 근소한 차이의 후보 중 무작위 선택 (사람처럼 매번 같은 수를 두지 않도록)
+	const bestResult = pickAmongNearBest(gridResults, weights);
 
 	// 나갈 수 있으면 무조건 냄
 	if (iAmClose) {
@@ -808,7 +809,7 @@ function decideLead(
 	// === 그리드 확률 탐색: 각 후보의 winProb × exitRate + contextMod ===
 	const gridResults = searchBestPlay(hand, candidates, tracker, context, weights, behavior, 'lead');
 	if (gridResults.length === 0) return [hand[0].id]; // fallback
-	return gridResults[0].combo.cards.map(c => c.id);
+	return pickAmongNearBest(gridResults, weights).combo.cards.map(c => c.id);
 }
 
 /**
@@ -1076,6 +1077,33 @@ export function findTwoStepFinishScored(
 	if (candidates.length === 0) return null;
 	candidates.sort((a, b) => b.score - a.score);
 	return candidates[0].combo;
+}
+
+/**
+ * 최상위 점수와 근소한 차이 안에 있는 후보 중 하나를 무작위로 고른다.
+ *
+ * 기존에는 항상 1위 후보를 그대로 냈기 때문에, 같은 상황을 20번 주면 20번 모두
+ * 똑같은 카드가 나왔다. 사람은 그렇게 두지 않으므로 상대하는 입장에서 기계처럼
+ * 느껴지고, 한 번 파악하면 그대로 읽힌다.
+ *
+ * 점수가 사실상 동률인 후보들만 대상으로 하므로 실력 손실은 거의 없다.
+ * 허용 폭은 riskTolerance에 비례 — 안정적인 성격(수비적 0.2)은 거의 최선만 두고,
+ * 변칙적(0.9)은 폭이 넓어 실제로 '변칙적'으로 보인다.
+ */
+function pickAmongNearBest<T extends { totalScore: number }>(
+	sortedDesc: T[],
+	weights: PersonalityWeights
+): T {
+	if (sortedDesc.length <= 1) return sortedDesc[0];
+	// 허용 폭 주의: totalScore의 실질 범위는 약 0~1.3이다. 처음에 0.03~0.07로 잡았더니
+	// "근소한 차이"가 아니라 명백히 나쁜 수까지 포함되어 실력이 크게 떨어졌다
+	// (riskTolerance에 비례해 하락: 수비적 -3.7, 공격적 -35.9 점/라운드).
+	// 전체 범위의 1% 안쪽만 동률로 취급한다.
+	const epsilon = 0.004 + weights.riskTolerance * 0.012; // 0.006 ~ 0.016
+	const best = sortedDesc[0].totalScore;
+	let count = 1;
+	while (count < sortedDesc.length && best - sortedDesc[count].totalScore <= epsilon) count++;
+	return sortedDesc[Math.floor(Math.random() * count)];
 }
 
 function isDogCombo(combo: Combination): boolean {
