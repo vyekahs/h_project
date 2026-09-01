@@ -339,7 +339,7 @@
 		position: absolute;
 		top: 0;
 		right: -2px;
-		background: var(--color-red, #ef4444);
+		background: var(--color-red-dark, #d32f2f); /* --color-red 자체는 흰 텍스트와 3.76:1로 AA(4.5:1) 미달 */
 		color: white;
 		font-size: 0.6rem;
 		font-weight: 700;

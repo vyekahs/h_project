@@ -1737,12 +1737,12 @@
     }
     .btn-action.unequip {
         background: var(--bg-primary);
-        border-color: var(--color-red); /* Change color only */
-        color: var(--color-red);
+        border-color: var(--color-red-dark); /* --color-red 자체는 흰 배경에서 3.76:1로 AA(4.5:1) 미달 */
+        color: var(--color-red-dark);
     }
     .btn-action.unequip:hover {
         background: var(--color-error-bg);
-        color: var(--color-red);
+        color: var(--color-red-dark);
     }
     .btn-action.processing {
         background: var(--bg-secondary) !important;
