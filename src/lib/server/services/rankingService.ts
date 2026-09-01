@@ -285,7 +285,13 @@ export const RankingService = {
         return res;
     },
 
-    async getRecentActivity(limit = 20) {
+    // gameIds를 넘기면 그 목록에 없는 게임(예: 내려간 미니게임)의 활동은
+    // 제외한다 — 안 그러면 오락실 그리드에 없는 게임 활동이 티커에 뜨는
+    // 불일치가 생긴다.
+    async getRecentActivity(limit = 20, gameIds?: string[]) {
+        const gameFilter = gameIds && gameIds.length > 0
+            ? sql`AND p.game_id IN (${sql.join(gameIds.map(g => sql`${g}`), sql`, `)})`
+            : sql``;
         const res = await db.execute(sql`
             SELECT
                 p.game_id,
@@ -298,6 +304,7 @@ export const RankingService = {
             FROM minigame_play_log p
             LEFT JOIN attendees a ON p.user_id = a.id
             WHERE p.type != 'start'
+            ${gameFilter}
             ORDER BY p.played_at DESC
             LIMIT ${limit}
         `);
