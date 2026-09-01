@@ -5,7 +5,10 @@
     export let data: PageData;
     export let form;
 
-    let activeTab = 'history'; // 'history' | 'partners' | 'visits' | 'account' | 'season_pass'
+    let activeTab = 'history'; // 'history' | 'record' | 'visits' | 'account' | 'season_pass'
+
+    const PENALTY_REASON: Record<string, string> = { no_show: '노쇼', late: '지각', other: '기타', revoke: '취소' };
+    const RES_STATUS: Record<string, string> = { pending_approval: '승인 대기', waitlisted: '대기', confirmed: '확정', pending: '신청' };
     let viewMode = 'list'; // 'list' | 'calendar'
     
     // Season Pass Logic
@@ -74,7 +77,10 @@
 
     <div class="tabs">
         <button class:active={activeTab === 'history'} on:click={() => activeTab = 'history'}>게임 이력</button>
-        <button class:active={activeTab === 'partners'} on:click={() => activeTab = 'partners'}>함께한 파트너</button>
+        <button class:active={activeTab === 'record'} on:click={() => activeTab = 'record'}>
+            예약 · 페널티
+            {#if data.attendee.penalty_points > 0}<span class="tab-count">{data.attendee.penalty_points}</span>{/if}
+        </button>
         <button class:active={activeTab === 'visits'} on:click={() => activeTab = 'visits'}>방문 기록</button>
         <button class:active={activeTab === 'season_pass'} on:click={() => activeTab = 'season_pass'}>정기권 관리</button>
         <button class:active={activeTab === 'account'} on:click={() => activeTab = 'account'}>계정 관리</button>
@@ -156,21 +162,67 @@
                 </div>
             {/if}
 
-        {:else if activeTab === 'partners'}
-            <div class="partners-list">
-                {#each data.partners as partner, i}
-                    <div class="partner-card">
-                        <div class="rank">{i + 1}</div>
-                        <div class="info">
-                            <div class="name">{partner.name}</div>
-                            <div class="count">{partner.game_count}게임 함께함</div>
-                        </div>
+            <section class="record-block">
+                <h3>함께한 파트너</h3>
+                {#if data.partners.length > 0}
+                    <div class="partners-list">
+                        {#each data.partners as partner, i (partner.name)}
+                            <div class="partner-card">
+                                <div class="rank">{i + 1}</div>
+                                <div class="info">
+                                    <div class="name">{partner.name}</div>
+                                    <div class="count">{partner.game_count}게임 함께함</div>
+                                </div>
+                            </div>
+                        {/each}
                     </div>
-                {/each}
-                {#if data.partners.length === 0}
+                {:else}
                     <p class="empty">함께한 파트너 기록이 없습니다.</p>
                 {/if}
-            </div>
+            </section>
+
+        {:else if activeTab === 'record'}
+            <section class="record-block">
+                <h3>진행 중 · 예정된 예약</h3>
+                {#if data.reservations.length > 0}
+                    <ul class="record-list">
+                        {#each data.reservations as r (r.id)}
+                            <li class="record-row">
+                                <span class="record-main">{r.game_name}</span>
+                                <span class="record-tag">{RES_STATUS[r.status] ?? r.status}</span>
+                                <span class="record-meta">
+                                    {r.session_status === 'playing' ? '진행 중' : '예정'} ·
+                                    {new Date(r.created_at).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })} 신청
+                                </span>
+                            </li>
+                        {/each}
+                    </ul>
+                {:else}
+                    <p class="empty">지금 걸려 있는 예약이 없습니다.</p>
+                {/if}
+            </section>
+
+            <section class="record-block">
+                <h3>페널티 이력 (현재 {data.attendee.penalty_points}점)</h3>
+                {#if data.penaltyLogs.length > 0}
+                    <ul class="record-list">
+                        {#each data.penaltyLogs as log, i (i)}
+                            <li class="record-row">
+                                <span class="record-main" class:is-add={log.points > 0}>
+                                    {log.points > 0 ? '+1' : '−1'}
+                                </span>
+                                <span class="record-tag">{PENALTY_REASON[log.reason] ?? log.reason}</span>
+                                <span class="record-meta">
+                                    적용 후 {log.total_after}점 ·
+                                    {new Date(log.created_at).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                                </span>
+                            </li>
+                        {/each}
+                    </ul>
+                {:else}
+                    <p class="empty">페널티가 적용된 적이 없습니다.</p>
+                {/if}
+            </section>
 
         {:else if activeTab === 'visits'}
             <table class="history-table">
@@ -354,6 +406,64 @@
 </div>
 
 <style>
+    .tab-count {
+        display: inline-block;
+        margin-left: 0.3rem;
+        padding: 0 0.35rem;
+        border-radius: var(--radius-pill, 999px);
+        background: var(--color-red-dark, #d32f2f);
+        color: #fff;
+        font-size: var(--text-xs, 0.75rem);
+        font-weight: 700;
+    }
+    .record-block {
+        margin-top: var(--space-5, 1.5rem);
+    }
+    .record-block:first-child {
+        margin-top: 0;
+    }
+    .record-block h3 {
+        font-size: var(--text-base, 1rem);
+        margin: 0 0 var(--space-3, 0.75rem);
+    }
+    .record-list {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-2, 0.5rem);
+    }
+    .record-row {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: var(--space-2, 0.5rem);
+        padding: var(--space-3, 0.75rem);
+        border: 1px solid var(--border-light, #eee);
+        border-radius: var(--radius-control, 6px);
+    }
+    .record-main {
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
+    }
+    .record-main.is-add {
+        color: var(--color-red-dark, #d32f2f);
+    }
+    .record-tag {
+        font-size: var(--text-xs, 0.75rem);
+        font-weight: 600;
+        padding: 0.1rem 0.45rem;
+        border-radius: var(--radius-control, 6px);
+        background: var(--bg-hover, #e9ecef);
+        color: var(--text-dark, #495057);
+    }
+    .record-meta {
+        font-size: var(--text-xs, 0.75rem);
+        color: var(--text-secondary, #666);
+        font-variant-numeric: tabular-nums;
+    }
+
     /* ... existing styles ... */
     
     /* Season Pass Styles */

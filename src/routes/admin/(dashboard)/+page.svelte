@@ -338,7 +338,6 @@
     let scheduledAt = '';
     let minPlayers = 2;
     let maxPlayers = 4;
-    let isRecurring = false;
 
     function openScheduledGameModal() {
         showScheduledGameModal = true;
@@ -494,7 +493,6 @@
     $: games = data.games as GameSession[];
     $: scheduledGames = data.scheduledGames as GameSession[];
     $: savedMembers = data.savedMembers as SavedMember[];
-    $: recurringSchedules = (data as any).recurringSchedules || [];
     // 몇 점부터 예약이 막히는지 — 페널티 숫자는 이 값 없이는 의미를 알 수 없다
     $: penaltyThreshold = parseInt((data as any).settings?.penalty_threshold ?? '3') || 3;
     $: noShowLimitMinutes = parseInt((data as any).settings?.no_show_limit_minutes ?? '10') || 10;
@@ -960,92 +958,6 @@
 </section>
 {/if}
 
-<details class="section section-collapsible">
-    <summary>
-        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg>
-        공지사항 관리
-        {#if data.notice}<span class="summary-tag">게시 중</span>{/if}
-    </summary>
-    <div class="notice-manager">
-        {#if data.notice}
-            <div class="current-notice">
-                <strong>현재 공지:</strong> {data.notice}
-                <form method="POST" action="?/clearNotice" use:enhance={pending(undefined, '공지를 내렸습니다.')} style="display:inline; margin-left: 1rem;">
-                    <button type="submit" class="btn-ghost">숨기기</button>
-                </form>
-            </div>
-        {/if}
-        <form method="POST" action="?/updateNotice" use:enhance={pending(undefined, '공지를 저장했습니다.')} class="notice-form">
-            <input type="text" name="content" placeholder="새 공지사항 입력" aria-label="공지 내용" required />
-            <button type="submit">등록</button>
-        </form>
-    </div>
-</details>
-
-<details class="section section-collapsible">
-    <summary>
-        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg>
-        반복 게임 관리 ({recurringSchedules.length})
-    </summary>
-    {#if recurringSchedules.length > 0}
-        <div class="recurring-list">
-            {#each recurringSchedules as schedule (schedule.id)}
-                <div class="recurring-item" class:inactive={!schedule.is_active}>
-                    <div class="recurring-info">
-                        <strong>{schedule.game_name}</strong>
-                        <span class="recurring-meta">
-                            매주 {dayNames[schedule.day_of_week]}요일 {schedule.scheduled_time.slice(0, 5)}
-                            | {schedule.min_players}-{schedule.max_players}인
-                            {#if schedule.show_on_main}
-                                | <span class="badge-main">메인표시</span>
-                            {/if}
-                        </span>
-                        <span class="recurring-status" class:active={schedule.is_active}>
-                            {schedule.is_active ? '활성' : '비활성'}
-                        </span>
-                    </div>
-                    <div class="recurring-actions">
-                        <form method="POST" action="?/skipRecurringWeek" use:enhance={() => {
-                            return async ({ result, update }) => {
-                                if (!reportResult(result)) {
-                                    const msg = (result as any).data?.message || (schedule.is_skipped_this_week ? '스킵 해제됨' : '스킵 처리됨');
-                                    showAlert(msg);
-                                }
-                                await update();
-                            };
-                        }} style="display:inline;">
-                            <input type="hidden" name="scheduleId" value={schedule.id} />
-                            <button type="submit" class="btn-skip" class:skipped={schedule.is_skipped_this_week}>
-                                {schedule.is_skipped_this_week ? '이번주 스킵됨' : '이번주 빼기'}
-                            </button>
-                        </form>
-                        <form method="POST" action="?/toggleRecurringActive" use:enhance={pending(undefined, schedule.is_active ? `"${schedule.game_name}" 반복 일정을 비활성화했습니다.` : `"${schedule.game_name}" 반복 일정을 활성화했습니다.`)} style="display:inline;">
-                            <input type="hidden" name="scheduleId" value={schedule.id} />
-                            <button type="submit" class="btn-toggle-active">
-                                {schedule.is_active ? '비활성화' : '활성화'}
-                            </button>
-                        </form>
-                        <form method="POST" action="?/deleteRecurringSchedule" use:enhance={confirmSubmit({
-                            title: '반복 게임 삭제',
-                            message: `"${schedule.game_name}" 매주 반복 일정을 삭제합니다. 되돌릴 수 없습니다.`,
-                            confirmLabel: '삭제',
-                            danger: true,
-                            handle: async ({ result, update }) => {
-                                reportResult(result, '삭제에 실패했습니다.');
-                                await update();
-                            }
-                        })} style="display:inline;">
-                            <input type="hidden" name="scheduleId" value={schedule.id} />
-                            <button type="submit" class="btn-delete">삭제</button>
-                        </form>
-                    </div>
-                </div>
-            {/each}
-        </div>
-    {:else}
-        <p class="empty-state">등록된 반복 게임이 없습니다. 매주 같은 요일·시간에 열리는 게임을 여기에 등록해두면 자동으로 예정에 올라갑니다.</p>
-    {/if}
-</details>
 
 {#if showModal}
     <!-- 백드롭은 편의용 클릭 영역. 키보드 경로는 모달의 Escape(trapFocus)와 닫기 버튼이 담당한다. -->
@@ -1572,10 +1484,6 @@
                         <input type="checkbox" name="showOnMain" value="true" />
                         메인페이지에 보이기
                     </label>
-                    <label class="checkbox-option">
-                        <input type="checkbox" name="isRecurring" value="true" bind:checked={isRecurring} />
-                        매주 반복 (같은 요일에 자동 생성)
-                    </label>
                 </div>
 
                 <div class="modal-actions">
@@ -1753,7 +1661,7 @@
         background: var(--bg-primary);
     }
     /* 라벨이 데이터를 이기지 않도록 — 32px은 숫자 전용으로 비워 둔다 */
-    section h2, details.section > summary {
+    section h2 {
         display: flex;
         align-items: center;
         gap: var(--space-3);
@@ -1769,47 +1677,6 @@
     }
 
     /* 저빈도 관리 섹션 — 기본 접힘 */
-    details.section {
-        padding: 0;
-        background: var(--bg-primary);
-        border-color: #e6e6e8;
-    }
-    details.section > summary {
-        list-style: none;
-        cursor: pointer;
-        padding: 0.9rem 1.25rem;
-        font-size: var(--text-base);
-        font-weight: 700;
-        color: var(--text-darker);
-        user-select: none;
-    }
-    details.section > summary::-webkit-details-marker {
-        display: none;
-    }
-    details.section > summary::after {
-        content: '▾';
-        margin-left: auto;
-        font-size: var(--text-xs);
-        color: var(--text-muted);
-        transition: transform 0.15s;
-    }
-    details.section[open] > summary::after {
-        transform: rotate(180deg);
-    }
-    details.section[open] > summary {
-        border-bottom: 1px solid #e6e6e8;
-    }
-    details.section > :not(summary) {
-        margin: 1rem 1.25rem 1.25rem;
-    }
-    .summary-tag {
-        font-size: var(--text-xs);
-        font-weight: 700;
-        color: #b45309;
-        background: var(--color-warning-bg);
-        border-radius: var(--radius-control);
-        padding: 0.1rem 0.4rem;
-    }
 
     /* 방 현황 요약 스트립 */
     .room-summary {
@@ -2282,30 +2149,6 @@
         border-radius: var(--radius-control);
         list-style: none;
     }
-    .notice-manager {
-        display: flex;
-        flex-direction: column;
-        gap: 1rem;
-    }
-    .current-notice {
-        background: var(--color-warning-bg);
-        border: 1px solid var(--border-warning);
-        padding: 1rem;
-        border-radius: var(--radius-control);
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-    }
-    .notice-form {
-        display: flex;
-        gap: 0.5rem;
-    }
-    .notice-form input {
-        flex: 1;
-        padding: 0.5rem;
-        border: 1px solid var(--border-default);
-        border-radius: var(--radius-control);
-    }
     @media (max-width: 600px) {
         /* 행 액션이 「관리」 하나뿐이라 줄을 따로 쓸 이유가 없다.
            세로로 쌓으면 한 행이 90px까지 커져 목록 스캔이 나빠진다. */
@@ -2323,23 +2166,8 @@
             width: 100%; /* Keep specific override or reset if needed */
             margin-top: 0.5rem;
         }
-        .notice-manager {
-            gap: 0.5rem;
-        }
-        .notice-form {
-            flex-direction: column;
-        }
         .notice-form button {
             width: 100%;
-        }
-        .recurring-item {
-            flex-direction: column;
-            align-items: flex-start;
-            gap: 0.5rem;
-        }
-        .recurring-actions {
-            width: 100%;
-            justify-content: flex-end;
         }
     }
     .winner-option {
@@ -2920,81 +2748,6 @@
     }
 
     /* Recurring Game Management */
-    .recurring-list {
-        display: flex;
-        flex-direction: column;
-        gap: 0.5rem;
-    }
-    .recurring-item {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 0.75rem 1rem;
-        background: var(--bg-primary);
-        border-radius: var(--radius-control);
-        border: 1px solid #e0e0e0;
-    }
-    .recurring-item.inactive {
-        opacity: 0.6;
-    }
-    .recurring-info {
-        display: flex;
-        flex-direction: column;
-        gap: 0.25rem;
-    }
-    .recurring-meta {
-        font-size: var(--text-sm);
-        color: var(--text-secondary);
-    }
-    .recurring-status {
-        align-self: flex-start;
-        font-size: var(--text-xs);
-        font-weight: 700;
-        padding: 0.1rem 0.45rem;
-        border-radius: var(--radius-control);
-        background: var(--bg-hover);
-        color: var(--text-darker);
-    }
-    .recurring-status.active {
-        background: var(--color-success-bg);
-        color: var(--color-green-dark);
-    }
-    .badge-main {
-        background: #e3f2fd;
-        color: #1565c0;
-        padding: 0.1rem 0.4rem;
-        border-radius: var(--radius-control);
-        font-size: var(--text-xs);
-        font-weight: 600;
-    }
-    .recurring-actions {
-        display: flex;
-        gap: 0.25rem;
-        align-items: center;
-    }
-    .btn-skip {
-        background: var(--color-warning-bg);
-        color: var(--text-darker);
-        border: 1px solid var(--border-warning);
-        padding: 0.3rem 0.6rem;
-        border-radius: var(--radius-control);
-        cursor: pointer;
-        font-size: var(--text-xs);
-    }
-    .btn-skip.skipped {
-        background: var(--color-red);
-        opacity: 0.9;
-    }
-    .btn-toggle-active {
-        /* #607d8b 는 흰 글자 위 4.37:1 로 AA 미달 */
-        background: var(--text-dark);
-        color: white;
-        border: none;
-        padding: 0.3rem 0.6rem;
-        border-radius: var(--radius-control);
-        cursor: pointer;
-        font-size: var(--text-xs);
-    }
     .admin-options {
         background: #f0f4ff;
         border: 1px solid #d0d9f0;
@@ -3306,7 +3059,6 @@
         .chip-container { font-size: var(--text-xs); }
         .chip-link { font-size: var(--text-xs); }
         .chip-add { font-size: var(--text-xs); padding: 0.2rem 0.6rem; }
-        .recurring-item { font-size: var(--text-sm); }
         .modal-content { width: 95%; padding: 1.25rem; }
         .player-select { gap: 0.5rem; }
         .empty-state { font-size: var(--text-sm); }

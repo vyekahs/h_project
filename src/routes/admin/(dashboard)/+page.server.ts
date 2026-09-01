@@ -27,7 +27,7 @@ async function canModifyGame(request: Request, gameId: string | number): Promise
 }
 
 export const load: PageServerLoad = async () => {
-    const [attendeesResult, historyResult, gamesResult, scheduledGamesResult, reservationsResult, gameNamesResult, noticeResult, allGamesResult, settingsResult, recurringSchedulesResult, dailyVisitPlansResult, todayScheduledParticipantsResult] = await Promise.all([
+    const [attendeesResult, historyResult, gamesResult, scheduledGamesResult, reservationsResult, gameNamesResult, allGamesResult, settingsResult, dailyVisitPlansResult, todayScheduledParticipantsResult] = await Promise.all([
         db.execute(sql`
             SELECT a.id, a.name, a.arrival_time, a.status, a.penalty_points, a.is_blacklisted, a.can_manage_games,
                    MAX(g.id) as game_id,
@@ -99,22 +99,8 @@ export const load: PageServerLoad = async () => {
             FROM game_sessions
             ORDER BY game_name, start_time DESC
         `),
-        db.execute(sql`SELECT content FROM notices WHERE is_active = true ORDER BY created_at DESC LIMIT 1`),
         db.execute(sql`SELECT id, name, playtime_min, min_players, max_players, image_url FROM games WHERE is_active = true ORDER BY name ASC`),
         db.execute(sql`SELECT key, value FROM system_settings`),
-        db.execute(sql`
-            SELECT rs.*,
-                (SELECT COUNT(*) FROM recurring_game_skips rsk WHERE rsk.recurring_schedule_id = rs.id) as skip_count,
-                EXISTS(
-                    SELECT 1 FROM recurring_game_skips rsk
-                    WHERE rsk.recurring_schedule_id = rs.id
-                      AND rsk.skip_date = (
-                          CURRENT_DATE + ((rs.day_of_week - EXTRACT(DOW FROM CURRENT_DATE)::int + 7) % 7) * INTERVAL '1 day'
-                      )::date
-                ) as is_skipped_this_week
-            FROM recurring_game_schedules rs
-            ORDER BY rs.is_active DESC, rs.day_of_week ASC, rs.scheduled_time ASC
-        `),
         db.execute(sql`
             SELECT dvp.id, dvp.attendee_id, a.name, dvp.planned_time,
                    t.title_name
@@ -168,9 +154,7 @@ export const load: PageServerLoad = async () => {
         reservations: reservationsResult as any[],
         savedGameNames: gameNamesResult as any[],
         allGames: allGamesResult as any[],
-        notice: (noticeResult[0] as any)?.content || null,
         settings,
-        recurringSchedules: recurringSchedulesResult as any[],
         dailyVisitPlans: dailyVisitPlansResult as any[],
         todayScheduledParticipants: todayScheduledParticipantsResult as any[]
     };
@@ -367,30 +351,6 @@ export const actions: Actions = {
             emitLiveEvent('games');
         } catch (error) {
             return fail(500, { error: '게임 종료에 실패했습니다.' });
-        }
-    },
-    updateNotice: async ({ request }) => {
-        const data = await request.formData();
-        const content = data.get('content')?.toString();
-
-        if (!content) {
-            return fail(400, { missing: true });
-        }
-
-        try {
-            await db.transaction(async (tx) => {
-                await tx.execute(sql`UPDATE notices SET is_active = false`);
-                await tx.execute(sql`INSERT INTO notices (content) VALUES (${content})`);
-            });
-        } catch (error) {
-            return fail(500, { error: '공지 등록에 실패했습니다.' });
-        }
-    },
-    clearNotice: async () => {
-        try {
-            await db.execute(sql`UPDATE notices SET is_active = false`);
-        } catch (error) {
-            return fail(500, { error: '공지 숨김 처리에 실패했습니다.' });
         }
     },
     extendGame: async ({ request }) => {
@@ -828,67 +788,7 @@ export const actions: Actions = {
         return { success: true };
     },
 
-    skipRecurringWeek: async ({ request }) => {
-        const data = await request.formData();
-        const scheduleId = data.get('scheduleId');
-        if (!scheduleId) return fail(400, { error: '잘못된 요청입니다.' });
 
-        try {
-            const schedule = await db.execute(sql`SELECT day_of_week FROM recurring_game_schedules WHERE id = ${scheduleId}`);
-            if (schedule.length === 0) return fail(404, { error: '스케줄을 찾을 수 없습니다.' });
-
-            const now = new Date();
-            const kstNow = new Date(now.getTime() + 9 * 60 * 60 * 1000);
-            const today = kstNow.getUTCDay();
-            const targetDay = (schedule[0] as any).day_of_week;
-            let diff = targetDay - today;
-            if (diff < 0) diff += 7;
-            const skipDate = new Date(kstNow);
-            skipDate.setUTCDate(skipDate.getUTCDate() + diff);
-            const skipDateStr = skipDate.toISOString().split('T')[0];
-
-            // 이미 스킵되어 있으면 해제, 아니면 스킵 추가 (토글)
-            const existing = await db.execute(sql`
-                SELECT id FROM recurring_game_skips WHERE recurring_schedule_id = ${scheduleId} AND skip_date = ${skipDateStr}::date
-            `);
-
-            if (existing.length > 0) {
-                // 스킵 해제
-                await db.execute(sql`
-                    DELETE FROM recurring_game_skips WHERE recurring_schedule_id = ${scheduleId} AND skip_date = ${skipDateStr}::date
-                `);
-                emitLiveEvent('games');
-                return { success: true, message: '이번주 스킵이 해제되었습니다.' };
-            } else {
-                // 스킵 추가
-                await db.transaction(async (tx) => {
-                    await tx.execute(sql`
-                        INSERT INTO recurring_game_skips (recurring_schedule_id, skip_date) VALUES (${scheduleId}, ${skipDateStr}) ON CONFLICT DO NOTHING
-                    `);
-                    await tx.execute(sql`
-                        DELETE FROM game_sessions WHERE recurring_schedule_id = ${scheduleId} AND status = 'scheduled' AND scheduled_at::date = ${skipDateStr}::date
-                    `);
-                });
-                emitLiveEvent('games');
-                return { success: true, message: '이번주 스킵 처리되었습니다.' };
-            }
-        } catch (e) {
-            return fail(500, { error: '처리 중 오류가 발생했습니다.' });
-        }
-    },
-
-    toggleRecurringActive: async ({ request }) => {
-        const data = await request.formData();
-        const scheduleId = data.get('scheduleId');
-        if (!scheduleId) return fail(400, { error: '잘못된 요청입니다.' });
-
-        try {
-            await db.execute(sql`UPDATE recurring_game_schedules SET is_active = NOT is_active WHERE id = ${scheduleId}`);
-            return { success: true };
-        } catch (e) {
-            return fail(500, { error: '처리 중 오류가 발생했습니다.' });
-        }
-    },
 
     createScheduledGame: async ({ request }) => {
         const data = await request.formData();
@@ -898,7 +798,6 @@ export const actions: Actions = {
         const maxPlayers = parseInt(data.get('maxPlayers')?.toString() || '4');
         const guestCount = parseInt(data.get('guestCount')?.toString() || '0');
         const showOnMain = data.get('showOnMain') === 'true';
-        const isRecurring = data.get('isRecurring') === 'true';
 
         if (!gameName) return fail(400, { error: '게임 이름을 입력해주세요.' });
         if (!scheduledAt) return fail(400, { error: '시작 예정 시간을 입력해주세요.' });
@@ -916,45 +815,12 @@ export const actions: Actions = {
                 for (let i = 1; i <= guestCount; i++) {
                     await tx.execute(sql`INSERT INTO session_participants (session_id, attendee_id, guest_name) VALUES (${newSessionId}, NULL, ${`게스트${i}`})`);
                 }
-
-                if (isRecurring) {
-                    const scheduledDate = new Date(scheduledAt);
-                    const dayOfWeek = scheduledDate.getDay();
-                    const timeStr = scheduledDate.toTimeString().slice(0, 8);
-
-                    const gameIdResult = await tx.execute(sql`SELECT id FROM games WHERE name = ${gameName} LIMIT 1`);
-                    const gameIdVal = (gameIdResult[0] as any)?.id ?? null;
-
-                    const recurResult = await tx.execute(sql`
-                        INSERT INTO recurring_game_schedules (game_name, game_id, day_of_week, scheduled_time, min_players, max_players, show_on_main)
-                        VALUES (${gameName}, ${gameIdVal}, ${dayOfWeek}, ${timeStr}, ${minPlayers}, ${maxPlayers}, ${showOnMain})
-                        RETURNING id
-                    `);
-                    await tx.execute(sql`UPDATE game_sessions SET recurring_schedule_id = ${(recurResult[0] as any).id} WHERE id = ${newSessionId}`);
-                }
             });
             emitLiveEvent('games');
             return { success: true };
         } catch (e) {
             console.error('Failed to create scheduled game:', e);
             return fail(500, { error: '게임 생성에 실패했습니다.' });
-        }
-    },
-
-    deleteRecurringSchedule: async ({ request }) => {
-        const data = await request.formData();
-        const scheduleId = data.get('scheduleId');
-        if (!scheduleId) return fail(400, { error: '잘못된 요청입니다.' });
-
-        try {
-            await db.transaction(async (tx) => {
-                await tx.execute(sql`UPDATE game_sessions SET recurring_schedule_id = NULL WHERE recurring_schedule_id = ${scheduleId}`);
-                await tx.execute(sql`DELETE FROM recurring_game_skips WHERE recurring_schedule_id = ${scheduleId}`);
-                await tx.execute(sql`DELETE FROM recurring_game_schedules WHERE id = ${scheduleId}`);
-            });
-            return { success: true };
-        } catch (e) {
-            return fail(500, { error: '처리 중 오류가 발생했습니다.' });
         }
     }
 };
