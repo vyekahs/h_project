@@ -44,12 +44,15 @@ export async function promoteWaitlist(sessionId: number) {
     }
 }
 
-export async function applyPenalty(attendeeId: number, points: number = 1) {
-    await db.execute(sql`
+/** 페널티를 가감하고 적용 후 누적 점수를 돌려준다. 0점 아래로는 내려가지 않는다. */
+export async function applyPenalty(attendeeId: number, points: number = 1): Promise<number> {
+    const rows = await db.execute(sql`
         UPDATE attendees
-        SET penalty_points = penalty_points + ${points},
+        SET penalty_points = GREATEST(0, penalty_points + ${points}),
             last_penalty_at = NOW(),
             updated_at = NOW()
         WHERE id = ${attendeeId}
+        RETURNING penalty_points
     `);
+    return Number((rows as any[])[0]?.penalty_points ?? 0);
 }
