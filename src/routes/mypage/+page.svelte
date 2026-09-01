@@ -2186,13 +2186,18 @@
     }
     .advanced-summary {
         cursor: pointer;
-        font-size: 0.85rem;
-        font-weight: 600;
-        color: var(--text-tertiary);
+        font-size: 0.9rem;
+        font-weight: 700;
+        /* 회색이라 존재감이 약해 처음 오는 사용자가 놓치기 쉬웠음 —
+           이 페이지에서 이미 "누를 수 있음"을 뜻하는 blue로 변경 */
+        color: var(--color-blue);
         list-style: none;
         display: flex;
         align-items: center;
-        gap: 0.3rem;
+        gap: 0.35rem;
+        padding: 0.3rem 0;
+        min-height: 44px;
+        box-sizing: border-box;
     }
     .advanced-summary::-webkit-details-marker {
         display: none;
@@ -2293,6 +2298,8 @@
         border: 1px dashed var(--border-default);
         border-radius: 6px;
         padding: 0.45rem;
+        min-height: 44px;
+        box-sizing: border-box;
         margin-top: 0.3rem;
         color: var(--color-blue);
         font-size: 0.85rem;
@@ -2314,6 +2321,8 @@
         align-items: center;
         gap: 0.4rem;
         padding: 0.35rem 0.3rem;
+        min-height: 44px;
+        box-sizing: border-box;
         font-size: 0.9rem;
         color: var(--text-primary);
         cursor: pointer;
