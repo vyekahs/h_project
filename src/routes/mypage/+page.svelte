@@ -324,6 +324,7 @@
     );
 
     let partyModalError = '';
+    let partySubmitting = false;
     let showPartyAdvanced = false;
     let partyMemberSearch = '';
     let showAllPartyMembers = false;
@@ -397,6 +398,7 @@
         partyMemberSearch = '';
         showAllPartyMembers = false;
         partyModalError = '';
+        partySubmitting = false;
         showPartyAdvanced = false;
         showPartyModal = true;
     }
@@ -417,6 +419,7 @@
         partyMemberSearch = '';
         showAllPartyMembers = false;
         partyModalError = '';
+        partySubmitting = false;
         // 이미 값이 있으면 접어두지 않고 바로 보여준다 (수정하러 들어왔는데 숨어있으면 안 됨)
         showPartyAdvanced = !!(party.duration || party.guest_count);
         showPartyModal = true;
@@ -1020,7 +1023,9 @@
             {/if}
             <form method="POST" action={editingParty ? '?/updateParty' : '?/createParty'} use:enhance={() => {
                 partyModalError = '';
+                partySubmitting = true;
                 return async ({ result, update }) => {
+                    partySubmitting = false;
                     if (result.type === 'success') {
                         showPartyModal = false;
                         await update();
@@ -1133,7 +1138,9 @@
 
                 <div class="modal-actions">
                     <button type="button" class="btn-cancel" on:click={() => showPartyModal = false}>취소</button>
-                    <button type="submit" class="btn-submit">{editingParty ? '수정' : '만들기'}</button>
+                    <button type="submit" class="btn-submit" disabled={partySubmitting}>
+                        {partySubmitting ? '처리 중...' : (editingParty ? '수정' : '만들기')}
+                    </button>
                 </div>
             </form>
         </div>
