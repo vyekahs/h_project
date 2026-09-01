@@ -27,8 +27,12 @@ export function trapFocus(node: HTMLElement, onClose?: () => void) {
 			(el) => el.offsetParent !== null || el === document.activeElement
 		);
 
+	// 기본 포커스는 다이얼로그 컨테이너다. 첫 컨트롤에 포커스를 주면
+	// 모달을 연 클릭/키 입력이 그 컨트롤에 그대로 떨어져 같이 눌린다
+	// (폰에서는 <select>가 포커스만으로 네이티브 피커를 열기도 한다).
+	// 특정 컨트롤로 시작해야 하면 그 요소에 [data-autofocus]를 준다.
 	queueMicrotask(() => {
-		const initial = node.querySelector<HTMLElement>('[data-autofocus]') ?? focusable()[0] ?? node;
+		const initial = node.querySelector<HTMLElement>('[data-autofocus]') ?? node;
 		initial.focus();
 	});
 

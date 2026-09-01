@@ -1256,8 +1256,8 @@
             <h3>{confirmState.title}</h3>
             <p>{confirmState.message}</p>
             <div class="modal-actions">
-                <button class="btn-cancel" onclick={closeConfirm}>취소</button>
-                <button class="btn-confirm-action" class:danger={confirmState.danger} data-autofocus onclick={runConfirm}>{confirmState.confirmLabel}</button>
+                <button class="btn-cancel" data-autofocus onclick={closeConfirm}>취소</button>
+                <button class="btn-confirm-action" class:danger={confirmState.danger} onclick={runConfirm}>{confirmState.confirmLabel}</button>
             </div>
         </div>
     </div>
@@ -2266,14 +2266,17 @@
         border-radius: 4px;
     }
     @media (max-width: 600px) {
+        /* 행 액션이 「관리」 하나뿐이라 줄을 따로 쓸 이유가 없다.
+           세로로 쌓으면 한 행이 90px까지 커져 목록 스캔이 나빠진다. */
         .attendee-list li {
-            flex-direction: column;
-            align-items: flex-start;
             gap: 0.5rem;
         }
         .attendee-info {
-            width: 100%;
-            justify-content: space-between;
+            min-width: 0;
+            flex: 1 1 auto;
+        }
+        .attendee-actions {
+            flex: 0 0 auto;
         }
         .btn-delete {
             width: 100%; /* Keep specific override or reset if needed */
