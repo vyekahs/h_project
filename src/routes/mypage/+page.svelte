@@ -8,6 +8,54 @@
     import type { PageData } from './$types';
     export let data: PageData;
 
+    // 모달 5개(가이드/피드백/성공/확인/고정팟)가 전부 이 백드롭 패턴을 공유한다.
+    // 이전엔 백드롭 자체에 role="button"+keydown을 달았지만 포커스가 실제로
+    // 그 요소로 간 적이 없어 Escape가 먹지 않았다 — 다이얼로그(.modal-content)에
+    // 직접 포커스를 옮기고 여기서 Tab 순환/Escape를 처리해야 한다.
+    function trapFocus(node: HTMLElement, { onEscape }: { onEscape: () => void }) {
+        const previouslyFocused = document.activeElement as HTMLElement | null;
+        const focusableSelector = 'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+        function getFocusable(): HTMLElement[] {
+            return Array.from(node.querySelectorAll<HTMLElement>(focusableSelector));
+        }
+
+        const initial = getFocusable();
+        (initial[0] ?? node).focus();
+
+        function handleKeydown(e: KeyboardEvent) {
+            if (e.key === 'Escape') {
+                e.stopPropagation();
+                onEscape();
+                return;
+            }
+            if (e.key !== 'Tab') return;
+            const focusable = getFocusable();
+            if (focusable.length === 0) {
+                e.preventDefault();
+                return;
+            }
+            const first = focusable[0];
+            const last = focusable[focusable.length - 1];
+            if (e.shiftKey && document.activeElement === first) {
+                e.preventDefault();
+                last.focus();
+            } else if (!e.shiftKey && document.activeElement === last) {
+                e.preventDefault();
+                first.focus();
+            }
+        }
+
+        node.addEventListener('keydown', handleKeydown);
+
+        return {
+            destroy() {
+                node.removeEventListener('keydown', handleKeydown);
+                previouslyFocused?.focus();
+            }
+        };
+    }
+
     let showSettings = false;
 
 
@@ -774,16 +822,13 @@
 </div>
 
 {#if showGuideModal}
-    <div 
-        class="modal-backdrop" 
+    <div
+        class="modal-backdrop"
         on:click|self={() => showGuideModal = false}
-        on:keydown={(e) => e.key === 'Escape' && (showGuideModal = false)}
-        role="button"
-        tabindex="-1"
-        aria-label="Close modal"
+        role="presentation"
     >
-        <div class="modal-content">
-            <h3>기기 등록 방법</h3>
+        <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="guide-modal-title" tabindex="-1" use:trapFocus={{ onEscape: () => showGuideModal = false }}>
+            <h3 id="guide-modal-title">기기 등록 방법</h3>
             <ol class="guide-steps">
                 <li>
                     <span class="step-num">1</span>
@@ -812,16 +857,13 @@
 {/if}
 
 {#if showFeedbackModal}
-    <div 
-        class="modal-backdrop" 
+    <div
+        class="modal-backdrop"
         on:click|self={() => showFeedbackModal = false}
-        on:keydown={(e) => e.key === 'Escape' && (showFeedbackModal = false)}
-        role="button"
-        tabindex="-1"
-        aria-label="Close modal"
+        role="presentation"
     >
-        <div class="modal-content">
-            <h3>건의사항 보내기</h3>
+        <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="feedback-modal-title" tabindex="-1" use:trapFocus={{ onEscape: () => showFeedbackModal = false }}>
+            <h3 id="feedback-modal-title">건의사항 보내기</h3>
             <p class="modal-desc">
                 더 좋은 서비스를 위해 여러분의 의견을 들려주세요.<br>
                 버그 제보나 기능 요청도 환영합니다!
@@ -847,20 +889,17 @@
 {/if}
 
 {#if showSuccessModal}
-    <div 
-        class="modal-backdrop" 
-        on:click|self={() => showSuccessModal = false} 
-        on:keydown={(e) => e.key === 'Escape' && (showSuccessModal = false)}
-        role="button"
-        tabindex="-1"
-        aria-label="Close modal"
+    <div
+        class="modal-backdrop"
+        on:click|self={() => showSuccessModal = false}
         transition:fade
+        role="presentation"
     >
-        <div class="modal-content success-modal">
+        <div class="modal-content success-modal" role="dialog" aria-modal="true" aria-labelledby="success-modal-title" tabindex="-1" use:trapFocus={{ onEscape: () => showSuccessModal = false }}>
             <div class="success-icon">
                 <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
             </div>
-            <h3>전송 완료!</h3>
+            <h3 id="success-modal-title">전송 완료!</h3>
             <p>소중한 의견 감사합니다.</p>
             <button class="modal-close-btn" on:click={() => showSuccessModal = false}>확인</button>
         </div>
@@ -871,14 +910,11 @@
     <div
         class="modal-backdrop"
         on:click|self={() => handleConfirm(false)}
-        on:keydown={(e) => e.key === 'Escape' && handleConfirm(false)}
-        role="button"
-        tabindex="-1"
-        aria-label="Close modal"
         transition:fade
+        role="presentation"
     >
-        <div class="modal-content confirm-modal">
-            <p class="confirm-message">{confirmMessage}</p>
+        <div class="modal-content confirm-modal" role="alertdialog" aria-modal="true" aria-labelledby="confirm-modal-message" tabindex="-1" use:trapFocus={{ onEscape: () => handleConfirm(false) }}>
+            <p class="confirm-message" id="confirm-modal-message">{confirmMessage}</p>
             <div class="modal-actions">
                 <button class="btn-cancel" on:click={() => handleConfirm(false)}>취소</button>
                 <button class="btn-danger" on:click={() => handleConfirm(true)}>삭제</button>
@@ -888,16 +924,13 @@
 {/if}
 
 {#if showPartyModal}
-    <div 
-        class="modal-backdrop" 
+    <div
+        class="modal-backdrop"
         on:click|self={() => showPartyModal = false}
-        on:keydown={(e) => e.key === 'Escape' && (showPartyModal = false)}
-        role="button"
-        tabindex="-1"
-        aria-label="Close modal"
+        role="presentation"
     >
-        <div class="modal-content party-modal">
-            <h3>{editingParty ? '고정팟 수정' : '새 고정팟 만들기'}</h3>
+        <div class="modal-content party-modal" role="dialog" aria-modal="true" aria-labelledby="party-modal-title" tabindex="-1" use:trapFocus={{ onEscape: () => showPartyModal = false }}>
+            <h3 id="party-modal-title">{editingParty ? '고정팟 수정' : '새 고정팟 만들기'}</h3>
             {#if partyModalError}
                 <p class="inline-error">{partyModalError}</p>
             {/if}
