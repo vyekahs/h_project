@@ -54,16 +54,22 @@
     })();
 
     // Top Opponents
+    // 판 수가 아니라 "함께한 날짜 수"로 센다 — 하루에 같은 사람과 여러 판 해도 1회.
+    // (판 수로 세면 긴 게임 한 판보다 짧은 게임 여러 판 한 상대가 과대평가됨)
     $: topOpponents = (() => {
-        const counts: Record<string, number> = {};
+        const daysByName: Record<string, Set<string>> = {};
         for (const game of filteredHistory) {
-            if (game.opponents) {
-                for (const opp of game.opponents) {
-                    counts[opp.name] = (counts[opp.name] || 0) + 1;
-                }
+            if (!game.opponents || !game.end_time) continue;
+            const date = new Date(game.end_time);
+            if (Number.isNaN(date.getTime())) continue;
+            // 로컬 기준 날짜 키 — 위 연/월 필터도 로컬 시간으로 판단하므로 기준을 맞춘다
+            const dayKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+            for (const opp of game.opponents) {
+                (daysByName[opp.name] ??= new Set<string>()).add(dayKey);
             }
         }
-        return Object.entries(counts)
+        return Object.entries(daysByName)
+            .map(([name, days]) => [name, days.size] as [string, number])
             .sort((a, b) => b[1] - a[1])
             .slice(0, 3);
     })();
