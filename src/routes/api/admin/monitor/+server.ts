@@ -53,7 +53,7 @@ export async function GET({ cookies }: { cookies: any }) {
 
 	// DB ping with timeout
 	let dbLatency = -1;
-	let dbTotal = 0, dbIdle = 0, dbWaiting = 0;
+	let dbTotal = 0, dbIdle = 0, dbWaiting = 0, dbAllInstances = 0, dbMax = 0;
 	try {
 		const dbStart = performance.now();
 		await Promise.race([
@@ -65,6 +65,8 @@ export async function GET({ cookies }: { cookies: any }) {
 		dbTotal = stats.total;
 		dbIdle = stats.idle;
 		dbWaiting = stats.waiting;
+		dbAllInstances = stats.dbTotal;
+		dbMax = stats.maxConnections;
 	} catch {
 		dbLatency = -1;
 	}
@@ -90,7 +92,10 @@ export async function GET({ cookies }: { cookies: any }) {
 			totalCount: dbTotal,
 			idleCount: dbIdle,
 			waitingCount: dbWaiting,
-			latencyMs: dbLatency
+			latencyMs: dbLatency,
+			// 이 인스턴스 풀의 상한, 그리고 블루/그린 등 다른 인스턴스까지 합친 DB 전체 커넥션
+			maxCount: dbMax,
+			allInstancesCount: dbAllInstances
 		},
 		connections: {
 			sse: getSSEConnectionCount()

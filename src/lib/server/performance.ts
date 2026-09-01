@@ -4,7 +4,7 @@
  * 서버 응답 시간, DB 쿼리, 느린 요청을 추적합니다.
  */
 
-import { db, pgClient } from '$lib/server/db';
+import { db, pgClient, APP_INSTANCE_NAME, MAX_POOL_CONNECTIONS } from '$lib/server/db';
 import { slowRequestLogs, dbPoolStats } from '$lib/server/db/schema/performance';
 import type { SlowRequestLog, DbPoolStat } from '$lib/server/db/schema/performance';
 import { desc, gte, sql } from 'drizzle-orm';
@@ -289,14 +289,14 @@ export function getDbPoolStats() {
 		const options = (pgClient as any).options;
 
 		return {
-			maxConnections: options?.max || 20,
+			maxConnections: options?.max || MAX_POOL_CONNECTIONS,
 			// postgres.js는 내부 통계를 직접 노출하지 않으므로 설정값만 반환
 			// 실제 사용 중인 연결은 DB 쿼리로 확인해야 함
 		};
 	} catch (error) {
 		console.error('[PERF] Failed to get DB pool stats:', error);
 		return {
-			maxConnections: 20,
+			maxConnections: MAX_POOL_CONNECTIONS,
 		};
 	}
 }
@@ -306,10 +306,14 @@ export function getDbPoolStats() {
  */
 export async function getActiveDbConnections(): Promise<number> {
 	try {
+		// application_name으로 이 인스턴스의 커넥션만 센다.
+		// datname으로만 세면 블루/그린 두 인스턴스가 합산되어, 자기 풀 상한(20)과
+		// 비교하는 utilization이 100%를 넘는 값(실측 최대 40/20 = 200%)이 나온다.
 		const result = await db.execute(sql`
 			SELECT count(*) as count
 			FROM pg_stat_activity
 			WHERE datname = current_database()
+			AND application_name = ${APP_INSTANCE_NAME}
 			AND state = 'active'
 		`);
 		return Number((result as any[])[0]?.count || 0);
@@ -331,15 +335,27 @@ export async function getActiveDbConnections(): Promise<number> {
  * wait_event_type = 'Client'로 표시되므로, 이를 waiting으로 잘못 세지 않도록
  * state = 'active'이면서 'Client'가 아닌 이벤트(Lock/IO/IPC 등)로 막힌 경우만 센다.
  */
-export async function getDbConnectionStats(): Promise<{ total: number; idle: number; waiting: number }> {
+export async function getDbConnectionStats(): Promise<{
+	total: number;
+	idle: number;
+	waiting: number;
+	dbTotal: number;
+	maxConnections: number;
+}> {
 	try {
+		// total/idle/waiting은 "이 인스턴스의 풀"만 집계한다 — 상한(max)과 비교되는 값이므로
+		// 범위가 같아야 한다. dbTotal은 블루/그린 등 다른 인스턴스까지 포함한 DB 전체 수치.
 		const result = await db.execute(sql`
 			SELECT
-				count(*)::int AS total,
-				count(*) FILTER (WHERE state = 'idle')::int AS idle,
+				count(*) FILTER (WHERE application_name = ${APP_INSTANCE_NAME})::int AS total,
+				count(*) FILTER (WHERE application_name = ${APP_INSTANCE_NAME} AND state = 'idle')::int AS idle,
 				count(*) FILTER (
-					WHERE state = 'active' AND wait_event_type IS NOT NULL AND wait_event_type <> 'Client'
-				)::int AS waiting
+					WHERE application_name = ${APP_INSTANCE_NAME}
+					  AND state = 'active'
+					  AND wait_event_type IS NOT NULL
+					  AND wait_event_type <> 'Client'
+				)::int AS waiting,
+				count(*)::int AS db_total
 			FROM pg_stat_activity
 			WHERE datname = current_database()
 		`);
@@ -347,11 +363,39 @@ export async function getDbConnectionStats(): Promise<{ total: number; idle: num
 		return {
 			total: Number(row.total || 0),
 			idle: Number(row.idle || 0),
-			waiting: Number(row.waiting || 0)
+			waiting: Number(row.waiting || 0),
+			dbTotal: Number(row.db_total || 0),
+			maxConnections: MAX_POOL_CONNECTIONS
 		};
 	} catch (error) {
 		console.error('[PERF] Failed to get DB connection stats:', error);
-		return { total: 0, idle: 0, waiting: 0 };
+		return { total: 0, idle: 0, waiting: 0, dbTotal: 0, maxConnections: MAX_POOL_CONNECTIONS };
+	}
+}
+
+/**
+ * 모니터링 테이블 보존 정리.
+ *
+ * db_pool_stats와 slow_request_logs는 계속 쌓기만 하고 지우는 코드가 없었다
+ * (실측: db_pool_stats 17,712행 / 약 5개월치). 오래된 기록은 진단 가치가 없으므로
+ * 보존 기간을 넘긴 행을 지운다.
+ */
+export async function pruneMonitoringData(retentionDays = 30): Promise<void> {
+	try {
+		const cutoff = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000);
+		const [pool, slow] = await Promise.all([
+			db.execute(sql`DELETE FROM db_pool_stats WHERE timestamp < ${cutoff}`),
+			db.execute(sql`DELETE FROM slow_request_logs WHERE timestamp < ${cutoff}`)
+		]);
+		const poolCount = (pool as any)?.count ?? 0;
+		const slowCount = (slow as any)?.count ?? 0;
+		if (poolCount > 0 || slowCount > 0) {
+			console.log(
+				`[PERF] 모니터링 데이터 정리 (${retentionDays}일 초과): db_pool_stats ${poolCount}행, slow_request_logs ${slowCount}행 삭제`
+			);
+		}
+	} catch (error) {
+		console.error('[PERF] Failed to prune monitoring data:', error);
 	}
 }
 
