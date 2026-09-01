@@ -139,8 +139,13 @@ export function decideGrandTichu(hand8: Card[], weights: PersonalityWeights, beh
 	if (override !== null && override !== undefined) return override;
 
 	const strength = evaluateHandStrength(hand8);
-	// Base threshold: 70. Lower tichoPropensity → higher threshold needed.
-	const threshold = 70 - weights.tichoPropensity * 25;
+	// 임계값은 evaluateHandStrength의 **실제 분포**에 맞춰 보정한 값이다.
+	// 무작위 8장 손패 5000회 실측: 중앙값 11.7 / p90 29.9 / p95 35.1 / p99 46.8 / 최대 67.6.
+	// 기존 공식(70 - p*25 → 50~66)은 상위 0.5% 이내여야 도달 가능해 사실상 선언이
+	// 발생하지 않았음(148라운드 실측 0회). 사람의 그랜드 티츄 선언 빈도는 대략 5~10%.
+	// 45 - p*18.5 → 공격적 30.2(≈상위 10%) / 변칙적 33.9(≈7%) / 밸런스·전략적 35.8(≈5%)
+	//              / 수비적 42.2(≈2%)
+	const threshold = 45 - weights.tichoPropensity * 18.5;
 	return strength >= threshold;
 }
 
@@ -155,7 +160,12 @@ export function decideSmallTichu(hand: Card[], weights: PersonalityWeights, cont
 	if (override !== null && override !== undefined) return override;
 
 	const strength = evaluateHandStrength(hand);
-	const threshold = 60 - weights.tichoPropensity * 20;
+	// 그랜드 티츄와 동일하게 실제 분포 기준으로 보정.
+	// 무작위 14장 손패 5000회 실측: 중앙값 22 / p75 31 / p90 39 / p95 44 / 최대 68.
+	// 기존 공식(60 - p*20 → 44~57)은 도달률 0.6~5.6%에 그쳤음. 사람은 대략 15~25%.
+	// 41 - p*12.3 → 공격적 31.2(≈상위 25%) / 변칙적 33.6(≈20%) / 밸런스·전략적 34.9(≈18%)
+	//              / 수비적 39.2(≈10%)
+	const threshold = 41 - weights.tichoPropensity * 12.3;
 
 	// Don't declare if someone on opposing team already declared
 	const myTeam = getTeam(context.currentSeat);
@@ -408,9 +418,19 @@ export function decidePlay(
 		if (beatableForPartner.length === 0) {
 			return 'pass';
 		}
-		// 가장 약한 카드로 뺏기
-		beatableForPartner.sort((a, b) => a.rank - b.rank);
-		return beatableForPartner[0].cards.map(c => c.id);
+		// 뺏되 "지킬 수 있는" 카드로만 뺏는다.
+		// 기존에는 무조건 가장 약한 카드로 뺏었는데, 그러면 바로 다음 상대가 손쉽게
+		// 다시 뺏어가 파트너가 이기고 있던 트릭을 통째로 상대에게 넘겨주게 된다.
+		// (파트너 존중도가 낮은 프리셋일수록 이 경로를 자주 타므로 손해가 누적됐다 —
+		//  변칙적 팀 라운드 평균 21점 vs 밸런스 52점)
+		const trackerForSteal = buildCardTracker(context);
+		const holdable = beatableForPartner
+			.filter(c => comboLikelyToWin(c, trackerForSteal, hand) >= 0.6)
+			.sort((a, b) => a.rank - b.rank);
+		if (holdable.length === 0) {
+			return 'pass'; // 지킬 수 없으면 파트너 트릭을 그대로 둔다
+		}
+		return holdable[0].cards.map(c => c.id);
 	}
 
 	// Must play wish if active
@@ -740,7 +760,7 @@ function decideLead(
 	const partnerTichuActive = partnerForEndgame.finishOrder === null &&
 		(partnerForEndgame.grandTichu === true || partnerForEndgame.smallTichu);
 	if (hand.length <= 5 && !partnerTichuActive) {
-		const endgameResult = decideLeadEndgame(hand, plan, weights, context);
+		const endgameResult = decideLeadEndgame(hand, plan, weights, context, behavior);
 		if (endgameResult.length > 0) return endgameResult;
 	}
 
@@ -799,7 +819,8 @@ export function decideLeadEndgame(
 	hand: Card[],
 	plan: HandPlan,
 	weights: PersonalityWeights,
-	context: AiDecisionContext
+	context: AiDecisionContext,
+	behavior: PresetBehavior = {}
 ): string[] {
 	const tracker = buildCardTracker(context);
 
@@ -808,6 +829,26 @@ export function decideLeadEndgame(
 	if (allAtOnce) {
 		return allAtOnce.cards.map(c => c.id);
 	}
+
+	// === 프리셋 성격 반영 ===
+	// 엔드게임은 손패 5장 이하에서 매 라운드 반드시 거치는 경로인데, 기존에는 weights를
+	// 인자로 받기만 하고 쓰지 않았고 behavior는 전달조차 되지 않아 5개 프리셋이 사실상
+	// 동일하게 플레이했다(4장 리드 150건 실측: 88% 완전 일치, 공격적=전략적 100% 일치).
+	// 아래 편향값을 각 후보 점수에 더해 성격을 되살린다.
+	const presetBias = (combo: Combination): number => {
+		let bias = 0;
+		// 프리셋 고유 리드 선호 (일반 리드 경로와 동일한 훅을 재사용)
+		const hookScore = behavior.scoreLeadCandidate?.(combo, hand, context);
+		if (hookScore !== null && hookScore !== undefined) {
+			bias += Math.max(-0.25, Math.min(0.25, hookScore * 0.008));
+		}
+		// 공격성: 한 번에 많은 카드를 처리하는 콤보 선호
+		bias += (combo.cards.length - 1) * weights.aggressiveness * 0.05;
+		// 위험 감수도가 낮으면 확실히 이기는 리드를 선호
+		const winProb = comboLikelyToWin(combo, tracker, hand);
+		bias += (winProb - 0.5) * (1 - weights.riskTolerance) * 0.2;
+		return bias;
+	};
 
 	// === 위협 감지: 일반 리드 스코어링(playSearchGrid)에만 있던 방어 로직을
 	// 엔드게임 경로에서도 반영 ===
@@ -861,15 +902,16 @@ export function decideLeadEndgame(
 	// Find all valid 2-turn finishes and score them by win probability
 	const twoTurnFinishes = findAllTwoTurnFinishes(hand, plan, tracker, worlds, partnerSeatForMc);
 	if (twoTurnFinishes.length > 0) {
-		// Sort by combined win probability (lead * remainder), adjusted for threats
-		twoTurnFinishes.sort((a, b) =>
-			(b.score - leadThreatPenalty(b.lead)) - (a.score - leadThreatPenalty(a.lead))
-		);
+		// Sort by combined win probability (lead * remainder), adjusted for threats + 성격
+		const adjusted = (f: { lead: Combination; score: number }) =>
+			f.score - leadThreatPenalty(f.lead) + presetBias(f.lead);
+		twoTurnFinishes.sort((a, b) => adjusted(b) - adjusted(a));
 		return twoTurnFinishes[0].lead.cards.map(c => c.id);
 	}
 
-	// Try 3-turn finishes
-	const twoStepResult = findTwoStepFinishScored(hand, plan, tracker, leadThreatPenalty, worlds, partnerSeatForMc);
+	// Try 3-turn finishes (위협 페널티에 성격 편향을 합쳐 전달 — 부호가 반대이므로 차감)
+	const twoStepPenalty = (combo: Combination) => leadThreatPenalty(combo) - presetBias(combo);
+	const twoStepResult = findTwoStepFinishScored(hand, plan, tracker, twoStepPenalty, worlds, partnerSeatForMc);
 	if (twoStepResult) {
 		return twoStepResult.cards.map(c => c.id);
 	}
@@ -902,6 +944,8 @@ export function decideLeadEndgame(
 			}
 			// 상대 위협 페널티 (0~0.45 범위를 fallback 스코어 스케일에 맞게 확대)
 			score -= leadThreatPenalty(c) * 10;
+			// 프리셋 성격 (위 두 경로와 동일 스케일로 확대)
+			score += presetBias(c) * 10;
 			return { combo: c, score };
 		});
 		scored.sort((a, b) => b.score - a.score);

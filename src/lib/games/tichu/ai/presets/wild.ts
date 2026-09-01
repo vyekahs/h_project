@@ -4,6 +4,7 @@ import type { AiDecisionContext } from '../types';
 import { findAllPlayableCombinations, findBeatablePlays, findBombs, estimateSimpleTurns } from '../handEvaluator';
 import { getTeam, getPartnerSeat } from '../../constants';
 import { canBeat, isBomb } from '../../combinations';
+import { buildCardTracker, comboLikelyToWin } from '../cardTracker';
 
 /**
  * 변칙적 (Wild) 프리셋 고유 행동
@@ -58,32 +59,16 @@ export const wildBehavior: PresetBehavior = {
 		return !mahjongInCombo;
 	},
 
-	onPartnerWinning(hand, lastCombo, context) {
-		const partnerSeat = getPartnerSeat(context.currentSeat);
-		const partner = context.players[partnerSeat];
-
-		// 예외: 파트너가 티츄 선언 → 안 뺏음
-		if (partner.grandTichu === true || partner.smallTichu) {
-			return null; // 기본 로직 (패스)
-		}
-		// 예외: 파트너가 10 이상의 카드를 냈다
-		if (lastCombo.rank >= 10) {
-			return null; // 기본 로직 (패스)
-		}
-		// 예외: 파트너가 5장 이하의 카드를 지니고 있다
-		if (partner.hand.length <= 5) {
-			return null; // 기본 로직 (패스)
-		}
-
-		// 그 외에는 뺏음 — 이길 수 있는 가장 약한 카드로
-		const beatable = findBeatablePlays(hand, lastCombo);
-		const nonBombs = beatable.filter(c => !isBomb(c));
-		if (nonBombs.length > 0) {
-			nonBombs.sort((a, b) => a.rank - b.rank);
-			return nonBombs[0].cards.map(c => c.id);
-		}
-		return 'pass';
-	},
+	// onPartnerWinning 오버라이드는 제거했다.
+	//
+	// 기존 구현은 "파트너가 티츄/10+ 카드/5장 이하가 아니면 무조건 가장 약한 카드로 뺏기"
+	// 였는데, 약한 카드로 뺏으면 바로 다음 상대가 다시 뺏어가 파트너가 이기던 트릭을
+	// 통째로 상대에게 넘겨주는 순손실 행동이었다(변칙적 팀 라운드 평균 33.6점 vs 밸런스 102.1점).
+	//
+	// "자기 위주"라는 성격은 이미 공용 로직이 partnerAwareness로 표현하고 있다:
+	//   passThreshold = 14 - partnerAwareness*10  →  변칙적(0.3)은 11로 5개 중 가장 낮아
+	//   파트너가 J 미만을 냈으면 뺏으러 간다(수비적 0.7은 7이라 거의 안 뺏음).
+	// 별도 오버라이드는 그 위에 손해만 얹는 중복이었으므로 공용 경로에 맡긴다.
 
 	shouldPlayDog(hand, partner, context) {
 		// 개를 주고도 선을 잡을 수 있으면 사용
@@ -178,6 +163,23 @@ export const wildBehavior: PresetBehavior = {
 				p.hand.length <= 3
 		);
 		if (opponentWithTichu) {
+			const beatable = bombs.filter(b => canBeat(lastPlay.combination, b));
+			if (beatable.length > 0) {
+				beatable.sort((a, b) => a.rank - b.rank);
+				return beatable[0];
+			}
+		}
+
+		// 고득점 트릭은 회수 — 아끼기만 하면 라운드 종료 시 손패에 남아 상대 점수가 된다
+		const trickPoints = (context.trick?.plays ?? [])
+			.flatMap(p => p.combination.cards)
+			.reduce((sum, c) => {
+				if (c.type === 'special') return sum + (c.special === 'dragon' ? 25 : c.special === 'phoenix' ? -25 : 0);
+				if (c.rank === 5) return sum + 5;
+				if (c.rank === 10 || c.rank === 13) return sum + 10;
+				return sum;
+			}, 0);
+		if (trickPoints >= 15) {
 			const beatable = bombs.filter(b => canBeat(lastPlay.combination, b));
 			if (beatable.length > 0) {
 				beatable.sort((a, b) => a.rank - b.rank);

@@ -142,7 +142,9 @@ export const trickyBehavior: PresetBehavior = {
 			if (hasDragon || hasAce) return true;
 		}
 
-		return false; // 불확실하면 안 부름
+		// 조건 미달 시 false가 아니라 null — false를 반환하면 기본 판단(손패 강도)이
+		// 통째로 무시되어 선언이 사실상 사라진다.
+		return null;
 	},
 
 	decideDragonGiftOverride(context, seat) {
