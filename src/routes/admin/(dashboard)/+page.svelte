@@ -7,8 +7,18 @@
     // 결과 알림은 레이아웃의 <AdminFeedback />가 렌더한다 — 화면마다 다시 만들지 않는다
     import { showToast, showAlert, reportResult } from '$lib/stores/adminFeedback';
 
-    export let data: PageData;
-    if (!data) throw new Error('Data is required');
+    let { data }: { data: PageData } = $props();
+
+    // 서버 데이터 파생 — $derived 는 const 라 사용처보다 먼저 선언해야 한다
+    const attendees = $derived(data.attendees as Attendee[]);
+    const allUsers = $derived((data as any).allUsers || []);
+    const games = $derived(data.games as GameSession[]);
+    const scheduledGames = $derived(data.scheduledGames as GameSession[]);
+    const savedMembers = $derived(data.savedMembers as SavedMember[]);
+
+    // 몇 점부터 예약이 막히는지 — 페널티 숫자는 이 값 없이는 의미를 알 수 없다
+    const penaltyThreshold = $derived(parseInt((data as any).settings?.penalty_threshold ?? '3') || 3);
+    const noShowLimitMinutes = $derived(parseInt((data as any).settings?.no_show_limit_minutes ?? '10') || 10);
 
     // SSE 실시간 연결 — 변경 신호 수신 시 서버 데이터 재로드
     // (SSE 데이터는 간소화 구조라 대시보드 전체 필드를 못 채우므로 invalidateAll 사용)
@@ -38,7 +48,7 @@
     }
 
     // 라이브 시계 — 카운트다운/요약 스트립이 SSE 이벤트 없이도 갱신되도록 30초마다 틱
-    let now = Date.now();
+    let now = $state(Date.now());
     let clockTimer: ReturnType<typeof setInterval> | null = null;
 
     onMount(() => {
@@ -110,7 +120,7 @@
      * 기존엔 옵션이 마우스 전용이라, 타이핑 후 Enter를 치면 옵션 선택이 아니라
      * 폼이 제출됐다. ArrowDown/Up으로 후보를 옮기고 Enter로 확정한다.
      */
-    let gameOptionIndex = -1;
+    let gameOptionIndex = $state(-1);
 
     function comboKeydown(e: KeyboardEvent, options: any[], select: (g: any) => void) {
         if (!dropdownOpen || options.length === 0) return;
@@ -133,7 +143,7 @@
     // 파괴적 액션 공통 확인 모달
     let confirmState:
         | { title: string; message: string; confirmLabel: string; danger: boolean; handle?: (opts: any) => Promise<void> }
-        | null = null;
+        | null = $state(null);
     let pendingForm: HTMLFormElement | null = null;
 
     function closeConfirm() {
@@ -193,17 +203,17 @@
         closeConfirm();
     }
 
-    let showModal = false;
-    let selectedGameName = '';
-    let selectedDuration = '';
-    let guestCount = 0;
+    let showModal = $state(false);
+    let selectedGameName = $state('');
+    let selectedDuration = $state('');
+    let guestCount = $state(0);
 
-    let selectedGameId = '';
+    let selectedGameId = $state('');
 
     // 새 게임 참여자 선택 (검색형 멀티셀렉트)
-    let selectedPlayerIds: number[] = [];
-    let playerSearch = '';
-    let showPlayingInPicker = false;
+    let selectedPlayerIds: number[] = $state([]);
+    let playerSearch = $state('');
+    let showPlayingInPicker = $state(false);
 
     // 페널티 부여 사유 (관리 시트) — 시트를 열 때마다 초기화된다
     const PENALTY_REASON_LABELS: Record<string, string> = {
@@ -211,7 +221,7 @@
         late: '지각',
         other: '기타'
     };
-    let penaltyReason = 'no_show';
+    let penaltyReason = $state('no_show');
 
     /** 페널티 결과를 운영자에게 되돌려준다. 임계에 도달한 순간만 모달로 멈춰 세운다. */
     function announcePenalty(d: any) {
@@ -226,11 +236,11 @@
     }
 
     // Remove Confirm Modal State
-    let removeModalVisible = false;
-    let removeTarget: Attendee | null = null;
+    let removeModalVisible = $state(false);
+    let removeTarget: Attendee | null = $state(null);
 
     // 참여자 관리 시트 (페널티 / 블랙리스트 / 게임 권한 / 퇴장)
-    let manageTarget: Attendee | null = null;
+    let manageTarget: Attendee | null = $state(null);
 
     function openManage(a: Attendee) {
         penaltyReason = 'no_show';
@@ -244,8 +254,8 @@
     }
 
     // End Game Modal State
-    let endGameModalVisible = false;
-    let selectedEndGame: GameSession | null = null;
+    let endGameModalVisible = $state(false);
+    let selectedEndGame: GameSession | null = $state(null);
 
     function openEndGameModal(game: GameSession) {
         selectedEndGame = game;
@@ -253,22 +263,22 @@
     }
 
     // Saved members toggle
-    let savedMembersOpen = false;
+    let savedMembersOpen = $state(false);
 
     // Game list + detail modal state
-    let showAllScheduled = false;
-    let showAllPlaying = false;
-    let selectedScheduledGame: GameSession | null = null;
-    let selectedPlayingGame: GameSession | null = null;
+    let showAllScheduled = $state(false);
+    let showAllPlaying = $state(false);
+    let selectedScheduledGame: GameSession | null = $state(null);
+    let selectedPlayingGame: GameSession | null = $state(null);
 
     // Participant search state (for game detail modals)
-    let participantSearch = '';
-    let participantSearchOpen = false;
-    let selectedParticipantId = '';
+    let participantSearch = $state('');
+    let participantSearchOpen = $state(false);
+    let selectedParticipantId = $state('');
 
-    $: filteredParticipants = (allUsers || []).filter((u: any) =>
+    const filteredParticipants = $derived((allUsers || []).filter((u: any) =>
         participantSearch.length > 0 && u.name.toLowerCase().includes(participantSearch.toLowerCase())
-    );
+    ));
 
     function resetParticipantSearch() {
         participantSearch = '';
@@ -295,11 +305,11 @@
     }
 
     // Scheduled Game Modal State
-    let showScheduledGameModal = false;
-    let scheduledGameName = '';
-    let scheduledAt = '';
-    let minPlayers = 2;
-    let maxPlayers = 4;
+    let showScheduledGameModal = $state(false);
+    let scheduledGameName = $state('');
+    let scheduledAt = $state('');
+    let minPlayers = $state(2);
+    let maxPlayers = $state(4);
 
     function openScheduledGameModal() {
         showScheduledGameModal = true;
@@ -320,9 +330,9 @@
         scheduledAt = `${year}-${month}-${day}T${hours}:${minutes}`;
     }
 
-    $: filteredScheduledGames = (data.allGames as any[])?.filter((g: any) => 
+    const filteredScheduledGames = $derived((data.allGames as any[])?.filter((g: any) => 
         g.name.toLowerCase().includes(scheduledGameName.toLowerCase())
-    ) || [];
+    ) || []);
 
     function selectScheduledGame(game: any) {
         scheduledGameName = game.name;
@@ -332,13 +342,14 @@
     }
 
     // Custom Dropdown State
-    let dropdownOpen = false;
-    let searchInput: HTMLInputElement;
+    let dropdownOpen = $state(false);
+    let searchInput: HTMLInputElement | undefined = $state();
 
     function toggleDropdown() {
         dropdownOpen = !dropdownOpen;
         if (dropdownOpen && searchInput) {
-            setTimeout(() => searchInput.focus(), 0);
+            const el = searchInput;
+            setTimeout(() => el.focus(), 0);
         }
     }
 
@@ -361,11 +372,12 @@
         }
     }
 
-    $: filteredGames = (data.allGames as any[])?.filter((g: any) => 
+    const filteredGames = $derived((data.allGames as any[])?.filter((g: any) => 
         g.name.toLowerCase().includes(selectedGameName.toLowerCase())
-    ) || [];
+    ) || []);
 
-    $: {
+    // 게임 이름을 고르면 id와 기본 진행시간을 따라 채운다 (부수효과)
+    $effect(() => {
         const libraryGame = (data.allGames as any[])?.find((g: any) => g.name === selectedGameName);
         const historyGame = (data.savedGameNames as any[]).find((g: any) => g.game_name === selectedGameName);
         
@@ -378,7 +390,7 @@
         } else if (!libraryGame) {
             selectedGameId = '';
         }
-    }
+    });
 
     function getTimeRemaining(endTime: string, nowTs: number = Date.now()) {
         const end = new Date(endTime).getTime();
@@ -443,21 +455,9 @@
         is_blacklisted: boolean;
     }
 
-    let attendees: Attendee[];
-    let games: GameSession[];
-    let scheduledGames: GameSession[];
-    let savedMembers: SavedMember[];
 
     const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
 
-    $: attendees = data.attendees as Attendee[];
-    $: allUsers = (data as any).allUsers || [];
-    $: games = data.games as GameSession[];
-    $: scheduledGames = data.scheduledGames as GameSession[];
-    $: savedMembers = data.savedMembers as SavedMember[];
-    // 몇 점부터 예약이 막히는지 — 페널티 숫자는 이 값 없이는 의미를 알 수 없다
-    $: penaltyThreshold = parseInt((data as any).settings?.penalty_threshold ?? '3') || 3;
-    $: noShowLimitMinutes = parseInt((data as any).settings?.no_show_limit_minutes ?? '10') || 10;
 
     /**
      * 대기·승인 큐 — 게임별로 묶는다.
@@ -468,7 +468,7 @@
      * 자동 체크인이 방 재실 여부를 채우므로 attendee_status를 신뢰할 수 있다.
      * 시스템은 판정만 하지 않고, 운영자에게 시점을 알린다.
      */
-    $: queueGroups = (() => {
+    const queueGroups = $derived((() => {
         const rows = ((data as any).reservations || []) as any[];
         type QueueGroup = {
             sessionId: number;
@@ -506,15 +506,15 @@
             g.rows.push({ ...r, overdue: noShowAfter !== null && now > noShowAfter });
         }
         return Array.from(bySession.values());
-    })();
+    })());
 
-    $: queueTotal = queueGroups.reduce((n, g) => n + g.rows.length, 0);
-    $: approvalCount = queueGroups.reduce((n, g) => n + g.rows.filter((r: any) => r.status === 'pending_approval').length, 0);
-    $: overdueCount = queueGroups.reduce((n, g) => n + g.rows.filter((r: any) => r.overdue).length, 0);
+    const queueTotal = $derived(queueGroups.reduce((n, g) => n + g.rows.length, 0));
+    const approvalCount = $derived(queueGroups.reduce((n, g) => n + g.rows.filter((r: any) => r.status === 'pending_approval').length, 0));
+    const overdueCount = $derived(queueGroups.reduce((n, g) => n + g.rows.filter((r: any) => r.overdue).length, 0));
     // 노쇼 후보는 큐 상단으로 — 개입이 필요한 것부터 본다
-    $: queueGroupsSorted = [...queueGroups].sort(
+    const queueGroupsSorted = $derived([...queueGroups].sort(
         (a, b) => Number(b.rows.some((r: any) => r.overdue)) - Number(a.rows.some((r: any) => r.overdue))
-    );
+    ));
 
     const QUEUE_STATUS: Record<string, string> = {
         pending_approval: '승인 대기',
@@ -524,45 +524,45 @@
     };
 
     // 관리 시트가 열려 있으면 최신 참여자 데이터로 동기화
-    $: manageView = manageTarget
+    const manageView = $derived(manageTarget
         ? ((attendees || []).find((x) => x.id === manageTarget!.id) as Attendee | undefined) ?? manageTarget
-        : null;
+        : null);
 
     // 방 현황 요약 스트립
-    $: playingCount = (games || []).length;
-    $: attendeeCount = (attendees || []).length;
+    const playingCount = $derived((games || []).length);
+    const attendeeCount = $derived((attendees || []).length);
     // 종료 임박 순 정렬 — "진행 중인 게임" 목록에서 끝나가는 게임을 위로
-    $: playingSorted = [...(games || [])].sort(
+    const playingSorted = $derived([...(games || [])].sort(
         (a, b) => new Date(a.end_time).getTime() - new Date(b.end_time).getTime()
-    );
-    $: nextGameEndTs = (games || []).length
+    ));
+    const nextGameEndTs = $derived((games || []).length
         ? Math.min(...(games as GameSession[]).map((g) => new Date(g.end_time).getTime()))
-        : null;
-    $: nextEndMins = nextGameEndTs !== null ? Math.round((nextGameEndTs - now) / 60000) : null;
+        : null);
+    const nextEndMins = $derived(nextGameEndTs !== null ? Math.round((nextGameEndTs - now) / 60000) : null);
 
     // 새 게임 참여자 피커
-    $: availableAttendees = (attendees || []).filter((a: Attendee) => !a.is_playing);
-    $: pickerResults = (attendees || []).filter((a: Attendee) => {
+    const availableAttendees = $derived((attendees || []).filter((a: Attendee) => !a.is_playing));
+    const pickerResults = $derived((attendees || []).filter((a: Attendee) => {
         if (!showPlayingInPicker && a.is_playing) return false;
         if (playerSearch && !a.name.toLowerCase().includes(playerSearch.toLowerCase())) return false;
         return true;
-    });
-    $: selectedPlayers = (attendees || []).filter((a: Attendee) => selectedPlayerIds.includes(a.id));
+    }));
+    const selectedPlayers = $derived((attendees || []).filter((a: Attendee) => selectedPlayerIds.includes(a.id)));
 
     // 오늘 갈 예정 merge
-    $: checkedInIds = new Set((attendees || []).map((a: Attendee) => a.id));
-    $: visitPlanIds = new Set(((data as any).dailyVisitPlans || []).map((p: any) => p.attendee_id));
-    $: scheduledVisitors = ((data as any).todayScheduledParticipants || []).filter((p: any) =>
+    const checkedInIds = $derived(new Set((attendees || []).map((a: Attendee) => a.id)));
+    const visitPlanIds = $derived(new Set(((data as any).dailyVisitPlans || []).map((p: any) => p.attendee_id)));
+    const scheduledVisitors = $derived(((data as any).todayScheduledParticipants || []).filter((p: any) =>
         !checkedInIds.has(p.attendee_id) && !visitPlanIds.has(p.attendee_id)
-    );
-    $: mergedVisitPlans = [
+    ));
+    const mergedVisitPlans = $derived([
         ...((data as any).dailyVisitPlans || []),
         ...scheduledVisitors.map((p: any) => ({
             attendee_id: p.attendee_id, name: p.name,
             planned_time: p.planned_time, title_name: p.title_name,
             is_party: p.is_party
         }))
-    ].filter((p: any) => !checkedInIds.has(p.attendee_id));
+    ].filter((p: any) => !checkedInIds.has(p.attendee_id)));
 
     function formatVisitTime(time: string): string {
         if (!time) return '';

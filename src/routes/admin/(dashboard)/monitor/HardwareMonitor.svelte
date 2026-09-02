@@ -56,15 +56,15 @@
 		autoLogs?: AutoLog[];
 	}
 
-	let metrics: Metrics | null = null;
-	let connected = false;
+	let metrics: Metrics | null = $state(null);
+	let connected = $state(false);
 	let eventSource: EventSource | null = null;
-	let history: MetricsSnapshot[] = [];
-	let autoLogs: AutoLog[] = [];
+	let history: MetricsSnapshot[] = $state([]);
+	let autoLogs: AutoLog[] = $state([]);
 
 	// Modal state
-	let showMemModal = false;
-	let showSseModal = false;
+	let showMemModal = $state(false);
+	let showSseModal = $state(false);
 
 	function formatBytes(bytes: number): string {
 		if (bytes < 1024) return bytes + ' B';
@@ -182,12 +182,12 @@
 		}));
 	}
 
-	$: cpuData = history.map(h => h.cpu);
-	$: memData = history.map(h => h.memPercent);
-	$: sseData = history.map(h => h.sse);
-	$: sseMax = Math.max(5, ...sseData);
-	$: dbData = history.map(h => h.db);
-	$: dbMax = Math.max(5, ...dbData);
+	const cpuData = $derived(history.map((h) => h.cpu));
+	const memData = $derived(history.map((h) => h.memPercent));
+	const sseData = $derived(history.map((h) => h.sse));
+	const sseMax = $derived(Math.max(5, ...sseData));
+	const dbData = $derived(history.map((h) => h.db));
+	const dbMax = $derived(Math.max(5, ...dbData));
 
 	let pollTimer: ReturnType<typeof setInterval> | null = null;
 	let destroyed = false;
@@ -394,7 +394,7 @@
 			</div>
 
 			<!-- 2. RAM (clickable) -->
-			<button class="chart-card clickable" on:click={() => showMemModal = true}>
+			<button class="chart-card clickable" onclick={() => showMemModal = true}>
 				<div class="chart-header">
 					<div class="chart-title">시스템 메모리 <span class="tap-hint">상세보기</span></div>
 					<div class="chart-value" style="color: {memColor(memPercent(metrics))}">{memPercent(metrics)}<span class="chart-unit">%</span></div>
@@ -413,7 +413,7 @@
 			</button>
 
 			<!-- 3. SSE (clickable) -->
-			<button class="chart-card clickable" on:click={() => showSseModal = true}>
+			<button class="chart-card clickable" onclick={() => showSseModal = true}>
 				<div class="chart-header">
 					<div class="chart-title">SSE 활성 스트림 <span class="tap-hint">상세보기</span></div>
 					<div class="chart-value" style="color: #ff9800">{metrics.connections.sse}<span class="chart-unit">개</span></div>
@@ -431,7 +431,7 @@
 			</button>
 
 			<!-- 4. DB 커넥션 (clickable) -->
-			<button class="chart-card clickable" on:click={() => showSseModal = true}>
+			<button class="chart-card clickable" onclick={() => showSseModal = true}>
 				<div class="chart-header">
 					<div class="chart-title">DB 커넥션 수 <span class="tap-hint">상세보기</span></div>
 					<div class="chart-value" style="color: {dbStatusColor(metrics)}">{metrics.db.totalCount}<span class="chart-unit">개</span></div>
@@ -485,15 +485,15 @@
 	<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
 	<div 
 		class="modal-backdrop" 
-		on:click={() => showMemModal = false}  
+		onclick={() => showMemModal = false}  
 		role="button" 
 		tabindex="-1"
 		aria-label="모달 닫기"
 	>
-		<div class="modal" on:click|stopPropagation on:keydown|stopPropagation role="dialog" aria-label="메모리 상세" tabindex="-1">
+		<div class="modal" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="dialog" aria-label="메모리 상세" tabindex="-1">
 			<div class="modal-header">
 				<h3>메모리 상세</h3>
-				<button class="modal-close" on:click={() => showMemModal = false}>&times;</button>
+				<button class="modal-close" onclick={() => showMemModal = false}>&times;</button>
 			</div>
 			<div class="detail-list">
 				<div class="detail-row">
@@ -535,15 +535,15 @@
 	<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
 	<div 
 		class="modal-backdrop" 
-		on:click={() => showSseModal = false}  
+		onclick={() => showSseModal = false}  
 		role="button" 
 		tabindex="-1"
 		aria-label="모달 닫기"
 	>
-		<div class="modal" on:click|stopPropagation on:keydown|stopPropagation role="dialog" aria-label="연결 상세" tabindex="-1">
+		<div class="modal" onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="dialog" aria-label="연결 상세" tabindex="-1">
 			<div class="modal-header">
 				<h3>연결 상세</h3>
-				<button class="modal-close" on:click={() => showSseModal = false}>&times;</button>
+				<button class="modal-close" onclick={() => showSseModal = false}>&times;</button>
 			</div>
 			<div class="detail-list">
 				<div class="detail-row">

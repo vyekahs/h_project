@@ -17,12 +17,12 @@
 {#if $alertMessage}
 	<!-- 백드롭은 편의용 클릭 영역. 키보드 경로는 Escape(trapFocus)와 확인 버튼이 담당한다. -->
 	<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
-	<div class="alert-backdrop" on:click={dismissAlert} role="presentation">
+	<div class="alert-backdrop" onclick={dismissAlert} role="presentation">
 		<div
 			class="alert-card alert-{$alertKind}"
 			use:trapFocus={dismissAlert}
-			on:click|stopPropagation
-			on:keydown|stopPropagation
+			onclick={(e) => e.stopPropagation()}
+			onkeydown={(e) => e.stopPropagation()}
 			role="alertdialog"
 			aria-modal="true"
 			aria-labelledby="admin-alert-title"
@@ -33,7 +33,7 @@
 			</h3>
 			<p>{$alertMessage}</p>
 			<div class="alert-actions">
-				<button type="button" class="alert-confirm" data-autofocus on:click={dismissAlert}>확인</button>
+				<button type="button" class="alert-confirm" data-autofocus onclick={dismissAlert}>확인</button>
 			</div>
 		</div>
 	</div>

@@ -1,6 +1,6 @@
 <script lang="ts">
     import { enhance } from '$app/forms';
-    export let form;
+    let { form }: { form: any } = $props();
 </script>
 
 <div class="login-container">

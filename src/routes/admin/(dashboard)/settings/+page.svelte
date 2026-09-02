@@ -2,40 +2,22 @@
     import { enhance } from '$app/forms';
     import type { PageData } from './$types';
     import { trapFocus } from '$lib/actions/modal';
+    // 결과 알림은 레이아웃의 <AdminFeedback />가 렌더한다
+    import { reportResult } from '$lib/stores/adminFeedback';
 
-    export let data: PageData;
+    let { data }: { data: PageData } = $props();
 
     const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
 
-    let toast = '';
-    let toastTimer: ReturnType<typeof setTimeout> | null = null;
-    function say(msg: string) {
-        toast = msg;
-        if (toastTimer) clearTimeout(toastTimer);
-        toastTimer = setTimeout(() => (toast = ''), 4000);
-    }
 
-    /** 실패는 화면에 남기고 성공은 지나가게 한다 */
-    function report(result: any, ok?: string) {
-        if (result.type === 'failure') {
-            say(result.data?.error || '요청을 처리하지 못했습니다.');
-            return true;
-        }
-        if (result.type === 'error') {
-            say(result.error?.message || '요청을 처리하지 못했습니다.');
-            return true;
-        }
-        if (ok) say(ok);
-        return false;
-    }
 
     // 반복 일정 등록 폼
-    let newGameName = '';
-    let newDayOfWeek = '';
-    let newTime = '19:00';
-    let newMin = 2;
-    let newMax = 4;
-    let newShowOnMain = false;
+    let newGameName = $state('');
+    let newDayOfWeek = $state('');
+    let newTime = $state('19:00');
+    let newMin = $state(2);
+    let newMax = $state(4);
+    let newShowOnMain = $state(false);
 
     function resetRecurringForm() {
         newGameName = '';
@@ -46,7 +28,7 @@
         newShowOnMain = false;
     }
 
-    let confirmDelete: { id: number; name: string } | null = null;
+    let confirmDelete: { id: number; name: string } | null = $state(null);
 </script>
 
 <div class="container">
@@ -124,7 +106,7 @@
                         method="POST"
                         action="?/clearNotice"
                         use:enhance={() => async ({ result, update }) => {
-                            report(result, '공지를 내렸습니다.');
+                            reportResult(result, '공지를 내렸습니다.');
                             await update();
                         }}
                     >
@@ -139,7 +121,7 @@
                 action="?/updateNotice"
                 class="notice-form"
                 use:enhance={() => async ({ result, update }) => {
-                    report(result, '공지를 게시했습니다.');
+                    reportResult(result, '공지를 게시했습니다.');
                     await update();
                 }}
             >
@@ -162,7 +144,7 @@
                 action="?/createRecurringSchedule"
                 class="recurring-form"
                 use:enhance={() => async ({ result, update }) => {
-                    if (!report(result, `"${newGameName}" 반복 일정을 등록했습니다.`)) resetRecurringForm();
+                    if (!reportResult(result, `"${newGameName}" 반복 일정을 등록했습니다.`)) resetRecurringForm();
                     await update();
                 }}
             >
@@ -218,7 +200,7 @@
                             </div>
                             <div class="ri-actions">
                                 <form method="POST" action="?/skipRecurringWeek" use:enhance={() => async ({ result, update }) => {
-                                    report(result, (result as any).data?.message);
+                                    reportResult(result, (result as any).data?.message);
                                     await update();
                                 }}>
                                     <input type="hidden" name="scheduleId" value={sch.id} />
@@ -227,7 +209,7 @@
                                     </button>
                                 </form>
                                 <form method="POST" action="?/toggleRecurringActive" use:enhance={() => async ({ result, update }) => {
-                                    report(result, sch.is_active ? '중지했습니다.' : '다시 활성화했습니다.');
+                                    reportResult(result, sch.is_active ? '중지했습니다.' : '다시 활성화했습니다.');
                                     await update();
                                 }}>
                                     <input type="hidden" name="scheduleId" value={sch.id} />
@@ -235,7 +217,7 @@
                                         {sch.is_active ? '중지' : '활성화'}
                                     </button>
                                 </form>
-                                <button type="button" class="btn-role is-destructive" on:click={() => (confirmDelete = { id: sch.id, name: sch.game_name })}>
+                                <button type="button" class="btn-role is-destructive" onclick={() => (confirmDelete = { id: sch.id, name: sch.game_name })}>
                                     삭제
                                 </button>
                             </div>
@@ -261,19 +243,15 @@
 </div>
 
 <!-- 결과 알림 — 성공은 지나가고 실패는 남는다 -->
-<div class="toast-region" role="status" aria-live="polite">
-    {#if toast}<div class="toast">{toast}</div>{/if}
-</div>
-
 {#if confirmDelete}
     <!-- 백드롭은 편의용 클릭 영역. 키보드 경로는 Escape(trapFocus)와 취소 버튼이 담당한다. -->
     <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
-    <div class="modal-backdrop" on:click={() => (confirmDelete = null)} role="presentation">
+    <div class="modal-backdrop" onclick={() => (confirmDelete = null)} role="presentation">
         <div
             class="modal-card"
             use:trapFocus={() => (confirmDelete = null)}
-            on:click|stopPropagation
-            on:keydown|stopPropagation
+            onclick={(e) => e.stopPropagation()}
+            onkeydown={(e) => e.stopPropagation()}
             role="alertdialog"
             aria-modal="true"
             tabindex="-1"
@@ -281,9 +259,9 @@
             <h3>반복 일정 삭제</h3>
             <p>"{confirmDelete.name}" 매주 반복 일정을 삭제합니다. 이미 만들어진 예정 게임은 남고, 앞으로 자동 생성되지 않습니다.</p>
             <div class="modal-actions">
-                <button type="button" class="btn-role is-quiet" data-autofocus on:click={() => (confirmDelete = null)}>돌아가기</button>
+                <button type="button" class="btn-role is-quiet" data-autofocus onclick={() => (confirmDelete = null)}>돌아가기</button>
                 <form method="POST" action="?/deleteRecurringSchedule" use:enhance={() => async ({ result, update }) => {
-                    report(result, '반복 일정을 삭제했습니다.');
+                    reportResult(result, '반복 일정을 삭제했습니다.');
                     confirmDelete = null;
                     await update();
                 }}>
@@ -499,28 +477,7 @@
         align-items: center;
         gap: var(--space-2);
     }
-    .toast-region {
-        position: fixed;
-        left: 50%;
-        bottom: var(--space-5);
-        transform: translateX(-50%);
-        z-index: 900;
-        pointer-events: none;
-        width: min(28rem, calc(100vw - 2rem));
-        display: flex;
-        justify-content: center;
-    }
-    .toast {
-        background: var(--text-darker);
-        color: var(--bg-primary);
-        padding: 0.7rem 1.1rem;
-        border-radius: var(--radius-control);
-        font-size: var(--text-sm);
-        text-align: center;
-        box-shadow: var(--shadow-lg);
-    }
     @media (max-width: 768px) {
-        .toast-region { bottom: 5rem; }
         .rf-split { grid-template-columns: 1fr 1fr; }
     }
 

@@ -1,26 +1,20 @@
 <script lang="ts">
     import { enhance } from '$app/forms';
     import { trapFocus } from '$lib/actions/modal';
+    // 결과 알림은 레이아웃의 <AdminFeedback />가 렌더한다
+    import { showAlert, showToast } from '$lib/stores/adminFeedback';
 
-    export let data: any;
+    let { data }: { data: any } = $props();
 
-    let showGrantModal = false;
-    let selectedUserId = '';
-    let seasonPassStartDate = new Date().toISOString().split('T')[0];
-
-    let alertVisible = false;
-    let alertMessage = '';
-
-    function showAlert(msg: string) {
-        alertMessage = msg;
-        alertVisible = true;
-    }
+    let showGrantModal = $state(false);
+    let selectedUserId = $state('');
+    let seasonPassStartDate = $state(new Date().toISOString().split('T')[0]);
 
     /**
      * 파괴적 액션 확인. 정기권 해지/삭제는 되돌릴 수 없고
      * 재발급해도 원래 만료일은 복구되지 않으므로 반드시 한 번 묻는다.
      */
-    let confirmState: { title: string; message: string; confirmLabel: string } | null = null;
+    let confirmState: { title: string; message: string; confirmLabel: string } | null = $state(null);
     let pendingForm: HTMLFormElement | null = null;
 
     function askConfirm(e: Event, title: string, message: string, confirmLabel: string) {
@@ -62,14 +56,14 @@
         });
     }
 
-    $: activeHolders = (data.passHolders || []).filter((h: any) => !isExpired(h.season_pass_expires_at));
-    $: expiredHolders = (data.passHolders || []).filter((h: any) => isExpired(h.season_pass_expires_at));
+    const activeHolders = $derived((data.passHolders || []).filter((h: any) => !isExpired(h.season_pass_expires_at)));
+    const expiredHolders = $derived((data.passHolders || []).filter((h: any) => isExpired(h.season_pass_expires_at)));
 </script>
 
 <div class="page">
     <div class="page-header">
         <h1>정기권 관리</h1>
-        <button class="btn-primary" on:click={() => { showGrantModal = true; selectedUserId = ''; seasonPassStartDate = new Date().toISOString().split('T')[0]; }}>
+        <button class="btn-primary" onclick={() => { showGrantModal = true; selectedUserId = ''; seasonPassStartDate = new Date().toISOString().split('T')[0]; }}>
             + 정기권 발급
         </button>
     </div>
@@ -124,7 +118,7 @@
                             <form
                                 method="POST"
                                 action="?/cancelPass"
-                                on:submit={(e) =>
+                                onsubmit={(e) =>
                                     askConfirm(
                                         e,
                                         '정기권 해지',
@@ -134,7 +128,7 @@
                                 use:enhance={() => {
                                     return async ({ result, update }) => {
                                         if (result.type === 'failure') showAlert((result.data as any)?.error || '요청을 처리하지 못했습니다. 잠시 후 다시 시도해주세요.');
-                                        else showAlert(`${holder.name}님의 정기권을 해지했습니다.`);
+                                        else showToast(`${holder.name}님의 정기권을 해지했습니다.`);
                                         await update();
                                     };
                                 }}
@@ -193,12 +187,12 @@
     <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
     <div 
         class="modal-backdrop" 
-        on:click={() => showGrantModal = false}
+        onclick={() => showGrantModal = false}
         role="button"
         tabindex="-1"
         aria-label="모달 닫기"
     >
-        <div class="modal-content" use:trapFocus={() => (showGrantModal = false)} on:click|stopPropagation on:keydown|stopPropagation role="dialog" aria-modal="true" tabindex="-1">
+        <div class="modal-content" use:trapFocus={() => (showGrantModal = false)} onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="dialog" aria-modal="true" tabindex="-1">
             <h3>정기권 발급</h3>
             <p class="modal-desc">시작일을 선택하면 30일간 유효한 정기권이 발급됩니다.</p>
             <form method="POST" action="?/grantPass" use:enhance={() => {
@@ -225,7 +219,7 @@
                     <input type="date" id="startDate" name="startDate" bind:value={seasonPassStartDate} required />
                 </div>
                 <div class="modal-actions">
-                    <button type="button" class="btn-secondary" on:click={() => showGrantModal = false}>취소</button>
+                    <button type="button" class="btn-secondary" onclick={() => showGrantModal = false}>취소</button>
                     <button type="submit" class="btn-primary">발급하기 (30일)</button>
                 </div>
             </form>
@@ -236,12 +230,12 @@
 {#if confirmState}
     <!-- 백드롭은 편의용 클릭 영역. 키보드 경로는 모달의 Escape(trapFocus)와 닫기 버튼이 담당한다. -->
     <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
-    <div class="modal-backdrop confirm-layer" on:click={closeConfirm} role="presentation">
+    <div class="modal-backdrop confirm-layer" onclick={closeConfirm} role="presentation">
         <div
             class="modal-content"
             use:trapFocus={closeConfirm}
-            on:click|stopPropagation
-            on:keydown|stopPropagation
+            onclick={(e) => e.stopPropagation()}
+            onkeydown={(e) => e.stopPropagation()}
             role="alertdialog"
             aria-modal="true"
             tabindex="-1"
@@ -249,31 +243,13 @@
             <h3>{confirmState.title}</h3>
             <p class="modal-desc">{confirmState.message}</p>
             <div class="modal-actions">
-                <button type="button" class="btn-secondary" data-autofocus on:click={closeConfirm}>돌아가기</button>
-                <button type="button" class="btn-danger" on:click={runConfirm}>{confirmState.confirmLabel}</button>
+                <button type="button" class="btn-secondary" data-autofocus onclick={closeConfirm}>돌아가기</button>
+                <button type="button" class="btn-danger" onclick={runConfirm}>{confirmState.confirmLabel}</button>
             </div>
         </div>
     </div>
 {/if}
 
-{#if alertVisible}
-    <!-- 백드롭은 편의용 클릭 영역. 키보드 경로는 모달의 Escape(trapFocus)와 닫기 버튼이 담당한다. -->
-    <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
-    <div 
-        class="modal-backdrop" 
-        on:click={() => alertVisible = false}
-        role="button"
-        tabindex="-1"
-        aria-label="알림 닫기"
-    >
-        <div class="modal-content alert-modal" use:trapFocus={() => (alertVisible = false)} on:click|stopPropagation on:keydown|stopPropagation role="alertdialog" aria-modal="true" tabindex="-1">
-            <p>{alertMessage}</p>
-            <div class="modal-actions">
-                <button class="btn-primary" data-autofocus on:click={() => alertVisible = false}>확인</button>
-            </div>
-        </div>
-    </div>
-{/if}
 
 <style>
     .page { max-width: 800px; }
@@ -398,7 +374,6 @@
         max-width: 400px;
     }
     .modal-content h3 { margin: 0 0 1rem 0; }
-    .alert-modal { text-align: center; }
     .modal-actions {
         display: flex;
         justify-content: flex-end;

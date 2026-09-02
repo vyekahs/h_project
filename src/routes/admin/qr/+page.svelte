@@ -1,7 +1,7 @@
 <script lang="ts">
     import { invalidateAll } from '$app/navigation';
 
-    export let data;
+    let { data }: { data: any } = $props();
 </script>
 
 <div class="qr-container">

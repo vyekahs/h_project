@@ -1,7 +1,7 @@
 <script lang="ts">
     import type { PageData } from './$types';
     import { trapFocus } from '$lib/actions/modal';
-    export let data: PageData;
+    let { data }: { data: PageData } = $props();
 
     /** 분 단위 수치를 사람이 읽는 형태로 — 799분은 읽히지 않는다 */
     function formatDuration(mins: number | string): string {
@@ -13,17 +13,17 @@
     }
 
     // Modal states
-    let showDailyTrendModal = false;
-    let showTopVisitorsModal = false;
-    let showPopularGamesModal = false;
-    let showPeakHoursModal = false;
+    let showDailyTrendModal = $state(false);
+    let showTopVisitorsModal = $state(false);
+    let showPopularGamesModal = $state(false);
+    let showPeakHoursModal = $state(false);
 
     // Helper for chart scaling
-    $: maxGame = Math.max(...data.popularGames.map((g: any) => parseInt(g.count)), 1);
-    $: maxDailyTrend = Math.max(...data.dailyTrend.map((d: any) => parseInt(d.count)), 1);
-    $: maxHourly = Math.max(...data.peakHours.map((h: any) => parseInt(h.count)), 1);
-    $: maxVisitor = Math.max(...(data.userStats?.topVisitors || []).map((v: any) => parseInt(v.visit_count)), 1);
-    $: activeRate = data.userStats?.totalUsers > 0 ? Math.round((data.userStats.activeUsers / data.userStats.totalUsers) * 100) : 0;
+    const maxGame = $derived(Math.max(...data.popularGames.map((g: any) => parseInt(g.count)), 1));
+    const maxDailyTrend = $derived(Math.max(...data.dailyTrend.map((d: any) => parseInt(d.count)), 1));
+    const maxHourly = $derived(Math.max(...data.peakHours.map((h: any) => parseInt(h.count)), 1));
+    const maxVisitor = $derived(Math.max(...(data.userStats?.topVisitors || []).map((v: any) => parseInt(v.visit_count)), 1));
+    const activeRate = $derived(data.userStats?.totalUsers > 0 ? Math.round((data.userStats.activeUsers / data.userStats.totalUsers) * 100) : 0);
 </script>
 
 <div class="stats-page">
@@ -41,7 +41,7 @@
             <div class="value">{data.kpis.totalVisits}</div>
             <div class="label">누적 방문 횟수</div>
         </div>
-        <button type="button" class="kpi-card clickable" on:click={() => showTopVisitorsModal = true}>
+        <button type="button" class="kpi-card clickable" onclick={() => showTopVisitorsModal = true}>
             <h3>등록 멤버</h3>
             <div class="value">{data.kpis.totalMembers}</div>
             <div class="label">이번 달 방문 Top 10 보기</div>
@@ -54,7 +54,7 @@
     </div>
 
     <div class="kpi-extra-actions">
-        <button type="button" class="btn-drilldown" on:click={() => showPopularGamesModal = true}>
+        <button type="button" class="btn-drilldown" onclick={() => showPopularGamesModal = true}>
             인기 게임 Top 5 보기
         </button>
     </div>
@@ -69,12 +69,12 @@
     </div>
 
     <div class="kpi-grid kpi-grid-4">
-        <button type="button" class="kpi-card clickable" on:click={() => showPeakHoursModal = true}>
+        <button type="button" class="kpi-card clickable" onclick={() => showPeakHoursModal = true}>
             <h3>평균 주간 방문</h3>
             <div class="value">{data.userStats.avgWeeklyVisits}<span class="unit">일</span></div>
             <div class="label">1인당 주 평균 방문 일수 · 시간대별 분포 보기</div>
         </button>
-        <button type="button" class="kpi-card clickable" on:click={() => showDailyTrendModal = true}>
+        <button type="button" class="kpi-card clickable" onclick={() => showDailyTrendModal = true}>
             <h3>평균 월간 방문</h3>
             <div class="value">{data.userStats.avgMonthlyVisits}<span class="unit">일</span></div>
             <div class="label">1인당 월 평균 방문 일수 · 최근 30일 추이 보기</div>
@@ -98,15 +98,15 @@
     <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
     <div 
         class="modal-backdrop" 
-        on:click={() => showPeakHoursModal = false}
+        onclick={() => showPeakHoursModal = false}
         role="button"
         tabindex="-1"
         aria-label="모달 닫기"
     >
-        <div class="modal-content" use:trapFocus={() => (showPeakHoursModal = false)} on:click|stopPropagation on:keydown|stopPropagation role="dialog" aria-modal="true" tabindex="-1">
+        <div class="modal-content" use:trapFocus={() => (showPeakHoursModal = false)} onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="dialog" aria-modal="true" tabindex="-1">
             <div class="modal-header">
                 <h3>시간대별 방문 (혼잡도)</h3>
-                <button class="modal-close" on:click={() => showPeakHoursModal = false}>&times;</button>
+                <button class="modal-close" onclick={() => showPeakHoursModal = false}>&times;</button>
             </div>
             <div class="modal-body">
                 <div class="chart-container bar-chart">
@@ -130,15 +130,15 @@
     <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
     <div 
         class="modal-backdrop" 
-        on:click={() => showDailyTrendModal = false}
+        onclick={() => showDailyTrendModal = false}
         role="button"
         tabindex="-1"
         aria-label="모달 닫기"
     >
-        <div class="modal-content" use:trapFocus={() => (showDailyTrendModal = false)} on:click|stopPropagation on:keydown|stopPropagation role="dialog" aria-modal="true" tabindex="-1">
+        <div class="modal-content" use:trapFocus={() => (showDailyTrendModal = false)} onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="dialog" aria-modal="true" tabindex="-1">
             <div class="modal-header">
                 <h3>최근 30일 방문자 추이</h3>
-                <button class="modal-close" on:click={() => showDailyTrendModal = false}>&times;</button>
+                <button class="modal-close" onclick={() => showDailyTrendModal = false}>&times;</button>
             </div>
             <div class="modal-body">
                 <div class="chart-container line-chart">
@@ -190,15 +190,15 @@
     <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
     <div 
         class="modal-backdrop" 
-        on:click={() => showTopVisitorsModal = false}
+        onclick={() => showTopVisitorsModal = false}
         role="button"
         tabindex="-1"
         aria-label="모달 닫기"
     >
-        <div class="modal-content" use:trapFocus={() => (showTopVisitorsModal = false)} on:click|stopPropagation on:keydown|stopPropagation role="dialog" aria-modal="true" tabindex="-1">
+        <div class="modal-content" use:trapFocus={() => (showTopVisitorsModal = false)} onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="dialog" aria-modal="true" tabindex="-1">
             <div class="modal-header">
                 <h3>이번 달 Top 10 방문자</h3>
-                <button class="modal-close" on:click={() => showTopVisitorsModal = false}>&times;</button>
+                <button class="modal-close" onclick={() => showTopVisitorsModal = false}>&times;</button>
             </div>
             <div class="modal-body">
                 <div class="ranking-list">
@@ -229,15 +229,15 @@
     <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
     <div 
         class="modal-backdrop" 
-        on:click={() => showPopularGamesModal = false}
+        onclick={() => showPopularGamesModal = false}
         role="button"
         tabindex="-1"
         aria-label="모달 닫기"
     >
-        <div class="modal-content" use:trapFocus={() => (showPopularGamesModal = false)} on:click|stopPropagation on:keydown|stopPropagation role="dialog" aria-modal="true" tabindex="-1">
+        <div class="modal-content" use:trapFocus={() => (showPopularGamesModal = false)} onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="dialog" aria-modal="true" tabindex="-1">
             <div class="modal-header">
                 <h3>인기 게임 Top 5</h3>
-                <button class="modal-close" on:click={() => showPopularGamesModal = false}>&times;</button>
+                <button class="modal-close" onclick={() => showPopularGamesModal = false}>&times;</button>
             </div>
             <div class="modal-body">
                 <div class="ranking-list">

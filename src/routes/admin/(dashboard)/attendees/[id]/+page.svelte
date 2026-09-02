@@ -2,33 +2,45 @@
     import type { PageData } from './$types';
     
     import { enhance } from '$app/forms';
-    export let data: PageData;
-    export let form;
+    import { trapFocus } from '$lib/actions/modal';
+    // 결과 알림은 레이아웃의 <AdminFeedback />가 렌더한다
+    import { showToast, reportResult } from '$lib/stores/adminFeedback';
 
-    let activeTab = 'history'; // 'history' | 'record' | 'visits' | 'account' | 'season_pass'
+    let { data, form }: { data: PageData; form: any } = $props();
+
+    let activeTab = $state('history'); // 'history' | 'record' | 'visits' | 'account' | 'season_pass'
 
     const PENALTY_REASON: Record<string, string> = { no_show: '노쇼', late: '지각', other: '기타', revoke: '취소' };
     const RES_STATUS: Record<string, string> = { pending_approval: '승인 대기', waitlisted: '대기', confirmed: '확정', pending: '신청' };
-    let viewMode = 'list'; // 'list' | 'calendar'
+    let viewMode = $state('list'); // 'list' | 'calendar'
     
     // Season Pass Logic
-    let showSeasonPassModal = false;
-    let seasonPassStartDate = new Date().toISOString().split('T')[0];
+    let showSeasonPassModal = $state(false);
+    /** 정기권 취소는 남은 기간이 사라지고 재발급해도 복구되지 않는다 — 반드시 한 번 묻는다 */
+    let confirmCancelPass = $state(false);
+    let seasonPassStartDate = $state(new Date().toISOString().split('T')[0]);
 
-    $: activeSeasonPass = data.attendee.season_pass_expires_at ? new Date(data.attendee.season_pass_expires_at) > new Date() : false;
-    $: seasonPassDaysLeft = data.attendee.season_pass_expires_at 
-        ? Math.ceil((new Date(data.attendee.season_pass_expires_at).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)) 
-        : 0;
+    const activeSeasonPass = $derived(
+        data.attendee.season_pass_expires_at ? new Date(data.attendee.season_pass_expires_at) > new Date() : false
+    );
+    const seasonPassDaysLeft = $derived(
+        data.attendee.season_pass_expires_at
+            ? Math.ceil(
+                  (new Date(data.attendee.season_pass_expires_at).getTime() - new Date().getTime()) /
+                      (1000 * 60 * 60 * 24)
+              )
+            : 0
+    );
 
     // Calendar Logic
     const today = new Date();
-    let currentYear = today.getFullYear();
-    let currentMonth = today.getMonth(); // 0-indexed
+    let currentYear = $state(today.getFullYear());
+    let currentMonth = $state(today.getMonth()); // 0-indexed
 
-    $: daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
-    $: firstDayOfMonth = new Date(currentYear, currentMonth, 1).getDay(); // 0 (Sun) - 6 (Sat)
+    const daysInMonth = $derived(new Date(currentYear, currentMonth + 1, 0).getDate());
+    const firstDayOfMonth = $derived(new Date(currentYear, currentMonth, 1).getDay()); // 0 (Sun) - 6 (Sat)
     
-    $: calendarDays = Array.from({ length: daysInMonth }, (_, i) => {
+    const calendarDays = $derived(Array.from({ length: daysInMonth }, (_, i) => {
         const date = new Date(currentYear, currentMonth, i + 1);
         const dateString = date.toISOString().split('T')[0];
         const games = data.history.filter((h: any) => {
@@ -36,7 +48,7 @@
             return gameDate === dateString;
         });
         return { day: i + 1, games, dateString };
-    });
+    }));
 
     function prevMonth() {
         if (currentMonth === 0) {
@@ -76,21 +88,21 @@
     </div>
 
     <div class="tabs">
-        <button class:active={activeTab === 'history'} on:click={() => activeTab = 'history'}>게임 이력</button>
-        <button class:active={activeTab === 'record'} on:click={() => activeTab = 'record'}>
+        <button class:active={activeTab === 'history'} onclick={() => activeTab = 'history'}>게임 이력</button>
+        <button class:active={activeTab === 'record'} onclick={() => activeTab = 'record'}>
             예약 · 페널티
             {#if data.attendee.penalty_points > 0}<span class="tab-count">{data.attendee.penalty_points}</span>{/if}
         </button>
-        <button class:active={activeTab === 'visits'} on:click={() => activeTab = 'visits'}>방문 기록</button>
-        <button class:active={activeTab === 'season_pass'} on:click={() => activeTab = 'season_pass'}>정기권 관리</button>
-        <button class:active={activeTab === 'account'} on:click={() => activeTab = 'account'}>계정 관리</button>
+        <button class:active={activeTab === 'visits'} onclick={() => activeTab = 'visits'}>방문 기록</button>
+        <button class:active={activeTab === 'season_pass'} onclick={() => activeTab = 'season_pass'}>정기권 관리</button>
+        <button class:active={activeTab === 'account'} onclick={() => activeTab = 'account'}>계정 관리</button>
     </div>
 
     <div class="content">
         {#if activeTab === 'history'}
             <div class="view-controls">
-                <button class:active={viewMode === 'list'} on:click={() => viewMode = 'list'}>목록 보기</button>
-                <button class:active={viewMode === 'calendar'} on:click={() => viewMode = 'calendar'}>달력 보기</button>
+                <button class:active={viewMode === 'list'} onclick={() => viewMode = 'list'}>목록 보기</button>
+                <button class:active={viewMode === 'calendar'} onclick={() => viewMode = 'calendar'}>달력 보기</button>
             </div>
 
             {#if viewMode === 'list'}
@@ -128,9 +140,9 @@
             {:else}
                 <div class="calendar-view">
                     <div class="calendar-header">
-                        <button on:click={prevMonth}>&lt;</button>
+                        <button onclick={prevMonth}>&lt;</button>
                         <h3>{currentYear}년 {monthNames[currentMonth]}</h3>
-                        <button on:click={nextMonth}>&gt;</button>
+                        <button onclick={nextMonth}>&gt;</button>
                     </div>
                     <div class="calendar-grid">
                         <div class="weekday">일</div>
@@ -308,23 +320,12 @@
 
                 <div class="actions-row">
                     {#if activeSeasonPass}
-                        <form method="POST" action="?/cancelSeasonPass" use:enhance={({ cancel }) => {
-                            if (!confirm('정말로 정기권을 취소하시겠습니까?')) {
-                                cancel();
-                                return;
-                            }
-                            return async ({ result, update }) => {
-                                if (result.type === 'success') {
-                                    alert('정기권이 취소되었습니다.');
-                                    await update();
-                                }
-                            };
-                        }}>
-                            <button class="btn-cancel-pass">정기권 취소</button>
-                        </form>
+                        <button type="button" class="btn-cancel-pass" onclick={() => (confirmCancelPass = true)}>
+                            정기권 취소
+                        </button>
                     {/if}
 
-                    <button class="btn-grant" on:click={() => showSeasonPassModal = true}>
+                    <button class="btn-grant" onclick={() => showSeasonPassModal = true}>
                         {activeSeasonPass ? '정기권 연장/재발급' : '정기권 시작'}
                     </button>
                 </div>
@@ -361,12 +362,46 @@
         {/if}
     </div>
 
+    {#if confirmCancelPass}
+        <!-- 백드롭은 편의용 클릭 영역. 키보드 경로는 Escape(trapFocus)와 돌아가기 버튼이 담당한다. -->
+        <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+        <div class="modal-overlay" onclick={() => (confirmCancelPass = false)} role="presentation">
+            <div
+                class="modal"
+                use:trapFocus={() => (confirmCancelPass = false)}
+                onclick={(e) => e.stopPropagation()}
+                onkeydown={(e) => e.stopPropagation()}
+                role="alertdialog"
+                aria-modal="true"
+                tabindex="-1"
+            >
+                <h3>정기권 취소</h3>
+                <p>
+                    {data.attendee.name}님의 정기권을 취소합니다.
+                    남은 {seasonPassDaysLeft}일이 사라지고, 재발급해도 원래 만료일은 돌아오지 않습니다.
+                </p>
+                <div class="modal-actions">
+                    <button type="button" class="btn-cancel" data-autofocus onclick={() => (confirmCancelPass = false)}>
+                        돌아가기
+                    </button>
+                    <form method="POST" action="?/cancelSeasonPass" use:enhance={() => async ({ result, update }) => {
+                        if (!reportResult(result)) showToast(`${data.attendee.name}님의 정기권을 취소했습니다.`);
+                        confirmCancelPass = false;
+                        await update();
+                    }}>
+                        <button type="submit" class="btn-cancel-pass">정기권 취소</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    {/if}
+
     {#if showSeasonPassModal}
         <!-- 백드롭은 편의용 클릭 영역. 키보드 경로는 모달의 Escape(trapFocus)와 닫기 버튼이 담당한다. -->
         <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
         <div 
             class="modal-overlay" 
-            on:click|self={() => showSeasonPassModal = false}
+            onclick={(e) => { if (e.target === e.currentTarget) showSeasonPassModal = false; }}
             role="button"
             tabindex="-1"
             aria-label="모달 닫기"
@@ -378,25 +413,19 @@
                 </h3>
                 <p>시작일을 선택하면 30일간 유효한 정기권이 발급됩니다.</p>
                 
-                <form method="POST" action="?/updateSeasonPass" use:enhance={({ cancel }) => {
-                    if (!confirm(`${seasonPassStartDate}부터 30일간 정기권을 발급하시겠습니까?`)) {
-                        cancel();
-                        return;
+                <form method="POST" action="?/updateSeasonPass" use:enhance={() => async ({ result, update }) => {
+                    if (!reportResult(result)) {
+                        showSeasonPassModal = false;
+                        showToast(`${data.attendee.name}님의 정기권을 ${seasonPassStartDate}부터 30일간 발급했습니다.`);
                     }
-                    return async ({ result, update }) => {
-                        if (result.type === 'success') {
-                            showSeasonPassModal = false;
-                            alert('정기권이 성공적으로 발급되었습니다!');
-                            await update();
-                        }
-                    };
+                    await update();
                 }}>
                     <div class="form-group">
                         <label for="startDate">시작일 선택</label>
                         <input type="date" id="startDate" name="startDate" bind:value={seasonPassStartDate} required />
                     </div>
                     <div class="modal-actions">
-                        <button type="button" class="btn-cancel" on:click={() => showSeasonPassModal = false}>취소</button>
+                        <button type="button" class="btn-cancel" onclick={() => showSeasonPassModal = false}>취소</button>
                         <button type="submit" class="btn-primary">발급하기 (30일)</button>
                     </div>
                 </form>
