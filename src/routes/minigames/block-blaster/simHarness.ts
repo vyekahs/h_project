@@ -183,6 +183,21 @@ function tryUseAbility(game: Game, stuck: boolean): boolean {
 
 	const dCells = dangerCellSet(game);
 
+	// JAM(고장) 대응 — 트레이의 불량 블록은 보드 능력으로는 손댈 수 없고
+	// swap-block / rotate-block 같은 조작 계열만 해소할 수 있다.
+	const jamIdx = game.currentBlocks.findIndex((b, i) => !!b?.jamId && !game.isSlotLocked(i));
+	if (jamIdx >= 0) {
+		for (const si of usable) {
+			const id = inv[si].ability.id;
+			if (id !== 'swap-block' && id !== 'rotate-block') continue;
+			const cdBefore = inv[si].cooldownRemaining;
+			game.useAbility(si);
+			if (game.pendingAbilitySlot !== si && inv[si].cooldownRemaining === cdBefore) continue;
+			game.applyAbilityToTarget({ kind: 'block', index: jamIdx });
+			return true;
+		}
+	}
+
 	// 위험 줄을 직접 지울 수 있는 능력 우선
 	for (const si of usable) {
 		const id = inv[si].ability.id;

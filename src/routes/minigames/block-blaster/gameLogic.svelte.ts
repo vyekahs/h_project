@@ -1294,7 +1294,50 @@ export function createBlockBlasterGame() {
 	 * 위험을 보드에 활성화 — reinforced/spreading은 셀을 그리드에 배치.
 	 * doom-row/col, hazard-zone은 영역 표시만 — DangerOverlay가 cells 좌표로 그림.
 	 */
+	/**
+	 * JAM(고장) 활성화 — 트레이 한 칸을 놓기 어려운 불량 블록으로 채운다.
+	 * 보드를 건드리지 않으므로 clear 계열로는 손댈 수 없고, 조작 계열
+	 * (swap-block/rotate-block) 또는 실제로 놓아서만 해소된다.
+	 */
+	function injectJamBlock(d: Danger, stageNumber: number) {
+		// 스테이지가 오를수록 더 까다로운 모양
+		// 해결률이 82.8%로 너무 높아(= 그냥 놓으면 끝나는 공짜 진행) 초반 모양도
+		// 5~6칸 이상으로 올렸다. 놓으려면 보드 공간을 실제로 마련해야 하므로
+		// "공간을 비울 것인가, 조작 스킬을 쓸 것인가"의 선택이 생긴다.
+		const shapes: [number, number][][] = stageNumber <= 5
+			? [
+				[[0, 0], [0, 1], [1, 0], [1, 1], [2, 0], [2, 1]],  // 3×2
+				[[0, 0], [1, 0], [1, 1], [1, 2], [2, 2]],          // Z 확장
+				[[0, 0], [0, 1], [0, 2], [1, 0], [1, 1], [1, 2]]   // 2×3
+			]
+			: [
+				[[0, 0], [0, 1], [0, 2], [1, 0], [1, 1], [1, 2]],                     // 2×3
+				[[0, 0], [0, 1], [0, 2], [1, 1], [2, 0], [2, 1], [2, 2]],             // I 형
+				[[0, 0], [0, 1], [0, 2], [1, 0], [1, 1], [1, 2], [2, 0], [2, 1], [2, 2]] // 3×3
+			];
+		const cells = shapes[Math.floor(Math.random() * shapes.length)];
+		const color = (1 + Math.floor(Math.random() * 5)) as CellColor;
+		const jamBlock: BlockShape = { cells: cells.map(c => [...c] as [number, number]), color, jamId: d.id };
+
+		// 잠기지 않은 슬롯 중 하나를 덮어씀 (빈 칸 우선)
+		const next = [...currentBlocks];
+		let target = next.findIndex((b, i) => b === null && !isSlotLocked(i));
+		if (target < 0) target = next.findIndex((b, i) => b !== null && !isSlotLocked(i));
+		if (target < 0) return; // 넣을 자리가 없으면 포기(다음 턴 판정에서 해결로 처리됨)
+		next[target] = jamBlock;
+		currentBlocks = next;
+	}
+
+	/** 트레이에 해당 jam 블록이 남아 있는지 */
+	function jamBlockPresent(dangerId: string): boolean {
+		return currentBlocks.some(b => b?.jamId === dangerId);
+	}
+
 	function activateDangerOnBoard(d: Danger, stageNumber: number) {
+		if (d.type === 'jam') {
+			injectJamBlock(d, stageNumber);
+			return;
+		}
 		if (
 			d.type !== 'reinforced' &&
 			d.type !== 'spreading' &&
@@ -1390,7 +1433,9 @@ export function createBlockBlasterGame() {
 			for (const d of ds.dangers) {
 				if (d.resolved) continue;
 				if (d.delayTurns > 0) continue;
-				if (!isDangerResolved(d, grid, cellMeta)) continue;
+				// jam은 보드가 아니라 트레이로 판정 — 불량 블록이 사라졌으면 해결
+				const jamCleared = d.type === 'jam' && !jamBlockPresent(d.id);
+				if (!jamCleared && !isDangerResolved(d, grid, cellMeta)) continue;
 				d.resolved = true;
 				changed = true;
 				score += 200; // 위험 1개 해결 보너스
@@ -1601,6 +1646,20 @@ export function createBlockBlasterGame() {
 					if (isMatchedToLock(d, ds)) {
 						ds.lockedSlotDangerIds = ds.lockedSlotDangerIds.filter(id => id !== d.id);
 					}
+				}
+			}
+			if (d.type === 'jam' && d.countdown === 0) {
+				// 만료 — 불량 블록을 치워주되 보드에 검은 돌 1개를 남긴다.
+				// (트레이를 영원히 막아두면 진행 불가가 되므로 페널티를 보드로 옮김)
+				const next = currentBlocks.map(b => (b?.jamId === d.id ? null : b));
+				currentBlocks = next;
+				addRandomBlackStone();
+				d.resolved = true;
+				d.expired = true;
+				resolvedDangerCount += EXPIRY_CREDIT;
+				checkStageClearByCount();
+				if (isMatchedToLock(d, ds)) {
+					ds.lockedSlotDangerIds = ds.lockedSlotDangerIds.filter(id => id !== d.id);
 				}
 			}
 			if (d.type === 'quest' && d.countdown === 0) {
@@ -1946,7 +2005,7 @@ export function createBlockBlasterGame() {
 	 * 클리어율 2.7%). 반대로 예전처럼 1.0을 주면 방치가 항상 최적이 되어 위험 시스템이
 	 * 죽는다. 해결이 만료보다 두 배 가치 있게 두어 "빨리 처리할수록 이득"을 유지한다.
 	 */
-	const EXPIRY_CREDIT = 0.35;
+	const EXPIRY_CREDIT = 0.25;
 
 	function checkStageClearByCount() {
 		while (stagesCleared < MAX_STAGE) {

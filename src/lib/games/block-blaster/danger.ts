@@ -106,6 +106,16 @@ const DANGER_WEIGHTS: Record<DangerType, number> = {
 	'doom-row': 22,      // 9
 	'doom-col': 22,      // 9
 
+	// --- 두 번째 압박 축 ---
+	// 지금까지 모든 위험이 "보드의 빈 칸" 하나로 수렴했고, clear 계열은 빈 칸을
+	// 직접 발행하는 능력이라 그 두 장이 정답인 것이 경제 구조상 필연이었다.
+	// jam은 보드가 아니라 **트레이**를 공격하므로 clear로는 손댈 수 없고,
+	// swap-block / rotate-block / single-cell 같은 조작 계열이 대응 수단이 된다.
+	// 16으로 낮췄더니 no-clear 빌드 클리어율이 17.3%→10.7%로 나빠졌다. jam이
+	// 조작 계열 능력을 쓸모있게 만드는 유일한 장치이므로 빈도를 낮추면 안 된다.
+	// 난이도는 만료 크레딧 쪽에서 조인다.
+	jam: 22,
+
 	// --- 풀에서 제외(0) ---
 	// 만료와 해결을 분리한 뒤 실제 플레이어 해결률을 재보니 아래 3종은 대응이
 	// 사실상 불가능했다. 부분 크레딧으로 완화됐을 뿐 "대응하는 위험"이 아니라
@@ -181,12 +191,14 @@ export function generateDangerStage(stageNumber: number, grid: BoardGrid): Dange
 			case 'spreading':
 			case 'portal':
 			case 'rust':
+			case 'jam':
 			case 'quest': return 1;
 			case 'hazard-zone':
 			case 'storm':
 			case 'chaser': return 2;
 			case 'doom-row':
 			case 'doom-col': return 3;
+			default: return 1;
 		}
 	};
 	dangers.sort((a, b) => dangerOrderRank(a.type) - dangerOrderRank(b.type));
@@ -394,6 +406,19 @@ function createDanger(
 				delayTurns: 0
 			};
 		}
+		case 'jam': {
+			// 고장 — 보드를 점거하지 않는다(cells 빈 배열). 활성화 시점에 트레이 한 칸을
+			// 놓기 어려운 불량 블록으로 채우고, 그 블록이 트레이에서 사라지면 해결.
+			return {
+				id: generateId('jam'),
+				type: 'jam',
+				cells: [],
+				countdown: cd,
+				initialCountdown: cd,
+				resolved: false,
+				delayTurns: 0
+			};
+		}
 		case 'quest': {
 			// 도전 과제 — 보드 셀 점거 X, cells는 빈 배열. 카운트 동안 패턴 달성하면 해결.
 			// 카운트는 일반 위험의 1.5배 (사용자 결정 — 시간 여유)
@@ -584,6 +609,10 @@ export function isDangerResolved(danger: Danger, grid: BoardGrid, cellMeta?: Cel
 		}
 		return true;
 	}
+	if (danger.type === 'jam') {
+		// jam은 보드가 아니라 트레이 상태로 판정 — gameLogic에서 명시적으로 resolved 처리
+		return false;
+	}
 	if (danger.type === 'quest') {
 		// quest는 cells가 빈 배열 — 패턴 달성 시 명시적으로 d.resolved=true 처리됨
 		return false;
@@ -603,6 +632,8 @@ export function dangerLabel(type: DangerType): string {
 			return '게임오버 열';
 		case 'hazard-zone':
 			return '위험 구역';
+		case 'jam':
+			return '고장 블록';
 		case 'reinforced':
 			return '강화 블록';
 		case 'spreading':
@@ -641,6 +672,8 @@ export function dangerDescription(type: DangerType): string {
 			return '해당 세로열을 라인 완성하세요. 실패 시 게임오버!';
 		case 'hazard-zone':
 			return '카운트 종료 전에 영역의 셀을 모두 비우세요. 남은 셀은 스킬이 통하지 않는 블록으로 변환됩니다.';
+		case 'jam':
+			return '트레이에 불량 블록이 들어옵니다. 보드에 놓거나 블록 교체·변형 스킬로 없애세요.';
 		case 'reinforced':
 			return '회색 강화 블록은 HP 0이 되면 사라집니다.';
 		case 'spreading':

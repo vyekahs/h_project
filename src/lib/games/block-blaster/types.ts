@@ -9,6 +9,12 @@ export interface BlockShape {
 	/** Relative [row, col] offsets from anchor (top-left of bounding box) */
 	cells: [number, number][];
 	color: CellColor;
+	/**
+	 * JAM(고장) 위험이 트레이에 밀어넣은 불량 블록 표식 — 해당 Danger의 id.
+	 * 이 블록이 트레이에서 사라지면(놓았거나 교체·변형했거나) 그 위험이 해결된다.
+	 * 보드 압박(빈 칸)과 별개의 두 번째 압박 축을 만들기 위한 장치.
+	 */
+	jamId?: string;
 }
 
 /** 8×8 grid, grid[row][col] */
@@ -19,7 +25,7 @@ export type BoardGrid = CellColor[][];
 // ===========================================================================
 
 /** 위험 종류 */
-export type DangerType = 'doom-row' | 'doom-col' | 'hazard-zone' | 'reinforced' | 'spreading' | 'storm' | 'portal' | 'rust' | 'chaser' | 'quest';
+export type DangerType = 'doom-row' | 'doom-col' | 'hazard-zone' | 'reinforced' | 'spreading' | 'storm' | 'portal' | 'rust' | 'chaser' | 'quest' | 'jam';
 
 /** QUEST 패턴 종류 — 사용자가 카운트 동안 한 번 달성하면 위험 해결 */
 export type QuestPatternType = 'combo' | 'same-color-line' | 'cross';
