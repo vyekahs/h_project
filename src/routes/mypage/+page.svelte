@@ -456,29 +456,33 @@
 <div class="mypage-container">
     <header class="page-header">
         <h1>마이페이지</h1>
-        <div class="header-right">
-            {#if data.user}
-                <div class="user-simple">
-                 <form method="POST" action="/logout">
-                        <button type="submit" class="btn-logout-text">로그아웃</button>
-                    </form>
-                    <span class="user-name">
-                        {#if data.user.title}
-                            <span class="user-title">{data.user.title.title_name}</span>
-                        {/if}
-                        <strong>{data.user.name}</strong> 님
-                    </span>
-                   
-                </div>
-            {:else}
-                 <a href="/login" class="btn-login-text">로그인</a>
-            {/if}
+        <div class="header-icons">
             <NotificationBell />
             <button class="header-settings-btn" on:click={() => showSettings = true} aria-label="설정">
                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
             </button>
         </div>
     </header>
+    <!-- 칭호를 장착하면 텍스트가 길어져(예: "킬러 스도쿠 마스터") 마이페이지 h1과
+         한 줄에서 다투다가 알림/설정 버튼까지 통째로 밑으로 밀려났다.
+         아이콘은 항상 h1과 같은 줄에 고정하고, 이 상태 줄은 별도 줄로 분리한다. -->
+    <div class="user-status-row">
+        {#if data.user}
+            <div class="user-simple">
+                <form method="POST" action="/logout">
+                    <button type="submit" class="btn-logout-text">로그아웃</button>
+                </form>
+                <span class="user-name">
+                    {#if data.user.title}
+                        <span class="user-title">{data.user.title.title_name}</span>
+                    {/if}
+                    <strong>{data.user.name}</strong> 님
+                </span>
+            </div>
+        {:else}
+            <a href="/login" class="btn-login-text">로그인</a>
+        {/if}
+    </div>
     <SettingsPanel bind:open={showSettings} />
 
     {#if data.user}
@@ -1259,13 +1263,10 @@
 
     .page-header {
         display: flex;
-        flex-wrap: wrap;
         justify-content: space-between;
         align-items: center;
         gap: 0.5rem;
-        margin-bottom: 2rem;
-        padding-bottom: 1rem;
-        border-bottom: 1px solid var(--border-light);
+        margin-bottom: 0.75rem;
         position: relative;
         z-index: 10;
     }
@@ -1275,12 +1276,18 @@
         color: var(--text-primary);
         white-space: nowrap;
     }
-    .header-right {
+    .header-icons {
         display: flex;
         align-items: center;
-        gap: 0.75rem;
-        flex-wrap: wrap;
+        gap: 0.5rem;
+        flex-shrink: 0;
+    }
+    .user-status-row {
+        display: flex;
         justify-content: flex-end;
+        margin-bottom: 2rem;
+        padding-bottom: 1rem;
+        border-bottom: 1px solid var(--border-light);
     }
     .header-settings-btn {
         background: none;
@@ -1302,11 +1309,21 @@
         align-items: center;
         gap: 1rem;
         font-size: 0.95rem;
+        max-width: 100%;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        row-gap: 0.25rem;
     }
     .user-name {
         color: var(--text-darker);
     }
     .user-title {
+        display: inline-block;
+        max-width: 40vw;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        vertical-align: bottom;
         font-size: 0.7rem;
         font-weight: 700;
         color: var(--color-achievement-text);
