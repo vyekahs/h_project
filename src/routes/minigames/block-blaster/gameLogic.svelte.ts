@@ -12,7 +12,7 @@ import { generateBlockSet } from '$lib/games/block-blaster/blocks';
 import {
 	generateDangerStage,
 	isDangerResolved,
-	isDoomTriggered,
+	doomHasRemainingCells,
 	dangerCountForStage
 } from '$lib/games/block-blaster/danger';
 import {
@@ -1145,11 +1145,14 @@ export function createBlockBlasterGame() {
 		// 위험 풀을 10종 → 6종으로 줄이면서 남은 종류가 전부 보드를 점거하는 유형이
 		// 되었다(제외된 portal/rust/quest는 점거가 없거나 오히려 셀을 비워줬다).
 		// 같은 간격이면 체감 압박이 크게 올라가므로(클리어율 19.7%→11.3%) 간격을 늘린다.
+		// P3에서 12/10/8/6으로 넓혔던 것을 되돌린다. 그 완화는 위험 감축으로 압박이
+		// 몰린 것을 보정하려던 조치였는데, P1에서 doom 즉사가 사라지며 사망 요인이
+		// 통째로 빠져 게임이 다시 헐거워졌다(클리어율 18%→38.7%).
 		const next = stagesCleared + 1;
-		if (next <= 2) return 12;
-		if (next <= 5) return 10;
-		if (next <= 8) return 8;
-		return 6;
+		if (next <= 2) return 10;
+		if (next <= 5) return 8;
+		if (next <= 8) return 6;
+		return 5;
 	}
 
 	/**
@@ -1445,11 +1448,27 @@ export function createBlockBlasterGame() {
 		for (const d of ds.dangers) {
 			if (d.resolved) continue;
 			if (d.delayTurns > 0) continue;
-			if (isDoomTriggered(d, grid)) {
-				// 게임오버 줄 — 사유 기록 + 잠시 후 게임오버 (위험 강조 표시 시간 확보)
-				gameOverReason = 'doom';
-				setTimeout(() => handleGameOver(), 800);
-				return;
+			if ((d.type === 'doom-row' || d.type === 'doom-col') && d.countdown === 0) {
+				// 만료 — 즉사 대신 그 줄의 남은 칸을 전부 석화.
+				// (석화 셀은 라인 클리어로만 지워지므로 보드의 12.5%가 사실상 봉인된다.
+				//  "갑자기 죽는" 대신 "확실히 불리해지는" 처벌로 번역한 것.)
+				if (doomHasRemainingCells(d, grid)) {
+					const nextMeta = { ...cellMeta };
+					for (const [r, c] of d.cells) {
+						if (grid[r][c] !== 0) {
+							nextMeta[cellKey(r, c)] = { ...nextMeta[cellKey(r, c)], petrified: true };
+						}
+					}
+					cellMeta = nextMeta;
+				}
+				d.resolved = true;
+				d.expired = true;
+				resolvedDangerCount += EXPIRY_CREDIT;
+				checkStageClearByCount();
+				if (isMatchedToLock(d, ds)) {
+					ds.lockedSlotDangerIds = ds.lockedSlotDangerIds.filter(id => id !== d.id);
+				}
+				continue;
 			}
 			if (d.type === 'hazard-zone' && d.countdown === 0) {
 				// 위험 구역 카운트 0 — 영역의 채워진 셀들을 petrified로 변환
@@ -1899,7 +1918,7 @@ export function createBlockBlasterGame() {
 	 * 클리어율 2.7%). 반대로 예전처럼 1.0을 주면 방치가 항상 최적이 되어 위험 시스템이
 	 * 죽는다. 해결이 만료보다 두 배 가치 있게 두어 "빨리 처리할수록 이득"을 유지한다.
 	 */
-	const EXPIRY_CREDIT = 0.5;
+	const EXPIRY_CREDIT = 0.35;
 
 	function checkStageClearByCount() {
 		while (stagesCleared < MAX_STAGE) {

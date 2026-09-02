@@ -275,7 +275,7 @@ function tryUseAbility(game: Game, stuck: boolean): boolean {
 	return false;
 }
 
-export type DraftPolicy = 'clear-first' | 'random';
+export type DraftPolicy = 'clear-first' | 'random' | 'no-clear';
 
 /** 열려 있는 모달을 자동으로 닫는다. 처리했으면 true. */
 function resolveModals(game: Game, draftPolicy: DraftPolicy): boolean {
@@ -291,9 +291,16 @@ function resolveModals(game: Game, draftPolicy: DraftPolicy): boolean {
 			id === 'clear-row' || id === 'clear-col' ? 0 :
 			id === 'bomb-3x3' || id === 'clear-color' ? 1 :
 			id === 'revive' ? 2 : 3;
-		const pick = draftPolicy === 'random'
-			? opts[Math.floor(Math.random() * opts.length)]
-			: [...opts].sort((a, b) => rank(a.id) - rank(b.id))[0];
+		// no-clear: clear-row/col을 절대 뽑지 않는다 — "정답 카드 없이도 이길 수 있는가"를
+		// 직접 재기 위한 정책(기획 리뷰에서 제안된 지표). 후보가 전부 clear면 어쩔 수 없이 뽑음.
+		let pool = opts;
+		if (draftPolicy === 'no-clear') {
+			const filtered = opts.filter(o => o.id !== 'clear-row' && o.id !== 'clear-col');
+			if (filtered.length > 0) pool = filtered;
+		}
+		const pick = draftPolicy === 'clear-first'
+			? [...pool].sort((a, b) => rank(a.id) - rank(b.id))[0]
+			: pool[Math.floor(Math.random() * pool.length)];
 		game.pickAbility(pick);
 		return true;
 	}

@@ -15,11 +15,13 @@ function generateId(prefix: string): string {
 
 /**
  * 위험 스테이지에 등장할 위험 개수 (= 그 막을 클리어하는 데 필요한 해결 개수).
- * 기(1~2): 1개 / 승·전·결(3~10): 2개
+ * 기(1~2): 1개 / 승(3~5): 2개 / 전·결(6~10): 3개 → 10막 완주에 총 23개
  *
- * 6~10막을 3개로 두면 10막 완주에 총 23개 해결이 필요한데, 위험 풀을 6종으로
- * 줄인 뒤로는 남은 종류가 전부 보드를 점거해서 그 사이 보드가 먼저 차버린다
- * (사망 원인 no-blocks 50%). 총 18개로 낮춰 완주 가능한 길이로 맞춘다.
+ * P3에서 18개로 낮췄던 것을 되돌린다. 그 완화는 위험 감축으로 압박이 몰린 것을
+ * 보정하려던 것인데, P1에서 doom 즉사가 사라지며 사망 요인이 통째로 빠졌다.
+ * 게다가 이 게임에서는 **위험 등장 자체가 진행 통화**라(해결이든 만료든 크레딧이
+ * 쌓인다) 등장을 늘리거나 간격을 좁히면 오히려 쉬워진다. 난이도를 조절하는
+ * 실질적인 손잡이는 등장 빈도가 아니라 이 "요구 개수"다.
  */
 export function dangerCountForStage(stage: number): number {
 	// 반드시 결정적이어야 한다 — 이 함수는 (1) 위험을 생성할 때와 (2) 스테이지 클리어
@@ -27,7 +29,8 @@ export function dangerCountForStage(stage: number): number {
 	// 값을 뽑아, 실제 마주한 위험 수와 클리어에 필요한 수가 절반 확률로 어긋났다
 	// (클리어 배너의 "N개 해결"도 실제와 달랐음).
 	if (stage <= 2) return 1;
-	return 2;
+	if (stage <= 5) return 2;
+	return 3;
 }
 
 /**
@@ -97,8 +100,11 @@ const DANGER_WEIGHTS: Record<DangerType, number> = {
 	storm: 26,           // 41.1%
 	chaser: 26,          // 34.5%
 	'hazard-zone': 24,   // 13.8% → 아래에서 3×3을 2×2로 축소해 달성 가능하게 조정
-	'doom-row': 9,       // 53.0%
-	'doom-col': 9,       // 63.5%
+	// doom은 P1에서 즉사 → "만료 시 그 줄의 남은 칸 석화"로 바뀌었다. 더 이상
+	// 한 방에 죽이지 않으므로 자주 등장해도 되고, 오히려 자주 나와야 clear 외의
+	// 능력들이 기여할 자리가 생긴다(즉사가 사라진 뒤 클리어율이 18%→38%로 뛰었다).
+	'doom-row': 22,      // 9
+	'doom-col': 22,      // 9
 
 	// --- 풀에서 제외(0) ---
 	// 만료와 해결을 분리한 뒤 실제 플레이어 해결률을 재보니 아래 3종은 대응이
@@ -655,11 +661,20 @@ export function dangerDescription(type: DangerType): string {
 /**
  * doom-row / doom-col이 카운트 0에 도달했는데 해결 못 한 경우 게임오버.
  */
-export function isDoomTriggered(danger: Danger, grid: BoardGrid): boolean {
+/**
+ * doom 만료 시 즉사 대신 **남은 칸 석화**로 바꿨으므로 이 함수는 더 이상 게임오버를
+ * 판정하지 않는다. 남겨두는 이유는 doom이 만료 시점에 처리할 대상이 있는지
+ * (=아직 채워진 칸이 남았는지) 알려주기 위함이다.
+ *
+ * 왜 바꿨나: doom의 해결 조건이 "줄 전체가 빈 칸"이라 clear-row/clear-col 외의
+ * 어떤 능력으로도 손댈 수 없었다. 이것이 드래프트에서 그 두 장만 정답이 되는
+ * 구조적 원인이었다(bomb으로 4칸을 지워도 doom 해결에 1도 기여하지 못함).
+ * 이제 그 줄의 칸을 어떤 수단으로든 비우면 그만큼 진척이 되고, 만료 시에는
+ * 남은 칸이 석화되어 "즉사" 대신 "확실히 불리해짐"으로 처벌이 번역된다.
+ */
+export function doomHasRemainingCells(danger: Danger, grid: BoardGrid): boolean {
 	if (danger.resolved) return false;
-	if (danger.countdown > 0) return false;
 	if (danger.type !== 'doom-row' && danger.type !== 'doom-col') return false;
-	// 카운트 0이고 해결 안 됨 → 그 줄에 블록 1개라도 있으면 게임오버
 	for (const [r, c] of danger.cells) {
 		if (grid[r][c] !== 0) return true;
 	}
