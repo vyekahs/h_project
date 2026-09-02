@@ -7,8 +7,11 @@
  */
 import { writable } from 'svelte/store';
 
+export type AlertKind = 'error' | 'success' | 'info';
+
 export const toastMessage = writable('');
 export const alertMessage = writable('');
+export const alertKind = writable<AlertKind>('error');
 
 let toastTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -19,8 +22,13 @@ export function showToast(message: string) {
 	toastTimer = setTimeout(() => toastMessage.set(''), 4500);
 }
 
-/** 멈춰 세워야 하는 결과 */
-export function showAlert(message: string) {
+/**
+ * 멈춰 세워야 하는 결과.
+ * 기본은 실패지만, 페널티가 임계에 닿는 것처럼 "성공했으나 반드시 읽어야 하는"
+ * 순간도 있어 kind로 구분한다.
+ */
+export function showAlert(message: string, kind: AlertKind = 'error') {
+	alertKind.set(kind);
 	alertMessage.set(message);
 }
 

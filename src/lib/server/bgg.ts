@@ -66,7 +66,16 @@ export async function searchBggGames(queryStr: string): Promise<BggSearchResult[
 		return 3;
 	};
 
+	// 같은 objectid가 이름만 달리해 여러 번 온다(실측: agricola 180건 중 고유 116건).
+	// 중복을 남기면 화면의 keyed each가 깨지고, 운영자에게도 같은 게임이 여러 번 보인다.
+	const seen = new Set<string>();
 	const games: BggSearchResult[] = (json.items || [])
+		.filter((item: any) => {
+			const id = String(item.objectid);
+			if (seen.has(id)) return false;
+			seen.add(id);
+			return true;
+		})
 		.map((item: any) => ({
 			id: String(item.objectid),
 			name: item.name,

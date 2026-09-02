@@ -4,6 +4,8 @@
     import { invalidateAll } from '$app/navigation';
     import { onMount, onDestroy } from 'svelte';
     import { trapFocus } from '$lib/actions/modal';
+    // 결과 알림은 레이아웃의 <AdminFeedback />가 렌더한다 — 화면마다 다시 만들지 않는다
+    import { showToast, showAlert, reportResult } from '$lib/stores/adminFeedback';
 
     export let data: PageData;
     if (!data) throw new Error('Data is required');
@@ -49,7 +51,6 @@
         if (debounceTimer) clearTimeout(debounceTimer);
         if (sseReconnectTimer) clearTimeout(sseReconnectTimer);
         if (clockTimer) clearInterval(clockTimer);
-        if (toastTimer) clearTimeout(toastTimer);
         if (eventSource) { eventSource.close(); eventSource = null; }
     });
 
@@ -93,7 +94,7 @@
                     else {
                         if (!reportResult(res.result) && success) {
                             const msg = typeof success === 'function' ? success(res.result?.data) : success;
-                            if (msg) showToast(msg, 'success');
+                            if (msg) showToast(msg);
                         }
                         await res.update();
                     }
@@ -129,19 +130,6 @@
         }
     }
 
-    /** enhance 결과에서 실패(failure)와 전송/HTTP 에러(error)를 모두 사용자에게 노출 */
-    function reportResult(result: any, fallback = '요청을 처리하지 못했습니다. 잠시 후 다시 시도해주세요.'): boolean {
-        if (result.type === 'failure') {
-            showAlert(result.data?.error || fallback, 'error');
-            return true;
-        }
-        if (result.type === 'error') {
-            showAlert(result.error?.message || fallback, 'error');
-            return true;
-        }
-        return false;
-    }
-
     // 파괴적 액션 공통 확인 모달
     let confirmState:
         | { title: string; message: string; confirmLabel: string; danger: boolean; handle?: (opts: any) => Promise<void> }
@@ -175,7 +163,7 @@
                                     typeof opts.success === 'function'
                                         ? opts.success(res.result?.data)
                                         : opts.success;
-                                if (msg) showToast(msg, 'success');
+                                if (msg) showToast(msg);
                             }
                             await res.update();
                         }
@@ -216,32 +204,6 @@
     let selectedPlayerIds: number[] = [];
     let playerSearch = '';
     let showPlayingInPicker = false;
-
-    // Alert Modal State
-    type AlertKind = 'success' | 'error' | 'info';
-    let alertVisible = false;
-    let alertMessage = '';
-    let alertKind: AlertKind = 'info';
-
-    function showAlert(msg: string, kind: AlertKind = 'info') {
-        alertMessage = msg;
-        alertKind = kind;
-        alertVisible = true;
-    }
-
-    /**
-     * 성공·완료처럼 흐름을 멈출 필요가 없는 결과는 토스트로 알린다.
-     * 실패는 showAlert(모달)로 남겨 둔다 — 성공은 지나가도 되지만 실패는 멈춰 세워야 한다.
-     * 영역 자체는 항상 DOM에 있어 스크린리더가 변화를 읽는다.
-     */
-    let toastMessage = '';
-    let toastTimer: ReturnType<typeof setTimeout> | null = null;
-
-    function showToast(msg: string, _kind: 'success' | 'info' = 'success') {
-        toastMessage = msg;
-        if (toastTimer) clearTimeout(toastTimer);
-        toastTimer = setTimeout(() => { toastMessage = ''; }, 4500);
-    }
 
     // 페널티 부여 사유 (관리 시트) — 시트를 열 때마다 초기화된다
     const PENALTY_REASON_LABELS: Record<string, string> = {
@@ -1191,34 +1153,6 @@
     </div>
 {/if}
 
-<!-- 라이브 리전 — 결과 알림은 항상 여기로 들어오고, 스크린리더가 변화를 읽는다 -->
-<div class="toast-region" role="status" aria-live="polite">
-    {#if toastMessage}
-        <div class="toast">{toastMessage}</div>
-    {/if}
-</div>
-
-<!-- Alert Modal -->
-{#if alertVisible}
-    <!-- 백드롭은 편의용 클릭 영역. 키보드 경로는 모달의 Escape(trapFocus)와 닫기 버튼이 담당한다. -->
-    <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
-    <div
-        class="modal-backdrop modal-layer-alert"
-        onclick={() => alertVisible = false} 
-        role="button" 
-        tabindex="-1"
-        aria-label="Close alert"
-    >
-        <div class="modal-content alert-modal alert-{alertKind}" use:trapFocus={() => alertVisible = false} onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="alertdialog" aria-modal="true" tabindex="-1">
-            <h3>{alertKind === 'success' ? '완료' : alertKind === 'error' ? '문제가 발생했어요' : '알림'}</h3>
-            <p>{alertMessage}</p>
-            <div class="modal-actions">
-                <button class="btn-primary" data-autofocus onclick={() => alertVisible = false}>확인</button>
-            </div>
-        </div>
-    </div>
-{/if}
-
 <!-- 참여자 관리 시트 -->
 {#if manageView}
     {@const m = manageView}
@@ -2117,7 +2051,6 @@
     /* 모달 계층 — 시트 위에 확인, 확인 위에 결과 알림.
        같은 z-index면 DOM 순서가 이기기 때문에 확인 모달이 관리 시트 밑에 깔린다. */
     .modal-backdrop.modal-layer-confirm { z-index: 1100; }
-    .modal-backdrop.modal-layer-alert { z-index: 1200; }
     .modal-backdrop {
         position: fixed;
         top: 0;
@@ -2145,19 +2078,6 @@
         display: flex;
         align-items: center;
         gap: 0.75rem;
-    }
-    .alert-modal {
-        max-width: 400px;
-        text-align: center;
-    }
-    .alert-modal h3 {
-        margin-top: 0;
-    }
-    .alert-modal.alert-success h3 {
-        color: var(--color-green-dark);
-    }
-    .alert-modal.alert-error h3 {
-        color: var(--color-red-dark);
     }
     .confirm-modal {
         max-width: 400px;
@@ -2201,9 +2121,6 @@
         .btn-delete {
             width: 100%; /* Keep specific override or reset if needed */
             margin-top: 0.5rem;
-        }
-        .notice-form button {
-            width: 100%;
         }
     }
     .winner-option {
@@ -2434,29 +2351,6 @@
     }
 
     /* 결과 토스트 — 흐름을 막지 않는 확인. 실패는 모달이 맡는다 */
-    .toast-region {
-        position: fixed;
-        left: 50%;
-        bottom: 1.5rem;
-        transform: translateX(-50%);
-        z-index: 900;
-        pointer-events: none;
-        width: min(28rem, calc(100vw - 2rem));
-        display: flex;
-        justify-content: center;
-    }
-    .toast {
-        background: var(--text-darker);
-        color: var(--bg-primary);
-        padding: 0.7rem 1.1rem;
-        border-radius: var(--radius-control);
-        font-size: var(--text-sm);
-        line-height: 1.45;
-        box-shadow: var(--shadow-lg);
-        text-align: center;
-        word-break: keep-all;
-        overflow-wrap: anywhere;
-    }
 
     /* 스크린리더 전용 — 시각적으로는 감추되 접근성 트리에는 남긴다 */
     .sr-only {
@@ -3053,7 +2947,6 @@
     /* 모바일 최적화 */
     @media (max-width: 768px) {
         /* 모바일 하단 탭 위로 띄운다 */
-        .toast-region { bottom: 5rem; }
         section {
             margin-bottom: 1.5rem;
             padding: 1rem;

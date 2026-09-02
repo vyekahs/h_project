@@ -4,15 +4,14 @@
     import { trapFocus } from '$lib/actions/modal';
     import { showToast, showAlert, reportResult } from '$lib/stores/adminFeedback';
 
-    export let data: PageData;
-    export let form;
+    let { data, form }: { data: PageData; form: any } = $props();
 
     /** 목록 표시 방식 — 기본은 표. 200종에서 카드 그리드는 스캔이 불가능하다. */
-    let viewMode: 'table' | 'card' = 'table';
-    let sortKey: 'name' | 'players' | 'playtime' | 'complexity' = 'name';
-    let sortAsc = true;
+    let viewMode: 'table' | 'card' = $state('table');
+    let sortKey: 'name' | 'players' | 'playtime' | 'complexity' = $state('name');
+    let sortAsc = $state(true);
     /** 'all' | 'active' | 'inactive' | 'noimage' */
-    let filterKey: 'all' | 'active' | 'inactive' | 'noimage' = 'all';
+    let filterKey: 'all' | 'active' | 'inactive' | 'noimage' = $state('all');
 
     const VIEW_STORAGE_KEY = 'admin-games-view';
     if (typeof localStorage !== 'undefined') {
@@ -41,18 +40,19 @@
      * 네이티브 confirm()이 "기록이 있으면 비활성화됩니다"라고만 말한 뒤
      * 무엇이 일어났는지는 끝내 알려주지 않았다.
      */
-    let confirmAction: { kind: 'deactivate' | 'delete'; game: any } | null = null;
-    let confirmForm: HTMLFormElement | null = null;
+    let confirmAction: { kind: 'deactivate' | 'delete'; game: any } | null = $state(null);
+    let confirmForm: HTMLFormElement | null = $state(null);
 
     function runConfirm() {
         confirmForm?.requestSubmit();
     }
 
     /** 링크가 죽은 커버 — "이미지 없음"과 구분해서 표시하기 위해 id를 모은다 */
-    let brokenImages: Set<number> = new Set();
+    let brokenImages: Set<number> = $state(new Set());
     function markBroken(id: number) {
-        brokenImages.add(id);
-        brokenImages = brokenImages;
+        // $state 는 Set 을 프록시하지 않는다. 같은 참조를 다시 대입해도 갱신되지 않으므로
+        // 새 Set 을 만들어 대입한다(Svelte 4의 `x = x` 관용구가 통하지 않는 지점).
+        brokenImages = new Set(brokenImages).add(id);
     }
 
     /** 빈 값을 화면에서 일관되게 — 지금까지 null분 / 분~분 / - 세 가지로 갈렸다 */
@@ -71,19 +71,19 @@
             ? EMPTY
             : `${g.min_players ?? '?'}-${g.max_players ?? '?'}인`;
 
-    let showModal = false;
-    let showBggModal = false;
-    let isEditing = false;
-    let selectedGame: any = null;
-    let isUnlimitedTime = false;
-    let previewFailed = false;
-    let bggInput: HTMLInputElement | null = null;
+    let showModal = $state(false);
+    let showBggModal = $state(false);
+    let isEditing = $state(false);
+    let selectedGame: any = $state(null);
+    let isUnlimitedTime = $state(false);
+    let previewFailed = $state(false);
+    let bggInput: HTMLInputElement | null = $state(null);
 
     // BGG State
-    let bggQuery = '';
-    let bggResults: any[] = [];
-    let isSearching = false;
-    let isImporting = false;
+    let bggQuery = $state('');
+    let bggResults: any[] = $state([]);
+    let isSearching = $state(false);
+    let isImporting = $state(false);
 
     function openAddModal() {
         isEditing = false;
@@ -124,42 +124,50 @@
     }
 
     // Game Search & Pagination
-    let gameSearch = '';
-    let visibleCount = 24;
+    let gameSearch = $state('');
+    let visibleCount = $state(24);
 
     // 이름만으로는 "카탄"을 catan으로 못 찾는다. 설명·확장·BGG ID까지 넓힌다.
-    $: searchedGames = gameSearch.trim()
+    const searchedGames = $derived(gameSearch.trim()
         ? data.games.filter((g: any) => {
               const q = gameSearch.trim().toLowerCase();
               return [g.name, g.description, g.included_dlcs, g.bgg_id]
                   .filter(Boolean)
                   .some((v: any) => String(v).toLowerCase().includes(q));
           })
-        : data.games;
+        : data.games);
 
-    $: filteredGames = searchedGames.filter((g: any) => {
+    const filteredGames = $derived(searchedGames.filter((g: any) => {
         if (filterKey === 'active') return g.is_active;
         if (filterKey === 'inactive') return !g.is_active;
         if (filterKey === 'noimage') return !g.image_url || brokenImages.has(g.id);
         return true;
-    });
+    }));
 
-    $: sortedGames = [...filteredGames].sort((a: any, b: any) => {
+    const sortedGames = $derived([...filteredGames].sort((a: any, b: any) => {
         const dir = sortAsc ? 1 : -1;
         if (sortKey === 'players') return ((a.min_players ?? 0) - (b.min_players ?? 0)) * dir;
         if (sortKey === 'playtime') return ((a.playtime_min ?? 0) - (b.playtime_min ?? 0)) * dir;
         if (sortKey === 'complexity') return ((a.complexity ?? 0) - (b.complexity ?? 0)) * dir;
         return a.name.localeCompare(b.name, 'ko') * dir;
+    }));
+
+    const visibleGames = $derived(sortedGames.slice(0, visibleCount));
+    const hasMore = $derived(visibleCount < sortedGames.length);
+    const noImageCount = $derived(
+        data.games.filter((g: any) => !g.image_url || brokenImages.has(g.id)).length
+    );
+
+    // 검색어·필터·정렬이 바뀌면 페이지네이션을 처음으로
+    $effect(() => {
+        void gameSearch;
+        void filterKey;
+        void sortKey;
+        visibleCount = 24;
     });
 
-    $: visibleGames = sortedGames.slice(0, visibleCount);
-    $: hasMore = visibleCount < sortedGames.length;
-    $: noImageCount = data.games.filter((g: any) => !g.image_url || brokenImages.has(g.id)).length;
-    // 검색어·필터·정렬이 바뀌면 페이지네이션을 처음으로
-    $: if (gameSearch !== undefined && filterKey && sortKey) visibleCount = 24;
-
-    let showDetailModal = false;
-    let selectedDetailGame: any = null;
+    let showDetailModal = $state(false);
+    let selectedDetailGame: any = $state(null);
 
     function openDetailModal(game: any) {
         selectedDetailGame = game;
@@ -172,20 +180,26 @@
     }
 
     // BGG import 성공 추적
-    let lastImportedId: string | null = null;
-    let importedIds: Set<string> = new Set();
+    let lastImportedId: string | null = $state(null);
+    let importedIds: Set<string> = $state(new Set());
 
-    $: if (form?.success) {
+    $effect(() => {
+        if (!form?.success) return;
         const f = form as any;
         if (f.needsConfirm) {
             // 이미 등록된 게임 — 무엇이 바뀌는지 보여주고 고르게 한다
             bggDiff = { bggId: f.bggId, name: f.existingName, changes: f.changes ?? [] };
-            keepKeys = new Set(f.changes?.map((c: any) => c.key) ?? []);
+            // 기본값: 갱신하기를 눌렀으니 대부분 덮어쓰되, 손으로 다듬는 필드인
+            // 설명만 현재 값을 지킨다. 전부 "유지"로 두면 확정을 눌러도 아무 일도
+            // 일어나지 않아 운영자가 무엇을 잘못했는지 알 수 없다.
+            const PROTECTED = ['description'];
+            keepKeys = new Set<string>(
+                (f.changes ?? []).map((c: any) => c.key).filter((k: string) => PROTECTED.includes(k))
+            );
             isImporting = false;
         } else if (f.imported) {
             if (lastImportedId) {
-                importedIds.add(lastImportedId);
-                importedIds = importedIds;
+                importedIds = new Set(importedIds).add(lastImportedId);
             }
             lastImportedId = null;
             bggDiff = null;
@@ -207,11 +221,11 @@
         } else {
             closeModal();
         }
-    }
+    });
 
     // 서버가 돌려준 실패를 화면에 노출한다. 지금까지 form.error를 읽는 코드가 없었다.
     let lastErrorSeen: string | null = null;
-    $: {
+    $effect(() => {
         const err = (form as any)?.error;
         if (err && err !== lastErrorSeen) {
             lastErrorSeen = err;
@@ -221,18 +235,21 @@
         } else if (!err) {
             lastErrorSeen = null;
         }
-    }
+    });
 
     /** BGG 덮어쓰기 미리보기 */
-    let bggDiff: { bggId: string; name: string; changes: any[] } | null = null;
-    let keepKeys: Set<string> = new Set();
-    let bggVisible = 20;
-    $: registeredBggIds = new Set(data.games.map((g: any) => String(g.bgg_id)).filter(Boolean));
+    let bggDiff: { bggId: string; name: string; changes: any[] } | null = $state(null);
+    let keepKeys: Set<string> = $state(new Set());
+    let bggVisible = $state(20);
+    const registeredBggIds = $derived(
+        new Set(data.games.map((g: any) => String(g.bgg_id)).filter(Boolean))
+    );
 
     function toggleKeep(key: string) {
-        if (keepKeys.has(key)) keepKeys.delete(key);
-        else keepKeys.add(key);
-        keepKeys = keepKeys;
+        const next = new Set(keepKeys);
+        if (next.has(key)) next.delete(key);
+        else next.add(key);
+        keepKeys = next;
     }
 
     const short = (v: any) => {
@@ -248,11 +265,11 @@
             게임 도감
         </h1>
         <div class="header-actions">
-            <button class="btn-secondary" on:click={() => showBggModal = true}>
+            <button class="btn-secondary" onclick={() => showBggModal = true}>
                 <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px;"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
                 BGG에서 가져오기
             </button>
-            <button class="btn-primary" on:click={openAddModal}>+ 게임 추가</button>
+            <button class="btn-primary" onclick={openAddModal}>+ 게임 추가</button>
         </div>
     </div>
 
@@ -260,7 +277,7 @@
         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
         <input type="text" placeholder="이름 · 설명 · 확장 · BGG ID 검색" aria-label="게임 검색" bind:value={gameSearch} />
         {#if gameSearch}
-            <button class="btn-clear-search" on:click={() => gameSearch = ''} aria-label="검색어 지우기">
+            <button class="btn-clear-search" onclick={() => gameSearch = ''} aria-label="검색어 지우기">
                 <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
             </button>
         {/if}
@@ -270,29 +287,29 @@
     <!-- 도구 모음 — 운영 과업은 "틀린 데이터 찾기"라 필터와 정렬이 검색보다 중요하다 -->
     <div class="toolbar">
         <div class="filters" role="group" aria-label="목록 필터">
-            <button class="chip" class:on={filterKey === 'all'} on:click={() => (filterKey = 'all')}>
+            <button class="chip" class:on={filterKey === 'all'} onclick={() => (filterKey = 'all')}>
                 전체 {data.games.length}
             </button>
-            <button class="chip" class:on={filterKey === 'active'} on:click={() => (filterKey = 'active')}>
+            <button class="chip" class:on={filterKey === 'active'} onclick={() => (filterKey = 'active')}>
                 활성 {data.games.filter((g) => g.is_active).length}
             </button>
-            <button class="chip" class:on={filterKey === 'inactive'} on:click={() => (filterKey = 'inactive')}>
+            <button class="chip" class:on={filterKey === 'inactive'} onclick={() => (filterKey = 'inactive')}>
                 비활성 {data.games.filter((g) => !g.is_active).length}
             </button>
             <button
                 class="chip"
                 class:on={filterKey === 'noimage'}
                 class:chip-warn={noImageCount > 0}
-                on:click={() => (filterKey = 'noimage')}
+                onclick={() => (filterKey = 'noimage')}
             >
                 이미지 없음 · 끊김 {noImageCount}
             </button>
         </div>
         <div class="view-toggle" role="group" aria-label="목록 표시 방식">
-            <button class="chip" class:on={viewMode === 'table'} on:click={() => setView('table')} aria-pressed={viewMode === 'table'}>
+            <button class="chip" class:on={viewMode === 'table'} onclick={() => setView('table')} aria-pressed={viewMode === 'table'}>
                 표
             </button>
-            <button class="chip" class:on={viewMode === 'card'} on:click={() => setView('card')} aria-pressed={viewMode === 'card'}>
+            <button class="chip" class:on={viewMode === 'card'} onclick={() => setView('card')} aria-pressed={viewMode === 'card'}>
                 카드
             </button>
         </div>
@@ -305,22 +322,22 @@
                 <tr>
                     <th class="col-thumb"><span class="sr-only">커버</span></th>
                     <th>
-                        <button class="sort-btn" on:click={() => toggleSort('name')} aria-label="이름으로 정렬">
+                        <button class="sort-btn" onclick={() => toggleSort('name')} aria-label="이름으로 정렬">
                             이름{#if sortKey === 'name'}<span aria-hidden="true">{sortAsc ? ' ↑' : ' ↓'}</span>{/if}
                         </button>
                     </th>
                     <th class="col-num">
-                        <button class="sort-btn" on:click={() => toggleSort('players')} aria-label="인원으로 정렬">
+                        <button class="sort-btn" onclick={() => toggleSort('players')} aria-label="인원으로 정렬">
                             인원{#if sortKey === 'players'}<span aria-hidden="true">{sortAsc ? ' ↑' : ' ↓'}</span>{/if}
                         </button>
                     </th>
                     <th class="col-num">
-                        <button class="sort-btn" on:click={() => toggleSort('playtime')} aria-label="시간으로 정렬">
+                        <button class="sort-btn" onclick={() => toggleSort('playtime')} aria-label="시간으로 정렬">
                             시간{#if sortKey === 'playtime'}<span aria-hidden="true">{sortAsc ? ' ↑' : ' ↓'}</span>{/if}
                         </button>
                     </th>
                     <th class="col-num">
-                        <button class="sort-btn" on:click={() => toggleSort('complexity')} aria-label="난이도로 정렬">
+                        <button class="sort-btn" onclick={() => toggleSort('complexity')} aria-label="난이도로 정렬">
                             난이도{#if sortKey === 'complexity'}<span aria-hidden="true">{sortAsc ? ' ↑' : ' ↓'}</span>{/if}
                         </button>
                     </th>
@@ -333,7 +350,7 @@
                     <tr class:row-inactive={!game.is_active}>
                         <td class="col-thumb">
                             {#if game.image_url && !brokenImages.has(game.id)}
-                                <img class="thumb" src={game.image_url} alt="" loading="lazy" on:error={() => markBroken(game.id)} />
+                                <img class="thumb" src={game.image_url} alt="" loading="lazy" onerror={() => markBroken(game.id)} />
                             {:else}
                                 <span class="thumb thumb-empty" class:thumb-broken={brokenImages.has(game.id)} title={brokenImages.has(game.id) ? '이미지 링크가 끊어졌습니다' : '이미지 없음'}>
                                     <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
@@ -341,7 +358,7 @@
                             {/if}
                         </td>
                         <td>
-                            <button class="name-link" on:click={() => openDetailModal(game)}>{game.name}</button>
+                            <button class="name-link" onclick={() => openDetailModal(game)}>{game.name}</button>
                             {#if !game.is_active}<span class="badge-inactive">비활성</span>{/if}
                             {#if brokenImages.has(game.id)}<span class="badge-broken">이미지 끊김</span>{/if}
                         </td>
@@ -350,9 +367,9 @@
                         <td class="col-num">{game.complexity ?? EMPTY}</td>
                         <td class="col-dlc">{game.included_dlcs || '—'}</td>
                         <td class="col-actions">
-                            <button class="btn-edit" on:click={() => openEditModal(game)}>수정</button>
+                            <button class="btn-edit" onclick={() => openEditModal(game)}>수정</button>
                             {#if game.is_active}
-                                <button class="btn-quiet" on:click={() => (confirmAction = { kind: 'deactivate', game })}>비활성화</button>
+                                <button class="btn-quiet" onclick={() => (confirmAction = { kind: 'deactivate', game })}>비활성화</button>
                             {:else}
                                 <form method="POST" action="?/reactivate" use:enhance={() => async ({ result, update }) => {
                                     reportResult(result, `${game.name}을(를) 복구했습니다.`);
@@ -363,7 +380,7 @@
                                 </form>
                             {/if}
                             {#if !game.has_history}
-                                <button class="btn-danger-quiet" on:click={() => (confirmAction = { kind: 'delete', game })}>완전 삭제</button>
+                                <button class="btn-danger-quiet" onclick={() => (confirmAction = { kind: 'delete', game })}>완전 삭제</button>
                             {/if}
                         </td>
                     </tr>
@@ -380,8 +397,8 @@
             <div 
                 class="game-card" 
                 class:inactive={!game.is_active} 
-                on:click={() => openDetailModal(game)}
-                on:keydown={(e) => {
+                onclick={() => openDetailModal(game)}
+                onkeydown={(e) => {
                     if (e.key === 'Enter' || e.key === ' ') {
                         e.preventDefault();
                         openDetailModal(game);
@@ -393,7 +410,7 @@
             >
                 <div class="game-image">
                     {#if game.image_url && !brokenImages.has(game.id)}
-                        <img src={game.image_url} alt={game.name} on:error={() => markBroken(game.id)} />
+                        <img src={game.image_url} alt={game.name} onerror={() => markBroken(game.id)} />
                     {:else}
                         <div class="placeholder">
                             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:#adb5bd;"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
@@ -428,9 +445,9 @@
                         <p class="desc">{game.description}</p>
                     {/if}
                     <div class="actions">
-                        <button class="btn-edit" on:click|stopPropagation={() => openEditModal(game)}>수정</button>
+                        <button class="btn-edit" onclick={(e) => { e.stopPropagation(); openEditModal(game); }}>수정</button>
                         {#if game.is_active}
-                            <button class="btn-quiet" on:click|stopPropagation={() => (confirmAction = { kind: 'deactivate', game })}>
+                            <button class="btn-quiet" onclick={(e) => { e.stopPropagation(); confirmAction = { kind: 'deactivate', game }; }}>
                                 비활성화
                             </button>
                         {:else}
@@ -439,7 +456,7 @@
                                 await update();
                             }}>
                                 <input type="hidden" name="id" value={game.id} />
-                                <button type="submit" class="btn-quiet" on:click|stopPropagation>복구</button>
+                                <button type="submit" class="btn-quiet" onclick={(e) => e.stopPropagation()}>복구</button>
                             </form>
                         {/if}
                     </div>
@@ -452,7 +469,7 @@
     </div>
 {/if}
     {#if hasMore}
-        <button class="btn-load-more" on:click={() => (visibleCount += 24)}>
+        <button class="btn-load-more" onclick={() => (visibleCount += 24)}>
             더 보기 ({visibleGames.length}/{sortedGames.length})
         </button>
     {/if}
@@ -461,12 +478,12 @@
 {#if confirmAction}
     <!-- 백드롭은 편의용 클릭 영역. 키보드 경로는 Escape(trapFocus)와 취소 버튼이 담당한다. -->
     <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
-    <div class="modal-backdrop confirm-layer" on:click={() => (confirmAction = null)} role="presentation">
+    <div class="modal-backdrop confirm-layer" onclick={() => (confirmAction = null)} role="presentation">
         <div
             class="modal confirm-modal"
             use:trapFocus={() => (confirmAction = null)}
-            on:click|stopPropagation
-            on:keydown|stopPropagation
+            onclick={(e) => e.stopPropagation()}
+            onkeydown={(e) => e.stopPropagation()}
             role="alertdialog"
             aria-modal="true"
             tabindex="-1"
@@ -485,7 +502,7 @@
                 </p>
             {/if}
             <div class="modal-actions">
-                <button type="button" class="btn-quiet" data-autofocus on:click={() => (confirmAction = null)}>돌아가기</button>
+                <button type="button" class="btn-quiet" data-autofocus onclick={() => (confirmAction = null)}>돌아가기</button>
                 <form
                     method="POST"
                     action={confirmAction.kind === 'deactivate' ? '?/deactivate' : '?/delete'}
@@ -496,7 +513,7 @@
                     }}
                 >
                     <input type="hidden" name="id" value={confirmAction.game.id} />
-                    <button type="submit" class={confirmAction.kind === 'delete' ? 'btn-danger' : 'btn-primary'} on:click={runConfirm}>
+                    <button type="submit" class={confirmAction.kind === 'delete' ? 'btn-danger' : 'btn-primary'} onclick={runConfirm}>
                         {confirmAction.kind === 'delete' ? '완전 삭제' : '비활성화'}
                     </button>
                 </form>
@@ -508,12 +525,12 @@
 {#if bggDiff}
     <!-- 백드롭은 편의용 클릭 영역. 키보드 경로는 Escape(trapFocus)와 취소 버튼이 담당한다. -->
     <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
-    <div class="modal-backdrop confirm-layer" on:click={() => (bggDiff = null)} role="presentation">
+    <div class="modal-backdrop confirm-layer" onclick={() => (bggDiff = null)} role="presentation">
         <div
             class="modal diff-modal"
             use:trapFocus={() => (bggDiff = null)}
-            on:click|stopPropagation
-            on:keydown|stopPropagation
+            onclick={(e) => e.stopPropagation()}
+            onkeydown={(e) => e.stopPropagation()}
             role="dialog"
             aria-modal="true"
             tabindex="-1"
@@ -521,7 +538,7 @@
             <h2>이미 등록된 게임입니다</h2>
             <p class="diff-lead">
                 "{bggDiff.name}"의 정보를 BGG 값으로 바꿉니다.
-                <strong>체크를 풀면 지금 값을 그대로 둡니다.</strong>
+                <strong>체크한 항목만 바뀝니다.</strong> 설명은 직접 다듬는 경우가 많아 기본으로 지켜둡니다.
             </p>
 
             {#if bggDiff.changes.length === 0}
@@ -531,7 +548,7 @@
                     {#each bggDiff.changes as c (c.key)}
                         <li class="diff-row">
                             <label>
-                                <input type="checkbox" checked={!keepKeys.has(c.key)} on:change={() => toggleKeep(c.key)} />
+                                <input type="checkbox" checked={!keepKeys.has(c.key)} onchange={() => toggleKeep(c.key)} />
                                 <span class="diff-label">{c.label}</span>
                             </label>
                             <div class="diff-values">
@@ -545,7 +562,7 @@
             {/if}
 
             <div class="modal-actions">
-                <button type="button" class="btn-quiet" data-autofocus on:click={() => (bggDiff = null)}>취소</button>
+                <button type="button" class="btn-quiet" data-autofocus onclick={() => (bggDiff = null)}>취소</button>
                 <form
                     method="POST"
                     action="?/importBgg"
@@ -576,11 +593,11 @@
     <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
     <div 
         class="modal-backdrop" 
-        on:click={closeDetailModal} role="presentation">
-        <div class="modal detail-modal" use:trapFocus={closeDetailModal} on:click|stopPropagation on:keydown|stopPropagation role="dialog" aria-modal="true" tabindex="-1">
+        onclick={closeDetailModal} role="presentation">
+        <div class="modal detail-modal" use:trapFocus={closeDetailModal} onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="dialog" aria-modal="true" tabindex="-1">
             <div class="detail-header">
                 <h2>{selectedDetailGame.name}</h2>
-                <button class="btn-close" on:click={closeDetailModal} aria-label="닫기">
+                <button class="btn-close" onclick={closeDetailModal} aria-label="닫기">
                     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                 </button>
             </div>
@@ -653,8 +670,8 @@
             </div>
 
             <div class="modal-actions">
-                <button class="btn-edit" on:click={() => { openEditModal(selectedDetailGame); closeDetailModal(); }}>수정</button>
-                <button class="btn-primary" on:click={closeDetailModal}>닫기</button>
+                <button class="btn-edit" onclick={() => { openEditModal(selectedDetailGame); closeDetailModal(); }}>수정</button>
+                <button class="btn-primary" onclick={closeDetailModal}>닫기</button>
             </div>
         </div>
     </div>
@@ -665,8 +682,8 @@
     <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
     <div 
         class="modal-backdrop" 
-        on:click={closeModal} role="presentation">
-        <div class="modal" use:trapFocus={closeModal} on:click|stopPropagation on:keydown|stopPropagation role="dialog" aria-modal="true" tabindex="-1">
+        onclick={closeModal} role="presentation">
+        <div class="modal" use:trapFocus={closeModal} onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="dialog" aria-modal="true" tabindex="-1">
             <h2>{isEditing ? '게임 수정' : '새 게임 등록'}</h2>
             <form method="POST" action={isEditing ? '?/update' : '?/create'} use:enhance>
                 {#if isEditing}
@@ -695,12 +712,12 @@
                         <div class="playtime-input-group">
                             <input type="number" id="playtime" name="playtime_min" 
                                 value={isUnlimitedTime ? 0 : selectedGame.playtime_min} 
-                                on:input={(e) => selectedGame.playtime_min = parseInt(e.currentTarget.value)}
+                                oninput={(e) => selectedGame.playtime_min = parseInt(e.currentTarget.value)}
                                 step="5" 
                                 disabled={isUnlimitedTime} 
                             />
                             <label class="checkbox-label" for="unlimitedTime">
-                                <input type="checkbox" id="unlimitedTime" bind:checked={isUnlimitedTime} on:change={() => {
+                                <input type="checkbox" id="unlimitedTime" bind:checked={isUnlimitedTime} onchange={() => {
                                     if (isUnlimitedTime) selectedGame.playtime_min = 0;
                                     else selectedGame.playtime_min = 30;
                                 }} />
@@ -746,7 +763,7 @@
                     <input type="text" id="imageUrl" name="image_url" bind:value={selectedGame.image_url} placeholder="https://..." />
                         {#if selectedGame.image_url}
                             <div class="image-preview">
-                                <img src={selectedGame.image_url} alt="" on:load={() => (previewFailed = false)} on:error={() => (previewFailed = true)} />
+                                <img src={selectedGame.image_url} alt="" onload={() => (previewFailed = false)} onerror={() => (previewFailed = true)} />
                                 <span class="preview-note" class:preview-fail={previewFailed}>
                                     {previewFailed ? '이 주소에서 이미지를 불러오지 못했습니다.' : '미리보기'}
                                 </span>
@@ -760,7 +777,7 @@
                 </div>
 
                 <div class="modal-actions">
-                    <button type="button" class="btn-cancel" on:click={closeModal}>취소</button>
+                    <button type="button" class="btn-cancel" onclick={closeModal}>취소</button>
                     <button type="submit" class="btn-submit">{isEditing ? '수정' : '등록'}</button>
                 </div>
             </form>
@@ -771,8 +788,8 @@
 {#if showBggModal}
     <!-- 백드롭은 편의용 클릭 영역. 키보드 경로는 모달의 Escape(trapFocus)와 닫기 버튼이 담당한다. -->
     <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
-    <div class="modal-backdrop" on:click={closeBggModal} role="presentation">
-        <div class="modal bgg-modal" use:trapFocus={closeBggModal} on:click|stopPropagation on:keydown|stopPropagation role="dialog" aria-modal="true" tabindex="-1">
+    <div class="modal-backdrop" onclick={closeBggModal} role="presentation">
+        <div class="modal bgg-modal" use:trapFocus={closeBggModal} onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="dialog" aria-modal="true" tabindex="-1">
             <h2>
                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px; vertical-align:text-bottom;"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
                 BGG 게임 검색
@@ -834,7 +851,7 @@
                         {/each}
                     </ul>
                     {#if bggVisible < bggResults.length}
-                        <button type="button" class="btn-load-more" on:click={() => (bggVisible += 20)}>
+                        <button type="button" class="btn-load-more" onclick={() => (bggVisible += 20)}>
                             더 보기 ({Math.min(bggVisible, bggResults.length)}/{bggResults.length})
                         </button>
                     {/if}
@@ -844,7 +861,7 @@
             </div>
 
             <div class="modal-actions">
-                <button type="button" class="btn-cancel" on:click={closeBggModal}>닫기</button>
+                <button type="button" class="btn-cancel" onclick={closeBggModal}>닫기</button>
             </div>
         </div>
     </div>
@@ -1170,6 +1187,9 @@
         font-size: 3rem;
     }
     .game-info {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
         padding: var(--space-4);
         flex: 1;
         display: flex;
@@ -1199,11 +1219,13 @@
         margin: 0 0 var(--space-2) 0;
         font-weight: var(--weight-medium);
     }
+    /* flex:1 이 박스를 카드 높이만큼 늘려 line-clamp 을 무력화하고 있었다.
+       긴 설명이 3~4줄로 늘어난 뒤 말줄임 없이 글자 중간에서 잘렸다.
+       늘어나는 역할은 .desc 위의 여백이 맡고, 여기는 클램프만 한다. */
     .desc {
         font-size: var(--text-sm);
         color: var(--text-darker);
         margin: 0 0 var(--space-4) 0;
-        flex: 1;
         display: -webkit-box;
         -webkit-line-clamp: 2;
         line-clamp: 2;
@@ -1211,6 +1233,7 @@
         overflow: hidden;
     }
     .actions {
+        margin-top: auto;
         display: flex;
         gap: var(--space-2);
         justify-content: flex-end;

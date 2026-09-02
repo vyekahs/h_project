@@ -3,7 +3,7 @@
 	 * 어드민 전역 결과 알림 표면. 레이아웃에 한 번만 놓으면 모든 어드민 화면이
 	 * showToast / showAlert 로 결과를 알릴 수 있다.
 	 */
-	import { toastMessage, alertMessage, dismissAlert } from '$lib/stores/adminFeedback';
+	import { toastMessage, alertMessage, alertKind, dismissAlert } from '$lib/stores/adminFeedback';
 	import { trapFocus } from '$lib/actions/modal';
 </script>
 
@@ -19,7 +19,7 @@
 	<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
 	<div class="alert-backdrop" on:click={dismissAlert} role="presentation">
 		<div
-			class="alert-card"
+			class="alert-card alert-{$alertKind}"
 			use:trapFocus={dismissAlert}
 			on:click|stopPropagation
 			on:keydown|stopPropagation
@@ -28,7 +28,9 @@
 			aria-labelledby="admin-alert-title"
 			tabindex="-1"
 		>
-			<h3 id="admin-alert-title">문제가 발생했어요</h3>
+			<h3 id="admin-alert-title">
+				{$alertKind === 'success' ? '완료' : $alertKind === 'info' ? '알림' : '문제가 발생했어요'}
+			</h3>
 			<p>{$alertMessage}</p>
 			<div class="alert-actions">
 				<button type="button" class="alert-confirm" data-autofocus on:click={dismissAlert}>확인</button>
@@ -82,6 +84,12 @@
 		margin: 0 0 var(--space-2, 0.5rem);
 		font-size: var(--text-lg, 1.25rem);
 		color: var(--color-red-dark, #d32f2f);
+	}
+	.alert-card.alert-success h3 {
+		color: var(--color-green-dark, #2b8a3e);
+	}
+	.alert-card.alert-info h3 {
+		color: var(--text-primary, #333);
 	}
 	.alert-card p {
 		margin: 0 0 var(--space-4, 1rem);
