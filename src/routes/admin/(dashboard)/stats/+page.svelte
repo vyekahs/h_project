@@ -404,7 +404,7 @@
     }
     .progress-bar {
         height: 100%;
-        background: #4caf50;
+        background: var(--color-green-dark);
         border-radius: var(--radius-control);
     }
     .empty-chart {
@@ -464,7 +464,7 @@
         min-height: 44px;
         padding: 0 0.9rem;
         border-radius: var(--radius-control);
-        border: 1px solid var(--border-medium, #ced4da);
+        border: 1px solid var(--border-medium);
         background: var(--bg-primary, var(--bg-primary));
         color: var(--text-primary, var(--text-primary));
         font-size: var(--text-sm);

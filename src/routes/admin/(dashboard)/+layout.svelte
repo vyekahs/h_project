@@ -340,6 +340,21 @@
         /* Additional Colors */
         --border-warning: #ffe0b2;
         --color-purple-bg: #e8d5f5;
+
+        /* 연한 배경 + 진한 글자 톤 버튼. +/- 조정, 연장/해지처럼 짝을 이루는
+           동작에 쓴다. 세 화면에 같은 값이 흩어져 있던 것을 모았다.
+           hover 틴트는 글자가 4.5:1을 지키는 선까지만 진해진다
+           (예전 #bbdefb / #f8bbd0 은 4.16 / 4.07 로 미달이었다). */
+        --tint-blue-bg: #e3f2fd;
+        --tint-blue-bg-hover: #d4e6fc;
+        --tint-red-bg: #fce4ec;
+        --tint-red-bg-hover: #fbd0de;
+        --color-blue-darker: #0a4bad;   /* 파랑 버튼의 hover */
+
+        /* 순위 메달. 동메달은 흰 글자에서 3.14:1이던 #cd7f32를 내렸다. */
+        --medal-gold: #ffd700;
+        --medal-silver: #c0c0c0;
+        --medal-bronze: #9c6320;
         --color-indigo: #364fc7;
 
         color-scheme: light;

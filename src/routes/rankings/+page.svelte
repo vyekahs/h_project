@@ -29,7 +29,7 @@
 
         <!-- Win Rate Rankings -->
         <section class="ranking-card">
-            <h2>📈 승률 랭킹 (5판 이상)</h2>
+            <h2>📈 승률 랭킹 (승자 기록된 5판 이상)</h2>
             <div class="ranking-list">
                 {#each data.winRateRankings as player, i}
                     <div class="ranking-item">

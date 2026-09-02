@@ -510,8 +510,8 @@
         box-shadow: 0 4px 6px rgba(0,0,0,0.05);
     }
     .status-card.active {
-        border-color: #2196f3;
-        background: #e3f2fd;
+        border-color: var(--color-blue-bright);
+        background: var(--tint-blue-bg);
     }
     .status-badge {
         display: inline-block;
@@ -521,17 +521,17 @@
         margin-bottom: var(--space-4);
     }
     .status-badge.active {
-        background: #2196f3;
+        background: var(--color-blue-bright);
         color: white;
     }
     .status-badge.inactive {
-        background: #9e9e9e;
+        background: var(--text-secondary);
         color: white;
     }
     .days-left {
         font-size: 2.5rem;
         font-weight: bold;
-        color: #1976d2;
+        color: var(--color-blue-bright);
         margin: var(--space-2) 0;
     }
     .date {
@@ -549,7 +549,7 @@
         font-size: var(--text-lg);
         font-weight: bold;
         color: white;
-        background: #4caf50;
+        background: var(--color-green-dark);
         border: none;
         border-radius: var(--radius-control);
         cursor: pointer;
@@ -557,7 +557,7 @@
         transition: background 0.2s;
     }
     .btn-grant:hover {
-        background: #388e3c;
+        background: var(--color-green-dark);
     }
 
     .btn-cancel-pass {
@@ -565,7 +565,7 @@
         font-size: var(--text-lg);
         font-weight: bold;
         color: white;
-        background: #f44336;
+        background: var(--color-red-dark);
         border: none;
         border-radius: var(--radius-control);
         cursor: pointer;
@@ -598,18 +598,18 @@
         transition: all 0.2s;
     }
     .btn-adjust.plus {
-        background: #e3f2fd;
-        color: #1976d2;
+        background: var(--tint-blue-bg);
+        color: var(--color-blue-bright);
     }
     .btn-adjust.plus:hover {
-        background: #bbdefb;
+        background: var(--tint-blue-bg-hover);
     }
     .btn-adjust.minus {
-        background: #fce4ec;
-        color: #c62828;
+        background: var(--tint-red-bg);
+        color: var(--color-red-darker);
     }
     .btn-adjust.minus:hover {
-        background: #f8bbd0;
+        background: var(--tint-red-bg-hover);
     }
 
     /* Modal Styles */
@@ -733,7 +733,7 @@
         border-bottom: 1px solid var(--border-light);
     }
     .history-table th {
-        background: #f9f9f9;
+        background: var(--bg-secondary);
         font-weight: 600;
     }
     .status-badge {
@@ -742,8 +742,8 @@
         font-size: var(--text-xs);
     }
     .status-badge.playing {
-        background: #e3f2fd;
-        color: #1976d2;
+        background: var(--tint-blue-bg);
+        color: var(--color-blue-bright);
     }
     .status-badge.finished {
         background: var(--border-light);
@@ -788,12 +788,12 @@
         position: relative;
     }
     .day.empty {
-        background: #fafafa;
+        background: var(--bg-secondary);
         border: none;
     }
     .day.has-games {
-        background: #e3f2fd;
-        border-color: #90caf9;
+        background: var(--tint-blue-bg);
+        border-color: var(--tint-blue-bg-hover);
     }
     .day-number {
         font-size: var(--text-xs);
@@ -811,12 +811,12 @@
     .dot {
         width: 6px;
         height: 6px;
-        background: #1976d2;
+        background: var(--color-blue-bright);
         border-radius: 50%;
     }
     .game-count {
         font-size: var(--text-xs);
-        color: #1976d2;
+        color: var(--color-blue-bright);
         margin-top: var(--space-1);
         text-align: center;
     }
@@ -846,9 +846,9 @@
         font-weight: bold;
         margin-right: var(--space-4);
     }
-    .partner-card:nth-child(1) .rank { background: #ffd700; color: var(--text-primary); }
-    .partner-card:nth-child(2) .rank { background: #c0c0c0; color: var(--text-primary); }
-    .partner-card:nth-child(3) .rank { background: #cd7f32; color: white; }
+    .partner-card:nth-child(1) .rank { background: var(--medal-gold); color: var(--text-primary); }
+    .partner-card:nth-child(2) .rank { background: var(--medal-silver); color: var(--text-primary); }
+    .partner-card:nth-child(3) .rank { background: var(--medal-bronze); color: white; }
     
     .info .name {
         font-weight: bold;
@@ -912,10 +912,10 @@
         font-size: var(--text-base);
     }
     .btn-primary:hover {
-        background: #0056b3;
+        background: var(--color-blue-darker);
     }
     .success-msg {
-        color: #2e7d32;
+        color: var(--color-green-dark);
         margin-top: var(--space-4);
         font-weight: bold;
     }

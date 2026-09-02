@@ -614,7 +614,7 @@
 		background: var(--border-medium);
 	}
 	.connection-status.connected .dot {
-		background: #4caf50;
+		background: var(--color-green-dark);
 		animation: pulse 2s infinite;
 	}
 	@keyframes pulse {
@@ -658,7 +658,7 @@
 	}
 	.tap-hint {
 		font-size: var(--text-xs);
-		color: #aaa;
+		color: var(--text-secondary);
 		margin-left: 4px;
 	}
 	.chart-value {
@@ -740,16 +740,16 @@
 	}
 	.stuck-card {
 		margin-bottom: var(--space-5);
-		border: 1px solid #f44336;
+		border: 1px solid var(--color-red-dark);
 		background: var(--color-error-bg);
 		animation: pulse-border 2s infinite;
 	}
 	.stuck-card h3 {
-		color: #c62828;
+		color: var(--color-red-darker);
 	}
 	.stuck-age {
 		font-weight: 700;
-		color: #c62828;
+		color: var(--color-red-darker);
 	}
 	.abandoned-card {
 		margin-bottom: var(--space-5);
@@ -757,16 +757,16 @@
 		background: var(--color-warning-bg);
 	}
 	.abandoned-card h3 {
-		color: #e65100;
+		color: var(--color-orange-text);
 	}
 	.abandoned-hint {
 		margin: 0 0 var(--space-3) 0;
 		font-size: var(--text-xs);
-		color: #8d6e63;
+		color: var(--text-secondary);
 	}
 	@keyframes pulse-border {
-		0%, 100% { border-color: #f44336; }
-		50% { border-color: #ffcdd2; }
+		0%, 100% { border-color: var(--color-red-dark); }
+		50% { border-color: var(--tint-red-bg-hover); }
 	}
 	.log-table-wrap {
 		max-height: 400px;
@@ -795,7 +795,7 @@
 		border-bottom: 1px solid var(--bg-surface);
 	}
 	.log-table tbody tr:hover {
-		background: #fafafa;
+		background: var(--bg-secondary);
 	}
 	.log-time {
 		font-family: monospace;
@@ -810,23 +810,23 @@
 	}
 	.log-checkin {
 		background: var(--color-success-bg);
-		color: #2e7d32;
+		color: var(--color-green-dark);
 	}
 	.log-checkout {
-		background: #fce4ec;
-		color: #c62828;
+		background: var(--tint-red-bg);
+		color: var(--color-red-darker);
 	}
 	.log-open {
 		background: var(--color-warning-bg);
-		color: #ef6c00;
+		color: var(--color-orange-text);
 	}
 	.log-source {
 		display: inline-block;
 		padding: 0.1rem 0.4rem;
 		border-radius: var(--radius-control);
 		font-size: var(--text-xs);
-		background: #e3f2fd;
-		color: #1565c0;
+		background: var(--tint-blue-bg);
+		color: var(--color-blue-bright);
 		font-weight: 600;
 	}
 	.empty-state {

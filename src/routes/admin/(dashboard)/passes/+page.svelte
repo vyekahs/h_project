@@ -301,7 +301,7 @@
 
     .days-badge {
         background: var(--color-success-bg);
-        color: #2e7d32;
+        color: var(--color-green-dark);
         padding: var(--space-1) 0.6rem;
         border-radius: var(--radius-card);
         font-weight: 700;
@@ -309,7 +309,7 @@
         min-width: 45px;
         text-align: center;
     }
-    .days-badge.urgent { background: var(--color-warning-bg); color: #e65100; }
+    .days-badge.urgent { background: var(--color-warning-bg); color: var(--color-orange-text); }
     /* --text-muted(var(--text-muted))는 이 회색 위에서 2.61:1이라 읽히지 않았다 */
     .expired-badge { background: var(--bg-surface); color: var(--text-secondary); }
 
@@ -321,12 +321,12 @@
         cursor: pointer;
         font-weight: 600;
     }
-    .btn-minus { background: #fce4ec; color: #c62828; }
-    .btn-minus:hover { background: #f8bbd0; }
-    .btn-plus { background: #e3f2fd; color: #1976d2; }
-    .btn-plus:hover { background: #bbdefb; }
-    .btn-extend { background: #e3f2fd; color: #1565c0; }
-    .btn-extend:hover { background: #bbdefb; }
+    .btn-minus { background: var(--tint-red-bg); color: var(--color-red-darker); }
+    .btn-minus:hover { background: var(--tint-red-bg-hover); }
+    .btn-plus { background: var(--tint-blue-bg); color: var(--color-blue-bright); }
+    .btn-plus:hover { background: var(--tint-blue-bg-hover); }
+    .btn-extend { background: var(--tint-blue-bg); color: var(--color-blue-bright); }
+    .btn-extend:hover { background: var(--tint-blue-bg-hover); }
     /* 대시보드의 .btn-cancel은 "다이얼로그 닫기"라 같은 이름을 쓰지 않는다 */
     .modal-backdrop.confirm-layer { z-index: 1100; }
     .btn-danger {
@@ -339,8 +339,8 @@
         font-weight: 600;
         cursor: pointer;
     }
-    .btn-revoke { background: #fce4ec; color: var(--color-red-darker); border: 1px solid var(--color-red-darker); }
-    .btn-revoke:hover { background: #ffcdd2; }
+    .btn-revoke { background: var(--tint-red-bg); color: var(--color-red-darker); border: 1px solid var(--color-red-darker); }
+    .btn-revoke:hover { background: var(--tint-red-bg-hover); }
 
     .btn-primary {
         background: var(--color-blue-bright);

@@ -551,7 +551,7 @@
         cursor: pointer;
     }
     .btn-logout:hover {
-        background: var(--color-error-bg, #ffebee);
+        background: var(--color-error-bg);
     }
     .btn-primary {
         background: var(--color-blue-bright);
@@ -564,7 +564,7 @@
         transition: background 0.2s;
     }
     .btn-primary:hover {
-        background: #0056b3;
+        background: var(--color-blue-darker);
     }
     .full-width {
         width: 100%;
