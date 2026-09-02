@@ -976,7 +976,7 @@
             }} class="game-form">
                 <input type="hidden" name="gameId" value={selectedGameId} />
                 <div class="input-group custom-dropdown">
-                    <label class="sr-only" for="newGameName">게임 이름</label>
+                    <label for="newGameName">게임 이름</label>
                     <input 
                         type="text" 
                         id="newGameName"
@@ -1026,7 +1026,7 @@
                         id="duration"
                         name="duration" 
                         bind:value={selectedDuration} 
-                        placeholder="분 단위 입력" 
+                        placeholder="60" 
                         required 
                         min="1" 
                         class="duration-input"
@@ -1624,8 +1624,8 @@
 
 <style>
     section {
-        margin-bottom: 2rem;
-        padding: 1.5rem;
+        margin-bottom: var(--space-6);
+        padding: var(--space-5);
         border: 1px solid var(--border-light);
         border-radius: var(--radius-control);
         background: var(--bg-primary);
@@ -1643,7 +1643,7 @@
     /* 라이브 블록 우위 */
     .section-primary {
         background: var(--bg-primary);
-        border-color: #e0e0e0;
+        border-color: var(--border-default);
     }
 
     /* 저빈도 관리 섹션 — 기본 접힘 */
@@ -1694,6 +1694,13 @@
         font-size: var(--text-2xl);
         color: var(--text-secondary);
     }
+    /* 3열 스트립에 게임 이름까지 넣으면 좁은 화면에서 레이블이 두 줄로 깨진다.
+       바로 아래 「진행 중인 게임」 목록이 같은 이름을 이미 보여준다. */
+    @media (max-width: 560px) {
+        .rs-label-name {
+            display: none;
+        }
+    }
     .rs-label-name {
         min-width: 0;
         overflow: hidden;
@@ -1720,7 +1727,7 @@
         background: none;
         border: 1px solid var(--border-medium);
         color: var(--text-secondary);
-        padding: 0.25rem 0.5rem;
+        padding: var(--space-1) var(--space-2);
         border-radius: var(--radius-control);
         cursor: pointer;
     }
@@ -1732,7 +1739,7 @@
         background: var(--color-blue-bright);
         color: white;
         border: none;
-        padding: 0.5rem 1.25rem;
+        padding: var(--space-2) 1.25rem;
         border-radius: var(--radius-control);
         cursor: pointer;
         font-weight: 700;
@@ -1741,7 +1748,7 @@
         background: var(--color-red-dark);
     }
     .btn-confirm-action.danger:hover {
-        background: #b71c1c;
+        background: var(--color-red-darker);
     }
 
     .attendee-list {
@@ -1752,14 +1759,14 @@
         display: flex;
         justify-content: space-between;
         align-items: center;
-        gap: 0.75rem;
-        padding: 0.5rem;
+        gap: var(--space-3);
+        padding: var(--space-2);
         border-bottom: 1px solid var(--border-default);
     }
     .attendee-info {
         display: flex;
         align-items: center;
-        gap: 0.5rem;
+        gap: var(--space-2);
         min-width: 0;
     }
     .attendee-link {
@@ -1783,7 +1790,7 @@
         font-size: var(--text-xs);
         color: var(--text-secondary);
         font-variant-numeric: var(--numeric);
-        background: #eee;
+        background: var(--border-light);
         padding: 0.1rem 0.4rem;
         border-radius: var(--radius-control);
     }
@@ -1816,15 +1823,63 @@
     .btn-qr:hover {
         background: var(--bg-hover);
     }
-    .add-form, .game-form {
-        margin-top: 1rem;
+    /* .add-form은 「인원 추가」 같은 한 줄짜리 인라인 폼이고,
+       .game-form은 모달 안의 여러 필드를 쌓는 세로 폼이다. 같은 가로 flex
+       규칙을 공유하는 바람에 모달 폼의 필드들이 한 줄에 눌려, 게임 이름
+       입력이 162x23px까지 찌그러지고 placeholder가 잘렸다. */
+    .add-form {
+        margin-top: var(--space-4);
         display: flex;
-        gap: 0.5rem;
+        gap: var(--space-2);
         flex-wrap: wrap;
     }
+    .game-form {
+        margin-top: var(--space-4);
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-4);
+    }
+    .game-form .input-group {
+        margin-bottom: 0;
+    }
+    .game-form label:not(.sr-only):not(.checkbox-option) {
+        display: block;
+        margin-bottom: var(--space-1);
+        font-size: var(--text-sm);
+        font-weight: var(--weight-medium);
+        color: var(--text-primary);
+    }
+    /* 모달 안 입력 높이는 한 가지다 — 23 / 32 / 35 / 44px가 섞여 있었다. */
+    .game-form input[type='text'],
+    .game-form input[type='number'],
+    .game-form input[type='datetime-local'] {
+        width: 100%;
+        box-sizing: border-box;
+        min-height: 44px;
+        padding: 0 var(--space-3);
+        border: 1px solid var(--border-default);
+        border-radius: var(--radius-control);
+        font-size: var(--text-sm);
+        font-family: inherit;
+        color: var(--text-primary);
+        background: var(--bg-primary);
+    }
+    /* 숫자 몇 자리만 받는 칸은 폭까지 늘릴 이유가 없다 */
+    .game-form input.number-input,
+    .game-form input.duration-input {
+        width: 6.5rem;
+    }
+    .game-form .pp-search {
+        min-height: 44px;
+    }
+    /* 최소·최대 인원은 한 쌍이다. 규칙이 아예 없어서 세로로 흩어져 있었다. */
+    .player-limits {
+        display: flex;
+        gap: var(--space-4);
+    }
     .quick-add {
-        margin-top: 1.5rem;
-        padding-top: 1rem;
+        margin-top: var(--space-5);
+        padding-top: var(--space-4);
         border-top: 1px dashed var(--border-default);
     }
     /* 접기 표시는 details > summary 와 같은 방식으로 한 번만 정의한다 */
@@ -1843,82 +1898,83 @@
         user-select: none;
         display: flex;
         align-items: center;
-        gap: 0.25rem;
+        gap: var(--space-1);
     }
     .toggle-header:hover {
         color: var(--color-blue-bright);
     }
     .quick-add .toggle-header {
         font-size: var(--text-sm);
-        margin-bottom: 0.5rem;
+        margin-bottom: var(--space-2);
     }
     .member-chips {
         display: flex;
         flex-wrap: wrap;
-        gap: 0.5rem;
+        gap: var(--space-2);
     }
     .chip-container {
         display: flex;
         align-items: center;
-        background: #e0e0e0;
+        background: var(--bg-active);
         border-radius: var(--radius-card);
-        padding-left: 0.75rem;
+        padding-left: var(--space-3);
         overflow: hidden;
     }
     .chip-link {
         text-decoration: none;
         color: var(--text-primary);
         font-size: var(--text-sm);
-        margin-right: 0.5rem;
+        margin-right: var(--space-2);
     }
     .chip-link:hover {
         text-decoration: underline;
         color: var(--color-blue-bright);
     }
     .chip-add {
-        background: #bdbdbd;
+        background: var(--color-slate);
         color: var(--text-primary);
         border: none;
-        padding: 0.25rem 0.6rem;
+        padding: var(--space-1) 0.6rem;
         font-size: var(--text-sm);
         cursor: pointer;
         transition: background 0.2s;
         border-left: 1px solid var(--border-medium);
     }
     .chip-add:hover {
-        background: #a0a0a0;
+        background: var(--color-slate-dark);
+        color: var(--bg-primary);
     }
     .btn-delete {
         background: var(--color-red-dark);
         color: white;
         border: none;
-        padding: 0.25rem 0.5rem;
+        padding: var(--space-1) var(--space-2);
         border-radius: var(--radius-control);
         cursor: pointer;
     }
     /* 파괴적이지 않은 세션 종료 — 빨강과 구분 */
     .btn-end-session {
-        background: #495057;
+        background: var(--text-dark);
         color: white;
         border: none;
-        padding: 0.5rem 1rem;
+        padding: var(--space-2) var(--space-4);
         border-radius: var(--radius-control);
         cursor: pointer;
         font-weight: 700;
     }
     .btn-end-session:hover {
-        background: #343a40;
+        background: var(--bg-dark);
     }
     .btn-warning {
         background: var(--color-warning-bg);
         color: var(--text-darker);
         border: 1px solid var(--border-warning);
-        padding: 0.25rem 0.5rem;
+        padding: var(--space-1) var(--space-2);
         border-radius: var(--radius-control);
         cursor: pointer;
     }
     button {
-        padding: 0.5rem 1rem;
+        padding: var(--space-2) var(--space-4);
         background: var(--color-blue-bright);
         color: white;
         border: none;
@@ -1929,7 +1985,7 @@
     }
     /* 비활성은 opacity로 흐리지 않는다. 배경과 곱해져 대비를 예측할 수 없게
        떨어뜨리고, 운영자가 "무엇이 막혔는지" 읽지 못한다. 명시적인 무채색 조합으로
-       비활성을 알리되 레이블은 계속 읽히게 한다(#666 on #e9ecef = 4.84:1). */
+       비활성을 알리되 레이블은 계속 읽히게 한다(var(--text-secondary) on var(--bg-hover) = 4.84:1). */
     button:disabled {
         cursor: default;
         background: var(--bg-hover);
@@ -1942,36 +1998,36 @@
     .player-select {
         width: 100%;
         display: flex;
-        gap: 1rem;
+        gap: var(--space-4);
         flex-wrap: wrap;
-        margin: 1rem 0;
+        margin: var(--space-4) 0;
     }
     .time-remaining {
         font-weight: bold;
-        color: #c2410c;
-        margin-left: 0.5rem;
+        color: var(--color-orange-text);
+        margin-left: var(--space-2);
         white-space: nowrap;
     }
     .status-text {
         font-size: var(--text-xs);
         color: var(--color-orange);
-        margin-left: 0.25rem;
+        margin-left: var(--space-1);
     }
 
     /* 새 게임 참여자 피커 */
     .player-picker {
         width: 100%;
-        margin: 1rem 0;
+        margin: var(--space-4) 0;
         border: 1px solid var(--border-default);
         border-radius: var(--radius-control);
-        padding: 0.75rem;
+        padding: var(--space-3);
     }
     .pp-head {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        gap: 0.5rem;
-        margin-bottom: 0.5rem;
+        gap: var(--space-2);
+        margin-bottom: var(--space-2);
     }
     .pp-label {
         font-weight: 600;
@@ -1985,14 +2041,14 @@
         display: flex;
         flex-wrap: wrap;
         gap: 0.35rem;
-        margin-bottom: 0.5rem;
+        margin-bottom: var(--space-2);
     }
     .pp-chip {
         display: inline-flex;
         align-items: center;
         gap: 0.3rem;
-        background: #e7f1ff;
-        color: #0b5ed7;
+        background: var(--color-info-bg);
+        color: var(--color-blue-bright);
         border-radius: var(--radius-card);
         padding: 0.15rem 0.3rem 0.15rem 0.6rem;
         font-size: var(--text-sm);
@@ -2001,10 +2057,10 @@
         all: unset;
         cursor: pointer;
         line-height: 1;
-        padding: 0 0.25rem;
+        padding: 0 var(--space-1);
         border-radius: 50%;
         font-size: var(--text-sm);
-        color: #0b5ed7;
+        color: var(--color-blue-bright);
     }
     .pp-chip button:hover {
         background: rgba(11, 94, 215, 0.15);
@@ -2012,13 +2068,13 @@
     .pp-search {
         width: 100%;
         box-sizing: border-box;
-        padding: 0.4rem 0.5rem;
+        padding: 0.4rem var(--space-2);
         border: 1px solid var(--border-default);
         border-radius: var(--radius-control);
         font-size: var(--text-sm);
     }
     .pp-list {
-        margin-top: 0.5rem;
+        margin-top: var(--space-2);
         max-height: 180px;
         overflow-y: auto;
         display: flex;
@@ -2029,30 +2085,48 @@
         box-sizing: border-box;
         display: flex;
         align-items: center;
-        gap: 0.5rem;
+        gap: var(--space-2);
         width: 100%;
-        padding: 0.4rem 0.5rem;
+        padding: 0.4rem var(--space-2);
         cursor: pointer;
         border-radius: var(--radius-control);
         font-size: var(--text-sm);
     }
     .pp-option:hover:not(:disabled),
     .pp-option:focus-visible {
-        background: #f1f3f5;
+        background: var(--bg-tertiary);
     }
     .pp-option.checked {
-        background: #e7f1ff;
-        color: #0b5ed7;
+        background: var(--color-info-bg);
+        color: var(--color-blue-bright);
         font-weight: 600;
     }
     .pp-option:disabled {
         color: var(--text-secondary);
         cursor: not-allowed;
     }
+    /* 체크 표시만 있으면 고르지 않은 행은 그냥 텍스트로 보인다.
+       빈 상자를 항상 그려 "고를 수 있는 목록"임을 알린다. */
     .pp-check {
-        width: 1rem;
-        text-align: center;
-        color: #0b5ed7;
+        width: 1.1rem;
+        height: 1.1rem;
+        flex-shrink: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid var(--border-medium);
+        border-radius: 3px;
+        background: var(--bg-primary);
+        font-size: var(--text-xs);
+        line-height: 1;
+        color: var(--color-blue-bright);
+    }
+    .pp-option.checked .pp-check {
+        border-color: var(--color-blue-bright);
+    }
+    .pp-option:disabled .pp-check {
+        background: var(--bg-hover);
+        border-color: var(--border-medium);
     }
     .pp-name {
         flex: 1;
@@ -2061,9 +2135,9 @@
         all: unset;
         cursor: pointer;
         display: block;
-        margin-top: 0.5rem;
+        margin-top: var(--space-2);
         font-size: var(--text-sm);
-        color: #0b5ed7;
+        color: var(--color-blue-bright);
     }
     .pp-toggle:hover {
         text-decoration: underline;
@@ -2072,9 +2146,9 @@
         display: flex;
         justify-content: space-between;
         align-items: center;
-        margin-bottom: 1rem;
-        border-bottom: 2px solid #e0e0e0;
-        padding-bottom: 0.5rem;
+        margin-bottom: var(--space-4);
+        border-bottom: 2px solid var(--border-default);
+        padding-bottom: var(--space-2);
     }
     .section-header h2 {
         margin: 0;
@@ -2085,13 +2159,13 @@
         background: var(--color-blue-bright);
         color: white;
         border: none;
-        padding: 0.75rem 1.5rem;
+        padding: var(--space-3) var(--space-5);
         border-radius: var(--radius-control);
         cursor: pointer;
         font-weight: bold;
     }
     .btn-cancel {
-        background: #ccc;
+        background: var(--border-medium);
         color: var(--text-primary);
     }
     /* 모달 계층 — 시트 위에 확인, 확인 위에 결과 알림.
@@ -2111,7 +2185,7 @@
     }
     .modal-content {
         background: var(--bg-primary);
-        padding: 2rem;
+        padding: var(--space-6);
         border-radius: var(--radius-card);
         width: 100%;
         max-width: 500px;
@@ -2123,7 +2197,7 @@
         margin-top: 0;
         display: flex;
         align-items: center;
-        gap: 0.75rem;
+        gap: var(--space-3);
     }
     .confirm-modal {
         max-width: 400px;
@@ -2131,22 +2205,22 @@
     .modal-actions {
         display: flex;
         justify-content: flex-end;
-        gap: 1rem;
-        margin-top: 1.5rem;
+        gap: var(--space-4);
+        margin-top: var(--space-5);
     }
     .column-actions {
         flex-direction: column;
-        gap: 0.5rem;
+        gap: var(--space-2);
     }
     .full-width {
         width: 100%;
-        padding: 0.75rem;
+        padding: var(--space-3);
         font-size: var(--text-base);
     }
     .empty-state {
-        color: #6b7280;
+        color: var(--text-secondary);
         text-align: center;
-        padding: 2rem;
+        padding: var(--space-6);
         background: rgba(255, 255, 255, 0.5);
         border-radius: var(--radius-control);
         list-style: none;
@@ -2155,7 +2229,7 @@
         /* 행 액션이 「관리」 하나뿐이라 줄을 따로 쓸 이유가 없다.
            세로로 쌓으면 한 행이 90px까지 커져 목록 스캔이 나빠진다. */
         .attendee-list li {
-            gap: 0.5rem;
+            gap: var(--space-2);
         }
         .attendee-info {
             min-width: 0;
@@ -2166,14 +2240,14 @@
         }
         .btn-delete {
             width: 100%; /* Keep specific override or reset if needed */
-            margin-top: 0.5rem;
+            margin-top: var(--space-2);
         }
     }
     .winner-option {
         display: flex;
         align-items: center;
-        gap: 0.5rem;
-        padding: 0.75rem;
+        gap: var(--space-2);
+        padding: var(--space-3);
         border: 1px solid var(--border-default);
         border-radius: var(--radius-control);
         cursor: pointer;
@@ -2183,8 +2257,8 @@
         background: var(--bg-surface);
     }
     .winner-option:has(input:checked) {
-        background: #fff8e1;
-        border-color: #ffc107;
+        background: var(--color-warning-bg);
+        border-color: var(--color-amber-dark);
     }
     .winner-option .player-name {
         flex: 1;
@@ -2202,7 +2276,7 @@
     .name-row {
         display: flex;
         align-items: center;
-        gap: 0.5rem;
+        gap: var(--space-2);
         min-width: 0;
     }
     .name-row .attendee-link {
@@ -2221,7 +2295,7 @@
        공식(연한 배경 + 빨강 아웃라인)을 쓰지 않는다 — 처방이 서로 다르다. */
     .badge.blacklist {
         background: var(--color-red-dark);
-        color: #fff;
+        color: var(--bg-primary);
         border: 1px solid var(--color-red-dark);
     }
     .badge.penalty {
@@ -2244,12 +2318,12 @@
         display: flex;
         align-items: center;
         flex-wrap: wrap;
-        gap: 0.5rem;
+        gap: var(--space-2);
     }
     .queue-flag {
         font-size: var(--text-xs);
         font-weight: 700;
-        padding: 0.15rem 0.5rem;
+        padding: 0.15rem var(--space-2);
         border-radius: var(--radius-pill);
         border: 1px solid transparent;
     }
@@ -2264,18 +2338,18 @@
         border-color: var(--color-red-dark);
     }
     .queue-empty {
-        margin: 0.5rem 0 0;
+        margin: var(--space-2) 0 0;
     }
     .queue-group + .queue-group {
-        margin-top: 1rem;
-        padding-top: 1rem;
+        margin-top: var(--space-4);
+        padding-top: var(--space-4);
         border-top: 1px solid var(--border-light);
     }
     .queue-group-head {
         display: flex;
         align-items: baseline;
         flex-wrap: wrap;
-        gap: 0.5rem;
+        gap: var(--space-2);
         margin-bottom: 0.4rem;
     }
     .queue-group-head strong {
@@ -2296,12 +2370,12 @@
         grid-template-columns: minmax(0, 1fr) auto;
         grid-template-areas: 'who actions' 'note actions';
         align-items: center;
-        gap: 0.15rem 0.75rem;
-        padding: 0.5rem 0.6rem;
+        gap: 0.15rem var(--space-3);
+        padding: var(--space-2) 0.6rem;
         border-radius: var(--radius-control);
     }
     .queue-row + .queue-row {
-        margin-top: 0.25rem;
+        margin-top: var(--space-1);
     }
     .queue-row.is-overdue {
         background: var(--color-error-bg);
@@ -2416,7 +2490,7 @@
     .btn-manage {
         background: var(--bg-hover);
         color: var(--text-primary);
-        border: 1px solid #ced4da;
+        border: 1px solid var(--border-medium);
         padding: 0.3rem 0.7rem;
         border-radius: var(--radius-control);
         font-size: var(--text-xs);
@@ -2434,8 +2508,8 @@
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 1rem;
-        padding: 0.75rem 0;
+        gap: var(--space-4);
+        padding: var(--space-3) 0;
         border-bottom: 1px solid var(--border-light);
     }
     .manage-label {
@@ -2459,7 +2533,7 @@
     .manage-divider {
         border: none;
         border-top: 1px solid var(--border-light);
-        margin: 1rem 0 0.75rem;
+        margin: var(--space-4) 0 var(--space-3);
     }
     /* 페널티 조작 — 부여(무거움)와 취소(가벼움)를 무게로 구분한다 */
     .manage-row-stacked {
@@ -2475,7 +2549,7 @@
         display: flex;
         flex-wrap: wrap;
         align-items: center;
-        gap: 0.5rem;
+        gap: var(--space-2);
         margin-top: 0.6rem;
     }
     .penalty-grant {
@@ -2485,7 +2559,7 @@
     }
     .penalty-grant select {
         min-height: 44px;
-        padding: 0 0.5rem;
+        padding: 0 var(--space-2);
         border: 1px solid var(--border-medium);
         border-radius: var(--radius-control);
         background: var(--bg-primary);
@@ -2501,9 +2575,17 @@
         font-size: var(--text-sm);
         font-weight: 600;
     }
+    /* 「페널티 부여」는 바로 옆의 「1점 취소」로 되돌릴 수 있다. 같은 시트 안의
+       블랙리스트 등록·삭제(.btn-role.is-destructive)와 똑같은 채움 빨강을 쓰면
+       되돌릴 수 있는 것과 없는 것이 같아 보인다. 부정적 동작이라는 신호는
+       테두리로 유지하고, 채움 빨강은 되돌릴 수 없는 것에만 남긴다. */
     .btn-penalty.add {
-        background: var(--color-red-dark);
-        color: white;
+        background: var(--bg-primary);
+        color: var(--color-red-dark);
+        border-color: var(--color-red-dark);
+    }
+    .btn-penalty.add:hover {
+        background: var(--color-error-bg);
     }
     .btn-penalty.remove {
         background: var(--bg-hover);
@@ -2537,7 +2619,7 @@
     }
     .btn-role.is-destructive {
         background: var(--color-red-dark);
-        color: #fff;
+        color: var(--bg-primary);
     }
     .btn-role.is-secondary {
         background: var(--bg-primary);
@@ -2556,11 +2638,11 @@
     }
     .chip-container.blacklisted {
         opacity: 0.5;
-        background: #bdbdbd;
+        background: var(--color-slate);
     }
     .penalty-dot {
         font-size: var(--text-xs);
-        color: #f44336;
+        color: var(--color-red);
         margin-left: 0.2rem;
     }
 
@@ -2575,7 +2657,7 @@
 
     .input-group {
         position: relative;
-        margin-bottom: 0.5rem;
+        margin-bottom: var(--space-2);
     }
 
     /* Custom Dropdown Styles */
@@ -2607,12 +2689,12 @@
     .dropdown-menu button {
         width: 100%;
         text-align: left;
-        padding: 0.75rem;
+        padding: var(--space-3);
         background: none;
         border: none;
         display: flex;
         align-items: center;
-        gap: 0.75rem;
+        gap: var(--space-3);
         cursor: pointer;
         transition: background 0.2s;
     }
@@ -2629,7 +2711,7 @@
         height: 40px;
         border-radius: var(--radius-control);
         object-fit: cover;
-        background: #eee;
+        background: var(--border-light);
     }
     .game-option-info {
         display: flex;
@@ -2647,9 +2729,9 @@
     .winner-row {
         display: flex;
         align-items: center;
-        gap: 0.5rem;
+        gap: var(--space-2);
         width: 100%;
-        margin-bottom: 0.5rem;
+        margin-bottom: var(--space-2);
     }
     .winner-row .winner-option {
         flex: 1;
@@ -2657,14 +2739,14 @@
     }
     .score-input {
         width: 80px;
-        padding: 0.75rem;
+        padding: var(--space-3);
         border: 1px solid var(--border-default);
         border-radius: var(--radius-control);
     }
 
     .btn-mini {
         padding: 0.4rem 0.8rem;
-        background: #4c6ef5;
+        background: var(--color-blue-bright);
         color: white;
         border: none;
         border-radius: var(--radius-control);
@@ -2675,16 +2757,16 @@
         background: var(--text-dark);
     }
     .btn-guest:hover {
-        background: #495057;
+        background: var(--text-dark);
     }
     .btn-manager-toggle:hover {
         opacity: 0.9;
     }
     .btn-extend {
-        background: #216e39;
+        background: var(--color-green-dark);
     }
     .btn-extend:hover {
-        background: #43a047;
+        background: var(--color-green-darker);
     }
     .input-label {
         font-size: var(--text-sm);
@@ -2698,7 +2780,7 @@
         width: 16px;
         height: 16px;
         border-radius: 50%;
-        background: #868e96;
+        background: var(--text-secondary);
         color: white;
         font-size: var(--text-xs);
         font-weight: bold;
@@ -2706,71 +2788,71 @@
         vertical-align: middle;
     }
     .guest-input-group {
-        margin-top: 0.5rem;
-        padding-top: 0.5rem;
+        margin-top: var(--space-2);
+        padding-top: var(--space-2);
         border-top: 1px solid var(--border-light);
     }
     .number-input {
         width: 80px;
-        padding: 0.5rem;
+        padding: var(--space-2);
         border: 1px solid var(--border-default);
         border-radius: var(--radius-control);
     }
     .hint {
         font-size: var(--text-xs);
         color: var(--text-secondary);
-        margin-top: 0.25rem;
+        margin-top: var(--space-1);
     }
 
     /* Recurring Game Management */
     .admin-options {
-        background: #f0f4ff;
-        border: 1px solid #d0d9f0;
+        background: var(--color-info-bg);
+        border: 1px solid var(--border-default);
         border-radius: var(--radius-control);
-        padding: 1rem;
-        margin-top: 0.5rem;
+        padding: var(--space-4);
+        margin-top: var(--space-2);
     }
 
     .admin-options-title {
         font-size: var(--text-sm);
-        color: #4a5568;
-        margin: 0 0 0.5rem 0;
+        color: var(--text-dark);
+        margin: 0 0 var(--space-2) 0;
         font-weight: 600;
     }
 
     .checkbox-option {
         display: flex;
         align-items: center;
-        gap: 0.5rem;
+        gap: var(--space-2);
         font-size: var(--text-sm);
         color: var(--text-primary);
         cursor: pointer;
-        padding: 0.25rem 0;
+        padding: var(--space-1) 0;
     }
 
     .checkbox-option input[type="checkbox"] {
         width: 16px;
         height: 16px;
-        accent-color: #4a90d9;
+        accent-color: var(--color-blue-bright);
     }
 
     /* 오늘 갈 예정 */
     .visit-plan-section {
-        margin-bottom: 1.5rem;
+        margin-bottom: var(--space-5);
     }
     .visit-plan-grid {
         display: flex;
         flex-wrap: wrap;
-        gap: 0.5rem;
+        gap: var(--space-2);
     }
     .visit-plan-chip {
         display: inline-flex;
         align-items: center;
         gap: 0.35rem;
         background: var(--bg-primary);
-        border: 1px solid #e0e0e0;
+        border: 1px solid var(--border-default);
         border-radius: var(--radius-card);
-        padding: 0.35rem 0.75rem;
+        padding: 0.35rem var(--space-3);
         font-size: var(--text-sm);
     }
     .vp-name {
@@ -2779,15 +2861,15 @@
     }
     .vp-party {
         font-size: var(--text-xs);
-        background: #e3f2fd;
-        color: #1565c0;
+        background: var(--color-info-bg);
+        color: var(--color-blue-bright);
         padding: 0.1rem 0.35rem;
         border-radius: var(--radius-control);
         font-weight: 700;
     }
     .vp-time {
         font-size: var(--text-xs);
-        color: #c2410c;
+        color: var(--color-orange-text);
         font-weight: 500;
     }
 
@@ -2803,9 +2885,9 @@
     .game-list-item {
         display: flex;
         align-items: center;
-        gap: 0.75rem;
+        gap: var(--space-3);
         width: 100%;
-        padding: 0.6rem 0.5rem;
+        padding: 0.6rem var(--space-2);
         border: none;
         border-bottom: 1px solid var(--border-light);
         border-radius: 0;
@@ -2826,7 +2908,7 @@
         background: var(--color-error-bg);
     }
     .game-list-item.ending-soon:hover {
-        background: #ffecec;
+        background: var(--color-error-bg-strong);
     }
     .game-list-item.ending-soon .time-remaining {
         color: var(--color-red-dark);
@@ -2912,8 +2994,8 @@
     .show-more-btn {
         display: block;
         width: 100%;
-        padding: 0.5rem;
-        margin-top: 0.5rem;
+        padding: var(--space-2);
+        margin-top: var(--space-2);
         background: none;
         border: 1px dashed var(--border-medium);
         border-radius: var(--radius-control);
@@ -2924,7 +3006,7 @@
     }
     .show-more-btn:hover {
         background: var(--bg-primary);
-        border-color: #999;
+        border-color: var(--text-muted);
     }
 
     /* 게임 상세 모달 */
@@ -2933,12 +3015,12 @@
     }
     .detail-header {
         display: flex;
-        gap: 1rem;
+        gap: var(--space-4);
         align-items: flex-start;
-        margin-bottom: 1rem;
+        margin-bottom: var(--space-4);
     }
     .detail-header h3 {
-        margin: 0 0 0.25rem 0;
+        margin: 0 0 var(--space-1) 0;
         font-size: var(--text-lg);
     }
     .detail-thumb {
@@ -2954,8 +3036,8 @@
         color: var(--text-secondary);
     }
     .detail-section {
-        margin-bottom: 1rem;
-        padding: 0.75rem;
+        margin-bottom: var(--space-4);
+        padding: var(--space-3);
         background: var(--bg-primary);
         border-radius: var(--radius-control);
     }
@@ -2964,24 +3046,24 @@
         color: var(--text-darker);
     }
     .detail-participants {
-        margin: 0.25rem 0 0;
+        margin: var(--space-1) 0 0;
         font-size: var(--text-sm);
         color: var(--text-primary);
     }
     .detail-actions {
         display: flex;
         flex-direction: column;
-        gap: 0.5rem;
+        gap: var(--space-2);
     }
     .detail-divider {
         border: none;
         border-top: 1px solid var(--border-light);
-        margin: 0.5rem 0;
+        margin: var(--space-2) 0;
     }
     .detail-form-row {
         display: flex;
         align-items: center;
-        gap: 0.5rem;
+        gap: var(--space-2);
     }
     /* 참여자 검색 셀렉트 */
     .search-select {
@@ -2990,7 +3072,7 @@
     }
     .search-select input[type="text"] {
         width: 100%;
-        padding: 0.4rem 0.5rem;
+        padding: 0.4rem var(--space-2);
         border: 1px solid var(--border-default);
         border-radius: var(--radius-control);
         font-size: var(--text-sm);
@@ -3016,14 +3098,14 @@
         display: block;
         width: 100%;
         text-align: left;
-        padding: 0.5rem 0.75rem;
+        padding: var(--space-2) var(--space-3);
         cursor: pointer;
         font: inherit;
         font-size: var(--text-sm);
         color: inherit;
         background: transparent;
         border: none;
-        border-bottom: 1px solid #f0f0f0;
+        border-bottom: 1px solid var(--bg-elevated);
         border-radius: 0;
     }
     .search-option:last-child {
@@ -3038,21 +3120,21 @@
     @media (max-width: 768px) {
         /* 모바일 하단 탭 위로 띄운다 */
         section {
-            margin-bottom: 1.5rem;
-            padding: 1rem;
+            margin-bottom: var(--space-5);
+            padding: var(--space-4);
         }
         section h2 {
             font-size: var(--text-base);
-            gap: 0.5rem;
+            gap: var(--space-2);
         }
         .section-header {
             flex-direction: column;
             align-items: stretch;
-            gap: 0.5rem;
+            gap: var(--space-2);
         }
         /* 폰은 서서 한 손으로 쓰는 주 사용 장면 — 탭 타깃을 44px 아래로 줄이지 않는다 */
         button, .btn-primary, .btn-delete, .btn-mini {
-            padding: 0.4rem 0.75rem;
+            padding: 0.4rem var(--space-3);
             font-size: var(--text-sm);
             min-height: 44px;
         }
@@ -3066,10 +3148,10 @@
             min-height: 44px;
         }
         .attendee-list li {
-            padding: 0.4rem 0.25rem;
+            padding: 0.4rem var(--space-1);
             font-size: var(--text-sm);
         }
-        .attendee-info { gap: 0.25rem; }
+        .attendee-info { gap: var(--space-1); }
         .attendee-actions { gap: 0.15rem; }
         .badge { font-size: var(--text-xs); padding: 0.05rem 0.3rem; }
         .arrival-time { font-size: var(--text-xs); }
@@ -3079,7 +3161,7 @@
         .chip-link { font-size: var(--text-xs); }
         .chip-add { font-size: var(--text-xs); padding: 0.2rem 0.6rem; }
         .modal-content { width: 95%; padding: 1.25rem; }
-        .player-select { gap: 0.5rem; }
+        .player-select { gap: var(--space-2); }
         .empty-state { font-size: var(--text-sm); }
         .visit-plan-chip { font-size: var(--text-xs); padding: 0.3rem 0.6rem; }
     }

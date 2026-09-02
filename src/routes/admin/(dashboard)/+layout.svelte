@@ -322,6 +322,12 @@
         --color-green-dark: #1b6b2c;
         --color-red: #ef4444;
         --color-red-dark: #d32f2f;
+        --color-red-darker: #b71c1c;      /* 파괴적 동작의 hover */
+        --color-green-darker: #14532d;    /* 초록 버튼의 hover */
+        /* 흰 배경에서 AA를 통과하는 주황 텍스트.
+           --color-orange-dark(#e67700)는 3.00:1이라 텍스트로 쓸 수 없다. */
+        --color-orange-text: #c2410c;
+        --color-error-bg-strong: #ffecec; /* 오류 틴트의 hover */
         --color-orange: #ff9800;
         --color-orange-dark: #e67700;
 
@@ -411,7 +417,7 @@
         overflow-y: auto;
     }
     .sidebar-header {
-        margin-bottom: 2rem;
+        margin-bottom: var(--space-6);
         text-align: center;
     }
     .sidebar-header h2 {
@@ -422,13 +428,13 @@
     .sidebar-nav {
         display: flex;
         flex-direction: column;
-        gap: 0.5rem;
+        gap: var(--space-2);
         flex: 1;
     }
     .nav-item {
         color: #ecf0f1;
         text-decoration: none;
-        padding: 0.75rem 1rem;
+        padding: var(--space-3) var(--space-4);
         border-radius: var(--radius-control);
         transition: background 0.2s;
     }
@@ -437,18 +443,18 @@
     }
     .sidebar-footer {
         margin-top: auto;
-        padding-top: 1rem;
+        padding-top: var(--space-4);
         border-top: 1px solid #34495e;
         display: flex;
         flex-direction: column;
-        gap: 0.5rem;
+        gap: var(--space-2);
     }
     .btn-sidebar {
         width: 100%;
         background: #34495e;
         color: #ecf0f1;
         border: none;
-        padding: 0.75rem;
+        padding: var(--space-3);
         border-radius: var(--radius-control);
         cursor: pointer;
         text-align: left;
@@ -475,11 +481,11 @@
         display: flex;
         justify-content: space-between;
         align-items: center;
-        margin-bottom: 2rem;
+        margin-bottom: var(--space-6);
     }
     .header-actions {
         display: flex;
-        gap: 1rem;
+        gap: var(--space-4);
     }
     
     .mobile-bottom-nav {
@@ -499,7 +505,7 @@
             position: static;
             height: auto;
             width: 100%;
-            padding: 1rem;
+            padding: var(--space-4);
             box-sizing: border-box;
             flex-direction: row;
             align-items: center;
@@ -520,20 +526,21 @@
         }
         
         .main-content {
-            padding: 1rem;
+            padding: var(--space-4);
             padding-bottom: 80px; /* Space for bottom nav */
         }
         .header {
             flex-direction: column;
             align-items: flex-start;
-            gap: 1rem;
+            gap: var(--space-4);
         }
+        /* stretch + flex:1 은 되돌릴 수 없는 「마감 하기」를 화면에서 가장 큰
+           탭 타깃(200px)으로 만들었다 — 옆의 「메인으로」(127px)보다 크다.
+           하루 한 번 쓰는 파괴적 동작이 헤더에서 가장 누르기 쉬우면 안 된다.
+           내용 크기로 두면 높이는 46px 그대로라 손가락에는 충분하다. */
         .header-actions {
             width: 100%;
-            justify-content: stretch;
-        }
-        .header-actions button {
-            flex: 1;
+            flex-wrap: wrap;
         }
 
         /* Show Bottom Nav */
@@ -545,7 +552,7 @@
             width: 100%;
             background: white;
             border-top: 1px solid #ddd;
-            padding: 0.5rem 0;
+            padding: var(--space-2) 0;
             justify-content: space-around;
             z-index: 100;
             box-shadow: 0 -2px 10px rgba(0,0,0,0.05);
@@ -560,8 +567,8 @@
             background: none;
             border: none;
             font-size: var(--text-xs);
-            gap: 0.25rem;
-            padding: 0.5rem;
+            gap: var(--space-1);
+            padding: var(--space-2);
             flex: 1;
         }
         .bottom-nav-item .icon {
@@ -575,7 +582,7 @@
         background: white;
         color: #333;
         border: 1px solid #ddd;
-        padding: 0.75rem 1.5rem;
+        padding: var(--space-3) var(--space-5);
         border-radius: var(--radius-control);
         text-decoration: none;
         font-weight: bold;
@@ -590,7 +597,7 @@
         background: var(--color-blue-bright);
         color: white;
         border: none;
-        padding: 0.75rem 1.5rem;
+        padding: var(--space-3) var(--space-5);
         border-radius: var(--radius-control);
         cursor: pointer;
         font-weight: bold;
@@ -599,7 +606,7 @@
         background: #d32f2f;
         color: white;
         border: none;
-        padding: 0.75rem 1.5rem;
+        padding: var(--space-3) var(--space-5);
         border-radius: var(--radius-control);
         cursor: pointer;
         font-weight: bold;
@@ -609,14 +616,14 @@
         background: #b71c1c;
     }
     .closing-info {
-        margin: 0.5rem 0 0 0;
+        margin: var(--space-2) 0 0 0;
         color: #666;
         font-size: var(--text-sm);
     }
     .warning-text {
         color: #d32f2f;
         font-size: var(--text-sm);
-        margin-top: 0.5rem;
+        margin-top: var(--space-2);
     }
     .modal-backdrop {
         position: fixed;
@@ -632,24 +639,24 @@
     }
     .modal-content {
         background: white;
-        padding: 2rem;
+        padding: var(--space-6);
         border-radius: var(--radius-card);
         width: 90%;
         max-width: 420px;
         box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
     }
     .modal-content h3 {
-        margin: 0 0 1rem;
+        margin: 0 0 var(--space-4);
         font-size: var(--text-lg);
     }
     .modal-content p {
-        margin: 0.5rem 0;
+        margin: var(--space-2) 0;
         color: #555;
     }
     .modal-actions {
         display: flex;
-        gap: 0.75rem;
-        margin-top: 1.5rem;
+        gap: var(--space-3);
+        margin-top: var(--space-5);
         justify-content: flex-end;
     }
     .modal-actions form {

@@ -257,33 +257,33 @@
         display: flex;
         justify-content: space-between;
         align-items: center;
-        margin-bottom: 2rem;
+        margin-bottom: var(--space-6);
     }
     .page-header h1 { margin: 0; font-size: var(--text-xl); }
 
-    .section { margin-bottom: 2rem; }
+    .section { margin-bottom: var(--space-6); }
     .section h2 {
         font-size: var(--text-lg);
-        color: #555;
-        margin-bottom: 0.75rem;
-        padding-bottom: 0.5rem;
-        border-bottom: 1px solid #eee;
+        color: var(--text-darker);
+        margin-bottom: var(--space-3);
+        padding-bottom: var(--space-2);
+        border-bottom: 1px solid var(--border-light);
     }
-    .empty { color: #999; font-size: var(--text-sm); }
+    .empty { color: var(--text-muted); font-size: var(--text-sm); }
 
-    .card-list { display: flex; flex-direction: column; gap: 0.5rem; }
+    .card-list { display: flex; flex-direction: column; gap: var(--space-2); }
 
     .pass-card {
         display: flex;
         justify-content: space-between;
         align-items: center;
         background: white;
-        padding: 0.75rem 1rem;
+        padding: var(--space-3) var(--space-4);
         border-radius: var(--radius-control);
-        border-left: 1px solid #ddd;
+        border-left: 1px solid var(--border-default);
     }
-    .pass-card.warning { border-left-color: #ff9800; }
-    .pass-card.expired { border-left-color: #ccc; opacity: 0.7; }
+    .pass-card.warning { border-left-color: var(--color-orange); }
+    .pass-card.expired { border-left-color: var(--border-medium); opacity: 0.7; }
 
     .pass-info { display: flex; flex-direction: column; gap: 0.2rem; }
     .pass-name {
@@ -291,26 +291,26 @@
         align-items: center;
         min-height: 24px;
         font-weight: 600;
-        color: #333;
+        color: var(--text-primary);
         text-decoration: none;
     }
     .pass-name:hover { text-decoration: underline; }
-    .pass-expiry { font-size: var(--text-xs); color: #888; }
+    .pass-expiry { font-size: var(--text-xs); color: var(--text-tertiary); }
 
-    .pass-actions { display: flex; align-items: center; gap: 0.5rem; }
+    .pass-actions { display: flex; align-items: center; gap: var(--space-2); }
 
     .days-badge {
-        background: #e8f5e9;
+        background: var(--color-success-bg);
         color: #2e7d32;
-        padding: 0.25rem 0.6rem;
+        padding: var(--space-1) 0.6rem;
         border-radius: var(--radius-card);
         font-weight: 700;
         font-size: var(--text-sm);
         min-width: 45px;
         text-align: center;
     }
-    .days-badge.urgent { background: #fff3e0; color: #e65100; }
-    /* --text-muted(#999)는 이 회색 위에서 2.61:1이라 읽히지 않았다 */
+    .days-badge.urgent { background: var(--color-warning-bg); color: #e65100; }
+    /* --text-muted(var(--text-muted))는 이 회색 위에서 2.61:1이라 읽히지 않았다 */
     .expired-badge { background: var(--bg-surface); color: var(--text-secondary); }
 
     .btn-sm {
@@ -330,16 +330,16 @@
     /* 대시보드의 .btn-cancel은 "다이얼로그 닫기"라 같은 이름을 쓰지 않는다 */
     .modal-backdrop.confirm-layer { z-index: 1100; }
     .btn-danger {
-        background: var(--color-red-dark, #d32f2f);
-        color: #fff;
+        background: var(--color-red-dark, var(--color-red-dark));
+        color: var(--bg-primary);
         border: none;
-        padding: 0.6rem 1rem;
+        padding: 0.6rem var(--space-4);
         min-height: 44px;
         border-radius: var(--radius-control);
         font-weight: 600;
         cursor: pointer;
     }
-    .btn-revoke { background: #fce4ec; color: #b71c1c; border: 1px solid #b71c1c; }
+    .btn-revoke { background: #fce4ec; color: var(--color-red-darker); border: 1px solid var(--color-red-darker); }
     .btn-revoke:hover { background: #ffcdd2; }
 
     .btn-primary {
@@ -352,9 +352,9 @@
         font-weight: 600;
     }
     .btn-secondary {
-        background: #f5f5f5;
-        color: #333;
-        border: 1px solid #ddd;
+        background: var(--bg-surface);
+        color: var(--text-primary);
+        border: 1px solid var(--border-default);
         padding: 0.6rem 1.2rem;
         border-radius: var(--radius-control);
         cursor: pointer;
@@ -369,20 +369,20 @@
     }
     .modal-content {
         background: white;
-        padding: 1.5rem;
+        padding: var(--space-5);
         border-radius: var(--radius-card);
         width: 90%;
         max-width: 400px;
     }
-    .modal-content h3 { margin: 0 0 1rem 0; }
+    .modal-content h3 { margin: 0 0 var(--space-4) 0; }
     .modal-actions {
         display: flex;
         justify-content: flex-end;
-        gap: 0.75rem;
-        margin-top: 1.5rem;
+        gap: var(--space-3);
+        margin-top: var(--space-5);
     }
 
-    .form-group { margin-bottom: 1rem; }
+    .form-group { margin-bottom: var(--space-4); }
     .form-group label {
         display: block;
         margin-bottom: 0.4rem;
@@ -391,20 +391,20 @@
     }
     .form-group select, .form-group input[type="date"] {
         width: 100%;
-        padding: 0.5rem;
-        border: 1px solid #ddd;
+        padding: var(--space-2);
+        border: 1px solid var(--border-default);
         border-radius: var(--radius-control);
         font-size: var(--text-base);
         box-sizing: border-box;
     }
     .modal-desc {
-        color: #666;
+        color: var(--text-secondary);
         font-size: var(--text-sm);
-        margin: 0 0 1rem 0;
+        margin: 0 0 var(--space-4) 0;
     }
 
     @media (max-width: 600px) {
-        .pass-card { flex-direction: column; align-items: flex-start; gap: 0.5rem; }
+        .pass-card { flex-direction: column; align-items: flex-start; gap: var(--space-2); }
         .pass-actions { width: 100%; justify-content: flex-end; }
     }
 

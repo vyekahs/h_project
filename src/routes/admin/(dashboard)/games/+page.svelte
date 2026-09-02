@@ -1149,7 +1149,7 @@
         flex-wrap: wrap;
         justify-content: space-between;
         align-items: center;
-        margin-bottom: 2rem;
+        margin-bottom: var(--space-6);
     }
     .games-grid {
         display: grid;
@@ -1205,7 +1205,7 @@
         gap: var(--space-2);
         font-size: var(--text-sm);
         color: var(--text-secondary);
-        margin-bottom: 0.5rem;
+        margin-bottom: var(--space-2);
     }
     .complexity-badge {
         padding: 0 6px;
@@ -1259,7 +1259,7 @@
         display: flex;
         justify-content: space-between;
         align-items: flex-start;
-        margin-bottom: 0.5rem;
+        margin-bottom: var(--space-2);
     }
     .title-row h3 { margin: 0; }
     .badge-inactive {
@@ -1298,7 +1298,7 @@
         display: flex;
         justify-content: space-between;
         align-items: center;
-        margin-bottom: 1.5rem;
+        margin-bottom: var(--space-5);
     }
     .detail-header h2 { margin: 0; }
     .btn-close {
@@ -1312,7 +1312,7 @@
     .detail-content {
         display: flex;
         gap: var(--space-6);
-        margin-bottom: 2rem;
+        margin-bottom: var(--space-6);
     }
     .detail-image {
         flex: 0 0 250px;
@@ -1335,7 +1335,7 @@
         display: grid;
         grid-template-columns: repeat(2, 1fr);
         gap: var(--space-4);
-        margin-bottom: 1.5rem;
+        margin-bottom: var(--space-5);
         background: var(--bg-secondary);
         padding: var(--space-4);
         border-radius: var(--radius-control);
@@ -1347,21 +1347,21 @@
     .info-item .label {
         font-size: var(--text-sm);
         color: var(--text-secondary);
-        margin-bottom: 0.25rem;
+        margin-bottom: var(--space-1);
     }
     .info-item .value {
         font-weight: var(--weight-bold);
         font-size: var(--text-lg);
     }
     .best-players {
-        margin-bottom: 1.5rem;
+        margin-bottom: var(--space-5);
         padding: var(--space-3);
         background: var(--color-info-bg);
         border-radius: var(--radius-control);
         color: var(--color-indigo);
     }
     .dlc-section, .description-section {
-        margin-bottom: 1.5rem;
+        margin-bottom: var(--space-5);
     }
     .dlc-section h4, .description-section h4 {
         margin: 0 0 var(--space-2) 0;
@@ -1385,10 +1385,10 @@
         }
     }
 
-    .form-group { margin-bottom: 1rem; }
+    .form-group { margin-bottom: var(--space-4); }
     .row { display: flex; gap: var(--space-4); }
     .row .form-group { flex: 1; }
-    label { display: block; margin-bottom: 0.5rem; font-weight: var(--weight-bold); font-size: var(--text-sm); }
+    label { display: block; margin-bottom: var(--space-2); font-weight: var(--weight-bold); font-size: var(--text-sm); }
     input, textarea {
         width: 100%;
         padding: var(--space-3);
@@ -1425,7 +1425,7 @@
         display: flex;
         justify-content: flex-end;
         gap: var(--space-2);
-        margin-top: 2rem;
+        margin-top: var(--space-6);
     }
     .btn-cancel { background: var(--border-light); color: var(--text-primary); }
     .btn-submit { background: var(--color-blue-bright); color: white; font-weight: var(--weight-bold); }
@@ -1439,7 +1439,7 @@
         flex-direction: column;
     }
     .search-form {
-        margin-bottom: 1rem;
+        margin-bottom: var(--space-4);
     }
     .search-row {
         display: flex;
@@ -1484,7 +1484,7 @@
     .no-results {
         text-align: center;
         color: var(--text-secondary);
-        margin-top: 2rem;
+        margin-top: var(--space-6);
     }
     .header-actions {
         display: flex;
@@ -1496,7 +1496,7 @@
         display: flex;
         align-items: center;
         gap: var(--space-2);
-        margin-bottom: 1.5rem;
+        margin-bottom: var(--space-5);
         background: white;
         border: 1px solid var(--border-default);
         border-radius: var(--radius-control);
@@ -1537,7 +1537,7 @@
         display: block;
         width: 100%;
         padding: var(--space-3);
-        margin-top: 1.5rem;
+        margin-top: var(--space-5);
         background: white;
         border: 1px solid var(--border-default);
         border-radius: var(--radius-control);

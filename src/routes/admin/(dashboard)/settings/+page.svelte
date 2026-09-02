@@ -428,7 +428,7 @@
     }
     .btn-role.is-destructive {
         background: var(--color-red-dark);
-        color: #fff;
+        color: var(--bg-primary);
     }
     .btn-role.is-quiet {
         background: none;
@@ -488,7 +488,7 @@
         display: flex;
         justify-content: space-between;
         align-items: center;
-        margin-bottom: 2rem;
+        margin-bottom: var(--space-6);
     }
     h1 {
         margin: 0;
@@ -496,7 +496,7 @@
     .settings-grid {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-        gap: 2rem;
+        gap: var(--space-6);
         align-items: start;
     }
     .settings-card {
@@ -507,43 +507,43 @@
     }
     h3 {
         margin-top: 0;
-        margin-bottom: 1.5rem;
-        padding-bottom: 0.5rem;
-        border-bottom: 1px solid #eee;
+        margin-bottom: var(--space-5);
+        padding-bottom: var(--space-2);
+        border-bottom: 1px solid var(--border-light);
         font-size: var(--text-lg);
         display: flex;
         align-items: center;
-        gap: 0.5rem;
+        gap: var(--space-2);
     }
     .setting-item {
-        margin-bottom: 1.5rem;
+        margin-bottom: var(--space-5);
     }
     label {
         display: block;
-        margin-bottom: 0.5rem;
+        margin-bottom: var(--space-2);
         font-weight: 500;
-        color: #333;
+        color: var(--text-primary);
     }
     input {
         width: 100%;
-        padding: 0.5rem;
-        border: 1px solid #ddd;
+        padding: var(--space-2);
+        border: 1px solid var(--border-default);
         border-radius: var(--radius-control);
         font-size: var(--text-base);
     }
     .hint {
-        margin: 0.25rem 0 0;
+        margin: var(--space-1) 0 0;
         font-size: var(--text-sm);
-        color: #666;
+        color: var(--text-secondary);
     }
     .account-hint {
-        margin: 0 0 0.75rem;
+        margin: 0 0 var(--space-3);
     }
     .btn-logout {
-        background: var(--bg-primary, #fff);
-        color: var(--color-red-dark, #d32f2f);
-        border: 1px solid var(--color-red-dark, #d32f2f);
-        padding: 0.75rem;
+        background: var(--bg-primary, var(--bg-primary));
+        color: var(--color-red-dark, var(--color-red-dark));
+        border: 1px solid var(--color-red-dark, var(--color-red-dark));
+        padding: var(--space-3);
         min-height: 44px;
         border-radius: var(--radius-control);
         font-size: var(--text-base);
@@ -557,7 +557,7 @@
         background: var(--color-blue-bright);
         color: white;
         border: none;
-        padding: 0.75rem;
+        padding: var(--space-3);
         border-radius: var(--radius-control);
         font-size: var(--text-base);
         cursor: pointer;

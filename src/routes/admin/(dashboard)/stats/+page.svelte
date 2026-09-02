@@ -264,38 +264,38 @@
 
 <style>
     .header {
-        margin-bottom: 2rem;
+        margin-bottom: var(--space-6);
     }
     
     /* KPI Grid */
     .kpi-grid {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-        gap: 1.5rem;
-        margin-bottom: 2rem;
+        gap: var(--space-5);
+        margin-bottom: var(--space-6);
     }
     .kpi-card {
         background: white;
-        padding: 1.5rem;
+        padding: var(--space-5);
         border-radius: var(--radius-card);
         text-align: center;
-        border: 1px solid #eee;
+        border: 1px solid var(--border-light);
     }
     .kpi-card h3 {
         margin: 0;
         font-size: var(--text-sm);
-        color: #666;
+        color: var(--text-secondary);
         font-weight: normal;
     }
     .kpi-card .value {
         font-size: 2.5rem;
         font-weight: bold;
-        color: #333;
-        margin: 0.5rem 0;
+        color: var(--text-primary);
+        margin: var(--space-2) 0;
     }
     .kpi-card .label {
         font-size: var(--text-xs);
-        color: #999;
+        color: var(--text-muted);
     }
 
     /* Line Chart */
@@ -326,7 +326,7 @@
         position: absolute;
         transform: translateX(-50%);
         font-size: var(--text-xs);
-        color: #666;
+        color: var(--text-secondary);
         white-space: nowrap;
     }
 
@@ -355,7 +355,7 @@
         opacity: 1;
     }
     .bar.peak {
-        background: #ff9800;
+        background: var(--color-orange);
     }
     .x-label {
         position: absolute;
@@ -363,7 +363,7 @@
         left: 50%;
         transform: translateX(-50%);
         font-size: var(--text-xs);
-        color: #666;
+        color: var(--text-secondary);
         white-space: nowrap;
     }
 
@@ -371,12 +371,12 @@
     .ranking-list {
         display: flex;
         flex-direction: column;
-        gap: 1rem;
+        gap: var(--space-4);
     }
     .rank-item {
         display: flex;
         flex-direction: column;
-        gap: 0.25rem;
+        gap: var(--space-1);
     }
     .rank-info {
         display: flex;
@@ -386,19 +386,19 @@
     .rank-num {
         font-weight: bold;
         width: 20px;
-        color: #666;
+        color: var(--text-secondary);
     }
     .game-name {
         flex: 1;
         font-weight: 500;
     }
     .play-count {
-        color: #666;
+        color: var(--text-secondary);
         font-size: var(--text-xs);
     }
     .progress-bg {
         height: 8px;
-        background: #eee;
+        background: var(--border-light);
         border-radius: var(--radius-control);
         overflow: hidden;
     }
@@ -412,7 +412,7 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        color: #999;
+        color: var(--text-muted);
         font-size: var(--text-sm);
     }
 
@@ -420,18 +420,18 @@
     .section-header {
         display: flex;
         align-items: baseline;
-        gap: 0.75rem;
+        gap: var(--space-3);
         margin-top: 3rem;
-        margin-bottom: 1.5rem;
+        margin-bottom: var(--space-5);
     }
     .section-header h2 {
         margin: 0;
         font-size: var(--text-lg);
-        color: #333;
+        color: var(--text-primary);
     }
     .section-hint {
         font-size: var(--text-xs);
-        color: #999;
+        color: var(--text-muted);
     }
 
     /* 4-column KPI grid */
@@ -441,13 +441,13 @@
     .kpi-card .unit {
         font-size: var(--text-lg);
         font-weight: normal;
-        color: #666;
+        color: var(--text-secondary);
         margin-left: 2px;
     }
     .kpi-card .sub-value {
         font-size: var(--text-base);
         font-weight: normal;
-        color: #999;
+        color: var(--text-muted);
     }
 
     /* Clickable KPI card */
@@ -458,15 +458,15 @@
         color: inherit;
     }
     .kpi-extra-actions {
-        margin: 0.75rem 0 0;
+        margin: var(--space-3) 0 0;
     }
     .btn-drilldown {
         min-height: 44px;
         padding: 0 0.9rem;
         border-radius: var(--radius-control);
         border: 1px solid var(--border-medium, #ced4da);
-        background: var(--bg-primary, #fff);
-        color: var(--text-primary, #333);
+        background: var(--bg-primary, var(--bg-primary));
+        color: var(--text-primary, var(--text-primary));
         font-size: var(--text-sm);
         font-weight: 600;
         cursor: pointer;
@@ -512,27 +512,27 @@
         display: flex;
         justify-content: space-between;
         align-items: center;
-        padding: 1.25rem 1.5rem;
-        border-bottom: 1px solid #eee;
+        padding: 1.25rem var(--space-5);
+        border-bottom: 1px solid var(--border-light);
     }
     .modal-header h3 {
         margin: 0;
         font-size: var(--text-lg);
-        color: #333;
+        color: var(--text-primary);
     }
     .modal-close {
         background: none;
         border: none;
         font-size: var(--text-xl);
-        color: #999;
+        color: var(--text-muted);
         cursor: pointer;
         padding: 0;
         line-height: 1;
     }
     .modal-close:hover {
-        color: #333;
+        color: var(--text-primary);
     }
     .modal-body {
-        padding: 1.5rem;
+        padding: var(--space-5);
     }
 </style>

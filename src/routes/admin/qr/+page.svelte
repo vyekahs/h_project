@@ -38,7 +38,7 @@
     .qr-container {
         max-width: 600px;
         margin: 0 auto;
-        padding: 2rem;
+        padding: var(--space-6);
         text-align: center;
         min-height: 100vh;
         background: var(--bg-surface, #f5f5f5);
@@ -50,7 +50,7 @@
         color: var(--text-primary, #333);
     }
     .header {
-        margin-bottom: 2rem;
+        margin-bottom: var(--space-6);
         width: 100%;
         text-align: left;
     }
@@ -61,7 +61,7 @@
         text-decoration: none;
         color: var(--text-secondary, #666);
         font-size: var(--text-sm, 0.875rem);
-        margin-bottom: 1rem;
+        margin-bottom: var(--space-4);
     }
     h1 {
         margin: 0;
@@ -70,7 +70,7 @@
         display: flex;
         align-items: center;
         justify-content: center;
-        gap: 0.75rem;
+        gap: var(--space-3);
     }
     .qr-card {
         background: var(--bg-primary, #fff);
@@ -81,7 +81,7 @@
         max-width: 400px;
     }
     .qr-wrapper {
-        margin-bottom: 2rem;
+        margin-bottom: var(--space-6);
     }
     .qr-wrapper img {
         width: 100%;
@@ -108,7 +108,7 @@
         line-height: 1.5;
     }
     .qr-note {
-        margin: 0.75rem 0 0;
+        margin: var(--space-3) 0 0;
         font-size: var(--text-xs, 0.75rem);
         color: var(--text-secondary, #666);
     }

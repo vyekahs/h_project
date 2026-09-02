@@ -93,10 +93,22 @@
 		return parts.join(' ');
 	}
 
+	/* 수치에 얹는 글자색. 흰 배경에서 #4caf50은 2.78:1, #ff9800은 2.16:1로
+	   큰 글씨 기준(3:1)조차 못 넘겼다. 토큰의 진한 값으로 통일한다. */
+	const LEVEL_COLORS = {
+		ok: 'var(--color-green-dark)',
+		warn: 'var(--color-orange-text)',
+		bad: 'var(--color-red-dark)'
+	} as const;
+
+	function levelColor(value: number, warnAt = 50, badAt = 80): string {
+		if (value < warnAt) return LEVEL_COLORS.ok;
+		if (value < badAt) return LEVEL_COLORS.warn;
+		return LEVEL_COLORS.bad;
+	}
+
 	function cpuColor(usage: number): string {
-		if (usage < 50) return '#4caf50';
-		if (usage < 80) return '#ff9800';
-		return '#f44336';
+		return levelColor(usage);
 	}
 
 	function systemMemUsed(m: Metrics): number {
@@ -108,9 +120,7 @@
 	}
 
 	function memColor(percent: number): string {
-		if (percent < 50) return '#4caf50';
-		if (percent < 80) return '#ff9800';
-		return '#f44336';
+		return levelColor(percent);
 	}
 
 	function dbStatusText(m: Metrics): string {
@@ -120,9 +130,9 @@
 	}
 
 	function dbStatusColor(m: Metrics): string {
-		if (m.db.latencyMs < 0) return '#f44336';
-		if (m.db.waitingCount > 0) return '#ff9800';
-		return '#4caf50';
+		if (m.db.latencyMs < 0) return LEVEL_COLORS.bad;
+		if (m.db.waitingCount > 0) return LEVEL_COLORS.warn;
+		return LEVEL_COLORS.ok;
 	}
 
 	function logTypeLabel(type: string): string {
@@ -416,7 +426,7 @@
 			<button class="chart-card clickable" onclick={() => showSseModal = true}>
 				<div class="chart-header">
 					<div class="chart-title">SSE 활성 스트림 <span class="tap-hint">상세보기</span></div>
-					<div class="chart-value" style="color: #ff9800">{metrics.connections.sse}<span class="chart-unit">개</span></div>
+					<div class="chart-value" style="color: var(--color-orange-text)">{metrics.connections.sse}<span class="chart-unit">개</span></div>
 				</div>
 				<svg viewBox="0 0 {CHART_W} {CHART_H}" class="chart-svg">
 					{#each yLabels(sseMax) as yl}
@@ -576,7 +586,7 @@
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
-		margin-bottom: 2rem;
+		margin-bottom: var(--space-6);
 	}
 	.header .panel-title {
 		margin: 0;
@@ -585,12 +595,12 @@
 	.connection-status {
 		display: flex;
 		align-items: center;
-		gap: 0.5rem;
+		gap: var(--space-2);
 		font-size: var(--text-sm);
-		color: #999;
+		color: var(--text-muted);
 		padding: 0.4rem 0.8rem;
 		border-radius: var(--radius-card);
-		background: #f5f5f5;
+		background: var(--bg-surface);
 	}
 	.connection-status.connected {
 		/* #4caf50은 이 연초록 위에서 2.47:1이었다 */
@@ -601,7 +611,7 @@
 		width: 8px;
 		height: 8px;
 		border-radius: 50%;
-		background: #ccc;
+		background: var(--border-medium);
 	}
 	.connection-status.connected .dot {
 		background: #4caf50;
@@ -616,14 +626,14 @@
 	.charts-grid {
 		display: grid;
 		grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-		gap: 1rem;
-		margin-bottom: 1.5rem;
+		gap: var(--space-4);
+		margin-bottom: var(--space-5);
 	}
 	.chart-card {
 		background: white;
 		padding: 1.25rem;
 		border-radius: var(--radius-card);
-		border: 1px solid #eee;
+		border: 1px solid var(--border-light);
 		text-align: left;
 		width: 100%;
 		font-family: inherit;
@@ -635,15 +645,15 @@
 		transition: border-color 0.15s, box-shadow 0.15s;
 	}
 	button.chart-card:hover {
-		border-color: #ccc;
+		border-color: var(--border-medium);
 		box-shadow: 0 4px 16px rgba(0,0,0,0.1);
 	}
 	.chart-header {
-		margin-bottom: 0.75rem;
+		margin-bottom: var(--space-3);
 	}
 	.chart-title {
 		font-size: var(--text-sm);
-		color: #666;
+		color: var(--text-secondary);
 		font-weight: normal;
 	}
 	.tap-hint {
@@ -663,7 +673,7 @@
 	}
 	.chart-sub {
 		font-size: var(--text-xs);
-		color: #999;
+		color: var(--text-muted);
 		margin-top: 2px;
 	}
 	.chart-svg {
@@ -675,63 +685,63 @@
 	.kpi-grid {
 		display: grid;
 		grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-		gap: 1rem;
-		margin-bottom: 1.5rem;
+		gap: var(--space-4);
+		margin-bottom: var(--space-5);
 	}
 	.kpi-card {
 		background: white;
 		padding: 1.25rem;
 		border-radius: var(--radius-card);
 		text-align: center;
-		border: 1px solid #eee;
+		border: 1px solid var(--border-light);
 	}
 	.kpi-card h3 {
 		margin: 0;
 		font-size: var(--text-sm);
-		color: #666;
+		color: var(--text-secondary);
 		font-weight: normal;
 	}
 	.kpi-card .value {
 		font-size: 2rem;
 		font-weight: bold;
-		color: #333;
-		margin: 0.5rem 0;
+		color: var(--text-primary);
+		margin: var(--space-2) 0;
 	}
 	.kpi-card .value.uptime {
 		font-size: var(--text-lg);
 	}
 	.kpi-card .label {
 		font-size: var(--text-xs);
-		color: #999;
+		color: var(--text-muted);
 	}
 	.db-details {
 		display: flex;
 		justify-content: center;
-		gap: 0.75rem;
+		gap: var(--space-3);
 		font-size: var(--text-xs);
-		color: #666;
-		margin: 0.25rem 0;
+		color: var(--text-secondary);
+		margin: var(--space-1) 0;
 	}
 
 	/* Log Card */
 	.detail-card {
 		background: white;
-		padding: 1.5rem;
+		padding: var(--space-5);
 		border-radius: var(--radius-card);
-		border: 1px solid #eee;
+		border: 1px solid var(--border-light);
 	}
 	.detail-card h3 {
-		margin: 0 0 1rem 0;
+		margin: 0 0 var(--space-4) 0;
 		font-size: var(--text-base);
-		color: #333;
+		color: var(--text-primary);
 	}
 	.log-card {
-		margin-bottom: 1.5rem;
+		margin-bottom: var(--space-5);
 	}
 	.stuck-card {
-		margin-bottom: 1.5rem;
+		margin-bottom: var(--space-5);
 		border: 1px solid #f44336;
-		background: #fff5f5;
+		background: var(--color-error-bg);
 		animation: pulse-border 2s infinite;
 	}
 	.stuck-card h3 {
@@ -742,15 +752,15 @@
 		color: #c62828;
 	}
 	.abandoned-card {
-		margin-bottom: 1.5rem;
-		border: 1px solid #ff9800;
-		background: #fff8e1;
+		margin-bottom: var(--space-5);
+		border: 1px solid var(--color-orange);
+		background: var(--color-warning-bg);
 	}
 	.abandoned-card h3 {
 		color: #e65100;
 	}
 	.abandoned-hint {
-		margin: 0 0 0.75rem 0;
+		margin: 0 0 var(--space-3) 0;
 		font-size: var(--text-xs);
 		color: #8d6e63;
 	}
@@ -774,32 +784,32 @@
 	}
 	.log-table th {
 		text-align: left;
-		padding: 0.5rem 0.75rem;
-		border-bottom: 2px solid #eee;
-		color: #666;
+		padding: var(--space-2) var(--space-3);
+		border-bottom: 2px solid var(--border-light);
+		color: var(--text-secondary);
 		font-weight: 600;
 		font-size: var(--text-xs);
 	}
 	.log-table td {
-		padding: 0.4rem 0.75rem;
-		border-bottom: 1px solid #f5f5f5;
+		padding: 0.4rem var(--space-3);
+		border-bottom: 1px solid var(--bg-surface);
 	}
 	.log-table tbody tr:hover {
 		background: #fafafa;
 	}
 	.log-time {
 		font-family: monospace;
-		color: #888;
+		color: var(--text-tertiary);
 	}
 	.log-badge {
 		display: inline-block;
-		padding: 0.15rem 0.5rem;
+		padding: 0.15rem var(--space-2);
 		border-radius: var(--radius-card);
 		font-size: var(--text-xs);
 		font-weight: 600;
 	}
 	.log-checkin {
-		background: #e8f5e9;
+		background: var(--color-success-bg);
 		color: #2e7d32;
 	}
 	.log-checkout {
@@ -807,7 +817,7 @@
 		color: #c62828;
 	}
 	.log-open {
-		background: #fff3e0;
+		background: var(--color-warning-bg);
 		color: #ef6c00;
 	}
 	.log-source {
@@ -820,9 +830,9 @@
 		font-weight: 600;
 	}
 	.empty-state {
-		color: #999;
+		color: var(--text-muted);
 		text-align: center;
-		padding: 2rem;
+		padding: var(--space-6);
 	}
 
 	/* Modal */
@@ -834,12 +844,12 @@
 		align-items: center;
 		justify-content: center;
 		z-index: 1000;
-		padding: 1rem;
+		padding: var(--space-4);
 	}
 	.modal {
 		background: white;
 		border-radius: var(--radius-card);
-		padding: 1.5rem;
+		padding: var(--space-5);
 		width: 100%;
 		max-width: 420px;
 		box-shadow: 0 8px 32px rgba(0,0,0,0.15);
@@ -848,63 +858,63 @@
 		display: flex;
 		justify-content: space-between;
 		align-items: center;
-		margin-bottom: 1rem;
+		margin-bottom: var(--space-4);
 	}
 	.modal-header h3 {
 		margin: 0;
 		font-size: var(--text-lg);
-		color: #333;
+		color: var(--text-primary);
 	}
 	.modal-close {
 		background: none;
 		border: none;
 		font-size: var(--text-xl);
-		color: #999;
+		color: var(--text-muted);
 		cursor: pointer;
-		padding: 0 0.25rem;
+		padding: 0 var(--space-1);
 		line-height: 1;
 	}
 	.modal-close:hover {
-		color: #333;
+		color: var(--text-primary);
 	}
 	.detail-list {
 		display: flex;
 		flex-direction: column;
-		gap: 0.5rem;
+		gap: var(--space-2);
 	}
 	.detail-row {
 		display: flex;
 		justify-content: space-between;
 		font-size: var(--text-sm);
-		color: #555;
-		padding: 0.25rem 0;
+		color: var(--text-darker);
+		padding: var(--space-1) 0;
 	}
 	.detail-row.separator {
-		border-top: 1px solid #eee;
-		padding-top: 0.5rem;
-		margin-top: 0.25rem;
+		border-top: 1px solid var(--border-light);
+		padding-top: var(--space-2);
+		margin-top: var(--space-1);
 	}
 	.detail-value {
 		font-weight: 600;
-		color: #333;
+		color: var(--text-primary);
 	}
 
 	.last-update {
 		text-align: center;
 		font-size: var(--text-xs);
-		color: #999;
+		color: var(--text-muted);
 	}
 	.loading {
 		text-align: center;
 		padding: 3rem;
-		color: #999;
+		color: var(--text-muted);
 	}
 
 	@media (max-width: 768px) {
 		.header {
 			flex-direction: column;
 			align-items: flex-start;
-			gap: 0.75rem;
+			gap: var(--space-3);
 		}
 		.kpi-grid {
 			grid-template-columns: 1fr 1fr;
