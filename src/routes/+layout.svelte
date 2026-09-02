@@ -255,6 +255,14 @@
         --glass-border-strong: rgba(255, 255, 255, 0.8);
         --glass-inset-highlight: rgba(255, 255, 255, 0.5);
 
+        /* 오락실 배경 그라디언트 — 라이트는 파스텔, 다크는 은은한 색 글로우.
+           하드코딩된 파스텔을 그대로 두면 다크에서 화면 전체가 회백색으로 떠버린다 */
+        --arcade-bg-gradient: radial-gradient(circle at 10% 20%, rgba(216, 241, 230, 0.7) 0%, rgba(233, 240, 255, 0.4) 40%, rgba(240, 230, 250, 0.3) 80%);
+
+        /* --bg-dark와 짝을 이루는 더 깊은 톤 (반전 버튼의 그라디언트 끝점).
+           #111을 하드코딩하면 다크에서 밝은색 → 검정 그라디언트가 되어 글자가 묻힌다 */
+        --bg-dark-deep: #111;
+
         /* Additional Colors */
         --border-warning: #ffe0b2;
         --color-purple-bg: #e8d5f5;
@@ -345,6 +353,10 @@
         --glass-border-soft: rgba(255, 255, 255, 0.1);
         --glass-border-strong: rgba(255, 255, 255, 0.14);
         --glass-inset-highlight: rgba(255, 255, 255, 0.08);
+
+        --arcade-bg-gradient: radial-gradient(circle at 10% 20%, rgba(52, 211, 153, 0.07) 0%, rgba(96, 165, 250, 0.06) 40%, rgba(167, 139, 250, 0.05) 80%);
+
+        --bg-dark-deep: #f3f4f6;
 
         /* Additional Colors */
         --border-warning: rgba(251,191,36,0.25);

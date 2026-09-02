@@ -96,10 +96,10 @@
         height: 36px;
         padding: 0 0.5rem;
         border-radius: 999px;
-        background: rgba(255, 255, 255, 0.5);
+        background: var(--glass-surface-faint);
         backdrop-filter: blur(8px);
         -webkit-backdrop-filter: blur(8px);
-        border: 1px solid rgba(255, 255, 255, 0.6);
+        border: 1px solid var(--glass-border-strong);
         color: var(--text-primary);
         text-decoration: none;
         white-space: nowrap;
@@ -108,7 +108,7 @@
 
     .presence-badge:active {
         transform: scale(0.95);
-        background: rgba(255, 255, 255, 0.7);
+        background: var(--glass-surface-strong);
     }
 
     .seg {
@@ -147,9 +147,9 @@
     }
 
     @keyframes pulse {
-        0% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.5); }
-        70% { box-shadow: 0 0 0 5px rgba(34, 197, 94, 0); }
-        100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
+        0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-green) 50%, transparent); }
+        70% { box-shadow: 0 0 0 5px transparent; }
+        100% { box-shadow: 0 0 0 0 transparent; }
     }
 
     @media (prefers-reduced-motion: reduce) {
