@@ -310,6 +310,8 @@ export function createBlockBlasterGame() {
 	let pendingStageRewardScheduled = $state(false);
 	/** 게임오버 사유 — 'doom' (게임오버 줄로 끝남) | 'no-blocks' (배치 불가) | null */
 	let gameOverReason: 'doom' | 'no-blocks' | null = $state(null);
+	/** 놓을 블록이 없어 능력으로만 탈출 가능한 상태 — UI 안내용 */
+	let mustUseAbilityToEscape = $state(false);
 	let pendingDraftOptions: Ability[] | null = $state(null);
 	let pendingAbilitySlot: number | null = $state(null); // 타겟 대기 중인 액티브 슬롯
 	let pendingDiscardForAbility: Ability | null = $state(null); // 슬롯 풀일 때 새 능력 등록 대기
@@ -677,6 +679,7 @@ export function createBlockBlasterGame() {
 			pendingDangerIntro = null;
 			pendingDangerClear = null;
 			gameOverReason = null;
+		mustUseAbilityToEscape = false;
 
 			// 진행 중이던 능력 모달이 있으면 paused가 아닌 playing으로 복귀 (모달 우선 표시)
 			const hasPendingAction = pendingDraftOptions !== null
@@ -732,6 +735,7 @@ export function createBlockBlasterGame() {
 		cellMeta = {};
 		pendingDangerClear = null;
 		gameOverReason = null;
+		mustUseAbilityToEscape = false;
 		pendingDangerIntro = null;
 		seenDangerTypes = new Set();
 		pendingStageRewardScheduled = false;
@@ -822,6 +826,9 @@ export function createBlockBlasterGame() {
 		newBlocks[selectedBlockIndex] = null;
 		currentBlocks = newBlocks;
 		selectedBlockIndex = null;
+
+		// 배치에 성공했으므로 '막힘' 안내 해제
+		mustUseAbilityToEscape = false;
 
 		// special 모드: 블록 배치 성공 시 쿨다운 진행
 		if (isSpecialMode()) tickCooldowns();
@@ -965,9 +972,14 @@ export function createBlockBlasterGame() {
 		// Check game over — special 모드에서는 사용 가능한 액티브 스킬이 있으면 보류
 		if (!canPlaceAnyBlock(grid, placeableBlocks)) {
 			if (hasUsableActiveAbility()) {
-				// 능력으로 탈출 가능 — 게임오버 보류 (안내 모달 없음)
+				// 능력으로 탈출 가능 — 게임오버 보류.
+				// 이때 아무 안내가 없으면 보드가 그냥 얼어붙은 것처럼 보이고, 능력을 써야
+				// 한다는 걸 알 방법이 없어 플레이어가 방치된다. 상태를 노출해 UI가
+				// 안내를 띄울 수 있게 한다.
+				mustUseAbilityToEscape = true;
 				return;
 			}
+			mustUseAbilityToEscape = false;
 			// WAVE 클리어 보상이 진행 중이면 게임오버 보류 — 드래프트로 받을 능력이
 			// 위기를 풀어줄 수 있으므로 afterDraftPick 시점에 다시 판정.
 			if (pendingStageRewardScheduled || pendingDraftOptions || pendingDangerClear) {
@@ -1020,7 +1032,7 @@ export function createBlockBlasterGame() {
 				clearRandomCells(ratio);
 				// 트레이도 새로 채워줌
 				currentBlocks = popOrGenerateNextSet();
-				// 쿨다운 설정 — 레벨에 따라 단축 (Lv1: 30턴, Lv2: 25턴, Lv3: 20턴)
+				// 쿨다운 설정 — 레벨에 따라 단축 (reviveCooldown 참고)
 				revive.cooldownRemaining = reviveCooldown(reviveLevel);
 				isAnimating = false;
 				saveGame();
@@ -2673,6 +2685,7 @@ export function createBlockBlasterGame() {
 		get pendingDangerIntro() { return pendingDangerIntro; },
 		get pendingDangerClear() { return pendingDangerClear; },
 		get gameOverReason() { return gameOverReason; },
+		get mustUseAbilityToEscape() { return mustUseAbilityToEscape; },
 		get bonusDraftsRemaining() { return bonusDraftsRemaining; },
 		get turnsUntilNextDanger() {
 			return Math.max(0, turnsToNextDanger() - turnsSinceLastDanger);

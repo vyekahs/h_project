@@ -606,6 +606,14 @@
 		/>
 	{/if}
 
+	<!-- 놓을 곳이 없어 능력으로만 탈출 가능한 상태 안내 -->
+	{#if game.isSpecialMode && game.mustUseAbilityToEscape}
+		<div class="escape-hint" role="status">
+			<span class="escape-hint-icon">⚠️</span>
+			<span>놓을 자리가 없습니다 — 능력을 사용해 길을 여세요</span>
+		</div>
+	{/if}
+
 	<!-- 드래그 중인 플로팅 블록 -->
 	{#if isAbilityDragging && abilityDragSlot !== null && game.inventory[abilityDragSlot]}
 		{@const owned = game.inventory[abilityDragSlot]}
@@ -828,6 +836,37 @@
 	/* 트레이 ↔ NEXT 미리보기 */
 	.center-group > :global(.peek-strip) {
 		margin-top: 0.85rem;
+	}
+
+	/* 막힘 안내 — 능력으로만 탈출 가능한 상태 */
+	.escape-hint {
+		position: fixed;
+		left: 50%;
+		bottom: calc(18px + env(safe-area-inset-bottom));
+		transform: translateX(-50%);
+		z-index: 60;
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 10px 18px;
+		border-radius: 14px;
+		background: rgba(120, 53, 15, 0.92);
+		border: 1px solid rgba(251, 191, 36, 0.55);
+		color: #fde68a;
+		font-size: 0.85rem;
+		font-weight: 700;
+		white-space: nowrap;
+		box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+		animation: escapeHintPulse 1.6s ease-in-out infinite;
+		pointer-events: none;
+	}
+	.escape-hint-icon { font-size: 1rem; }
+	@keyframes escapeHintPulse {
+		0%, 100% { opacity: 0.85; }
+		50% { opacity: 1; }
+	}
+	@media (max-width: 420px) {
+		.escape-hint { font-size: 0.78rem; padding: 8px 14px; white-space: normal; max-width: 90vw; }
 	}
 
 	.floating-ability {

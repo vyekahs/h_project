@@ -21,9 +21,12 @@ function generateId(prefix: string): string {
  * 결 (9~10): 3개
  */
 export function dangerCountForStage(stage: number): number {
+	// 반드시 결정적이어야 한다 — 이 함수는 (1) 위험을 생성할 때와 (2) 스테이지 클리어
+	// 조건을 판정할 때 각각 따로 호출된다. 무작위였던 6~8막에서는 두 호출이 서로 다른
+	// 값을 뽑아, 실제 마주한 위험 수와 클리어에 필요한 수가 절반 확률로 어긋났다
+	// (클리어 배너의 "N개 해결"도 실제와 달랐음).
 	if (stage <= 2) return 1;
 	if (stage <= 5) return 2;
-	if (stage <= 8) return 2 + (Math.random() < 0.5 ? 1 : 0); // 50% 확률로 3
 	return 3;
 }
 
@@ -40,6 +43,29 @@ export function countdownForStage(stage: number): number {
 }
 
 /**
+ * 위험 종류별 카운트다운 배수.
+ *
+ * 시뮬레이션에서 portal(95.5%) · hazard-zone(92.7%) · rust(88.2%) · quest(88.1%) ·
+ * chaser(87.4%) · storm(85.2%)은 거의 자동으로 해결되어 스테이지 카운트만 채워주는
+ * 무료 진행이었다. 카운트를 줄여 실제로 대응을 요구하게 만든다.
+ * (doom은 즉사이므로 건드리지 않고, 점거형 두 종은 countdown을 쓰지 않는다.)
+ */
+function countdownScaleFor(type: DangerType): number {
+	switch (type) {
+		case 'portal':
+		case 'hazard-zone':
+			return 0.7;
+		case 'rust':
+		case 'quest':
+		case 'chaser':
+		case 'storm':
+			return 0.8;
+		default:
+			return 1;
+	}
+}
+
+/**
  * 트레이 잠금 슬롯 수
  * 기 (1~2): 0
  * 승 (3~5): 1
@@ -47,9 +73,9 @@ export function countdownForStage(stage: number): number {
  * 결 (9~10): 2
  */
 export function lockedSlotsForStage(stage: number): number {
+	// dangerCountForStage와 같은 이유로 결정적이어야 한다(생성/판정 이중 호출).
 	if (stage <= 2) return 0;
 	if (stage <= 5) return 1;
-	if (stage <= 8) return 1 + (Math.random() < 0.5 ? 1 : 0);
 	return 2;
 }
 
@@ -60,20 +86,33 @@ export function lockedSlotsForStage(stage: number): number {
  * 3단계: + spreading
  */
 /**
- * 위험 종류별 출현 가중치 — WAVE와 무관하게 처음부터 5종 모두 등장.
- * 강도가 낮을수록 자주, 게임오버 위협(doom)이 가장 드물게.
+ * 위험 종류별 출현 가중치.
+ *
+ * 의도는 "강도가 낮을수록 자주, 치명적일수록 드물게"였으나, 300판 시뮬레이션 결과
+ * 의도와 실제가 정반대였다:
+ *   - reinforced(가중치 35, 최다 등장): 해결률 42%, **사망판의 76.8%에서 미해결 활성**
+ *   - spreading(25): 해결률 37%, 사망판의 54.5%에서 활성
+ *   - doom-row/col(10, 최소 등장): 사망판의 21.5% / 14.6%
+ *   - 나머지 6종: 해결률 85~95%, 사망 기여 3~6% (사실상 무료 진행)
+ * reinforced/spreading은 보드 칸을 오래 점거해 놓을 자리를 없애는 유형이라,
+ * 실제 사망 원인 1위가 doom이 아니라 no-blocks(55~63%)인 것과 일치한다.
+ *
+ * 따라서 점거형 두 종을 줄이고, 존재감이 없던 6종을 늘려 압박의 출처를 분산한다.
  */
 const DANGER_WEIGHTS: Record<DangerType, number> = {
-	reinforced: 35,
-	spreading: 25,
-	'hazard-zone': 20,
-	storm: 15,
-	portal: 15,
-	rust: 20,
-	chaser: 15,
-	quest: 15,
-	'doom-row': 10,
-	'doom-col': 10
+	reinforced: 22,      // 35 → 실질 최고 위협(18까지 낮췄더니 클리어율이 2배가 되어 되돌림)
+	spreading: 17,       // 25 → 실질 2위 위협
+	'hazard-zone': 26,   // 20
+	rust: 26,            // 20
+	storm: 24,           // 15
+	chaser: 24,          // 15
+	portal: 22,          // 15
+	quest: 22,           // 15
+	// doom은 "줄 전체를 비워야" 해결되므로 clear-row/col 외의 능력으로는 손댈 수 없다.
+	// 1차 조정에서 10 → 13으로 올렸더니 doom 사망이 20%→40%로 뛰면서 clear 계열의
+	// 독점성이 오히려 강해졌다(드래프트 정책 격차 2.0배 → 2.5배). 원래보다 낮춘다.
+	'doom-row': 8,       // 10
+	'doom-col': 8        // 10
 };
 
 /** 가중 무작위 — 한 가지 위험 종류 뽑기 */
@@ -173,7 +212,7 @@ function createDanger(
 	grid: BoardGrid,
 	ctx: CreateDangerCtx
 ): Danger | null {
-	const cd = countdownForStage(stageNumber);
+	const cd = Math.max(3, Math.round(countdownForStage(stageNumber) * countdownScaleFor(type)));
 	// 첫 위험(스테이지 1)의 doom-row/col은 트레이 운에 따라 무력하게 패배하는 일이
 	// 없도록 카운트다운 +2턴 완화 (학습 단계 보호).
 	const doomCd = stageNumber === 1 ? cd + 2 : cd;
@@ -236,8 +275,11 @@ function createDanger(
 			};
 		}
 		case 'reinforced': {
-			// 2~3셀 폴리오미노 강화 블록. 셀별 독립 hp는 activateDangerOnBoard에서 부여.
-			const cells = pickPolyomino(grid, 2 + Math.floor(Math.random() * 2), ctx.usedCells);
+			// 강화 블록 — 셀별 독립 hp는 activateDangerOnBoard에서 부여.
+			// 셀 수를 2~3 → 2로 고정. 이 유형은 hp가 0이 될 때까지 보드 칸을 계속
+			// 점거해 놓을 자리를 없애는 것이 실제 위협이었으므로(사망판의 76.8%에서 활성)
+			// 점거 면적을 줄인다.
+			const cells = pickPolyomino(grid, 2, ctx.usedCells);
 			if (cells.length === 0) return null;
 			return {
 				id: generateId('reinforced'),
@@ -250,8 +292,9 @@ function createDanger(
 			};
 		}
 		case 'spreading': {
-			// 2~3셀 폴리오미노 증식 블록. 모든 셀이 동등한 근원.
-			const cells = pickPolyomino(grid, 2 + Math.floor(Math.random() * 2), ctx.usedCells);
+			// 증식 블록 — 모든 셀이 동등한 근원. reinforced와 같은 이유로 시작 크기를 2로 고정
+			// (사망판의 54.5%에서 활성이었던 2위 위협).
+			const cells = pickPolyomino(grid, 2, ctx.usedCells);
 			if (cells.length === 0) return null;
 			// countdown은 활성화 주기. 0 도달 시 증식 후 다시 주기로 리셋
 			const interval = stageNumber <= 7 ? 3 : 2;
