@@ -471,7 +471,7 @@
                     <path 
                         d={pathData} 
                         fill="none" 
-                        stroke="#000" 
+                        stroke="var(--text-primary)" 
                         stroke-width="0.035" 
                         stroke-dasharray="0.05 0.05" 
                         stroke-linejoin="round"
@@ -482,7 +482,7 @@
                         y={pos.y}
                         width={rectWidth}
                         height={rectHeight}
-                        fill="white"
+                        fill="var(--bg-primary)"
                         rx="0.03"
                     />
                     
@@ -493,7 +493,7 @@
                         class="svg-cage-sum"
                         font-size={fontSize}
                         font-weight="bold"
-                        fill="#000"
+                        fill="var(--text-primary)"
                         dominant-baseline="middle"
                         text-anchor="middle"
                     >
@@ -598,6 +598,24 @@
     .cell.error .cell-bg {
         background: #ffebee !important;
     }
+
+    /* 다크 테마: 위 파스텔 배경을 그대로 두면 어두운 판 위에 밝은 판이 떠서
+       숫자(테마 텍스트색)가 묻힌다. 같은 색상 계열의 저채도 틴트로 대체 */
+    :global([data-theme='dark']) .cell-bg.selected {
+        background: color-mix(in srgb, var(--color-blue) 38%, transparent) !important;
+    }
+
+    :global([data-theme='dark']) .cell-bg.related {
+        background: color-mix(in srgb, var(--color-blue) 14%, transparent);
+    }
+
+    :global([data-theme='dark']) .cell-bg.same-value {
+        background: color-mix(in srgb, var(--color-blue) 26%, transparent) !important;
+    }
+
+    :global([data-theme='dark']) .cell.error .cell-bg {
+        background: color-mix(in srgb, var(--color-red) 28%, transparent) !important;
+    }
     
     /* Colors on Text */
     .note-item.highlight {
@@ -615,7 +633,7 @@
     /* Fixed/system numbers */
     .cell-content.fixed {
         font-weight: 600;
-        color: #000;
+        color: var(--text-primary);
     }
     
     /* Error Text Color */

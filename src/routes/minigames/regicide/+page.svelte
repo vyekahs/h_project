@@ -138,8 +138,8 @@
 					<div class="suit-ref">
 						<span class="ref-item"><span class="ref-s" style:color="#ef4444">♥</span>치유</span>
 						<span class="ref-item"><span class="ref-s" style:color="#3b82f6">♦</span>드로우</span>
-						<span class="ref-item"><span class="ref-s" style:color="#1e293b">♣</span>×2</span>
-						<span class="ref-item"><span class="ref-s" style:color="#1e293b">♠</span>방어</span>
+						<span class="ref-item"><span class="ref-s" style:color="var(--text-primary)">♣</span>×2</span>
+						<span class="ref-item"><span class="ref-s" style:color="var(--text-primary)">♠</span>방어</span>
 					</div>
 					<JesterPanel
 						jestersRemaining={game.jestersRemaining}
