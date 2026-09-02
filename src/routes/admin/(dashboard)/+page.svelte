@@ -535,9 +535,10 @@
     const playingSorted = $derived([...(games || [])].sort(
         (a, b) => new Date(a.end_time).getTime() - new Date(b.end_time).getTime()
     ));
-    const nextGameEndTs = $derived((games || []).length
-        ? Math.min(...(games as GameSession[]).map((g) => new Date(g.end_time).getTime()))
-        : null);
+    // playingSorted[0]이 곧 가장 먼저 끝나는 게임이다.
+    // "첫 종료까지 임박"은 어느 게임인지 말해주지 않으면 운영자가 목록을 다시 훑어야 했다.
+    const nextEndingGame = $derived(playingSorted[0] ?? null);
+    const nextGameEndTs = $derived(nextEndingGame ? new Date(nextEndingGame.end_time).getTime() : null);
     const nextEndMins = $derived(nextGameEndTs !== null ? Math.round((nextGameEndTs - now) / 60000) : null);
 
     // 새 게임 참여자 피커
@@ -608,11 +609,14 @@
         <span class="rs-value">{playingCount}<span class="rs-unit">판</span></span>
     </div>
     <div class="rs-stat">
-        <span class="rs-label">첫 종료까지</span>
+        <span class="rs-label">
+            첫 종료까지{#if nextEndingGame}<span class="rs-label-name" title={nextEndingGame.game_name}>· {nextEndingGame.game_name}</span>{/if}
+        </span>
         {#if nextEndMins === null}
             <span class="rs-value rs-value-none">없음</span>
         {:else if nextEndMins <= 0}
-            <span class="rs-value urgent">임박</span>
+            <!-- 시간이 지난 게임은 "임박"이 아니라 이미 끝난 것이다. 목록의 행에서 닫을 수 있다. -->
+            <span class="rs-value rs-value-done">종료됨</span>
         {:else}
             <span class="rs-value" class:urgent={nextEndMins <= 5}>{nextEndMins}<span class="rs-unit">분</span></span>
         {/if}
@@ -760,9 +764,11 @@
     </div>
     <ul class="game-list">
         {#each (showAllPlaying ? playingSorted : playingSorted.slice(0, 5)) as game (game.id)}
-            {@const endingSoon = new Date(game.end_time).getTime() - now < 5 * 60000}
-            <li>
-                <button type="button" class="game-list-item" class:ending-soon={endingSoon} onclick={() => { selectedPlayingGame = game; resetParticipantSearch(); }}>
+            {@const msLeft = new Date(game.end_time).getTime() - now}
+            {@const expired = msLeft <= 0}
+            {@const endingSoon = !expired && msLeft < 5 * 60000}
+            <li class="game-row" class:is-expired={expired}>
+                <button type="button" class="game-list-item" class:ending-soon={endingSoon} class:expired onclick={() => { selectedPlayingGame = game; resetParticipantSearch(); }}>
                     {#if game.image_url}
                         <img src={game.image_url} alt={game.game_name} width="32" height="32" class="list-thumb" />
                     {:else}
@@ -773,8 +779,26 @@
                     <span class="list-name">{game.game_name}</span>
                     <span class="list-meta">{game.players.length}명</span>
                     <span class="list-meta time-remaining">{getTimeRemaining(game.end_time, now)}</span>
-                    <span class="list-arrow" aria-hidden="true">›</span>
+                    {#if !expired}<span class="list-arrow" aria-hidden="true">›</span>{/if}
                 </button>
+                {#if expired}
+                    <!--
+                        시간이 지나도 게임은 playing으로 남는다 — autoClose는 마감 때만 닫는다.
+                        승자 기록은 선택이므로 여기서 한 번에 닫을 수 있어야 한다.
+                        승자를 남기려면 행을 눌러 종료 모달로 간다.
+                    -->
+                    <form method="POST" action="?/endGame" class="row-end-form" use:enhance={() => {
+                        return async ({ result, update }: { result: any, update: (options?: { reset?: boolean }) => Promise<void> }) => {
+                            if (!reportResult(result)) {
+                                showToast(`${(result?.data as any)?.endedName ?? game.game_name} 종료됨 · 승자는 기록하지 않았습니다`);
+                            }
+                            await update();
+                        };
+                    }}>
+                        <input type="hidden" name="id" value={game.id} />
+                        <button type="submit" class="btn-row-end">게임 종료</button>
+                    </form>
+                {/if}
             </li>
         {/each}
         {#if (games || []).length === 0}
@@ -1089,18 +1113,23 @@
 
             <h2>
                 <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:#fab005;"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>
-                게임 종료 및 승자 선택
+                게임 종료
             </h2>
             <p><strong>{selectedEndGame.game_name}</strong> 게임을 종료합니다.</p>
-            <p>승리한 플레이어를 선택해주세요 (복수 선택 가능):</p>
-            
+            <p>승자와 점수는 선택입니다. 비워두고 종료해도 됩니다.</p>
+
+            <!--
+                문구는 서버가 실제로 기록한 것을 따른다. 예전에는 승자를 아무도
+                고르지 않아도 "승자가 기록되었습니다"라고 알렸다.
+            -->
             <form method="POST" action="?/endGame" use:enhance={() => {
                 return async ({ result, update }: { result: any, update: (options?: { reset?: boolean }) => Promise<void> }) => {
-                    if (result.type === 'failure' && (result.data as any)?.missing) {
-                        showAlert('승리한 플레이어를 한 명 이상 선택해주세요.', 'error');
-                    } else if (!reportResult(result)) {
+                    if (!reportResult(result)) {
                         endGameModalVisible = false;
-                        showAlert('게임이 종료되고 승자가 기록되었습니다.', 'success');
+                        const d = (result?.data as any) ?? {};
+                        showToast(d.hadWinners
+                            ? `${d.endedName ?? '게임'} 종료됨 · 승자를 기록했습니다`
+                            : `${d.endedName ?? '게임'} 종료됨 · 승자는 기록하지 않았습니다`);
                     }
                     await update();
                 };
@@ -1128,7 +1157,7 @@
 
                 <div class="modal-actions">
                     <button type="button" onclick={() => endGameModalVisible = false} class="btn-cancel">취소</button>
-                    <button type="submit" class="btn-primary">종료 및 저장</button>
+                    <button type="submit" class="btn-primary">게임 종료</button>
                 </div>
             </form>
         </div>
@@ -1640,6 +1669,7 @@
         display: inline-flex;
         align-items: center;
         gap: var(--space-1);
+        min-width: 0;
         font-size: var(--text-xs);
         font-weight: var(--weight-medium);
         color: var(--text-secondary);
@@ -1659,6 +1689,17 @@
     }
     .rs-value-none {
         color: var(--text-secondary);
+    }
+    .rs-value-done {
+        font-size: var(--text-2xl);
+        color: var(--text-secondary);
+    }
+    .rs-label-name {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-weight: var(--weight-regular, 400);
     }
     .rs-dot {
         width: 8px;
@@ -2787,6 +2828,50 @@
         color: var(--color-red-dark);
         font-weight: 700;
     }
+    /* 만료는 "곧 끝남"과 다른 상태다 — 경보가 아니라 처리 대기다.
+       빨강을 나눠 쓰면 5분 남은 게임과 이미 끝난 게임이 같아 보인다. */
+    .game-row {
+        display: flex;
+        align-items: center;
+        gap: var(--space-2);
+        border-bottom: 1px solid var(--border-light);
+    }
+    .game-row:last-child {
+        border-bottom: none;
+    }
+    .game-row .game-list-item {
+        border-bottom: none;
+        /* width:100%인 flex 아이템은 기본 min-width:auto 때문에 좁은 폭에서 줄지 않는다 */
+        flex: 1 1 auto;
+        width: auto;
+        min-width: 0;
+    }
+    .game-row.is-expired {
+        background: var(--bg-surface);
+        padding-right: var(--space-2);
+    }
+    .game-list-item.expired .list-name,
+    .game-list-item.expired .time-remaining {
+        color: var(--text-secondary);
+    }
+    .row-end-form {
+        flex-shrink: 0;
+    }
+    .btn-row-end {
+        min-height: 36px;
+        padding: 0 var(--space-3);
+        border: 1px solid var(--border-medium);
+        border-radius: var(--radius-control);
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        font-size: var(--text-xs);
+        font-weight: var(--weight-medium);
+        white-space: nowrap;
+        cursor: pointer;
+    }
+    .btn-row-end:hover {
+        background: var(--bg-hover);
+    }
     .list-thumb {
         width: 32px;
         height: 32px;
@@ -2803,6 +2888,7 @@
     }
     .list-name {
         flex: 1;
+        min-width: 0;
         font-weight: 600;
         font-size: var(--text-sm);
         overflow: hidden;

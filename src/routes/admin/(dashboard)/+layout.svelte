@@ -487,6 +487,10 @@
     @media (max-width: 768px) {
         .admin-layout {
             flex-direction: column;
+            /* 데스크톱의 align-items:flex-start는 sticky 사이드바를 위한 것이다.
+               세로 배치에서는 그것이 교차축(가로) 사이징이 되어 main-content가
+               max-content로 부풀고, 넓은 행 하나가 콘솔 전체를 가로로 밀어냈다. */
+            align-items: stretch;
         }
         .sidebar {
             position: static;

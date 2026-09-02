@@ -319,9 +319,9 @@ export const actions: Actions = {
             }
         }
 
-        if (!id) {
-            return fail(400, { missing: true });
-        }
+        const nameRows = await db.execute(sql`SELECT game_name FROM game_sessions WHERE id = ${id} AND status = 'playing'`);
+        const gameName = (nameRows as any[])[0]?.game_name as string | undefined;
+        if (!gameName) return fail(404, { error: '이미 종료되었거나 없는 게임입니다.' });
 
         try {
             await db.transaction(async (tx) => {
@@ -352,6 +352,10 @@ export const actions: Actions = {
         } catch (error) {
             return fail(500, { error: '게임 종료에 실패했습니다.' });
         }
+
+        // 승자 기록은 선택이다. 화면이 "기록되었습니다"라고 말할지 여기서 결정한다 —
+        // 이전에는 승자가 없어도 무조건 기록됐다고 알렸다.
+        return { success: true, endedName: gameName, hadWinners: winnerIds.length > 0 };
     },
     extendGame: async ({ request }) => {
         const data = await request.formData();
