@@ -219,7 +219,14 @@ function tryUseAbility(game: Game, stuck: boolean): boolean {
 	// 그 외: 가장 꽉 찬 영역을 정리하는 쪽으로
 	for (const si of usable) {
 		const ab = inv[si].ability;
+		const cdBefore = inv[si].cooldownRemaining;
 		game.useAbility(si);
+		// useAbility에는 모바일 더블탭 방지용 "동일 슬롯 250ms 내 중복 호출 무시" 가드가
+		// 있다. 시뮬레이션은 그보다 훨씬 빠르게 반복 호출하므로 무시당한 채 true를
+		// 반환하면 같은 슬롯을 영원히 재시도하는 무한 루프가 된다(실측 stall 6.7%).
+		// 실제로 소비됐는지(쿨다운 증가 또는 타겟 대기 진입) 확인하고, 아니면 건너뛴다.
+		const consumed = game.pendingAbilitySlot === si || inv[si].cooldownRemaining !== cdBefore;
+		if (!consumed) continue;
 		if (ab.targetType === 'row') {
 			let bestR = 0, bestN = -1;
 			for (let r = 0; r < GRID_SIZE; r++) {
@@ -309,6 +316,16 @@ function resolveModals(game: Game, draftPolicy: DraftPolicy): boolean {
 		game.confirmClearColor([...colors].slice(0, lv));
 		return true;
 	}
+
+	// 능력 대기 상태 해제 — 반드시 위의 모든 pending 모달 처리 뒤에 와야 한다.
+	// useAbility가 타겟 대기(pendingAbilitySlot) 상태로 진입했는데 유효한 타겟을
+	// 못 주면 그대로 갇힌다. 이 상태에서는 placeBlockAt이 블록 배치가 아니라
+	// 능력 타겟 적용으로 라우팅되므로, AI는 배치했다고 믿지만 보드는 그대로여서
+	// 진행이 멈춘다(실측 stall 6.7%, 전부 rotate-block 보유 판).
+	if (game.pendingAbilitySlot !== null) {
+		game.cancelPendingAbility();
+		return true;
+	}
 	return false;
 }
 
@@ -326,8 +343,10 @@ export interface RunResult {
 	dangersAtDeath: string[];
 	/** 게임 전체에서 등장한 위험 종류별 횟수 */
 	dangersSeen: Record<string, number>;
-	/** 등장한 위험 중 해결한 횟수 */
+	/** 등장한 위험 중 **플레이어가 실제로 해결한** 횟수 */
 	dangersResolved: Record<string, number>;
+	/** 등장한 위험 중 카운트 만료로 끝난 횟수 (크레딧 없음 = 실패) */
+	dangersExpired: Record<string, number>;
 }
 
 /**
@@ -348,6 +367,10 @@ export async function runGame(opts: RunOptions = {}): Promise<RunResult> {
 	const mode = opts.mode ?? 'special';
 	const draftPolicy = opts.draftPolicy ?? 'clear-first';
 	const maxTurns = opts.maxTurns ?? 3000;
+	// 배치 없이 흘러간 반복 횟수 상한(모달 처리·애니메이션 대기·능력 사용 포함).
+	// 시작 드래프트 도입 이후 평균 게임 길이가 60→97턴으로 늘면서 500으로는
+	// 드물게(약 1/7) 정상 게임을 stall로 오판했다.
+	const IDLE_LIMIT = 3000;
 	const game = createBlockBlasterGame();
 	game.startGame(mode);
 	game.stopTimer(); // 타이머 불필요
@@ -358,8 +381,9 @@ export async function runGame(opts: RunOptions = {}): Promise<RunResult> {
 	let lastStages = 0;
 	const dangersSeen: Record<string, number> = {};
 	const dangersResolved: Record<string, number> = {};
+	const dangersExpired: Record<string, number> = {};
 	const trackedDangerIds = new Set<string>();
-	const resolvedDangerIds = new Set<string>();
+	const endedDangerIds = new Set<string>();
 
 	const trackDangers = () => {
 		const cur = game.currentDangerStage;
@@ -370,17 +394,20 @@ export async function runGame(opts: RunOptions = {}): Promise<RunResult> {
 				trackedDangerIds.add(d.id);
 				dangersSeen[d.type] = (dangersSeen[d.type] ?? 0) + 1;
 			}
-			if (d.resolved && !resolvedDangerIds.has(d.id)) {
-				resolvedDangerIds.add(d.id);
-				dangersResolved[d.type] = (dangersResolved[d.type] ?? 0) + 1;
+			if (d.resolved && !endedDangerIds.has(d.id)) {
+				endedDangerIds.add(d.id);
+				// 만료(실패)와 해결을 반드시 구분해야 한다 — 예전에는 둘 다 resolved라
+				// 해결률이 87~97%로 보였지만 실제로는 실패 경로가 없었을 뿐이다.
+				if (d.expired) dangersExpired[d.type] = (dangersExpired[d.type] ?? 0) + 1;
+				else dangersResolved[d.type] = (dangersResolved[d.type] ?? 0) + 1;
 			}
 		}
 	};
 
 	while (game.gameState === 'playing' && turns < maxTurns) {
 		await new Promise(r => setTimeout(r, 0));
-		if (game.isAnimating) { idle++; if (idle > 500) break; continue; }
-		if (resolveModals(game, draftPolicy)) { idle++; if (idle > 500) break; continue; }
+		if (game.isAnimating) { idle++; if (idle > IDLE_LIMIT) break; continue; }
+		if (resolveModals(game, draftPolicy)) { idle++; if (idle > IDLE_LIMIT) break; continue; }
 
 		trackDangers();
 
@@ -392,15 +419,18 @@ export async function runGame(opts: RunOptions = {}): Promise<RunResult> {
 		const mv = chooseMove(game);
 		if (!mv) {
 			// 놓을 곳이 없음 — 능력으로 탈출 시도
-			if (tryUseAbility(game, true)) { idle++; if (idle > 500) break; continue; }
-			// 능력도 없으면 게임오버가 예약돼 있으므로 타이머가 처리하도록 잠시 대기
+			if (tryUseAbility(game, true)) { idle++; if (idle > IDLE_LIMIT) break; continue; }
+			// 능력도 없으면 afterPlace가 setTimeout으로 게임오버를 예약해둔 상태다.
+			// 타이머가 실제로 발동해 gameState가 'finished'가 될 때까지 기다린다.
+			// (30에서 끊었더니 사망이 gameOverReason 없는 'unknown'으로 집계돼
+			//  종료 사유 분포가 최대 18%까지 왜곡됐다.)
 			idle++;
-			if (idle > 30) break;
+			if (idle > 200) break;
 			continue;
 		}
 
 		// 위험이 임박하면 능력을 먼저 쓸지 판단
-		if (tryUseAbility(game, false)) { idle++; if (idle > 500) break; continue; }
+		if (tryUseAbility(game, false)) { idle++; if (idle > IDLE_LIMIT) break; continue; }
 
 		game.selectBlock(mv.blockIndex);
 		const before = game.score;
@@ -430,10 +460,11 @@ export async function runGame(opts: RunOptions = {}): Promise<RunResult> {
 		gameOverReason: game.gameOverReason,
 		abilitiesTaken: inv,
 		stageTurn,
-		stalled: turns >= maxTurns || idle > 500,
+		stalled: turns >= maxTurns || idle > IDLE_LIMIT,
 		dangersAtDeath,
 		dangersSeen,
-		dangersResolved
+		dangersResolved,
+		dangersExpired
 	};
 	game.stopTimer();
 	return res;

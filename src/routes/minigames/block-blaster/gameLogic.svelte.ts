@@ -758,6 +758,16 @@ export function createBlockBlasterGame() {
 
 		gameState = 'playing';
 		startTimer();
+
+		// 플러스 모드: 시작 드래프트 1회 무료.
+		// 지금까지는 능력 0개로 1막을 맨손 통과해야 했고, 첫 위험이 10턴째 등장하므로
+		// 트레이 운이 나쁘면 대응 수단 없이 끝났다(0막 사망 25%). 시작 능력을 주면
+		// 초반 관문이 완화될 뿐 아니라, 첫 선택이 그 판의 빌드 방향을 정하게 되어
+		// 로그라이트로서의 의사결정이 첫 턴부터 시작된다.
+		if (mode === 'special') {
+			openAbilityDraft();
+		}
+
 		saveGame();
 	}
 
@@ -1447,8 +1457,9 @@ export function createBlockBlasterGame() {
 					}
 				}
 				cellMeta = nextMeta;
-				d.resolved = true; // 만료 처리(보너스 없음)
-				resolvedDangerCount++;
+				d.resolved = true;
+				d.expired = true; // 만료 — 페널티(석화) + 부분 크레딧
+				resolvedDangerCount += EXPIRY_CREDIT;
 				checkStageClearByCount();
 			}
 			if (d.type === 'spreading' && d.countdown === 0) {
@@ -1465,7 +1476,8 @@ export function createBlockBlasterGame() {
 				}
 				cellMeta = nextMeta;
 				d.resolved = true;
-				resolvedDangerCount++;
+				d.expired = true;
+				resolvedDangerCount += EXPIRY_CREDIT;
 				checkStageClearByCount();
 				if (isMatchedToLock(d, ds)) {
 					ds.lockedSlotDangerIds = ds.lockedSlotDangerIds.filter(id => id !== d.id);
@@ -1487,7 +1499,8 @@ export function createBlockBlasterGame() {
 					void _so; void _sid;
 					cellMeta = { ...cellMeta, [cellKey(r, c)]: { ...rest, petrified: true } };
 					d.resolved = true;
-					resolvedDangerCount++;
+					d.expired = true; // 만료 — 페널티(검은 돌) + 부분 크레딧
+					resolvedDangerCount += EXPIRY_CREDIT;
 					checkStageClearByCount();
 					// 잠금 매칭 위험이면 슬롯 해제 (1단계 fixpoint와 별개로 명시 처리)
 					if (isMatchedToLock(d, ds)) {
@@ -1515,7 +1528,8 @@ export function createBlockBlasterGame() {
 					grid = next;
 					cellMeta = nextMeta;
 					d.resolved = true;
-					resolvedDangerCount++;
+					d.expired = true; // 만료(수명 종료) — 부분 크레딧
+					resolvedDangerCount += EXPIRY_CREDIT;
 					checkStageClearByCount();
 					if (isMatchedToLock(d, ds)) {
 						ds.lockedSlotDangerIds = ds.lockedSlotDangerIds.filter(id => id !== d.id);
@@ -1531,7 +1545,8 @@ export function createBlockBlasterGame() {
 					// 카운트 만료 — 3x3 폭발: 영역의 채워진 셀들을 petrified로 변환 후 자연 종료
 					chaserExplode(d);
 					d.resolved = true;
-					resolvedDangerCount++;
+					d.expired = true; // 만료 — 페널티(폭발) + 부분 크레딧
+					resolvedDangerCount += EXPIRY_CREDIT;
 					checkStageClearByCount();
 					if (isMatchedToLock(d, ds)) {
 						ds.lockedSlotDangerIds = ds.lockedSlotDangerIds.filter(id => id !== d.id);
@@ -1539,9 +1554,10 @@ export function createBlockBlasterGame() {
 				}
 			}
 			if (d.type === 'quest' && d.countdown === 0) {
-				// 카운트 만료 — 패턴 미달성. 잠금 해제 + 자연 종료 (보너스 X, resolvedDangerCount는 +1)
+				// 카운트 만료 — 패턴 미달성(실패). 부분 크레딧만.
 				d.resolved = true;
-				resolvedDangerCount++;
+				d.expired = true;
+				resolvedDangerCount += EXPIRY_CREDIT;
 				checkStageClearByCount();
 				if (isMatchedToLock(d, ds)) {
 					ds.lockedSlotDangerIds = ds.lockedSlotDangerIds.filter(id => id !== d.id);
@@ -1873,6 +1889,15 @@ export function createBlockBlasterGame() {
 	 * 다음 스테이지의 dangerCount 임계에 도달할 때마다 stagesCleared++ + 보상.
 	 * 한 번에 여러 스테이지가 동시 클리어될 수도 있음(while 루프).
 	 */
+	/**
+	 * 만료(실패) 시 주는 부분 크레딧.
+	 *
+	 * 만료를 완전한 0으로 두면 진행이 막혀 압박이 무한 누적된다(실측: 0막 사망 45.9%,
+	 * 클리어율 2.7%). 반대로 예전처럼 1.0을 주면 방치가 항상 최적이 되어 위험 시스템이
+	 * 죽는다. 해결이 만료보다 두 배 가치 있게 두어 "빨리 처리할수록 이득"을 유지한다.
+	 */
+	const EXPIRY_CREDIT = 0.5;
+
 	function checkStageClearByCount() {
 		while (stagesCleared < MAX_STAGE) {
 			const nextStage = stagesCleared + 1;

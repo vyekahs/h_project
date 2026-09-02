@@ -45,24 +45,15 @@ export function countdownForStage(stage: number): number {
 /**
  * 위험 종류별 카운트다운 배수.
  *
- * 시뮬레이션에서 portal(95.5%) · hazard-zone(92.7%) · rust(88.2%) · quest(88.1%) ·
- * chaser(87.4%) · storm(85.2%)은 거의 자동으로 해결되어 스테이지 카운트만 채워주는
- * 무료 진행이었다. 카운트를 줄여 실제로 대응을 요구하게 만든다.
- * (doom은 즉사이므로 건드리지 않고, 점거형 두 종은 countdown을 쓰지 않는다.)
+ * 한때 6종(portal/hazard-zone/rust/quest/chaser/storm)의 카운트를 0.7~0.8배로
+ * 줄인 적이 있다. "해결률 87~97%라 대응을 요구하지 않는다"는 관찰 때문이었는데,
+ * 당시에는 **만료도 스테이지 크레딧을 줬으므로** 카운트를 줄이는 것은 압박을
+ * 늘리는 게 아니라 공짜 크레딧을 더 빨리 지급하는 것이었다(방향이 반대).
+ * 만료와 해결을 분리한 지금은 그 조정의 전제가 사라졌으므로 1.0으로 되돌린다.
  */
 function countdownScaleFor(type: DangerType): number {
-	switch (type) {
-		case 'portal':
-		case 'hazard-zone':
-			return 0.7;
-		case 'rust':
-		case 'quest':
-		case 'chaser':
-		case 'storm':
-			return 0.8;
-		default:
-			return 1;
-	}
+	void type;
+	return 1;
 }
 
 /**
@@ -115,9 +106,18 @@ const DANGER_WEIGHTS: Record<DangerType, number> = {
 	'doom-col': 8        // 10
 };
 
-/** 가중 무작위 — 한 가지 위험 종류 뽑기 */
-function pickWeightedDangerType(): DangerType {
-	const types = Object.keys(DANGER_WEIGHTS) as DangerType[];
+/**
+ * 가중 무작위 — 한 가지 위험 종류 뽑기.
+ *
+ * 1~2막에서는 doom을 제외한다. 이 구간의 플레이어는 능력이 0~1개뿐이라 doom이
+ * 뜨면 트레이 운에 따라 대응 수단 없이 즉사할 수 있다(만료가 크레딧을 주던 시절엔
+ * 가려져 있었지만, 만료를 실패로 바꾼 뒤 0막 사망률이 45.9%까지 올랐다).
+ */
+function pickWeightedDangerType(stageNumber: number): DangerType {
+	const all = Object.keys(DANGER_WEIGHTS) as DangerType[];
+	const types = stageNumber <= 2
+		? all.filter(t => t !== 'doom-row' && t !== 'doom-col')
+		: all;
 	const total = types.reduce((sum, t) => sum + DANGER_WEIGHTS[t], 0);
 	let roll = Math.random() * total;
 	for (const t of types) {
@@ -148,7 +148,7 @@ export function generateDangerStage(stageNumber: number, grid: BoardGrid): Dange
 	const usedCells = new Set<string>(); // 가족형 위험(reinforced/spreading/storm/portal)이 픽한 좌표
 
 	for (let i = 0; i < dangerCount; i++) {
-		const type: DangerType = pickWeightedDangerType();
+		const type: DangerType = pickWeightedDangerType(stageNumber);
 		const danger = createDanger(type, stageNumber, grid, {
 			usedRows,
 			usedCols,
