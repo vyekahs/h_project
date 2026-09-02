@@ -5,6 +5,7 @@
     import { browser } from '$app/environment';
     import type { LayoutData } from './$types';
     import { trapFocus } from '$lib/actions/modal';
+    import AdminFeedback from '$lib/components/admin/AdminFeedback.svelte';
 
     let { data, children }: { data: LayoutData; children: any } = $props();
 
@@ -156,6 +157,8 @@
     </nav>
 </div>
 </div>
+
+<AdminFeedback />
 
 {#if closeDayModalVisible}
     <!-- 백드롭은 편의용 클릭 영역. 키보드 경로는 모달의 Escape(trapFocus)와 닫기 버튼이 담당한다. -->
