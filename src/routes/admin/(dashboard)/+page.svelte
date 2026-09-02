@@ -747,9 +747,9 @@
     {/if}
 </section>
 
-<section class="section-primary">
+<section class="section-primary" aria-labelledby="sec-playing">
     <div class="section-header">
-        <h2>진행 중인 게임 ({(games || []).length})</h2>
+        <h2 id="sec-playing">진행 중인 게임 ({(games || []).length})</h2>
         <button class="btn-primary" onclick={() => {
             showModal = true;
             selectedGameName = '';
@@ -812,8 +812,8 @@
     {/if}
 </section>
 
-<section class="section-primary">
-    <h2>현재 참여 인원 ({(attendees || []).length})</h2>
+<section class="section-primary" aria-labelledby="sec-attendees">
+    <h2 id="sec-attendees">현재 참여 인원 ({(attendees || []).length})</h2>
     <ul class="attendee-list">
         {#each (attendees || []) as attendee (attendee.id)}
             {@const a = attendee as Attendee}
@@ -887,10 +887,10 @@
     {/if}
 </section>
 
-<section>
+<section aria-labelledby="sec-scheduled">
     <div class="section-header">
-        <h2>
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        <h2 id="sec-scheduled">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
             시작 예정 게임 ({(scheduledGames || []).length})
         </h2>
         <button class="btn-primary" onclick={openScheduledGameModal}>+ 게임 일정 등록</button>
@@ -926,9 +926,9 @@
 </section>
 
 {#if mergedVisitPlans.length > 0}
-<section class="visit-plan-section">
-    <h2>
-        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+<section class="visit-plan-section" aria-labelledby="sec-visitplan">
+    <h2 id="sec-visitplan">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
         오늘 갈 예정 ({mergedVisitPlans.length})
     </h2>
     <div class="visit-plan-grid">
@@ -1927,9 +1927,14 @@
         text-decoration: none;
         display: inline-block;
     }
+    /* 비활성은 opacity로 흐리지 않는다. 배경과 곱해져 대비를 예측할 수 없게
+       떨어뜨리고, 운영자가 "무엇이 막혔는지" 읽지 못한다. 명시적인 무채색 조합으로
+       비활성을 알리되 레이블은 계속 읽히게 한다(#666 on #e9ecef = 4.84:1). */
     button:disabled {
         cursor: default;
-        opacity: 0.55;
+        background: var(--bg-hover);
+        color: var(--text-secondary);
+        border-color: var(--border-medium);
     }
     button:global([aria-busy="true"]) {
         cursor: progress;
@@ -2041,7 +2046,7 @@
         font-weight: 600;
     }
     .pp-option:disabled {
-        color: var(--text-muted);
+        color: var(--text-secondary);
         cursor: not-allowed;
     }
     .pp-check {
@@ -2375,8 +2380,11 @@
         color: white;
         border: 1px solid transparent;
     }
-    .btn-queue-confirm:disabled {
-        opacity: 0.45;
+    .btn-queue-confirm:disabled,
+    .btn-penalty.remove:disabled {
+        background: var(--bg-hover);
+        color: var(--text-secondary);
+        border-color: var(--border-medium);
         cursor: not-allowed;
     }
     /* 이름 링크도 손가락이 닿는 크기로 (WCAG 2.5.8) */
@@ -2501,10 +2509,6 @@
         background: var(--bg-hover);
         color: var(--text-primary);
         border-color: var(--border-medium);
-    }
-    .btn-penalty.remove:disabled {
-        opacity: 0.5;
-        cursor: not-allowed;
     }
     /* ── 버튼 역할 4개 ──
        primary(진행) / secondary(대안) / destructive(되돌릴 수 없음) / quiet(무동작).

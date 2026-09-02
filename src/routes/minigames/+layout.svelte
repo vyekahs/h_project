@@ -72,7 +72,7 @@
         --color-amber-dark: #f59e0b;
         --color-amber-darker: #d97706;
         --color-green: #22c55e;
-        --color-green-dark: #2b8a3e;
+        --color-green-dark: #1b6b2c;
         --color-red: #ef4444;
         --color-red-dark: #d32f2f;
         --color-orange: #ff9800;

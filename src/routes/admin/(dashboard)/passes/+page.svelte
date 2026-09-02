@@ -310,7 +310,8 @@
         text-align: center;
     }
     .days-badge.urgent { background: #fff3e0; color: #e65100; }
-    .expired-badge { background: #f5f5f5; color: #999; }
+    /* --text-muted(#999)는 이 회색 위에서 2.61:1이라 읽히지 않았다 */
+    .expired-badge { background: var(--bg-surface); color: var(--text-secondary); }
 
     .btn-sm {
         padding: 0.3rem 0.6rem;

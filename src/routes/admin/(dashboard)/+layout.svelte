@@ -310,13 +310,16 @@
         /* 흰 글자를 얹는 기본 파랑. #007bff는 3.98:1로 AA 미달이라 5.1:1인 값으로 내렸다.
            밝은 파랑이 필요한 곳(배경/테두리)은 --color-blue를 쓸 것. */
         --color-blue-bright: #0b5ed7;
-        --focus-ring: #0b5ed7;
+        /* 포커스 링은 브랜드 색과 달라야 한다. --color-blue-bright와 같은 값이면
+           파란 버튼 위에서 링과 버튼이 한 덩어리로 보여 포커스가 사라진다.
+           빨강(마감 하기)·초록 위에서도 통하도록 중립 먹색을 쓴다. */
+        --focus-ring: #111827;
         --focus-ring-on-dark: #9ec5fe;
         --color-amber: #fbbf24;
         --color-amber-dark: #f59e0b;
         --color-amber-darker: #d97706;
         --color-green: #22c55e;
-        --color-green-dark: #2b8a3e;
+        --color-green-dark: #1b6b2c;
         --color-red: #ef4444;
         --color-red-dark: #d32f2f;
         --color-orange: #ff9800;

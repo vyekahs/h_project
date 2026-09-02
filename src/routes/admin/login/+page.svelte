@@ -72,6 +72,16 @@
         cursor: pointer;
         transition: background 0.2s;
     }
+    /* 로그인은 콘솔 레이아웃 밖이라 어드민 포커스 링을 물려받지 못하고
+       UA 기본 1px 링(#005fcc)에 의존했다. #333 버튼 위에서 거의 보이지 않는다. */
+    :focus-visible {
+        outline: 2px solid #111827;
+        outline-offset: 2px;
+        border-radius: 2px;
+    }
+    .btn-dark:focus-visible {
+        outline-color: #9ec5fe;
+    }
     .btn-dark {
         background: #333;
     }

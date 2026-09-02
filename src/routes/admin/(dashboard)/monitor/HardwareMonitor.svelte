@@ -593,8 +593,9 @@
 		background: #f5f5f5;
 	}
 	.connection-status.connected {
-		color: #4caf50;
-		background: #e8f5e9;
+		/* #4caf50은 이 연초록 위에서 2.47:1이었다 */
+		color: var(--color-green-dark);
+		background: var(--color-success-bg);
 	}
 	.dot {
 		width: 8px;
