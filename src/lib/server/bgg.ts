@@ -52,11 +52,45 @@ export async function searchBggGames(queryStr: string): Promise<BggSearchResult[
 	}
 
 	const json = await response.json();
-	const games: BggSearchResult[] = (json.items || []).map((item: any) => ({
-		id: String(item.objectid),
-		name: item.name,
-		year: item.yearpublished || ''
-	}));
+
+	// 이 엔드포인트는 pagesize를 무시하고 200건까지 돌려주며, 항목에는
+	// name / objectid / objecttype 뿐이다 — 연도도 썸네일도 없다(실측 확인).
+	// 게다가 정렬이 알파벳순이라 "catan"에 카드 슬리브가 실제 게임보다 위에 온다.
+	// 질의와의 근접도로 다시 정렬해 운영자가 첫 화면에서 진짜 게임을 보게 한다.
+	const q = queryStr.trim().toLowerCase();
+	const rank = (name: string) => {
+		const n = name.toLowerCase();
+		if (n === q) return 0;
+		if (n.startsWith(q + ' ') || n.startsWith(q + ':')) return 1;
+		if (n.startsWith(q)) return 2;
+		return 3;
+	};
+
+	// 같은 objectid가 이름만 달리해 여러 번 온다(실측: agricola 180건 중 고유 116건).
+	// 중복을 남기면 화면의 keyed each가 깨지고, 운영자에게도 같은 게임이 여러 번 보인다.
+	const seen = new Set<string>();
+	const games: BggSearchResult[] = (json.items || [])
+		.filter((item: any) => {
+			const id = String(item.objectid);
+			if (seen.has(id)) return false;
+			seen.add(id);
+			return true;
+		})
+		.map((item: any) => ({
+			id: String(item.objectid),
+			name: item.name,
+			// 이 API는 연도를 주지 않는다. 없는 값을 빈 문자열로 흘려보내면
+			// 화면에 "()"만 찍히므로, 없으면 없는 대로 두고 UI가 판단하게 한다.
+			year: item.yearpublished ? String(item.yearpublished) : ''
+		}))
+		.sort((a: BggSearchResult, b: BggSearchResult) => {
+			const ra = rank(a.name);
+			const rb = rank(b.name);
+			if (ra !== rb) return ra - rb;
+			// 같은 등급이면 짧은 이름이 먼저 — 확장/슬리브류가 아래로 내려간다
+			if (a.name.length !== b.name.length) return a.name.length - b.name.length;
+			return a.name.localeCompare(b.name);
+		});
 
 	searchCache.set(key, { data: games, timestamp: Date.now() });
 	if (searchCache.size > MAX_CACHE_ENTRIES) {
