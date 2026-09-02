@@ -7,7 +7,7 @@
 	import type { MoveAction } from '$lib/games/freecell/types';
 
 	let {
-		state,
+		state: boardState,
 		selectedLocation = null,
 		validTargets = [],
 		isDragging = false,
@@ -41,6 +41,58 @@
 		isValidTarget: (loc: Location) => boolean;
 		registerFlyCallback?: (cb: (move: MoveAction) => Promise<void>) => void;
 	} = $props();
+
+	// ─── 열 쌓기 간격 ───
+	// 카드 간격이 고정이면 열이 길어질 때 아래쪽 카드가 화면 밖으로 밀려
+	// .game-play-area의 overflow:hidden에 잘려 보이지 않는다.
+	// 남은 높이에 맞춰 열마다 간격을 좁히되, 랭크 글자는 계속 보이도록 하한을 둔다.
+
+	let tableauEl: HTMLElement | undefined = $state();
+	let availH = $state(0);
+	let cardH = $state(0);
+	let viewportW = $state(0);
+
+	// 지금까지의 실효 간격과 같은 값 — 열이 짧을 때는 그대로 유지한다
+	// (기존 CSS는 margin-top과 top이 겹쳐 clamp(18px,4.5vw,26px)의 2배로 그려지고 있었다)
+	const defaultStep = $derived(Math.min(52, Math.max(36, viewportW * 0.09)));
+	// 랭크 글자 clamp(10px, 2.8vw, 16px)가 가려지지 않을 만큼은 남긴다
+	const minStep = $derived(Math.min(16, Math.max(10, viewportW * 0.028)) + 3);
+
+	// 드래그 중인 카드 뭉치도 원래 열과 같은 간격으로 보여야 자연스럽다
+	let dragStep = $state(36);
+
+	function stackStep(len: number): number {
+		if (len <= 1 || !availH || !cardH) return defaultStep;
+		const fit = (availH - cardH) / (len - 1);
+		return Math.max(minStep, Math.min(defaultStep, fit));
+	}
+
+	function measure() {
+		if (!tableauEl || !boardEl) return;
+		viewportW = window.innerWidth;
+
+		const col = tableauEl.querySelector('.tableau-column');
+		if (col) cardH = col.getBoundingClientRect().width * 7 / 5;
+
+		// 카드를 잘라내는 조상(overflow hidden)의 아래쪽까지가 실제로 쓸 수 있는 높이
+		let clipper: HTMLElement | null = boardEl.parentElement;
+		while (clipper && getComputedStyle(clipper).overflow === 'visible') {
+			clipper = clipper.parentElement;
+		}
+		const bottom = (clipper ?? boardEl).getBoundingClientRect().bottom;
+		availH = Math.max(0, bottom - tableauEl.getBoundingClientRect().top - 4);
+	}
+
+	$effect(() => {
+		measure();
+		const ro = new ResizeObserver(measure);
+		if (boardEl) ro.observe(boardEl);
+		window.addEventListener('resize', measure);
+		return () => {
+			ro.disconnect();
+			window.removeEventListener('resize', measure);
+		};
+	});
 
 	// ─── Drag handling ───
 
@@ -159,7 +211,7 @@
 	}
 
 	function getMovableCards(col: number, cardIndex: number): CardType[] {
-		return state.tableau[col].slice(cardIndex);
+		return boardState.tableau[col].slice(cardIndex);
 	}
 
 	// ─── Flying card animation ───
@@ -273,7 +325,7 @@
 	<!-- Top Area: Free Cells + Foundations -->
 	<div class="top-area">
 		<div class="free-cells">
-			{#each state.freeCells as cell, i}
+			{#each boardState.freeCells as cell, i}
 				{@const loc = getFreeCellLoc(i)}
 				{@const highlighted = isSlotHighlighted(loc)}
 				<div
@@ -312,7 +364,7 @@
 		</div>
 
 		<div class="foundations">
-			{#each state.foundations as pile, i}
+			{#each boardState.foundations as pile, i}
 				{@const loc = getFoundationLoc(i)}
 				{@const highlighted = isSlotHighlighted(loc)}
 				{@const topCard = pile.length > 0 ? pile[pile.length - 1] : null}
@@ -338,14 +390,15 @@
 	</div>
 
 	<!-- Tableau -->
-	<div class="tableau">
-		{#each state.tableau as column, col}
+	<div class="tableau" bind:this={tableauEl}>
+		{#each boardState.tableau as column, col}
 			{@const colLoc = { type: 'tableau' as const, col, cardIndex: 0 }}
 			{@const highlighted = column.length === 0 && isSlotHighlighted(colLoc)}
 			<!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
 			<div
 				class="tableau-column"
 				class:highlighted
+				style="--stack-step: {stackStep(column.length)}px"
 				data-drop-zone={JSON.stringify(colLoc)}
 				data-loc={`tab-${col}`}
 				onclick={() => { if (column.length === 0) onSlotClick(colLoc); }}
@@ -369,6 +422,7 @@
 							data-drop-zone={isBottom ? JSON.stringify({ type: 'tableau', col, cardIndex: 0 }) : ''}
 							onpointerdown={(e) => {
 								if (isInSequence) {
+									dragStep = stackStep(column.length);
 									handlePointerDown(e, cardLoc, getMovableCards(col, idx));
 								}
 							}}
@@ -397,7 +451,7 @@
 			style="left: {dragX}px; top: {dragY}px;"
 		>
 			{#each dragCards as card, i (card.id)}
-				<div class="drag-card" style="top: calc({i} * clamp(18px, 4.5vw, 26px))">
+				<div class="drag-card" style="top: calc({i} * {dragStep}px)">
 					<Card {card} />
 				</div>
 			{/each}
@@ -507,22 +561,13 @@
 	}
 
 	.tableau-card {
-		position: relative;
-		width: 100%;
-		margin-top: calc(var(--card-offset) * clamp(18px, 4.5vw, 26px));
-		transition: transform 0.15s ease;
-	}
-
-	.tableau-card:first-child {
-		margin-top: 0;
-	}
-
-	/* Only add margin from the 2nd card onward using absolute positioning */
-	.tableau-card {
 		position: absolute;
-		top: calc(var(--card-offset) * clamp(18px, 4.5vw, 26px));
+		width: 100%;
 		left: 0;
 		right: 0;
+		/* 간격은 열 길이에 따라 스크립트가 --stack-step으로 정한다 */
+		top: calc(var(--card-offset) * var(--stack-step, 36px));
+		transition: transform 0.15s ease;
 	}
 
 	.tableau-card.hidden {

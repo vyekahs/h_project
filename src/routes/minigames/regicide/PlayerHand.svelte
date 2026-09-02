@@ -67,8 +67,8 @@
 	const POWER_LABELS: Record<Suit, { icon: string; label: string; color: string }> = {
 		hearts: { icon: '♥', label: '치유', color: '#ef4444' },
 		diamonds: { icon: '♦', label: '드로우', color: '#3b82f6' },
-		clubs: { icon: '♣', label: '×2', color: '#1e293b' },
-		spades: { icon: '♠', label: '방어', color: '#1e293b' }
+		clubs: { icon: '♣', label: '×2', color: 'var(--text-primary)' },
+		spades: { icon: '♠', label: '방어', color: 'var(--text-primary)' }
 	};
 
 	// Validation error message for invalid combos

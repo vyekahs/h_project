@@ -294,7 +294,7 @@
         width: 100vw;
         height: 100vh;
         z-index: -1;
-        background: radial-gradient(circle at 10% 20%, rgba(216, 241, 230, 0.7) 0%, rgba(233, 240, 255, 0.4) 40%, rgba(240, 230, 250, 0.3) 80%);
+        background: var(--arcade-bg-gradient);
         background-size: 200% 200%;
         animation: gradientMove 20s ease infinite;
     }
