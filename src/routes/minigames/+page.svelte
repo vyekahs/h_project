@@ -1,5 +1,6 @@
 <script lang="ts">
     import ActivityTicker from '$lib/components/games/ActivityTicker.svelte';
+    import PresenceBadge from '$lib/components/games/PresenceBadge.svelte';
 
     let { data } = $props();
 
@@ -132,6 +133,9 @@
     <header class="arcade-header">
         <div class="glass-title-badge">
             <h1>오락실</h1>
+        </div>
+        <div class="header-presence">
+            <PresenceBadge />
         </div>
     </header>
 
@@ -317,6 +321,16 @@
         padding-top: 1.5rem;
         position: relative;
         z-index: 10;
+    }
+
+    /* 제목은 배지 유무와 상관없이 항상 중앙에 고정하고, 현황 배지는
+       우측에 절대 위치시킨다 — 비동기로 로드되어 나타났다 사라졌다 해도
+       제목이 밀리지 않게 하기 위함이다. */
+    .header-presence {
+        position: absolute;
+        right: 0;
+        top: 50%;
+        transform: translateY(-50%);
     }
 
     .glass-title-badge {
