@@ -9,11 +9,19 @@
 	let {
 		options,
 		owned,
-		onPick
+		onPick,
+		rerollsRemaining = 0,
+		onReroll,
+		tokens = 0,
+		tokensPerDraft = 3
 	} = $props<{
 		options: Ability[];
 		owned: OwnedAbility[];
 		onPick: (a: Ability) => void;
+		rerollsRemaining?: number;
+		onReroll?: () => void;
+		tokens?: number;
+		tokensPerDraft?: number;
 	}>();
 
 	function ownedLevel(id: string): number {
@@ -30,6 +38,16 @@
 		<div class="header">
 			<div class="stage-pill">WAVE 클리어</div>
 			<h2>스킬 획득</h2>
+			<div class="meta-row">
+				<span class="token-meter" title="위험을 빠르게 해결하면 모입니다. {tokensPerDraft}개마다 추가 드래프트">
+					신속 토큰 {tokens}/{tokensPerDraft}
+				</span>
+				{#if onReroll}
+					<button class="reroll-btn" disabled={rerollsRemaining <= 0} onclick={() => onReroll?.()}>
+						다시 뽑기 {rerollsRemaining > 0 ? `(${rerollsRemaining})` : ''}
+					</button>
+				{/if}
+			</div>
 		</div>
 
 		<div class="cards">
@@ -144,6 +162,43 @@
 		margin: 0;
 		font-size: 0.78rem;
 		color: rgba(255, 255, 255, 0.55);
+	}
+
+	.meta-row {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 10px;
+		margin-top: 8px;
+		flex-wrap: wrap;
+	}
+	.token-meter {
+		font-size: 0.75rem;
+		font-weight: 700;
+		color: #fcd34d;
+		background: rgba(120, 53, 15, 0.5);
+		border: 1px solid rgba(251, 191, 36, 0.35);
+		border-radius: 10px;
+		padding: 4px 10px;
+	}
+	.reroll-btn {
+		font-size: 0.75rem;
+		font-weight: 700;
+		color: #e5e7eb;
+		background: rgba(255, 255, 255, 0.1);
+		border: 1px solid rgba(255, 255, 255, 0.22);
+		border-radius: 10px;
+		padding: 4px 12px;
+		cursor: pointer;
+		transition: all 0.15s;
+	}
+	.reroll-btn:hover:not(:disabled) {
+		background: rgba(255, 255, 255, 0.2);
+		color: #fff;
+	}
+	.reroll-btn:disabled {
+		opacity: 0.35;
+		cursor: default;
 	}
 
 	.cards {

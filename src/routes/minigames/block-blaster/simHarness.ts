@@ -291,6 +291,18 @@ function resolveModals(game: Game, draftPolicy: DraftPolicy): boolean {
 			id === 'clear-row' || id === 'clear-col' ? 0 :
 			id === 'bomb-3x3' || id === 'clear-color' ? 1 :
 			id === 'revive' ? 2 : 3;
+		// 리롤 — 정책이 원하는 카드가 후보에 없으면 한 번 다시 뽑는다(사람도 그렇게 쓴다).
+		const isClearCard = (id: string) => id === 'clear-row' || id === 'clear-col';
+		if (game.rerollsRemaining > 0) {
+			const wantReroll =
+				(draftPolicy === 'clear-first' && !opts.some(o => isClearCard(o.id))) ||
+				(draftPolicy === 'no-clear' && opts.every(o => isClearCard(o.id)));
+			if (wantReroll) {
+				game.rerollDraft();
+				return true;
+			}
+		}
+
 		// no-clear: clear-row/col을 절대 뽑지 않는다 — "정답 카드 없이도 이길 수 있는가"를
 		// 직접 재기 위한 정책(기획 리뷰에서 제안된 지표). 후보가 전부 clear면 어쩔 수 없이 뽑음.
 		let pool = opts;

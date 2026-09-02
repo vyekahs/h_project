@@ -453,6 +453,10 @@
 				options={game.pendingDraftOptions}
 				owned={game.inventory}
 				onPick={game.pickAbility}
+				rerollsRemaining={game.rerollsRemaining}
+				onReroll={game.rerollDraft}
+				tokens={game.draftTokens}
+				tokensPerDraft={game.tokensPerDraft}
 			/>
 		{/if}
 

@@ -319,6 +319,18 @@ export function createBlockBlasterGame() {
 	let nextBlocksQueue: BlockShape[][] = $state([]); // peek-next용 큐
 	/** 위험 클리어 시 보너스 드래프트 횟수 (9~10 스테이지 추가 보너스용) */
 	let bonusDraftsRemaining = $state(0);
+	/**
+	 * 신속 해결 토큰 — 위험을 카운트가 넉넉히 남은 시점에 해결하면 1개.
+	 * TOKENS_PER_DRAFT개를 모으면 추가 드래프트 1회.
+	 *
+	 * 위험 해결 보상이 점수뿐이었는데 점수는 게임플레이에 아무 영향이 없었다.
+	 * 토큰을 붙이면 위험이 "버텨야 할 것"에서 "빨리 처리하면 이득인 것"으로 바뀌고,
+	 * 리스크를 감수해 빌드를 가속하는 로그라이트 루프가 생긴다.
+	 */
+	let draftTokens = $state(0);
+	const TOKENS_PER_DRAFT = 3;
+	/** 이번 드래프트에서 남은 리롤 횟수 (드래프트가 열릴 때마다 1로 리셋) */
+	let rerollsRemaining = $state(0);
 	/** 셀별 메타데이터 — 위험 셀(petrified), 강화 블록(hp) */
 	let cellMeta: CellMetaMap = $state({});
 
@@ -594,6 +606,7 @@ export function createBlockBlasterGame() {
 				stagesCleared,
 				currentDangerStage,
 				bonusDraftsRemaining,
+				draftTokens,
 				cellMeta,
 				lastSnapshots,
 				nextBlocksQueue,
@@ -658,6 +671,7 @@ export function createBlockBlasterGame() {
 				currentDangerStage.lockedSlotDangerIds = ids;
 			}
 			bonusDraftsRemaining = data.bonusDraftsRemaining || 0;
+			draftTokens = data.draftTokens || 0;
 			cellMeta = data.cellMeta || {};
 			lastSnapshots = data.lastSnapshots || [];
 			nextBlocksQueue = data.nextBlocksQueue || [];
@@ -732,6 +746,8 @@ export function createBlockBlasterGame() {
 		stagesCleared = 0;
 		currentDangerStage = null;
 		bonusDraftsRemaining = 0;
+		draftTokens = 0;
+		rerollsRemaining = 0;
 		cellMeta = {};
 		pendingDangerClear = null;
 		gameOverReason = null;
@@ -1380,6 +1396,18 @@ export function createBlockBlasterGame() {
 				score += 200; // 위험 1개 해결 보너스
 				// 카운트가 1 이상 남았는데 해결 = 긴박 보너스 (reinforced는 카운트 의미 없음)
 				if (d.type !== 'reinforced' && d.type !== 'spreading' && d.countdown > 1) score += 100;
+				// 신속 해결 토큰 — 카운트가 초기값의 절반 이상 남은 시점에 해결했을 때만.
+				// (카운트를 쓰지 않는 점거형은 해결 자체가 어려우므로 항상 지급)
+				const fast = d.type === 'reinforced' || d.type === 'spreading'
+					? true
+					: d.countdown * 2 >= d.initialCountdown;
+				if (fast) {
+					draftTokens++;
+					if (draftTokens >= TOKENS_PER_DRAFT) {
+						draftTokens -= TOKENS_PER_DRAFT;
+						bonusDraftsRemaining++;
+					}
+				}
 				// 트레이 잠금 — 이 위험이 lockedSlotDangerIds에 있으면 그 항목을 제거(슬롯 해제).
 				if (isMatchedToLock(d, ds)) {
 					ds.lockedSlotDangerIds = ds.lockedSlotDangerIds.filter(id => id !== d.id);
@@ -2043,6 +2071,7 @@ export function createBlockBlasterGame() {
 	function openAbilityDraft() {
 		// 모달이 열리는 순간 scheduled 신호 해제 — 이후엔 pendingDraftOptions가 보류 신호
 		pendingStageRewardScheduled = false;
+		rerollsRemaining = 1;
 		// 드래프트 풀의 희귀도 해금은 "지금까지 클리어한 WAVE 수" 기준 — stage 변수는
 		// "다음에 진입할" 번호라 누적 진입 모델에서 갱신이 늦을 수 있음. 클리어 횟수가
 		// 더 정확한 진행도 지표.
@@ -2055,6 +2084,16 @@ export function createBlockBlasterGame() {
 			return;
 		}
 		pendingDraftOptions = options;
+		saveGame();
+	}
+
+	/** 현재 드래프트 후보를 다시 뽑는다 (드래프트당 1회). */
+	function rerollDraft() {
+		if (!pendingDraftOptions) return;
+		if (rerollsRemaining <= 0) return;
+		rerollsRemaining--;
+		const options = drawAbilities(ABILITY_POOL, inventory, 3, stagesCleared);
+		if (options.length > 0) pendingDraftOptions = options;
 		saveGame();
 	}
 
@@ -2734,6 +2773,10 @@ export function createBlockBlasterGame() {
 		get gameOverReason() { return gameOverReason; },
 		get mustUseAbilityToEscape() { return mustUseAbilityToEscape; },
 		get bonusDraftsRemaining() { return bonusDraftsRemaining; },
+		get draftTokens() { return draftTokens; },
+		get tokensPerDraft() { return TOKENS_PER_DRAFT; },
+		get rerollsRemaining() { return rerollsRemaining; },
+		rerollDraft,
 		get turnsUntilNextDanger() {
 			return Math.max(0, turnsToNextDanger() - turnsSinceLastDanger);
 		},
