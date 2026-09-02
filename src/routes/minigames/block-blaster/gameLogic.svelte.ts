@@ -1142,11 +1142,14 @@ export function createBlockBlasterGame() {
 	 * 능력 사용은 카운트 영향 X — 블록 배치 1회 = 1턴.
 	 */
 	function turnsToNextDanger(): number {
+		// 위험 풀을 10종 → 6종으로 줄이면서 남은 종류가 전부 보드를 점거하는 유형이
+		// 되었다(제외된 portal/rust/quest는 점거가 없거나 오히려 셀을 비워줬다).
+		// 같은 간격이면 체감 압박이 크게 올라가므로(클리어율 19.7%→11.3%) 간격을 늘린다.
 		const next = stagesCleared + 1;
-		if (next <= 2) return 10;
-		if (next <= 5) return 8;
-		if (next <= 8) return 6;
-		return 5;
+		if (next <= 2) return 12;
+		if (next <= 5) return 10;
+		if (next <= 8) return 8;
+		return 6;
 	}
 
 	/**

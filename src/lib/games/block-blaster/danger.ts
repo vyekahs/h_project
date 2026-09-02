@@ -14,11 +14,12 @@ function generateId(prefix: string): string {
 }
 
 /**
- * 위험 스테이지에 등장할 위험 개수 — 큰 막 기준
- * 기 (1~2): 1개
- * 승 (3~5): 2개
- * 전 (6~8): 2~3개
- * 결 (9~10): 3개
+ * 위험 스테이지에 등장할 위험 개수 (= 그 막을 클리어하는 데 필요한 해결 개수).
+ * 기(1~2): 1개 / 승·전·결(3~10): 2개
+ *
+ * 6~10막을 3개로 두면 10막 완주에 총 23개 해결이 필요한데, 위험 풀을 6종으로
+ * 줄인 뒤로는 남은 종류가 전부 보드를 점거해서 그 사이 보드가 먼저 차버린다
+ * (사망 원인 no-blocks 50%). 총 18개로 낮춰 완주 가능한 길이로 맞춘다.
  */
 export function dangerCountForStage(stage: number): number {
 	// 반드시 결정적이어야 한다 — 이 함수는 (1) 위험을 생성할 때와 (2) 스테이지 클리어
@@ -26,8 +27,7 @@ export function dangerCountForStage(stage: number): number {
 	// 값을 뽑아, 실제 마주한 위험 수와 클리어에 필요한 수가 절반 확률로 어긋났다
 	// (클리어 배너의 "N개 해결"도 실제와 달랐음).
 	if (stage <= 2) return 1;
-	if (stage <= 5) return 2;
-	return 3;
+	return 2;
 }
 
 /**
@@ -91,19 +91,25 @@ export function lockedSlotsForStage(stage: number): number {
  * 따라서 점거형 두 종을 줄이고, 존재감이 없던 6종을 늘려 압박의 출처를 분산한다.
  */
 const DANGER_WEIGHTS: Record<DangerType, number> = {
-	reinforced: 22,      // 35 → 실질 최고 위협(18까지 낮췄더니 클리어율이 2배가 되어 되돌림)
-	spreading: 17,       // 25 → 실질 2위 위협
-	'hazard-zone': 26,   // 20
-	rust: 26,            // 20
-	storm: 24,           // 15
-	chaser: 24,          // 15
-	portal: 22,          // 15
-	quest: 22,           // 15
-	// doom은 "줄 전체를 비워야" 해결되므로 clear-row/col 외의 능력으로는 손댈 수 없다.
-	// 1차 조정에서 10 → 13으로 올렸더니 doom 사망이 20%→40%로 뛰면서 clear 계열의
-	// 독점성이 오히려 강해졌다(드래프트 정책 격차 2.0배 → 2.5배). 원래보다 낮춘다.
-	'doom-row': 8,       // 10
-	'doom-col': 8        // 10
+	// --- 유지: 플레이어가 실제로 대응 가능한 위험 (해결률 41~64%) ---
+	reinforced: 24,      // 56.9%
+	spreading: 20,       // 51.1%
+	storm: 26,           // 41.1%
+	chaser: 26,          // 34.5%
+	'hazard-zone': 24,   // 13.8% → 아래에서 3×3을 2×2로 축소해 달성 가능하게 조정
+	'doom-row': 9,       // 53.0%
+	'doom-col': 9,       // 63.5%
+
+	// --- 풀에서 제외(0) ---
+	// 만료와 해결을 분리한 뒤 실제 플레이어 해결률을 재보니 아래 3종은 대응이
+	// 사실상 불가능했다. 부분 크레딧으로 완화됐을 뿐 "대응하는 위험"이 아니라
+	// "페널티 타이머"로만 동작한다. 코드는 남겨두어 언제든 되살릴 수 있게 한다.
+	portal: 0,           // 14.5% — 블록을 놓으면 짝꿍 자리에 셀이 **추가**되어
+	                     //         대응할수록 불리해지는 역방향 기믹
+	rust: 0,             // 34.4% — 만료(수명 종료)가 오히려 셀을 지워주는 이득이라
+	                     //         "위험"이라는 의미가 성립하지 않음
+	quest: 0             // 6.8%  — 콤보≥3/십자/같은색줄을 의도적으로 노리기 어려움.
+	                     //         위험 슬롯이 아니라 별도 보너스 목표에 어울림
 };
 
 /**
@@ -114,7 +120,7 @@ const DANGER_WEIGHTS: Record<DangerType, number> = {
  * 가려져 있었지만, 만료를 실패로 바꾼 뒤 0막 사망률이 45.9%까지 올랐다).
  */
 function pickWeightedDangerType(stageNumber: number): DangerType {
-	const all = Object.keys(DANGER_WEIGHTS) as DangerType[];
+	const all = (Object.keys(DANGER_WEIGHTS) as DangerType[]).filter(t => DANGER_WEIGHTS[t] > 0);
 	const types = stageNumber <= 2
 		? all.filter(t => t !== 'doom-row' && t !== 'doom-col')
 		: all;
@@ -252,15 +258,19 @@ function createDanger(
 			};
 		}
 		case 'hazard-zone': {
-			// 3×3 영역. 보드 안쪽으로만 (앵커 0~5)
-			const anchorR = Math.floor(Math.random() * (GRID_SIZE - 2));
-			const anchorC = Math.floor(Math.random() * (GRID_SIZE - 2));
+			// 2×2 영역.
+			// 원래 3×3이었는데, 해결 조건이 "영역 9칸이 모두 빈 칸"이라 사실상 달성이
+			// 불가능했다(실측 플레이어 해결률 13.8%). 3줄 또는 3열을 그 위치에 겹쳐
+			// 지워야 하기 때문이다. 2×2는 가로 2줄 또는 세로 2열로 해결 가능해
+			// "노리면 풀 수 있는" 범위로 들어온다.
+			const anchorR = Math.floor(Math.random() * (GRID_SIZE - 1));
+			const anchorC = Math.floor(Math.random() * (GRID_SIZE - 1));
 			const key = `${anchorR},${anchorC}`;
 			if (ctx.usedZoneAnchors.has(key)) return null;
 			ctx.usedZoneAnchors.add(key);
 			const cells: [number, number][] = [];
-			for (let r = anchorR; r < anchorR + 3; r++) {
-				for (let c = anchorC; c < anchorC + 3; c++) {
+			for (let r = anchorR; r < anchorR + 2; r++) {
+				for (let c = anchorC; c < anchorC + 2; c++) {
 					cells.push([r, c]);
 				}
 			}
