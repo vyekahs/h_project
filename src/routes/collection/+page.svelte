@@ -18,11 +18,20 @@
         })
     );
 
+    // 혼놀 보유 여부와 무관하게, 본인이 직접 소장 중이라고 체크한 게임.
+    const ownedGameIds = $derived(new Set<number>(data.ownedGameIds));
+    function isOwned(gameId: number) {
+        return ownedGameIds.has(gameId);
+    }
+
     let searchQuery = $state('');
+    let showOwnedOnly = $state(false);
     const filteredGames = $derived(
-        searchQuery.trim()
-            ? sortedGames.filter((g) => g.name.toLowerCase().includes(searchQuery.trim().toLowerCase()))
-            : sortedGames
+        sortedGames.filter((g) => {
+            if (showOwnedOnly && !isOwned(g.id)) return false;
+            if (searchQuery.trim() && !g.name.toLowerCase().includes(searchQuery.trim().toLowerCase())) return false;
+            return true;
+        })
     );
 
     function formatDate(iso: string) {
@@ -64,12 +73,6 @@
     let selectedGameId: number | null = $state(null);
     const selectedGame = $derived(selectedGameId ? data.games.find((g: any) => g.id === selectedGameId) : null);
     const selectedGamePlays = $derived(selectedGameId ? (data.playedByGameId[selectedGameId] ?? []) : []);
-
-    // 혼놀 보유 여부와 무관하게, 본인이 직접 소장 중이라고 체크한 게임.
-    const ownedGameIds = $derived(new Set<number>(data.ownedGameIds));
-    function isOwned(gameId: number) {
-        return ownedGameIds.has(gameId);
-    }
 
     // 같은 게임을 오래 반복해서 플레이했으면 기록이 길어지므로 여러 기준으로 좁혀볼 수 있게 한다.
     let playYearFilter = $state('all');
@@ -155,7 +158,7 @@
 </script>
 
 <svelte:head>
-    <title>내가 플레이한 게임 - 혼놀 라운지</title>
+    <title>보드게임 장식장 - 혼놀 라운지</title>
 </svelte:head>
 
 <!-- 게임별 모달과 전체 기록 목록이 같은 행 UI(표시/수정 폼)를 쓰므로 스니펫으로 공유한다 -->
@@ -230,7 +233,7 @@
 <div class="collection-container">
     <header class="collection-header">
         <div class="header-top">
-            <h1>내가 플레이한 게임</h1>
+            <h1>보드게임 장식장</h1>
             <a href="/games" class="btn-catalog">전체 게임 보기</a>
         </div>
         <p class="collection-progress">
@@ -250,6 +253,10 @@
                     <button type="button" class="search-clear" onclick={() => searchQuery = ''} aria-label="검색어 지우기">✕</button>
                 {/if}
             </div>
+            <label class="owned-only-toggle">
+                <input type="checkbox" bind:checked={showOwnedOnly} />
+                내가 보유한 것만 보기
+            </label>
         {/if}
     </header>
 
@@ -269,7 +276,7 @@
                 </ul>
             </div>
             <div class="summary-card">
-                <h2>최애 게임</h2>
+                <h2>가장 많이 플레이한 게임</h2>
                 <ul>
                     {#each topGames3 as game}
                         <li>
@@ -291,7 +298,13 @@
             </div>
         {:else if filteredGames.length === 0}
             <div class="empty-state">
-                <p>"{searchQuery}"에 맞는 게임이 없어요.</p>
+                {#if searchQuery.trim()}
+                    <p>"{searchQuery}"에 맞는 게임이 없어요.</p>
+                {:else if showOwnedOnly}
+                    <p>내가 보유한 것으로 표시한 게임이 없어요.</p>
+                {:else}
+                    <p>조건에 맞는 게임이 없어요.</p>
+                {/if}
             </div>
         {:else}
             <section class="shelf-grid">
@@ -773,6 +786,16 @@
     .search-clear:hover {
         color: var(--text-primary);
         background: var(--bg-secondary);
+    }
+    .owned-only-toggle {
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        margin-top: 0.6rem;
+        font-size: 0.82rem;
+        color: var(--text-secondary);
+        cursor: pointer;
+        width: fit-content;
     }
 
     .view-toggle {
