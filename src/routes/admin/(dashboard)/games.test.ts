@@ -56,9 +56,19 @@ describe('Game Management', () => {
     });
 
     describe('createGame', () => {
-        it('should fail if required fields are missing', async () => {
+        // 어느 칸이 비었는지까지 돌려줘야 화면이 그 칸 옆에서 말할 수 있다.
+        // 「필수 입력 항목을 모두 채워주세요」만 아는 모달은 운영자를 폼으로
+        // 돌려보내 처음부터 훑게 했다.
+        it('빈 칸의 이름을 돌려준다', async () => {
             const result = await actions.createGame({ request: makeRequest({}) } as any);
-            expect(result).toEqual({ status: 400, data: { missing: true } });
+            expect(result).toEqual({ status: 400, data: { missing: ['gameName', 'duration', 'players'] } });
+        });
+
+        it('채워진 칸은 빠지고 빈 칸만 남는다', async () => {
+            const result = await actions.createGame({
+                request: makeRequest({ gameName: 'Test Game', duration: '60' })
+            } as any);
+            expect(result).toEqual({ status: 400, data: { missing: ['players'] } });
         });
 
         it('should fail if players are already playing', async () => {

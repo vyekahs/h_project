@@ -4,8 +4,7 @@
 	 * showToast / showAlert 로 결과를 알릴 수 있다.
 	 */
 	import {
-		toastMessage,
-		toastAction,
+		toasts,
 		alertMessage,
 		alertKind,
 		dismissAlert,
@@ -16,23 +15,24 @@
 
 <!-- 라이브 리전은 항상 DOM에 있어야 스크린리더가 변화를 읽는다 -->
 <div class="toast-region" role="status" aria-live="polite">
-	{#if $toastMessage}
+	<!-- 최신이 아래에 오도록 쌓는다 — 새 결과가 늘 엄지 가까이에 있다 -->
+	{#each $toasts as toast (toast.id)}
 		<div class="toast">
-			<span class="toast-text">{$toastMessage}</span>
-			{#if $toastAction}
+			<span class="toast-text">{toast.message}</span>
+			{#if toast.action}
 				<!-- 되돌리기는 결과를 알리는 그 자리에 있어야 눌린다 -->
 				<button
 					type="button"
 					class="toast-action"
 					onclick={() => {
-						const act = $toastAction;
-						dismissToast();
+						const act = toast.action;
+						dismissToast(toast.id);
 						act?.run();
-					}}>{$toastAction.label}</button
+					}}>{toast.action.label}</button
 				>
 			{/if}
 		</div>
-	{/if}
+	{/each}
 </div>
 
 {#if $alertMessage}
@@ -72,8 +72,11 @@
 		z-index: 900;
 		pointer-events: none;
 		width: min(28rem, calc(100vw - 2rem));
+		/* 여러 개가 동시에 살아 있을 수 있으므로 세로로 쌓는다 */
 		display: flex;
-		justify-content: center;
+		flex-direction: column;
+		align-items: stretch;
+		gap: var(--space-2, 0.5rem);
 	}
 	.toast {
 		display: flex;

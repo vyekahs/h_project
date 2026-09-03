@@ -17,7 +17,15 @@ import { sql } from 'drizzle-orm';
 /** 이 시간이 지나면 되돌릴 수 없다. 토스트가 사라진 뒤 한참 있다 눌리는 것을 막는다. */
 export const UNDO_WINDOW_MS = 10 * 60 * 1000;
 
-export type UndoKind = 'no_show' | 'end_game';
+/**
+ * 되돌릴 수 있는 조치의 종류.
+ *
+ * blacklist는 이 목록에서 유일하게 확인창을 거치는 조치다. 그런데도 여기
+ * 있는 이유는, 확인창이 막는 것은 오조작이지 오판이 아니기 때문이다 —
+ * 동명이인을 고르거나 다른 사람의 사정을 나중에 듣는 일은 확인창 뒤에서
+ * 일어난다. 이 콘솔에서 되돌릴 수 없는 유일한 동작이었다.
+ */
+export type UndoKind = 'no_show' | 'end_game' | 'blacklist';
 
 export type UndoHandle = { id: number; label: string };
 

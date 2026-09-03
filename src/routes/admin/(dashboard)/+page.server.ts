@@ -257,9 +257,13 @@ export const actions: Actions = {
         const playerIds = data.getAll('players').map(p => p.toString());
         const guestCount = parseInt(data.get('guestCount')?.toString() || '0');
 
-        if (!gameName || duration <= 0 || (playerIds.length === 0 && guestCount === 0)) {
-            return fail(400, { missing: true });
-        }
+        // 어느 칸이 비었는지까지 돌려준다. 「필수 입력 항목을 모두 채워주세요」만
+        // 말하는 모달은 운영자를 다시 폼으로 돌려보내 처음부터 훑게 했다.
+        const missing: string[] = [];
+        if (!gameName) missing.push('gameName');
+        if (!(duration > 0)) missing.push('duration');
+        if (playerIds.length === 0 && guestCount === 0) missing.push('players');
+        if (missing.length > 0) return fail(400, { missing });
 
         try {
             const result = await db.transaction(async (tx) => {
@@ -595,6 +599,11 @@ export const actions: Actions = {
                         WHERE session_id = ${sessionId}
                     `);
                 });
+            } else if (entry.kind === 'blacklist') {
+                const { attendeeId, prev } = entry.payload;
+                await db.execute(sql`
+                    UPDATE attendees SET is_blacklisted = ${prev} WHERE id = ${attendeeId}
+                `);
             } else if (entry.kind === 'no_show') {
                 const { sessionId, attendeeId, status, createdAt, hadParticipant, penaltyLogId, promoted } = entry.payload;
                 await db.transaction(async (tx) => {
@@ -860,8 +869,23 @@ export const actions: Actions = {
         const attendeeId = data.get('attendeeId');
         if (!attendeeId) return fail(400, { error: '잘못된 요청입니다.' });
 
+        const beforeRows = await db.execute(sql`SELECT name, is_blacklisted FROM attendees WHERE id = ${attendeeId}`);
+        const before = (beforeRows as any[])[0];
+        if (!before) return fail(404, { error: '해당 인원을 찾을 수 없습니다.' });
+
         await db.execute(sql`UPDATE attendees SET is_blacklisted = NOT is_blacklisted WHERE id = ${attendeeId}`);
-        return { success: true };
+
+        // 등록만 되돌릴 거리가 된다 — 해제는 파괴적이지 않고, 다시 등록하면 그만이다.
+        // 확인창이 있는데도 남기는 이유는 adminUndo.ts의 UndoKind 주석에 있다.
+        const undo = before.is_blacklisted
+            ? undefined
+            : await recordUndo(
+                  'blacklist',
+                  { attendeeId: Number(attendeeId), prev: false },
+                  `${before.name}님의 블랙리스트 등록`
+              );
+
+        return { success: true, undo };
     },
 
     toggleManager: async ({ request }) => {

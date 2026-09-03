@@ -5,7 +5,16 @@
     import { onMount, onDestroy } from 'svelte';
     import { trapFocus } from '$lib/actions/modal';
     // 결과 알림은 레이아웃의 <AdminFeedback />가 렌더한다 — 화면마다 다시 만들지 않는다
-    import { showToast, showAlert, reportResult } from '$lib/stores/adminFeedback';
+    import {
+        showToast,
+        showAlert,
+        reportResult,
+        rememberAction,
+        forgetAction,
+        pruneActions,
+        recentActions,
+        UNDO_WINDOW_MS
+    } from '$lib/stores/adminFeedback';
 
     let { data }: { data: PageData } = $props();
 
@@ -251,21 +260,37 @@
             showToast(message);
             return;
         }
-        showToast(message, {
-            label: '되돌리기',
-            run: async () => {
-                const body = new FormData();
-                body.set('undoId', String(undo.id));
-                try {
-                    const res = await fetch('?/undoAdminAction', { method: 'POST', body });
-                    const result: any = deserialize(await res.text());
-                    if (!reportResult(result)) showToast(`되돌렸습니다 · ${undo.label}`);
-                } catch {
-                    showAlert('되돌리지 못했습니다. 네트워크를 확인해주세요.');
-                }
-                await invalidateAll();
+        // 되돌리기 버튼은 두 곳에 선다: 30초짜리 토스트와, 서버 창이 끝날 때까지
+        // 남는 「최근 조치」. 같은 실행을 둘이 나눠 갖고, 한쪽이 쓰면 둘 다 거둔다.
+        let recentId = 0;
+        const run = async () => {
+            forgetAction(recentId);
+            const body = new FormData();
+            body.set('undoId', String(undo.id));
+            try {
+                const res = await fetch('?/undoAdminAction', { method: 'POST', body });
+                const result: any = deserialize(await res.text());
+                if (!reportResult(result)) showToast(`되돌렸습니다 · ${undo.label}`);
+            } catch {
+                showAlert('되돌리지 못했습니다. 네트워크를 확인해주세요.');
             }
-        });
+            await invalidateAll();
+        };
+        recentId = rememberAction({ label: undo.label, run });
+        showToast(message, { label: '되돌리기', run });
+    }
+
+    // 「최근 조치」 접기 패널
+    let recentOpen = $state(false);
+    // 서버 창이 지난 항목은 눌러도 거절당한다. 시계가 틱할 때마다 같이 걷어낸다.
+    $effect(() => {
+        void now;
+        pruneActions(now);
+    });
+    /* 시계는 30초마다 틱하므로 now가 조치 시각보다 앞설 수 있다. 그대로 빼면
+       10분 창을 「11분 남음」이라 말한다 — 화면이 못 지킬 약속을 하게 된다. */
+    function undoMinsLeft(at: number) {
+        return Math.max(1, Math.ceil((at + UNDO_WINDOW_MS - Math.max(now, at)) / 60000));
     }
 
     function announcePenalty(d: any) {
@@ -434,12 +459,13 @@
     }
 
     /**
-     * 폼 모달의 백드롭 처리.
+     * 폼 모달을 닫으려는 시도를 가로챈다.
      *
      * 375px에서 화면 아래 64px은 엄지가 놓이는 자리이고, 거기 한 번 닿으면
      * 채워 넣은 새 게임 폼이 경고 없이 사라졌다. 시끄러운 방에서 한 손으로
-     * 쓰는 장면 그대로다. 입력이 있으면 백드롭으로는 닫지 않는다 —
-     * 「취소」 버튼과 Escape는 의도된 행동이라 그대로 둔다.
+     * 쓰는 장면 그대로다. Escape도 같은 사고다 — 콤보박스를 닫으려고 누른
+     * 키가 폼 전체를 가져갔다. 백드롭과 Escape 양쪽에 같은 가드를 건다.
+     * 「취소」 버튼만이 "버리겠다"는 분명한 선언이라 그대로 둔다.
      */
     function dismissFormModal(close: () => void, dirty: boolean) {
         if (dirty) {
@@ -448,6 +474,31 @@
         }
         close();
     }
+
+    /*
+     * 새 게임 폼의 검증 실패.
+     *
+     * 「필수 입력 항목을 모두 채워주세요」를 막는 모달로 띄우고 있었다.
+     * 모달은 상태를 잃는 실패 — 저장이 실패했다, 권한이 없다 — 를 위한 것이고,
+     * 빈 칸은 그 자리에서 채우면 되는 실패다. 모달을 닫고 폼으로 돌아와
+     * 어디가 비었는지 다시 찾게 하는 대신, 비어 있는 칸 옆에서 말한다.
+     */
+    let newGameMissing: string[] = $state([]);
+    const MISSING_LABEL: Record<string, string> = {
+        gameName: '게임 이름을 입력하거나 목록에서 고르세요.',
+        duration: '예상 플레이 시간을 1분 이상으로 입력하세요.',
+        players: '참여자를 한 명 이상 고르거나 게스트 수를 입력하세요.'
+    };
+    // 채우는 즉시 사라진다 — 이미 고친 것을 계속 지적하지 않는다
+    $effect(() => {
+        if (newGameMissing.length === 0) return;
+        const fixed = new Set<string>();
+        if (selectedGameName.trim() !== '') fixed.add('gameName');
+        if (Number(selectedDuration) > 0) fixed.add('duration');
+        if (selectedPlayerIds.length > 0 || guestCount > 0) fixed.add('players');
+        const next = newGameMissing.filter((k) => !fixed.has(k));
+        if (next.length !== newGameMissing.length) newGameMissing = next;
+    });
 
     const newGameDirty = $derived(
         selectedGameName.trim() !== '' || selectedPlayerIds.length > 0 || guestCount > 0
@@ -777,6 +828,42 @@
         {/if}
     </div>
 </section>
+
+<!--
+    되돌리기의 나머지 9분 반.
+
+    서버의 되돌리기 창은 10분인데 그것을 담은 표면이 30초짜리 토스트뿐이었다.
+    실수를 알아차리는 데는 보통 그 자리를 떠난 뒤가 걸리는데, 그때는 토스트가
+    이미 사라져 서버가 아직 받아주는 취소권이 화면에서만 없어져 있었다.
+    조치가 있을 때만 나타나고, 접힌 상태가 기본이다 — 평소에는 세지 않는다.
+-->
+{#if $recentActions.length > 0}
+    <div class="recent-actions">
+        <button
+            type="button"
+            class="recent-toggle"
+            aria-expanded={recentOpen}
+            aria-controls="recent-actions-list"
+            onclick={() => (recentOpen = !recentOpen)}
+        >
+            <span class="recent-caret" aria-hidden="true">{recentOpen ? '▾' : '▸'}</span>
+            되돌릴 수 있는 조치 {$recentActions.length}
+        </button>
+        {#if recentOpen}
+            <ul class="recent-list" id="recent-actions-list">
+                {#each $recentActions as a (a.id)}
+                    <li>
+                        <span class="recent-label">{a.label}</span>
+                        <span class="recent-left">{undoMinsLeft(a.at)}분 남음</span>
+                        <button type="button" class="btn-role is-secondary recent-undo" onclick={() => a.run()}>
+                            되돌리기<span class="sr-only"> — {a.label}</span>
+                        </button>
+                    </li>
+                {/each}
+            </ul>
+        {/if}
+    </div>
+{/if}
 
 <!--
     넓은 화면에서 게임·큐·사람이 같은 화면에 들어오도록 2열로 묶는다.
@@ -1178,12 +1265,14 @@
         tabindex="-1"
         aria-label="Close modal"
     >
-        <div class="modal-content" use:trapFocus={() => showModal = false} onclick={handleModalClick} onkeydown={() => {}} role="dialog" aria-labelledby="dlg-new-game" aria-modal="true" tabindex="-1">
+        <div class="modal-content" use:trapFocus={() => dismissFormModal(() => showModal = false, newGameDirty)} onclick={handleModalClick} onkeydown={() => {}} role="dialog" aria-labelledby="dlg-new-game" aria-modal="true" tabindex="-1">
             <h2 id="dlg-new-game">새 게임 시작</h2>
             <form method="POST" action="?/createGame" use:enhance={() => {
+                newGameMissing = [];
                 return async ({ result, update }: { result: any, update: (options?: { reset?: boolean }) => Promise<void> }) => {
-                    if (result.type === 'failure' && (result.data as any)?.missing) {
-                        showAlert('필수 입력 항목을 모두 채워주세요.', 'error');
+                    const missing = (result?.data as any)?.missing;
+                    if (result.type === 'failure' && Array.isArray(missing)) {
+                        newGameMissing = missing;
                     } else if (!reportResult(result)) {
                         showModal = false;
                     }
@@ -1209,7 +1298,12 @@
                         aria-autocomplete="list"
                         required 
                         autocomplete="off" 
+                        aria-invalid={newGameMissing.includes('gameName') || undefined}
+                        aria-describedby={newGameMissing.includes('gameName') ? 'err-gameName' : undefined}
                     />
+                    {#if newGameMissing.includes('gameName')}
+                        <p class="field-error" id="err-gameName">{MISSING_LABEL.gameName}</p>
+                    {/if}
                     
                     {#if dropdownOpen && filteredGames.length > 0}
                         <ul class="dropdown-menu" id="newGameOptions" role="listbox" aria-label="게임 후보">
@@ -1246,7 +1340,12 @@
                         required 
                         min="1" 
                         class="duration-input"
+                        aria-invalid={newGameMissing.includes('duration') || undefined}
+                        aria-describedby={newGameMissing.includes('duration') ? 'err-duration' : undefined}
                     />
+                    {#if newGameMissing.includes('duration')}
+                        <p class="field-error" id="err-duration">{MISSING_LABEL.duration}</p>
+                    {/if}
                 </div>
 
                 <div class="player-picker">
@@ -1332,6 +1431,11 @@
                     <label for="guestCount">게스트 수</label>
                     <input type="number" id="guestCount" name="guestCount" bind:value={guestCount} min="0" max="20" class="number-input" />
                     <p class="hint">* 회원이 아닌 사람 수 (게스트1, 게스트2… 자동 생성)</p>
+                    <!-- 참여자와 게스트 중 하나만 있으면 되므로, 둘 중 뒤에 오는
+                         여기서 한 번만 말한다 -->
+                    {#if newGameMissing.includes('players')}
+                        <p class="field-error">{MISSING_LABEL.players}</p>
+                    {/if}
                 </div>
 
                 <div class="modal-actions">
@@ -1503,7 +1607,12 @@
                     <span>블랙리스트</span>
                     <span class="manage-sub">{m.is_blacklisted ? '등록됨 — 입장·참여 제한' : '미등록'}</span>
                 </div>
-                <form method="POST" action="?/toggleBlacklist" use:enhance={m.is_blacklisted ? pending(undefined, `${m.name}님을 블랙리스트에서 해제했습니다.`) : confirmSubmit({ title: '블랙리스트 등록', message: `${m.name}님을 블랙리스트에 등록합니다. 이후 입장·게임 참여가 제한되고, 진행 중이거나 예정된 참여도 막힙니다.`, confirmLabel: '블랙 등록', severity: 'irreversible', success: `${m.name}님을 블랙리스트에 등록했습니다.` })} style="display:inline;">
+                <form method="POST" action="?/toggleBlacklist" use:enhance={m.is_blacklisted ? pending(undefined, `${m.name}님을 블랙리스트에서 해제했습니다.`) : confirmSubmit({ title: '블랙리스트 등록', message: `${m.name}님을 블랙리스트에 등록합니다. 이후 입장·게임 참여가 제한되고, 진행 중이거나 예정된 참여도 막힙니다.`, confirmLabel: '블랙 등록', severity: 'irreversible', handle: async (res: any) => {
+                    // 확인창은 오조작을 막지만 오판은 막지 못한다 — 동명이인을
+                    // 고르거나 사정을 나중에 듣는 일은 확인창 뒤에서 일어난다.
+                    if (!reportResult(res.result)) toastUndoable(`${m.name}님을 블랙리스트에 등록했습니다.`, (res.result?.data as any)?.undo);
+                    await res.update();
+                } })} style="display:inline;">
                     <input type="hidden" name="attendeeId" value={m.id} />
                     <!--
                         3단 사다리의 1단. 채움 빨강은 「되돌릴 수 없는 것」에만 쓰고,
@@ -1642,7 +1751,7 @@
         tabindex="-1"
         aria-label="Close modal"
     >
-        <div class="modal-content" use:trapFocus={() => showScheduledGameModal = false} onclick={handleModalClick} onkeydown={() => {}} role="dialog" aria-labelledby="dlg-schedule" aria-modal="true" tabindex="-1">
+        <div class="modal-content" use:trapFocus={() => dismissFormModal(() => showScheduledGameModal = false, scheduledGameDirty)} onclick={handleModalClick} onkeydown={() => {}} role="dialog" aria-labelledby="dlg-schedule" aria-modal="true" tabindex="-1">
 
             <h2 id="dlg-schedule">
                 <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
@@ -2081,6 +2190,73 @@
     }
     .rs-stat-pending .rs-unit {
         color: var(--color-orange-text);
+    }
+    /*
+        「최근 조치」 패널. 스트립과 방 사이에 끼지만 접힌 상태의 높이는
+        한 줄(40px)이고, 되돌릴 것이 없으면 아예 렌더되지 않는다.
+    */
+    .recent-actions {
+        margin-bottom: var(--space-5);
+        border: 1px solid var(--border-light);
+        border-radius: var(--radius-control);
+        background: var(--bg-secondary);
+    }
+    .recent-toggle {
+        display: flex;
+        align-items: center;
+        gap: var(--space-2);
+        width: 100%;
+        padding: var(--space-2) var(--space-4);
+        border: none;
+        border-radius: var(--radius-control);
+        background: none;
+        color: var(--text-primary);
+        font-size: var(--text-sm);
+        font-weight: var(--weight-medium);
+        text-align: left;
+        cursor: pointer;
+    }
+    .recent-caret {
+        color: var(--text-secondary);
+    }
+    .recent-list {
+        list-style: none;
+        margin: 0;
+        padding: 0 var(--space-4) var(--space-3);
+    }
+    .recent-list li {
+        display: flex;
+        align-items: center;
+        gap: var(--space-3);
+        padding: var(--space-2) 0;
+        border-top: 1px solid var(--border-light);
+    }
+    .recent-label {
+        flex: 1;
+        min-width: 0;
+        font-size: var(--text-sm);
+        overflow-wrap: anywhere;
+    }
+    .recent-left {
+        flex-shrink: 0;
+        font-size: var(--text-xs);
+        color: var(--text-secondary);
+        font-variant-numeric: var(--numeric);
+    }
+    .recent-undo {
+        flex-shrink: 0;
+    }
+    /*
+        칸 옆에서 말하는 검증 실패. 막는 모달은 상태를 잃는 실패에만 남긴다.
+        아이콘 없이 색만으로 오류를 말하지 않도록 「⚠」를 앞에 둔다.
+    */
+    .field-error {
+        margin: var(--space-1) 0 0;
+        font-size: var(--text-sm);
+        color: var(--color-red-dark);
+    }
+    .field-error::before {
+        content: '⚠ ';
     }
     /* 제목 옆 숫자 분해. 제목만큼 크면 제목이 아니게 된다. */
     .count-split {
