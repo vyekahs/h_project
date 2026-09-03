@@ -1949,23 +1949,39 @@
         grid-template-columns: repeat(4, minmax(0, 1fr));
         gap: var(--space-4);
     }
-    @media (max-width: 720px) {
+    /*
+        폰에서 스트립이 238px — iPhone SE 접힌 선의 36% — 을 숫자 넷에 쓰고,
+        그 대가로 사람이 한 명도 접힌 선 위에 오지 못했다. 시인성이 존재
+        이유인 콘솔에서. 폰에서는 한 줄로 눕히고 값 위에 레이블을 둔다.
+        정리 대기의 종료 버튼은 스트립에서 뺀다 — 게임 행이 이미 갖고 있다.
+    */
+    /* 가로로 든 폰은 폭이 844px이라 위 규칙에 안 걸리는데, 거기서 부족한 건
+       폭이 아니라 높이다(390px). 제약을 그대로 질의한다. */
+    @media (max-width: 720px), (max-height: 480px) {
         .room-summary {
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap: var(--space-3);
-            padding: var(--space-3) var(--space-4);
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: var(--space-2);
+            padding: var(--space-3);
         }
-        /* 40px 숫자 넷이 두 줄이면 스트립만으로 화면 절반을 먹는다.
-           방(게임·사람)이 접힌 선 위에 남는 것이 이 콘솔의 존재 이유다. */
+        .rs-stat {
+            gap: 0;
+        }
         .room-summary .rs-value {
-            font-size: var(--text-xl);
+            font-size: var(--text-lg);
+            line-height: 1.15;
         }
         .room-summary .rs-unit {
-            font-size: var(--text-base);
+            font-size: var(--text-sm);
         }
         .rs-value-done,
         .rs-value-pending {
-            font-size: var(--text-xl);
+            font-size: var(--text-lg);
+        }
+        .rs-label {
+            font-size: var(--text-xs);
+        }
+        .rs-action-form {
+            display: none;
         }
     }
     .rs-value-link {
@@ -1979,6 +1995,9 @@
         게임과 사람이 같은 화면에 들어오게 한다. 전에는 한 열로 쌓여 있어
         1280x900의 접힌 선 위에 둘 다 없었다.
     */
+    .room-columns > section {
+        container: room-card / inline-size;
+    }
     .room-columns {
         display: grid;
         /* 그리드 아이템의 기본 min-width는 auto라, 열이 내용의 min-content까지
@@ -1986,7 +2005,9 @@
         grid-template-columns: minmax(0, 1fr);
         gap: var(--space-5);
     }
-    @media (min-width: 1100px) {
+    /* 두 번째 조건은 가로로 든 폰·짧은 창이다 — 거기서 희소한 자원은 세로이고,
+       나란히 놓아야 게임과 사람이 한 화면에 들어온다. */
+    @media (min-width: 1100px), (min-width: 820px) and (max-height: 560px) {
         .room-columns {
             grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
             align-items: start;
@@ -2035,31 +2056,31 @@
     .rs-action-form {
         margin-top: var(--space-2);
     }
+    /*
+        이 버튼의 존재 이유는 자기가 닫을 게임의 이름을 달고 있다는 것이다.
+        4열 스트립에서 한 칸은 좁아 「글룸헤이븐 죽음의 아…」로 잘렸고, 그러면
+        여러 판이 밀렸을 때 누를 때마다 무엇이 끝나는지 알 수 없다.
+        말줄임 대신 두 줄로 접는다 — 폰에서는 이 버튼이 아예 숨겨지므로
+        높이가 늘어나는 대가는 세로가 넉넉한 화면에서만 치른다.
+    */
     .rs-action {
         min-height: 36px;
         max-width: 100%;
-        padding: 0 var(--space-3);
+        padding: var(--space-1) var(--space-3);
         border: 1px solid var(--color-orange-text);
         border-radius: var(--radius-control);
         background: var(--bg-primary);
         color: var(--color-orange-text);
         font-size: var(--text-sm);
         font-weight: var(--weight-medium);
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
+        line-height: 1.3;
+        text-align: left;
+        /* 공백 없는 아주 긴 이름도 칸 밖으로 밀지 않게 */
+        overflow-wrap: anywhere;
         cursor: pointer;
     }
     .rs-action:hover {
         background: var(--color-warning-bg);
-    }
-    /* 3열 안에서는 버튼이 「스플렌더…」로 잘려 무엇을 끝내는지 말하지 못한다.
-       이름을 잃으면 여러 판이 밀렸을 때 누를 때마다 무엇이 끝나는지 알 수 없다.
-       좁은 화면에서는 이 칸만 한 줄을 차지한다. */
-    @media (max-width: 560px) {
-        .rs-stat-pending {
-            grid-column: 1 / -1;
-        }
     }
     /* 제목 옆 숫자 분해. 제목만큼 크면 제목이 아니게 된다. */
     .count-split {
@@ -2695,7 +2716,10 @@
         border-radius: var(--radius-card);
         width: 100%;
         max-width: 500px;
+        /* vh는 주소창이 보일 때도 큰 뷰포트를 가리켜 푸터(취소·시작)가
+           화면 밖으로 잘렸다. dvh는 지금 실제로 보이는 높이다. */
         max-height: 90vh;
+        max-height: 90dvh;
         overflow-y: auto;
         box-shadow: 0 4px 20px var(--shadow-lg);
     }
@@ -3468,12 +3492,20 @@
         cursor: pointer;
         transition: background 0.15s;
     }
-    .game-list-item:hover {
-        background: var(--bg-surface);
-    }
-    /* 만료 행은 자기 배경이 이미 틴트라 기본 hover가 아무 변화도 주지 못했다 */
-    .game-row.is-expired .game-list-item:hover {
-        background: transparent;
+    /*
+        터치 기기에서 :hover 는 탭한 뒤에도 남아 그 행이 선택된 것처럼 보인다.
+        포인터가 있는 기기에서만 켠다 — 폰이 이 콘솔의 주 사용 장면이다.
+    */
+    @media (hover: hover) {
+        .game-list-item:hover {
+            background: var(--bg-surface);
+        }
+        .game-row.is-expired:hover {
+            background: var(--color-warning-bg-strong);
+        }
+        .game-row.is-expired .game-list-item:hover {
+            background: transparent;
+        }
     }
     .game-list-item:last-child {
         border-bottom: none;
@@ -3516,9 +3548,6 @@
     .game-list-item.expired .time-remaining {
         color: var(--color-orange-text);
         font-weight: 700;
-    }
-    .game-row.is-expired:hover {
-        background: var(--color-warning-bg-strong);
     }
     .row-end-form {
         flex-shrink: 0;
@@ -3573,6 +3602,50 @@
         font-size: var(--text-lg);
         font-weight: bold;
     }
+    /*
+        375~390px에서 이름이 「스플…」로 잘리는데 그 옆이 「게임 종료」다.
+        무엇을 끝내는지 못 읽고 누르게 된다. 좁은 화면에서는 한 줄을 포기하고
+        이름에 온전한 줄을 준다. 섬네일은 이름의 자리를 뺏으므로 여기서는 뺀다.
+    */
+    /*
+        뷰포트가 아니라 이 카드가 실제로 얼마나 넓은지가 기준이다. 2열 배치에서는
+        1280px 화면에서도 열이 471px이고, 만료 행은 「게임 종료」에 87px을 내주므로
+        이름에 남는 자리가 폰과 비슷해진다.
+    */
+    @container room-card (max-width: 560px) {
+        /*
+            가로로 든 폰은 폭이 844px이라 ≤768px 규칙에 안 걸리는데, 2열이라
+            열은 253px뿐이다. 데스크톱 헤더가 그대로 적용돼 「게임」이 「게 / 임」
+            으로, 버튼이 「+ 새 게 / 임 시작」으로 글자 단위로 쪼개졌다.
+            여기서도 뷰포트가 아니라 카드 폭을 기준으로 접는다.
+        */
+        .section-header {
+            flex-wrap: wrap;
+            row-gap: var(--space-2);
+        }
+        .section-header h2 {
+            flex: 1 1 auto;
+            min-width: 0;
+        }
+        /* 버튼은 자기 내용 폭을 지킨다 — 늘리면 전폭 파란 바가 된다 */
+        .section-header > button {
+            flex: 0 0 auto;
+        }
+        .game-list-item {
+            flex-wrap: wrap;
+            row-gap: 2px;
+        }
+        .game-list-item .list-name {
+            flex: 1 0 100%;
+            order: -1;
+            white-space: normal;
+            overflow: visible;
+        }
+        .game-list-item .list-thumb {
+            display: none;
+        }
+    }
+
     .show-more-btn {
         display: block;
         width: 100%;
@@ -3709,10 +3782,19 @@
             font-size: var(--text-base);
             gap: var(--space-2);
         }
+        /*
+            세로로 펴면 「+ 새 게임 시작」이 전폭 파란 바가 되어, 폰 스크롤에서
+            가장 큰 소리를 내는 것이 만들기 버튼 둘이 된다. 제목과 같은 줄에
+            두면 그 무게가 내용으로 돌아온다.
+        */
         .section-header {
-            flex-direction: column;
-            align-items: stretch;
+            flex-wrap: wrap;
+            align-items: center;
             gap: var(--space-2);
+        }
+        .section-header h2 {
+            flex: 1 1 auto;
+            min-width: 0;
         }
         /* 폰은 서서 한 손으로 쓰는 주 사용 장면 — 탭 타깃을 44px 아래로 줄이지 않는다 */
         button, .btn-primary, .btn-delete, .btn-mini {

@@ -64,7 +64,10 @@
 	.toast-region {
 		position: fixed;
 		left: 50%;
-		bottom: var(--space-5, 1.5rem);
+		/* 폰에는 고정 탭 바가 있고 되돌리기 토스트는 30초 산다. 그 위로 띄우지
+		   않으면 반 분 동안 이동이 막힌다. --admin-bottom-inset 은 어드민
+		   레이아웃이 채운다(데스크톱 0, 폰 탭 바 + 안전 영역). */
+		bottom: calc(var(--space-5, 1.5rem) + var(--admin-bottom-inset, 0px));
 		transform: translateX(-50%);
 		z-index: 900;
 		pointer-events: none;

@@ -266,154 +266,9 @@
 {/if}
 
 <style>
-    /*
-     * 어드민 팔레트 — 라이트 전용으로 확정된 값이다.
-     * 사이트 전역 토큰은 <html>의 data-theme='dark'로 뒤집히는데, 어드민은
-     * 이 블록에서 토큰을 다시 선언해 그 영향을 차단한다. 즉 이 재선언이
-     * "어드민은 다크모드를 따르지 않는다"를 실제로 강제하는 장치이므로 지우면 안 된다.
-     * 어드민 안에서 색이 필요하면 하드코딩하지 말고 여기의 토큰을 쓸 것.
-     */
-    .force-light {
-        /* Text */
-        --text-primary: #333;
-        --text-secondary: #666;
-        --text-tertiary: #888;
-        --text-muted: #999;
-        --text-hint: #adb5bd;
-        --text-dark: #495057;
-        --text-darker: #555;
-
-        /* Backgrounds */
-        --bg-primary: #ffffff;
-        --bg-secondary: #f8f9fa;
-        --bg-tertiary: #f1f3f5;
-        --bg-elevated: #f0f0f0;
-        --bg-hover: #e9ecef;
-        --bg-active: #dee2e6;
-        --bg-surface: #f5f5f5;
-        --bg-dark: #333;
-
-        /* Borders */
-        --border-default: #ddd;
-        --border-light: #eee;
-        --border-medium: #ccc;
-        /* 테두리가 유일한 경계인 컨트롤용. --border-default(#ddd)와
-           --border-medium(#ccc)는 흰 배경에서 1.36:1 / 1.61:1이라 글자는
-           읽히는데 상자 가장자리가 보이지 않았다(WCAG 1.4.11은 3:1 요구).
-           흰 배경 4.54 · #f5f5f5 4.17 · #e9ecef 3.83. */
-        --border-control: #767676;
-
-        /* Shadows */
-        --shadow-sm: rgba(0,0,0,0.03);
-        --shadow-md: rgba(0,0,0,0.1);
-        --shadow-lg: rgba(0,0,0,0.15);
-        --shadow-heavy: rgba(0,0,0,0.3);
-        --shadow-deep: rgba(0,0,0,0.6);
-
-        /* Overlays */
-        --overlay-light: rgba(0,0,0,0.05);
-        --overlay-medium: rgba(0,0,0,0.2);
-        --overlay-heavy: rgba(0,0,0,0.5);
-
-        /* Slate */
-        --color-slate: #94a3b8;
-        --color-slate-dark: #64748b;
-
-        /* Brand colors */
-        --color-blue: #339af0;
-        /* 흰 글자를 얹는 기본 파랑. #007bff는 3.98:1로 AA 미달이라 5.1:1인 값으로 내렸다.
-           밝은 파랑이 필요한 곳(배경/테두리)은 --color-blue를 쓸 것. */
-        --color-blue-bright: #0b5ed7;
-        /* 포커스 링은 브랜드 색과 달라야 한다. --color-blue-bright와 같은 값이면
-           파란 버튼 위에서 링과 버튼이 한 덩어리로 보여 포커스가 사라진다.
-           빨강(마감 하기)·초록 위에서도 통하도록 중립 먹색을 쓴다. */
-        --focus-ring: #111827;
-        --focus-ring-on-dark: #9ec5fe;
-        --color-amber: #fbbf24;
-        --color-amber-dark: #f59e0b;
-        --color-amber-darker: #d97706;
-        --color-green: #22c55e;
-        --color-green-dark: #1b6b2c;
-        --color-red: #ef4444;
-        --color-red-dark: #d32f2f;
-        --color-red-darker: #b71c1c;      /* 파괴적 동작의 hover */
-        --color-green-darker: #14532d;    /* 초록 버튼의 hover */
-        /* 흰 배경에서 AA를 통과하는 주황 텍스트.
-           --color-orange-dark(#e67700)는 3.00:1이라 텍스트로 쓸 수 없다. */
-        --color-orange-text: #c2410c;
-        --color-error-bg-strong: #ffecec;   /* 오류 틴트의 hover */
-        /* #ffeccc 는 --color-orange-text(#c2410c)가 4.469:1로 바로 아래 줄의
-           약속을 못 지켰다. 4.579:1까지만 진해진다. */
-        --color-warning-bg-strong: #ffefd6; /* 경고 틴트의 hover */
-        --color-orange: #ff9800;
-        --color-orange-dark: #e67700;
-
-        /* State backgrounds */
-        --color-success-bg: #e8f5e9;
-        --color-error-bg: #fff5f5;
-        --color-warning-bg: #fff3e0;
-        --color-info-bg: #e7f5ff;
-
-        /* Additional Colors */
-        --border-warning: #ffe0b2;
-        --color-purple-bg: #e8d5f5;
-
-        /* 연한 배경 + 진한 글자 톤 버튼. +/- 조정, 연장/해지처럼 짝을 이루는
-           동작에 쓴다. 세 화면에 같은 값이 흩어져 있던 것을 모았다.
-           hover 틴트는 글자가 4.5:1을 지키는 선까지만 진해진다
-           (예전 #bbdefb / #f8bbd0 은 4.16 / 4.07 로 미달이었다). */
-        --tint-blue-bg: #e3f2fd;
-        --tint-blue-bg-hover: #d4e6fc;
-        --tint-red-bg: #fce4ec;
-        --tint-red-bg-hover: #fbd0de;
-        --color-blue-darker: #0a4bad;   /* 파랑 버튼의 hover */
-
-        /* 순위 메달. 동메달은 흰 글자에서 3.14:1이던 #cd7f32를 내렸다. */
-        --medal-gold: #ffd700;
-        --medal-silver: #c0c0c0;
-        --medal-bronze: #9c6320;
-        --color-indigo: #364fc7;
-
-        color-scheme: light;
-        color: #333;
-
-        /* ── Type scale ──
-           6단계. 이전에는 0.65–1.2rem 사이 14개 값이 있었고 0.78/0.8/0.82rem처럼
-           0.3px 차이로 갈라진 것들이 있었다. 11px과 12px도 결국 한 결정이라 12px으로 합쳤다.
-           데이터가 자기 라벨보다 커야 하므로
-           가장 큰 단계(--text-stat)는 숫자 전용이다. */
-        --text-xs: 0.75rem;     /* 12px — 배지, 메타 */
-        --text-sm: 0.875rem;    /* 14px — 컨트롤, 목록 */
-        --text-base: 1rem;      /* 16px — 본문 */
-        --text-lg: 1.25rem;     /* 20px — 섹션 제목 */
-        --text-xl: 1.5rem;      /* 24px — 페이지 제목 */
-        --text-stat: 2.5rem;    /* 40px — 라이브 수치 전용 */
-
-        /* 굵기는 400 / 600 / 700 세 단계만 쓴다 */
-        --weight-normal: 400;
-        --weight-medium: 600;
-        --weight-bold: 700;
-
-        /* ── Spacing ── 0.25rem 스케일 6단 */
-        --space-1: 0.25rem;
-        --space-2: 0.5rem;
-        --space-3: 0.75rem;
-        --space-4: 1rem;
-        --space-5: 1.5rem;
-        --space-6: 2rem;
-
-        /* ── Radius ── 컨트롤과 카드 두 종류 + 알약 */
-        --radius-control: 6px;
-        --radius-card: 12px;
-        --radius-pill: 999px;
-
-        /* ── Font ── 한 벌만 쓴다 (이전에는 sans-serif / Arial / -apple-system 혼재) */
-        --font-sans: -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Malgun Gothic',
-            system-ui, 'Segoe UI', Roboto, sans-serif;
-
-        /* 표 형태 숫자 — 30초마다 갱신되는 카운트다운이 가로로 흔들리지 않게 */
-        --numeric: tabular-nums;
-    }
+    /* 어드민 팔레트·타이포·간격 토큰은 src/lib/styles/admin-tokens.css 한 곳에 있다.
+       /admin 전체를 감싸는 src/routes/admin/+layout.svelte 가 불러오므로
+       (dashboard) 밖의 /admin/login·/admin/qr 도 같은 토큰을 받는다. */
 
     /* 포커스 링 — 이전에는 UA 기본 링에 의존했고, 네이비 사이드바 위에서
        1.55:1까지 떨어져 키보드 사용자가 자기 위치를 볼 수 없었다. */
@@ -522,6 +377,11 @@
         align-items: center;
         margin-bottom: var(--space-6);
     }
+    @media (max-width: 768px) {
+        .header {
+            margin-bottom: var(--space-4);
+        }
+    }
     .header-actions {
         display: flex;
         gap: var(--space-4);
@@ -547,6 +407,16 @@
 
     /* Mobile Responsive Styles */
     @media (max-width: 768px) {
+        /* :global(.force-light)로 쓰면 안 된다. 기본값 0px은 admin-tokens.css의
+           .force-light(특이도 0,1,0)에서 오는데, :global()도 같은 0,1,0이라
+           순서에 기대게 된다. 스코프된 .force-light는 .force-light.s-xxx(0,2,0)로
+           컴파일돼 확실히 이긴다. 이 규칙이 지면 폰에서 inset이 0px으로 남고
+           30초짜리 되돌리기 토스트가 탭 바를 덮는다.
+           (바깥 /admin/+layout.svelte의 .force-light는 이 컴포넌트 소유가 아니라
+            0px 그대로지만, 토스트는 안쪽 래퍼에 있으므로 상관없다.) */
+        .force-light {
+            --admin-bottom-inset: calc(var(--admin-nav-height) + env(safe-area-inset-bottom, 0px));
+        }
         .admin-layout {
             flex-direction: column;
             /* 데스크톱의 align-items:flex-start는 sticky 사이드바를 위한 것이다.
@@ -554,16 +424,15 @@
                max-content로 부풀고, 넓은 행 하나가 콘솔 전체를 가로로 밀어냈다. */
             align-items: stretch;
         }
+        /*
+            폰에서 이 사이드바는 nav 와 footer 가 숨겨져 브랜드 한 줄만 남는다.
+            57px 을 「관리자 콘솔」에 쓰고, 바로 아래 h1 이 「관리자 대시보드」로
+            같은 말을 반복한다. 이동은 하단 탭 바가 한다. 그 57px 이 있어야
+            iPhone SE(667) 접힌 선 위에 사람이 들어온다.
+            (부수: h1 보다 앞서던 h2 가 폰에서는 접근성 트리에서도 빠진다.)
+        */
         .sidebar {
-            position: static;
-            height: auto;
-            width: 100%;
-            padding: var(--space-4);
-            box-sizing: border-box;
-            flex-direction: row;
-            align-items: center;
-            justify-content: center;
-            background: #2c3e50;
+            display: none;
         }
         .sidebar-header {
             margin-bottom: 0;
@@ -603,6 +472,10 @@
             bottom: 0;
             left: 0;
             width: 100%;
+            /* 토스트가 비켜서는 높이(--admin-nav-height)와 실제 바 높이가
+               어긋나면 30초 동안 내비가 가려진다. 같은 토큰으로 묶는다. */
+            min-height: var(--admin-nav-height);
+            box-sizing: border-box;
             background: white;
             border-top: 1px solid #ddd;
             padding: var(--space-2) 0;
