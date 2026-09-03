@@ -118,12 +118,16 @@
         </div>
     {/if} -->
 
-	<main class="content">
+	<!--
+		어드민 콘솔은 자기 <main>(사이드바를 뺀 오른쪽 열)을 따로 가진다.
+		여기까지 <main>이면 랜드마크가 둘이 되고 유효하지 않은 HTML이 된다.
+	-->
+	<svelte:element this={$page.url.pathname.startsWith('/admin') ? 'div' : 'main'} class="content">
 		{@render children()}
         {#if !$page.url.pathname.startsWith('/admin') && !$page.url.pathname.includes('/minigames/') && !$page.url.pathname.startsWith('/tools/') && !$page.url.pathname.startsWith('/party/')}
              <AdBanner adSlot="footer-banner" />
         {/if}
-	</main>
+	</svelte:element>
 
 	{#if !$page.url.pathname.startsWith('/admin') && !$page.url.pathname.startsWith('/minigames/') && !$page.url.pathname.startsWith('/tools/') && !$page.url.pathname.startsWith('/party/')}
 	<footer class="site-footer">
@@ -227,7 +231,7 @@
         --color-amber-dark: #f59e0b;
         --color-amber-darker: #d97706;
         --color-green: #22c55e;
-        --color-green-dark: #2b8a3e;
+        --color-green-dark: #1b6b2c;
         --color-red: #ef4444;
         --color-red-dark: #d32f2f;
         --color-orange: #ff9800;

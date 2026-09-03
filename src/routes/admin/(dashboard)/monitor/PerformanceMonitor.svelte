@@ -412,8 +412,8 @@
 		background: var(--bg-primary);
 		border: 1px solid var(--border-default);
 		border-radius: var(--radius-card);
-		padding: 1.5rem;
-		margin-bottom: 1.5rem;
+		padding: var(--space-5);
+		margin-bottom: var(--space-5);
 		transition: box-shadow 0.2s;
 	}
 
@@ -431,7 +431,7 @@
 	/* Grid Stats */
 	:global(.grid) {
 		display: grid;
-		gap: 1.5rem;
+		gap: var(--space-5);
 	}
 
 	:global(.grid-cols-4) {
@@ -452,7 +452,7 @@
 	.stat-label {
 		font-size: var(--text-sm);
 		color: var(--text-secondary);
-		margin-bottom: 0.5rem;
+		margin-bottom: var(--space-2);
 		font-weight: 500;
 	}
 
@@ -486,7 +486,7 @@
 	}
 
 	:global(th) {
-		padding: 0.875rem 1rem;
+		padding: 0.875rem var(--space-4);
 		text-align: left;
 		font-size: var(--text-xs);
 		font-weight: 700;
@@ -496,7 +496,7 @@
 	}
 
 	:global(td) {
-		padding: 0.875rem 1rem;
+		padding: 0.875rem var(--space-4);
 		color: var(--text-primary);
 		font-size: var(--text-sm);
 		border-bottom: 1px solid var(--border-light);
@@ -517,7 +517,7 @@
 
 	/* Info Box */
 	.info-box {
-		margin-top: 1.5rem;
+		margin-top: var(--space-5);
 		padding: 1.25rem;
 		background: var(--color-info-bg);
 		border: 1px solid var(--color-blue);
@@ -525,7 +525,7 @@
 	}
 
 	.info-box h3 {
-		margin: 0 0 0.75rem 0;
+		margin: 0 0 var(--space-3) 0;
 		font-size: var(--text-base);
 		font-weight: 700;
 		color: var(--text-primary);
@@ -543,7 +543,7 @@
 		color: var(--text-secondary);
 		display: flex;
 		align-items: center;
-		gap: 0.5rem;
+		gap: var(--space-2);
 	}
 
 	.info-box li span {
@@ -553,7 +553,7 @@
 
 	/* Historical Data */
 	.history-stats {
-		padding: 1rem;
+		padding: var(--space-4);
 		background: var(--color-info-bg);
 		border: 1px solid var(--color-blue);
 		border-radius: var(--radius-control);
@@ -605,7 +605,7 @@
 	}
 
 	.loading-state p {
-		margin-top: 1rem;
+		margin-top: var(--space-4);
 		font-size: var(--text-sm);
 	}
 
@@ -616,7 +616,7 @@
 		width: 48px;
 		height: 48px;
 		animation: spin 1s cubic-bezier(0.22, 1, 0.36, 1) infinite;
-		margin: 0 auto 1rem;
+		margin: 0 auto var(--space-4);
 	}
 
 	@keyframes spin {
@@ -640,7 +640,7 @@
 		overflow-x: auto;
 		-webkit-overflow-scrolling: touch;
 		margin: -0.5rem;
-		padding: 0.5rem;
+		padding: var(--space-2);
 		position: relative;
 	}
 
@@ -666,23 +666,23 @@
 	/* Mobile Responsive */
 	@media (max-width: 768px) {
 		.card {
-			padding: 1rem;
+			padding: var(--space-4);
 			border-radius: var(--radius-card);
 		}
 
 		.card h2 {
 			font-size: var(--text-base);
-			margin-bottom: 1rem;
+			margin-bottom: var(--space-4);
 		}
 
 		.view-toggle {
-			gap: 0.25rem;
-			padding: 0.25rem;
+			gap: var(--space-1);
+			padding: var(--space-1);
 			flex-direction: column;
 		}
 
 		.toggle-btn {
-			padding: 0.625rem 1rem;
+			padding: 0.625rem var(--space-4);
 			font-size: var(--text-sm);
 			width: 100%;
 		}
@@ -691,11 +691,11 @@
 		:global(.grid-cols-4),
 		:global(.grid-cols-3) {
 			grid-template-columns: repeat(2, 1fr);
-			gap: 1rem;
+			gap: var(--space-4);
 		}
 
 		.stat-card {
-			padding: 1rem;
+			padding: var(--space-4);
 		}
 
 		.stat-label {
@@ -709,7 +709,7 @@
 		/* Table responsive */
 		:global(th),
 		:global(td) {
-			padding: 0.625rem 0.75rem;
+			padding: 0.625rem var(--space-3);
 			font-size: var(--text-sm);
 		}
 
@@ -728,7 +728,7 @@
 
 		/* Info box */
 		.info-box {
-			padding: 1rem;
+			padding: var(--space-4);
 		}
 
 		.info-box h3 {
@@ -737,7 +737,7 @@
 
 		.info-box li {
 			font-size: var(--text-sm);
-			padding: 0.25rem 0;
+			padding: var(--space-1) 0;
 		}
 
 		.history-stats {
@@ -762,7 +762,7 @@
 		}
 
 		.toggle-btn {
-			padding: 0.5rem 0.75rem;
+			padding: var(--space-2) var(--space-3);
 		}
 	}
 </style>

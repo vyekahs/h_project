@@ -1,14 +1,24 @@
 <script lang="ts">
     import type { PageData } from './$types';
-    import { enhance } from '$app/forms';
+    import { enhance, deserialize } from '$app/forms';
     import { invalidateAll } from '$app/navigation';
     import { onMount, onDestroy } from 'svelte';
     import { trapFocus } from '$lib/actions/modal';
     // 결과 알림은 레이아웃의 <AdminFeedback />가 렌더한다 — 화면마다 다시 만들지 않는다
     import { showToast, showAlert, reportResult } from '$lib/stores/adminFeedback';
 
-    export let data: PageData;
-    if (!data) throw new Error('Data is required');
+    let { data }: { data: PageData } = $props();
+
+    // 서버 데이터 파생 — $derived 는 const 라 사용처보다 먼저 선언해야 한다
+    const attendees = $derived(data.attendees as Attendee[]);
+    const allUsers = $derived((data as any).allUsers || []);
+    const games = $derived(data.games as GameSession[]);
+    const scheduledGames = $derived(data.scheduledGames as GameSession[]);
+    const savedMembers = $derived(data.savedMembers as SavedMember[]);
+
+    // 몇 점부터 예약이 막히는지 — 페널티 숫자는 이 값 없이는 의미를 알 수 없다
+    const penaltyThreshold = $derived(parseInt((data as any).settings?.penalty_threshold ?? '3') || 3);
+    const noShowLimitMinutes = $derived(parseInt((data as any).settings?.no_show_limit_minutes ?? '10') || 10);
 
     // SSE 실시간 연결 — 변경 신호 수신 시 서버 데이터 재로드
     // (SSE 데이터는 간소화 구조라 대시보드 전체 필드를 못 채우므로 invalidateAll 사용)
@@ -29,16 +39,22 @@
         eventSource = new EventSource('/api/sse/live');
         eventSource.addEventListener('visitors', debouncedInvalidate);
         eventSource.addEventListener('games', debouncedInvalidate);
+        eventSource.onopen = () => { sseConnected = true; };
         eventSource.onerror = () => {
             if (eventSource) { eventSource.close(); eventSource = null; }
+            // 이 콘솔의 값은 전부 "지금"이라는 데서 온다. 그 연결이 끊긴 걸
+            // 알리지 않으면 운영자는 낡은 숫자를 현재로 읽는다.
+            sseConnected = false;
             if (!sseDestroyed) {
                 sseReconnectTimer = setTimeout(connectSSE, 3000);
             }
         };
     }
 
+    let sseConnected = $state(true);
+
     // 라이브 시계 — 카운트다운/요약 스트립이 SSE 이벤트 없이도 갱신되도록 30초마다 틱
-    let now = Date.now();
+    let now = $state(Date.now());
     let clockTimer: ReturnType<typeof setInterval> | null = null;
 
     onMount(() => {
@@ -110,7 +126,7 @@
      * 기존엔 옵션이 마우스 전용이라, 타이핑 후 Enter를 치면 옵션 선택이 아니라
      * 폼이 제출됐다. ArrowDown/Up으로 후보를 옮기고 Enter로 확정한다.
      */
-    let gameOptionIndex = -1;
+    let gameOptionIndex = $state(-1);
 
     function comboKeydown(e: KeyboardEvent, options: any[], select: (g: any) => void) {
         if (!dropdownOpen || options.length === 0) return;
@@ -133,7 +149,7 @@
     // 파괴적 액션 공통 확인 모달
     let confirmState:
         | { title: string; message: string; confirmLabel: string; danger: boolean; handle?: (opts: any) => Promise<void> }
-        | null = null;
+        | null = $state(null);
     let pendingForm: HTMLFormElement | null = null;
 
     function closeConfirm() {
@@ -193,17 +209,18 @@
         closeConfirm();
     }
 
-    let showModal = false;
-    let selectedGameName = '';
-    let selectedDuration = '';
-    let guestCount = 0;
+    let showModal = $state(false);
+    let selectedGameName = $state('');
+    // 비워두면 placeholder가 채워진 값처럼 읽힌다. 흔한 값으로 시작한다.
+    let selectedDuration = $state('60');
+    let guestCount = $state(0);
 
-    let selectedGameId = '';
+    let selectedGameId = $state('');
 
     // 새 게임 참여자 선택 (검색형 멀티셀렉트)
-    let selectedPlayerIds: number[] = [];
-    let playerSearch = '';
-    let showPlayingInPicker = false;
+    let selectedPlayerIds: number[] = $state([]);
+    let playerSearch = $state('');
+    let showPlayingInPicker = $state(false);
 
     // 페널티 부여 사유 (관리 시트) — 시트를 열 때마다 초기화된다
     const PENALTY_REASON_LABELS: Record<string, string> = {
@@ -211,9 +228,38 @@
         late: '지각',
         other: '기타'
     };
-    let penaltyReason = 'no_show';
+    let penaltyReason = $state('no_show');
 
     /** 페널티 결과를 운영자에게 되돌려준다. 임계에 도달한 순간만 모달로 멈춰 세운다. */
+    /**
+     * 되돌릴 수 있는 결과를 알린다.
+     *
+     * 되돌리기는 결과를 알리는 그 자리에 둔다 — 토스트를 읽고 "아차" 하는
+     * 순간과 무를 수 있는 곳이 같아야 실제로 눌린다. 서버에는 불투명한 id만
+     * 보내고, 무엇을 어떻게 되돌릴지는 서버가 남겨둔 원상태에서 읽는다.
+     */
+    function toastUndoable(message: string, undo: { id: number; label: string } | undefined) {
+        if (!undo) {
+            showToast(message);
+            return;
+        }
+        showToast(message, {
+            label: '되돌리기',
+            run: async () => {
+                const body = new FormData();
+                body.set('undoId', String(undo.id));
+                try {
+                    const res = await fetch('?/undoAdminAction', { method: 'POST', body });
+                    const result: any = deserialize(await res.text());
+                    if (!reportResult(result)) showToast(`되돌렸습니다 · ${undo.label}`);
+                } catch {
+                    showAlert('되돌리지 못했습니다. 네트워크를 확인해주세요.');
+                }
+                await invalidateAll();
+            }
+        });
+    }
+
     function announcePenalty(d: any) {
         const p = d?.penalty;
         if (!p) {
@@ -221,16 +267,18 @@
             return;
         }
         const line = `${p.name} 페널티 ${p.points > 0 ? `+1 · ${p.reason}` : '−1 · 취소'} → ${p.total}/${p.threshold}점`;
+        // 임계에 닿은 경우는 멈춰 세워 읽혀야 하므로 모달로 간다. 되돌리기는
+        // 그 뒤 토스트가 받는다 — 예약 제한까지 걸린 조치일수록 무를 수 있어야 한다.
         if (p.blocked && p.points > 0) showAlert(`${line} — 누적 ${p.total}점이 되어 이제 예약이 제한됩니다.`, 'info');
-        else showToast(line);
+        toastUndoable(line, d?.undo);
     }
 
     // Remove Confirm Modal State
-    let removeModalVisible = false;
-    let removeTarget: Attendee | null = null;
+    let removeModalVisible = $state(false);
+    let removeTarget: Attendee | null = $state(null);
 
     // 참여자 관리 시트 (페널티 / 블랙리스트 / 게임 권한 / 퇴장)
-    let manageTarget: Attendee | null = null;
+    let manageTarget: Attendee | null = $state(null);
 
     function openManage(a: Attendee) {
         penaltyReason = 'no_show';
@@ -244,8 +292,8 @@
     }
 
     // End Game Modal State
-    let endGameModalVisible = false;
-    let selectedEndGame: GameSession | null = null;
+    let endGameModalVisible = $state(false);
+    let selectedEndGame: GameSession | null = $state(null);
 
     function openEndGameModal(game: GameSession) {
         selectedEndGame = game;
@@ -253,22 +301,22 @@
     }
 
     // Saved members toggle
-    let savedMembersOpen = false;
+    let savedMembersOpen = $state(false);
 
     // Game list + detail modal state
-    let showAllScheduled = false;
-    let showAllPlaying = false;
-    let selectedScheduledGame: GameSession | null = null;
-    let selectedPlayingGame: GameSession | null = null;
+    let showAllScheduled = $state(false);
+    let showAllPlaying = $state(false);
+    let selectedScheduledGame: GameSession | null = $state(null);
+    let selectedPlayingGame: GameSession | null = $state(null);
 
     // Participant search state (for game detail modals)
-    let participantSearch = '';
-    let participantSearchOpen = false;
-    let selectedParticipantId = '';
+    let participantSearch = $state('');
+    let participantSearchOpen = $state(false);
+    let selectedParticipantId = $state('');
 
-    $: filteredParticipants = (allUsers || []).filter((u: any) =>
+    const filteredParticipants = $derived((allUsers || []).filter((u: any) =>
         participantSearch.length > 0 && u.name.toLowerCase().includes(participantSearch.toLowerCase())
-    );
+    ));
 
     function resetParticipantSearch() {
         participantSearch = '';
@@ -295,11 +343,30 @@
     }
 
     // Scheduled Game Modal State
-    let showScheduledGameModal = false;
-    let scheduledGameName = '';
-    let scheduledAt = '';
-    let minPlayers = 2;
-    let maxPlayers = 4;
+    let showScheduledGameModal = $state(false);
+
+    // 모달 뒤 배경이 계속 스크롤됐다. 긴 시트 안에서 스크롤하고 닫으면
+    // 원래 보던 행에서 수백 px 떨어진 곳에 남는다.
+    const anyModalOpen = $derived(
+        showModal ||
+        endGameModalVisible ||
+        showScheduledGameModal ||
+        removeModalVisible ||
+        confirmState !== null ||
+        manageTarget !== null ||
+        selectedPlayingGame !== null ||
+        selectedScheduledGame !== null
+    );
+    $effect(() => {
+        if (!anyModalOpen) return;
+        const prev = document.body.style.overflow;
+        document.body.style.overflow = 'hidden';
+        return () => { document.body.style.overflow = prev; };
+    });
+    let scheduledGameName = $state('');
+    let scheduledAt = $state('');
+    let minPlayers = $state(2);
+    let maxPlayers = $state(4);
 
     function openScheduledGameModal() {
         showScheduledGameModal = true;
@@ -320,9 +387,9 @@
         scheduledAt = `${year}-${month}-${day}T${hours}:${minutes}`;
     }
 
-    $: filteredScheduledGames = (data.allGames as any[])?.filter((g: any) => 
+    const filteredScheduledGames = $derived((data.allGames as any[])?.filter((g: any) => 
         g.name.toLowerCase().includes(scheduledGameName.toLowerCase())
-    ) || [];
+    ) || []);
 
     function selectScheduledGame(game: any) {
         scheduledGameName = game.name;
@@ -332,13 +399,14 @@
     }
 
     // Custom Dropdown State
-    let dropdownOpen = false;
-    let searchInput: HTMLInputElement;
+    let dropdownOpen = $state(false);
+    let searchInput: HTMLInputElement | undefined = $state();
 
     function toggleDropdown() {
         dropdownOpen = !dropdownOpen;
         if (dropdownOpen && searchInput) {
-            setTimeout(() => searchInput.focus(), 0);
+            const el = searchInput;
+            setTimeout(() => el.focus(), 0);
         }
     }
 
@@ -361,11 +429,12 @@
         }
     }
 
-    $: filteredGames = (data.allGames as any[])?.filter((g: any) => 
+    const filteredGames = $derived((data.allGames as any[])?.filter((g: any) => 
         g.name.toLowerCase().includes(selectedGameName.toLowerCase())
-    ) || [];
+    ) || []);
 
-    $: {
+    // 게임 이름을 고르면 id와 기본 진행시간을 따라 채운다 (부수효과)
+    $effect(() => {
         const libraryGame = (data.allGames as any[])?.find((g: any) => g.name === selectedGameName);
         const historyGame = (data.savedGameNames as any[]).find((g: any) => g.game_name === selectedGameName);
         
@@ -378,7 +447,7 @@
         } else if (!libraryGame) {
             selectedGameId = '';
         }
-    }
+    });
 
     function getTimeRemaining(endTime: string, nowTs: number = Date.now()) {
         const end = new Date(endTime).getTime();
@@ -443,21 +512,9 @@
         is_blacklisted: boolean;
     }
 
-    let attendees: Attendee[];
-    let games: GameSession[];
-    let scheduledGames: GameSession[];
-    let savedMembers: SavedMember[];
 
     const dayNames = ['일', '월', '화', '수', '목', '금', '토'];
 
-    $: attendees = data.attendees as Attendee[];
-    $: allUsers = (data as any).allUsers || [];
-    $: games = data.games as GameSession[];
-    $: scheduledGames = data.scheduledGames as GameSession[];
-    $: savedMembers = data.savedMembers as SavedMember[];
-    // 몇 점부터 예약이 막히는지 — 페널티 숫자는 이 값 없이는 의미를 알 수 없다
-    $: penaltyThreshold = parseInt((data as any).settings?.penalty_threshold ?? '3') || 3;
-    $: noShowLimitMinutes = parseInt((data as any).settings?.no_show_limit_minutes ?? '10') || 10;
 
     /**
      * 대기·승인 큐 — 게임별로 묶는다.
@@ -468,7 +525,7 @@
      * 자동 체크인이 방 재실 여부를 채우므로 attendee_status를 신뢰할 수 있다.
      * 시스템은 판정만 하지 않고, 운영자에게 시점을 알린다.
      */
-    $: queueGroups = (() => {
+    const queueGroups = $derived((() => {
         const rows = ((data as any).reservations || []) as any[];
         type QueueGroup = {
             sessionId: number;
@@ -506,15 +563,20 @@
             g.rows.push({ ...r, overdue: noShowAfter !== null && now > noShowAfter });
         }
         return Array.from(bySession.values());
-    })();
+    })());
 
-    $: queueTotal = queueGroups.reduce((n, g) => n + g.rows.length, 0);
-    $: approvalCount = queueGroups.reduce((n, g) => n + g.rows.filter((r: any) => r.status === 'pending_approval').length, 0);
-    $: overdueCount = queueGroups.reduce((n, g) => n + g.rows.filter((r: any) => r.overdue).length, 0);
+    // 큐 제목의 숫자는 "당신을 기다리는 것"이어야 한다. 이미 확정돼 아무 조치도
+    // 필요 없는 행까지 세면 첫날 들어온 매니저에게 잘못된 멘탈 모델을 가르친다.
+    const isQueueActionable = (r: any) =>
+        r.status === 'pending_approval' || r.status === 'waitlisted' || r.overdue;
+    const queueActionable = $derived(queueGroups.reduce((n, g) => n + g.rows.filter(isQueueActionable).length, 0));
+    const queueSettled = $derived(queueGroups.reduce((n, g) => n + g.rows.filter((r: any) => !isQueueActionable(r)).length, 0));
+    const approvalCount = $derived(queueGroups.reduce((n, g) => n + g.rows.filter((r: any) => r.status === 'pending_approval').length, 0));
+    const overdueCount = $derived(queueGroups.reduce((n, g) => n + g.rows.filter((r: any) => r.overdue).length, 0));
     // 노쇼 후보는 큐 상단으로 — 개입이 필요한 것부터 본다
-    $: queueGroupsSorted = [...queueGroups].sort(
+    const queueGroupsSorted = $derived([...queueGroups].sort(
         (a, b) => Number(b.rows.some((r: any) => r.overdue)) - Number(a.rows.some((r: any) => r.overdue))
-    );
+    ));
 
     const QUEUE_STATUS: Record<string, string> = {
         pending_approval: '승인 대기',
@@ -524,45 +586,48 @@
     };
 
     // 관리 시트가 열려 있으면 최신 참여자 데이터로 동기화
-    $: manageView = manageTarget
+    const manageView = $derived(manageTarget
         ? ((attendees || []).find((x) => x.id === manageTarget!.id) as Attendee | undefined) ?? manageTarget
-        : null;
+        : null);
 
     // 방 현황 요약 스트립
-    $: playingCount = (games || []).length;
-    $: attendeeCount = (attendees || []).length;
+    const attendeeCount = $derived((attendees || []).length);
     // 종료 임박 순 정렬 — "진행 중인 게임" 목록에서 끝나가는 게임을 위로
-    $: playingSorted = [...(games || [])].sort(
+    const playingSorted = $derived([...(games || [])].sort(
         (a, b) => new Date(a.end_time).getTime() - new Date(b.end_time).getTime()
-    );
-    $: nextGameEndTs = (games || []).length
-        ? Math.min(...(games as GameSession[]).map((g) => new Date(g.end_time).getTime()))
-        : null;
-    $: nextEndMins = nextGameEndTs !== null ? Math.round((nextGameEndTs - now) / 60000) : null;
+    ));
+    // playingSorted[0]이 곧 가장 먼저 끝나는 게임이다.
+    // "첫 종료까지 임박"은 어느 게임인지 말해주지 않으면 운영자가 목록을 다시 훑어야 했다.
+    const nextEndingGame = $derived(playingSorted[0] ?? null);
+    // 시간이 지났는데도 playing으로 남은 게임 — 마감 전까지 아무도 닫아주지 않는다
+    const expiredGames = $derived(playingSorted.filter((g) => new Date(g.end_time).getTime() <= now));
+    const liveGames = $derived(playingSorted.filter((g) => new Date(g.end_time).getTime() > now));
+    const nextGameEndTs = $derived(nextEndingGame ? new Date(nextEndingGame.end_time).getTime() : null);
+    const nextEndMins = $derived(nextGameEndTs !== null ? Math.round((nextGameEndTs - now) / 60000) : null);
 
     // 새 게임 참여자 피커
-    $: availableAttendees = (attendees || []).filter((a: Attendee) => !a.is_playing);
-    $: pickerResults = (attendees || []).filter((a: Attendee) => {
+    const availableAttendees = $derived((attendees || []).filter((a: Attendee) => !a.is_playing));
+    const pickerResults = $derived((attendees || []).filter((a: Attendee) => {
         if (!showPlayingInPicker && a.is_playing) return false;
         if (playerSearch && !a.name.toLowerCase().includes(playerSearch.toLowerCase())) return false;
         return true;
-    });
-    $: selectedPlayers = (attendees || []).filter((a: Attendee) => selectedPlayerIds.includes(a.id));
+    }));
+    const selectedPlayers = $derived((attendees || []).filter((a: Attendee) => selectedPlayerIds.includes(a.id)));
 
     // 오늘 갈 예정 merge
-    $: checkedInIds = new Set((attendees || []).map((a: Attendee) => a.id));
-    $: visitPlanIds = new Set(((data as any).dailyVisitPlans || []).map((p: any) => p.attendee_id));
-    $: scheduledVisitors = ((data as any).todayScheduledParticipants || []).filter((p: any) =>
+    const checkedInIds = $derived(new Set((attendees || []).map((a: Attendee) => a.id)));
+    const visitPlanIds = $derived(new Set(((data as any).dailyVisitPlans || []).map((p: any) => p.attendee_id)));
+    const scheduledVisitors = $derived(((data as any).todayScheduledParticipants || []).filter((p: any) =>
         !checkedInIds.has(p.attendee_id) && !visitPlanIds.has(p.attendee_id)
-    );
-    $: mergedVisitPlans = [
+    ));
+    const mergedVisitPlans = $derived([
         ...((data as any).dailyVisitPlans || []),
         ...scheduledVisitors.map((p: any) => ({
             attendee_id: p.attendee_id, name: p.name,
             planned_time: p.planned_time, title_name: p.title_name,
             is_party: p.is_party
         }))
-    ].filter((p: any) => !checkedInIds.has(p.attendee_id));
+    ].filter((p: any) => !checkedInIds.has(p.attendee_id)));
 
     function formatVisitTime(time: string): string {
         if (!time) return '';
@@ -594,27 +659,70 @@
     </div>
 {/snippet}
 
+<!--
+    제목이 없으면 SvelteKit의 aria-live 안내 영역이 이동할 때마다
+    "untitled page"를 읽는다. 방 상태를 제목에 실어 탭만 봐도 알게 한다.
+-->
+<svelte:head>
+    <title>관리자 대시보드 · 방에 {attendeeCount}명{expiredGames.length > 0 ? ` · 정리 대기 ${expiredGames.length}` : ''} — 혼놀 라운지</title>
+</svelte:head>
+
+<!--
+    연결이 끊기면 아래 숫자는 전부 과거다. 색 점 하나로만 알리면 색을 못 보는
+    사람에게는 아무 신호도 아니므로 글로도 말한다.
+-->
+<div class="live-status" role="status" aria-live="polite">
+    {#if !sseConnected}
+        <span class="live-offline">실시간 연결이 끊겼습니다 — 아래 숫자는 갱신되지 않습니다. 다시 연결하는 중…</span>
+    {/if}
+</div>
+
 <!-- 방 현황 — 제품의 존재 이유가 시인성이므로 이 세 숫자가 화면에서 가장 크다 -->
 <section class="room-summary" aria-label="방 현황 요약">
     <div class="rs-stat">
         <span class="rs-label">
-            <span class="rs-dot" class:live={attendeeCount > 0} aria-hidden="true"></span>
+            <!-- 이 점은 연결 표시등처럼 보인다. 실제로 연결 상태를 말하게 한다. -->
+            <span class="rs-dot" class:live={sseConnected} aria-hidden="true"></span>
             지금 방에
         </span>
         <span class="rs-value">{attendeeCount}<span class="rs-unit">명</span></span>
     </div>
     <div class="rs-stat">
         <span class="rs-label">진행 중인 게임</span>
-        <span class="rs-value">{playingCount}<span class="rs-unit">판</span></span>
+        <!-- 끝난 게임은 여기서 빠진다. 세 번째 칸이 정리 대기를 따로 센다. -->
+        <span class="rs-value">{liveGames.length}<span class="rs-unit">판</span></span>
     </div>
-    <div class="rs-stat">
-        <span class="rs-label">첫 종료까지</span>
-        {#if nextEndMins === null}
-            <span class="rs-value rs-value-none">없음</span>
-        {:else if nextEndMins <= 0}
-            <span class="rs-value urgent">임박</span>
+    <!--
+        시간이 지난 게임은 "임박"이 아니라 처리 대기다. 스트립이 그걸 이미 아는데
+        운영자가 목록까지 스크롤해 찾아야 했다. 여기서 바로 닫는다.
+        버튼은 항상 자기가 닫을 게임의 이름을 달고 있으므로, 여러 판이 밀려 있어도
+        누를 때마다 무엇이 끝나는지가 분명하다.
+    -->
+    <div class="rs-stat" class:rs-stat-pending={expiredGames.length > 0}>
+        {#if expiredGames.length > 0}
+            <span class="rs-label">정리 대기</span>
+            <span class="rs-value rs-value-pending">{expiredGames.length}<span class="rs-unit">판</span></span>
+            <form method="POST" action="?/endGame" class="rs-action-form" use:enhance={() => {
+                return async ({ result, update }: { result: any, update: (options?: { reset?: boolean }) => Promise<void> }) => {
+                    if (!reportResult(result)) {
+                        const d = (result?.data as any) ?? {};
+                        toastUndoable(`${d.endedName ?? '게임'} 종료됨 · 승자는 기록하지 않았습니다`, d.undo);
+                    }
+                    await update();
+                };
+            }}>
+                <input type="hidden" name="id" value={expiredGames[0].id} />
+                <button type="submit" class="rs-action">{expiredGames[0].game_name} 종료</button>
+            </form>
         {:else}
-            <span class="rs-value" class:urgent={nextEndMins <= 5}>{nextEndMins}<span class="rs-unit">분</span></span>
+            <span class="rs-label">
+                첫 종료까지{#if nextEndingGame}<span class="rs-label-name" title={nextEndingGame.game_name}>· {nextEndingGame.game_name}</span>{/if}
+            </span>
+            {#if nextEndMins === null}
+                <span class="rs-value rs-value-none">없음</span>
+            {:else}
+                <span class="rs-value" class:urgent={nextEndMins <= 5}>{nextEndMins}<span class="rs-unit">분</span></span>
+            {/if}
         {/if}
     </div>
 </section>
@@ -623,7 +731,8 @@
 <section class="section-primary queue-section" aria-label="대기 및 승인 큐">
     <div class="section-header">
         <h2>
-            대기 · 승인 큐 ({queueTotal})
+            대기 · 승인 큐 ({queueActionable})
+            {#if queueSettled > 0}<span class="count-aside">확정 {queueSettled}</span>{/if}
             {#if approvalCount > 0}<span class="queue-flag approval">승인 대기 {approvalCount}</span>{/if}
             {#if overdueCount > 0}<span class="queue-flag overdue">노쇼 판정 초과 {overdueCount}</span>{/if}
         </h2>
@@ -724,7 +833,9 @@
                                             r.status === 'pending_approval'
                                                 ? `${r.attendee_name}님의 ${g.gameName} 참여 요청을 거절합니다.`
                                                 : `${r.attendee_name}님의 ${g.gameName} 예약을 취소합니다.${g.rows.some((x) => x.status === 'waitlisted') ? ' 대기 1번이 자동으로 승계됩니다.' : ''}`,
-                                        confirmLabel: r.status === 'pending_approval' ? '거절' : '예약 취소',
+                                        // 「취소」와 「예약 취소」가 나란히 서면 한 단어를 공유하며
+                                        // 반대를 뜻한다. 무엇이 사라지는지로 이름을 바꾼다.
+                                        confirmLabel: r.status === 'pending_approval' ? '요청 거절' : '예약 삭제',
                                         danger: true,
                                         success: `${r.attendee_name}님의 ${g.gameName} 예약을 처리했습니다.`
                                     })}
@@ -743,13 +854,18 @@
     {/if}
 </section>
 
-<section class="section-primary">
+<section class="section-primary" aria-labelledby="sec-playing">
     <div class="section-header">
-        <h2>진행 중인 게임 ({(games || []).length})</h2>
+        <h2 id="sec-playing">
+            게임
+            <span class="count-split">
+                진행 중 {liveGames.length}{#if expiredGames.length > 0}<span class="count-pending">&nbsp;· 정리 대기 {expiredGames.length}</span>{/if}
+            </span>
+        </h2>
         <button class="btn-primary" onclick={() => {
             showModal = true;
             selectedGameName = '';
-            selectedDuration = '';
+            selectedDuration = '60';
             selectedGameId = '';
             guestCount = 0;
             dropdownOpen = false;
@@ -760,14 +876,16 @@
     </div>
     <ul class="game-list">
         {#each (showAllPlaying ? playingSorted : playingSorted.slice(0, 5)) as game (game.id)}
-            {@const endingSoon = new Date(game.end_time).getTime() - now < 5 * 60000}
-            <li>
-                <button type="button" class="game-list-item" class:ending-soon={endingSoon} onclick={() => { selectedPlayingGame = game; resetParticipantSearch(); }}>
+            {@const msLeft = new Date(game.end_time).getTime() - now}
+            {@const expired = msLeft <= 0}
+            {@const endingSoon = !expired && msLeft < 5 * 60000}
+            <li class="game-row" class:is-expired={expired}>
+                <button type="button" class="game-list-item" class:ending-soon={endingSoon} class:expired onclick={() => { selectedPlayingGame = game; resetParticipantSearch(); }}>
                     {#if game.image_url}
                         <img src={game.image_url} alt={game.game_name} width="32" height="32" class="list-thumb" />
                     {:else}
                         <div class="list-thumb placeholder" aria-hidden="true">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1"/><circle cx="15.5" cy="15.5" r="1"/><circle cx="15.5" cy="8.5" r="1"/><circle cx="8.5" cy="15.5" r="1"/></svg>
+                            <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1"/><circle cx="15.5" cy="15.5" r="1"/><circle cx="15.5" cy="8.5" r="1"/><circle cx="8.5" cy="15.5" r="1"/></svg>
                         </div>
                     {/if}
                     <span class="list-name">{game.game_name}</span>
@@ -775,6 +893,25 @@
                     <span class="list-meta time-remaining">{getTimeRemaining(game.end_time, now)}</span>
                     <span class="list-arrow" aria-hidden="true">›</span>
                 </button>
+                {#if expired}
+                    <!--
+                        시간이 지나도 게임은 playing으로 남는다 — autoClose는 마감 때만 닫는다.
+                        승자 기록은 선택이므로 여기서 한 번에 닫을 수 있어야 한다.
+                        승자를 남기려면 행을 눌러 종료 모달로 간다.
+                    -->
+                    <form method="POST" action="?/endGame" class="row-end-form" use:enhance={() => {
+                        return async ({ result, update }: { result: any, update: (options?: { reset?: boolean }) => Promise<void> }) => {
+                            if (!reportResult(result)) {
+                                const d = (result?.data as any) ?? {};
+                                toastUndoable(`${d.endedName ?? game.game_name} 종료됨 · 승자는 기록하지 않았습니다`, d.undo);
+                            }
+                            await update();
+                        };
+                    }}>
+                        <input type="hidden" name="id" value={game.id} />
+                        <button type="submit" class="btn-row-end">게임 종료</button>
+                    </form>
+                {/if}
             </li>
         {/each}
         {#if (games || []).length === 0}
@@ -788,8 +925,8 @@
     {/if}
 </section>
 
-<section class="section-primary">
-    <h2>현재 참여 인원 ({(attendees || []).length})</h2>
+<section class="section-primary" aria-labelledby="sec-attendees">
+    <h2 id="sec-attendees">현재 참여 인원 ({(attendees || []).length})</h2>
     <ul class="attendee-list">
         {#each (attendees || []) as attendee (attendee.id)}
             {@const a = attendee as Attendee}
@@ -799,13 +936,17 @@
                         <a href="/admin/attendees/{a.id}" class="attendee-link">{a.name}</a>
                         {#if a.is_blacklisted}
                             <span class="badge blacklist">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:2px; vertical-align:middle;"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
+                                <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:2px; vertical-align:middle;"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
                                 블랙
                             </span>
                         {/if}
+                        {#if a.can_manage_games}
+                            <!-- 게임을 만들 수 있는 사람인지가 시트를 열어야만 보였다 -->
+                            <span class="badge manager">매니저</span>
+                        {/if}
                         {#if a.penalty_points > 0}
                             <span class="badge penalty" class:blocked={a.penalty_points >= penaltyThreshold}>
-                                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:2px; vertical-align:middle;"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                                <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:2px; vertical-align:middle;"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
                                 페널티 {a.penalty_points}/{penaltyThreshold}
                             </span>
                         {/if}
@@ -827,7 +968,7 @@
     <div class="add-row">
         <form method="POST" action="?/addAttendee" use:enhance={pending(undefined, '입장 처리했습니다.')} class="add-form">
             <input type="text" name="name" placeholder="이름 입력" aria-label="추가할 인원 이름" required />
-            <button type="submit">인원 추가</button>
+            <button type="submit" class="btn-primary">인원 추가</button>
         </form>
         <!-- 처음 온 사람은 QR로 직접 가입·입장한다. 그 순간이 바로 여기다. -->
         <a href="/admin/qr" class="btn-qr">
@@ -863,10 +1004,10 @@
     {/if}
 </section>
 
-<section>
+<section aria-labelledby="sec-scheduled">
     <div class="section-header">
-        <h2>
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        <h2 id="sec-scheduled">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
             시작 예정 게임 ({(scheduledGames || []).length})
         </h2>
         <button class="btn-primary" onclick={openScheduledGameModal}>+ 게임 일정 등록</button>
@@ -880,7 +1021,7 @@
                         <img src={g.image_url} alt={g.game_name} width="32" height="32" class="list-thumb" />
                     {:else}
                         <div class="list-thumb placeholder" aria-hidden="true">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1"/><circle cx="15.5" cy="15.5" r="1"/><circle cx="15.5" cy="8.5" r="1"/><circle cx="8.5" cy="15.5" r="1"/></svg>
+                            <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1"/><circle cx="15.5" cy="15.5" r="1"/><circle cx="15.5" cy="8.5" r="1"/><circle cx="8.5" cy="15.5" r="1"/></svg>
                         </div>
                     {/if}
                     <span class="list-name">{g.game_name}</span>
@@ -902,9 +1043,9 @@
 </section>
 
 {#if mergedVisitPlans.length > 0}
-<section class="visit-plan-section">
-    <h2>
-        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+<section class="visit-plan-section" aria-labelledby="sec-visitplan">
+    <h2 id="sec-visitplan">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
         오늘 갈 예정 ({mergedVisitPlans.length})
     </h2>
     <div class="visit-plan-grid">
@@ -938,8 +1079,8 @@
         tabindex="-1"
         aria-label="Close modal"
     >
-        <div class="modal-content" use:trapFocus={() => showModal = false} onclick={handleModalClick} onkeydown={() => {}} role="dialog" aria-modal="true" tabindex="-1">
-            <h2>새 게임 시작</h2>
+        <div class="modal-content" use:trapFocus={() => showModal = false} onclick={handleModalClick} onkeydown={() => {}} role="dialog" aria-labelledby="dlg-new-game" aria-modal="true" tabindex="-1">
+            <h2 id="dlg-new-game">새 게임 시작</h2>
             <form method="POST" action="?/createGame" use:enhance={() => {
                 return async ({ result, update }: { result: any, update: (options?: { reset?: boolean }) => Promise<void> }) => {
                     if (result.type === 'failure' && (result.data as any)?.missing) {
@@ -952,7 +1093,7 @@
             }} class="game-form">
                 <input type="hidden" name="gameId" value={selectedGameId} />
                 <div class="input-group custom-dropdown">
-                    <label class="sr-only" for="newGameName">게임 이름</label>
+                    <label for="newGameName">게임 이름</label>
                     <input 
                         type="text" 
                         id="newGameName"
@@ -982,9 +1123,9 @@
                                         <div class="game-option-info">
                                             <span class="name">{game.name}</span>
                                             <span class="meta">
-                                                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:2px; vertical-align:text-top;"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                                                <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:2px; vertical-align:text-top;"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
                                                 {game.min_players}-{game.max_players}인 | 
-                                                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:2px; vertical-align:text-top;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                                                <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:2px; vertical-align:text-top;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
                                                 {game.playtime_min}분
                                             </span>
                                         </div>
@@ -1002,7 +1143,7 @@
                         id="duration"
                         name="duration" 
                         bind:value={selectedDuration} 
-                        placeholder="분 단위 입력" 
+                        placeholder="예: 90" 
                         required 
                         min="1" 
                         class="duration-input"
@@ -1013,9 +1154,14 @@
                     <div class="pp-head">
                         <span class="pp-label">참여자 ({selectedPlayerIds.length})</span>
                         <div class="pp-head-actions">
-                            {#if availableAttendees.length > 0}
-                                <button type="button" class="btn-mini" onclick={() => selectedPlayerIds = availableAttendees.map((a) => a.id)}>참석자 전원</button>
-                            {/if}
+                            <!-- 조건부로 숨기면 "왜 없지"를 알 수 없다. 못 쓰는 이유를 달고 남긴다. -->
+                            <button
+                                type="button"
+                                class="btn-mini"
+                                disabled={availableAttendees.length === 0}
+                                title={availableAttendees.length === 0 ? '방에 있는 인원이 모두 게임 중입니다' : undefined}
+                                onclick={() => selectedPlayerIds = availableAttendees.map((a) => a.id)}
+                            >참석자 전원</button>
                             {#if selectedPlayerIds.length > 0}
                                 <button type="button" class="btn-ghost" onclick={() => selectedPlayerIds = []}>비우기</button>
                             {/if}
@@ -1037,6 +1183,22 @@
                         </div>
                     {/if}
 
+                    <!--
+                        토글이 목록 아래 텍스트 링크로 있어서, 전원이 게임 중일 때는
+                        틀린 빈 메시지 밑에 있는 링크가 유일한 탈출구였다. 범위를
+                        고르는 장치이므로 목록 위에 둔다.
+                    -->
+                    {#if (attendees || []).some((a) => a.is_playing)}
+                        <div class="pp-scope" role="group" aria-label="참여자 범위">
+                            <button type="button" class="pp-scope-btn" class:active={!showPlayingInPicker}
+                                aria-pressed={!showPlayingInPicker}
+                                onclick={() => showPlayingInPicker = false}>대기 중 {availableAttendees.length}</button>
+                            <button type="button" class="pp-scope-btn" class:active={showPlayingInPicker}
+                                aria-pressed={showPlayingInPicker}
+                                onclick={() => showPlayingInPicker = true}>전체 {(attendees || []).length}</button>
+                        </div>
+                    {/if}
+
                     <input type="text" class="pp-search" placeholder="이름 검색..." aria-label="참여자 이름 검색" autocomplete="off" bind:value={playerSearch} />
 
                     <div class="pp-list">
@@ -1050,13 +1212,21 @@
                             </button>
                         {/each}
                         {#if pickerResults.length === 0}
-                            <p class="hint">일치하는 참여자가 없습니다.</p>
+                            <!--
+                                검색 전인데 "일치하는 참여자가 없습니다"라고 하면 거짓 빈 화면이다.
+                                8명이 3판을 돌리는 저녁에는 그게 기본 상태다.
+                            -->
+                            {#if playerSearch}
+                                <p class="hint">「{playerSearch}」와 일치하는 사람이 없습니다.</p>
+                            {:else if !showPlayingInPicker && (attendees || []).some((a) => a.is_playing)}
+                                <p class="hint">방에 있는 {(attendees || []).length}명이 모두 게임 중입니다. 「전체」로 바꾸면 함께 고를 수 있습니다.</p>
+                            {:else}
+                                <p class="hint">방에 있는 인원이 없습니다. 아래 「게스트 수」로 시작할 수 있습니다.</p>
+                            {/if}
                         {/if}
                     </div>
 
-                    {#if !showPlayingInPicker && (attendees || []).some((a) => a.is_playing)}
-                        <button type="button" class="pp-toggle" onclick={() => showPlayingInPicker = true}>게임 중인 인원도 보기</button>
-                    {/if}
+
                 </div>
 
                 <div class="input-group guest-input-group">
@@ -1085,22 +1255,27 @@
         tabindex="-1"
         aria-label="Close modal"
     >
-        <div class="modal-content" use:trapFocus={() => endGameModalVisible = false} onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="dialog" aria-modal="true" tabindex="-1">
+        <div class="modal-content" use:trapFocus={() => endGameModalVisible = false} onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="dialog" aria-labelledby="dlg-end-game" aria-modal="true" tabindex="-1">
 
-            <h2>
-                <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:#fab005;"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>
-                게임 종료 및 승자 선택
+            <h2 id="dlg-end-game">
+                <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:#fab005;"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>
+                게임 종료
             </h2>
             <p><strong>{selectedEndGame.game_name}</strong> 게임을 종료합니다.</p>
-            <p>승리한 플레이어를 선택해주세요 (복수 선택 가능):</p>
-            
+            <p>승자와 점수는 선택입니다. 비워두고 종료해도 됩니다.</p>
+
+            <!--
+                문구는 서버가 실제로 기록한 것을 따른다. 예전에는 승자를 아무도
+                고르지 않아도 "승자가 기록되었습니다"라고 알렸다.
+            -->
             <form method="POST" action="?/endGame" use:enhance={() => {
                 return async ({ result, update }: { result: any, update: (options?: { reset?: boolean }) => Promise<void> }) => {
-                    if (result.type === 'failure' && (result.data as any)?.missing) {
-                        showAlert('승리한 플레이어를 한 명 이상 선택해주세요.', 'error');
-                    } else if (!reportResult(result)) {
+                    if (!reportResult(result)) {
                         endGameModalVisible = false;
-                        showAlert('게임이 종료되고 승자가 기록되었습니다.', 'success');
+                        const d = (result?.data as any) ?? {};
+                        showToast(d.hadWinners
+                            ? `${d.endedName ?? '게임'} 종료됨 · 승자를 기록했습니다`
+                            : `${d.endedName ?? '게임'} 종료됨 · 승자는 기록하지 않았습니다`);
                     }
                     await update();
                 };
@@ -1118,7 +1293,7 @@
                                     {#if pl.is_guest}<span class="guest-badge">G</span>{/if}
                                 </span>
                                 <span class="medal">
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="7"/><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"/></svg>
+                                    <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="7"/><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"/></svg>
                                 </span>
                             </label>
                             <input type="number" name="score_{pl.id}" placeholder="점수" aria-label="{pl.name} 점수" class="score-input" />
@@ -1128,7 +1303,7 @@
 
                 <div class="modal-actions">
                     <button type="button" onclick={() => endGameModalVisible = false} class="btn-cancel">취소</button>
-                    <button type="submit" class="btn-primary">종료 및 저장</button>
+                    <button type="submit" class="btn-primary">게임 종료</button>
                 </div>
             </form>
         </div>
@@ -1142,8 +1317,8 @@
     <div
         class="modal-backdrop modal-layer-confirm"
         onclick={closeConfirm} role="presentation">
-        <div class="modal-content confirm-modal" use:trapFocus={closeConfirm} onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="alertdialog" aria-modal="true" tabindex="-1">
-            <h3>{confirmState.title}</h3>
+        <div class="modal-content confirm-modal" use:trapFocus={closeConfirm} onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="alertdialog" aria-labelledby="dlg-confirm" aria-modal="true" tabindex="-1">
+            <h3 id="dlg-confirm">{confirmState.title}</h3>
             <p>{confirmState.message}</p>
             <div class="modal-actions">
                 <button class="btn-cancel" data-autofocus onclick={closeConfirm}>취소</button>
@@ -1165,8 +1340,8 @@
         tabindex="-1"
         aria-label="관리 닫기"
     >
-        <div class="modal-content manage-sheet" use:trapFocus={() => manageTarget = null} onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="dialog" aria-modal="true" tabindex="-1">
-            <h3>{m.name} 관리</h3>
+        <div class="modal-content manage-sheet" use:trapFocus={() => manageTarget = null} onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="dialog" aria-labelledby="dlg-manage" aria-modal="true" tabindex="-1">
+            <h3 id="dlg-manage">{m.name} 관리</h3>
 
             <div class="manage-row manage-row-stacked">
                 <div class="manage-label">
@@ -1292,8 +1467,8 @@
         tabindex="-1"
         aria-label="Close confirm"
     >
-        <div class="modal-content confirm-modal" use:trapFocus={() => removeModalVisible = false} onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="dialog" aria-modal="true" tabindex="-1">
-            <h3>참여자 퇴장 확인</h3>
+        <div class="modal-content confirm-modal" use:trapFocus={() => removeModalVisible = false} onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="dialog" aria-labelledby="dlg-remove" aria-modal="true" tabindex="-1">
+            <h3 id="dlg-remove">참여자 퇴장 확인</h3>
             <p><strong>{removeTarget.name}</strong>님은 현재 <strong>{removeTarget.game_name}</strong> 게임에 참여 중입니다.</p>
             <p>어떻게 처리하시겠습니까?</p>
             
@@ -1336,10 +1511,10 @@
         tabindex="-1"
         aria-label="Close modal"
     >
-        <div class="modal-content" use:trapFocus={() => showScheduledGameModal = false} onclick={handleModalClick} onkeydown={() => {}} role="dialog" aria-modal="true" tabindex="-1">
+        <div class="modal-content" use:trapFocus={() => showScheduledGameModal = false} onclick={handleModalClick} onkeydown={() => {}} role="dialog" aria-labelledby="dlg-schedule" aria-modal="true" tabindex="-1">
 
-            <h2>
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            <h2 id="dlg-schedule">
+                <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
                 게임 일정 등록
             </h2>
             <form method="POST" action="?/createScheduledGame" use:enhance={() => {
@@ -1383,9 +1558,9 @@
                                         <div class="game-option-info">
                                             <span class="name">{game.name}</span>
                                             <span class="meta">
-                                                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:2px; vertical-align:text-top;"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                                                <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:2px; vertical-align:text-top;"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
                                                 {game.min_players}-{game.max_players}인 | 
-                                                <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:2px; vertical-align:text-top;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                                                <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:2px; vertical-align:text-top;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
                                                 {game.playtime_min}분
                                             </span>
                                         </div>
@@ -1442,13 +1617,13 @@
     <!-- 백드롭은 편의용 클릭 영역. 키보드 경로는 모달의 Escape(trapFocus)와 닫기 버튼이 담당한다. -->
     <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
     <div class="modal-backdrop" onclick={() => selectedScheduledGame = null} onkeydown={(e) => e.key === 'Escape' && (selectedScheduledGame = null)} role="button" tabindex="-1" aria-label="Close modal">
-        <div class="modal-content game-detail-modal" use:trapFocus={() => selectedScheduledGame = null} onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="dialog" aria-modal="true" tabindex="-1">
+        <div class="modal-content game-detail-modal" use:trapFocus={() => selectedScheduledGame = null} onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="dialog" aria-labelledby="dlg-scheduled-detail" aria-modal="true" tabindex="-1">
             <div class="detail-header">
                 {#if g.image_url}
                     <img src={g.image_url} alt={g.game_name} width="56" height="56" class="detail-thumb" />
                 {/if}
                 <div>
-                    <h3>{g.game_name}</h3>
+                    <h3 id="dlg-scheduled-detail">{g.game_name}</h3>
                     <p class="detail-sub">예정: <strong>{formatScheduledTime(g.scheduled_at)}</strong></p>
                     <p class="detail-sub">인원: 최소 {g.min_players} / 최대 {g.max_players}</p>
                 </div>
@@ -1512,7 +1687,7 @@
                     <button type="submit" class="btn-delete" style="width:100%;">게임 폭파</button>
                 </form>
             </div>
-            <button class="btn-cancel" style="width:100%; margin-top:0.75rem;" onclick={() => selectedScheduledGame = null}>닫기</button>
+            <button class="btn-sheet-close" onclick={() => selectedScheduledGame = null}>닫기</button>
         </div>
     </div>
 {/if}
@@ -1520,18 +1695,22 @@
 <!-- Playing Game Detail Modal -->
 {#if selectedPlayingGame}
     {@const g = selectedPlayingGame}
+    {@const msLeft = new Date(g.end_time).getTime() - now}
     <!-- 백드롭은 편의용 클릭 영역. 키보드 경로는 모달의 Escape(trapFocus)와 닫기 버튼이 담당한다. -->
     <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
     <div class="modal-backdrop" onclick={() => selectedPlayingGame = null} onkeydown={(e) => e.key === 'Escape' && (selectedPlayingGame = null)} role="button" tabindex="-1" aria-label="Close modal">
-        <div class="modal-content game-detail-modal" use:trapFocus={() => selectedPlayingGame = null} onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="dialog" aria-modal="true" tabindex="-1">
+        <div class="modal-content game-detail-modal" use:trapFocus={() => selectedPlayingGame = null} onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="dialog" aria-labelledby="dlg-playing" aria-modal="true" tabindex="-1">
             <div class="detail-header">
                 {#if g.image_url}
                     <img src={g.image_url} alt={g.game_name} width="56" height="56" class="detail-thumb" />
                 {/if}
                 <div>
-                    <h3>{g.game_name}</h3>
+                    <h3 id="dlg-playing">{g.game_name}</h3>
                     <p class="detail-sub">종료 예정: {formatTime(g.end_time)}</p>
-                    <p class="detail-sub time-remaining">{getTimeRemaining(g.end_time, now)}</p>
+                    <!-- 행은 틴트로 긴박함을 말하는데 드릴인하면 그 상태가 버려졌다 -->
+                    <p class="detail-sub time-remaining" class:is-expired={msLeft <= 0} class:is-soon={msLeft > 0 && msLeft < 5 * 60000}>
+                        {getTimeRemaining(g.end_time, now)}
+                    </p>
                 </div>
             </div>
             <div class="detail-section">
@@ -1559,10 +1738,11 @@
                     };
                 }} class="detail-form-row">
                     <input type="hidden" name="sessionId" value={g.id} />
-                    <button type="submit" class="btn-mini btn-guest" style="width:100%;">게스트 추가</button>
+                    <button type="submit" class="btn-mini btn-guest">게스트 추가</button>
                 </form>
-                <hr class="detail-divider" />
-                <div class="detail-form-row" style="gap:0.5rem;">
+                <div class="detail-group">
+                    <span class="detail-group-label">시간 조정</span>
+                    <div class="detail-extend-row">
                     <form method="POST" action="?/extendGame" use:enhance={pending(() => {
                         return async ({ result, update }: any) => {
                             reportResult(result);
@@ -1585,18 +1765,25 @@
                         <input type="hidden" name="minutes" value="30" />
                         <button type="submit" class="btn-extend" style="width:100%;">+30분</button>
                     </form>
+                    </div>
                 </div>
-                <button class="btn-end-session" style="width:100%;" onclick={() => { openEndGameModal(g); selectedPlayingGame = null; }}>게임 종료</button>
+                <!--
+                    「+30분」과 「게임 종료」가 8px 간격 전폭 바로 붙어 있었다.
+                    한 손으로 폰을 볼 때 오탭 한 번이면 두 시간짜리 게임이 끝난다.
+                    구분선으로 끊고, 되돌릴 수 없는 것만 이 아래에 둔다.
+                -->
+                <hr class="detail-divider" />
+                <button class="btn-end-session" onclick={() => { openEndGameModal(g); selectedPlayingGame = null; }}>게임 종료</button>
             </div>
-            <button class="btn-cancel" style="width:100%; margin-top:0.75rem;" onclick={() => selectedPlayingGame = null}>닫기</button>
+            <button class="btn-sheet-close" onclick={() => selectedPlayingGame = null}>닫기</button>
         </div>
     </div>
 {/if}
 
 <style>
     section {
-        margin-bottom: 2rem;
-        padding: 1.5rem;
+        margin-bottom: var(--space-6);
+        padding: var(--space-5);
         border: 1px solid var(--border-light);
         border-radius: var(--radius-control);
         background: var(--bg-primary);
@@ -1614,7 +1801,7 @@
     /* 라이브 블록 우위 */
     .section-primary {
         background: var(--bg-primary);
-        border-color: #e0e0e0;
+        border-color: var(--border-default);
     }
 
     /* 저빈도 관리 섹션 — 기본 접힘 */
@@ -1640,6 +1827,7 @@
         display: inline-flex;
         align-items: center;
         gap: var(--space-1);
+        min-width: 0;
         font-size: var(--text-xs);
         font-weight: var(--weight-medium);
         color: var(--text-secondary);
@@ -1660,12 +1848,88 @@
     .rs-value-none {
         color: var(--text-secondary);
     }
+    .rs-value-pending {
+        color: var(--color-orange-text);
+    }
+    .rs-stat-pending .rs-unit {
+        color: var(--color-orange-text);
+    }
+    .rs-action-form {
+        margin-top: var(--space-2);
+    }
+    .rs-action {
+        min-height: 36px;
+        max-width: 100%;
+        padding: 0 var(--space-3);
+        border: 1px solid var(--color-orange-text);
+        border-radius: var(--radius-control);
+        background: var(--bg-primary);
+        color: var(--color-orange-text);
+        font-size: var(--text-sm);
+        font-weight: var(--weight-medium);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        cursor: pointer;
+    }
+    .rs-action:hover {
+        background: var(--color-warning-bg);
+    }
+    /* 3열 안에서는 버튼이 「스플렌더…」로 잘려 무엇을 끝내는지 말하지 못한다.
+       이름을 잃으면 여러 판이 밀렸을 때 누를 때마다 무엇이 끝나는지 알 수 없다.
+       좁은 화면에서는 이 칸만 한 줄을 차지한다. */
+    @media (max-width: 560px) {
+        .rs-stat-pending {
+            grid-column: 1 / -1;
+        }
+    }
+    /* 제목 옆 숫자 분해. 제목만큼 크면 제목이 아니게 된다. */
+    .count-split {
+        font-size: var(--text-sm);
+        font-weight: var(--weight-medium);
+        color: var(--text-secondary);
+        margin-left: var(--space-2);
+    }
+    .count-pending {
+        color: var(--color-orange-text);
+    }
+    .count-aside {
+        font-size: var(--text-xs);
+        font-weight: var(--weight-regular, 400);
+        color: var(--text-secondary);
+        margin-left: var(--space-2);
+    }
+    /* 3열 스트립에 게임 이름까지 넣으면 좁은 화면에서 레이블이 두 줄로 깨진다.
+       바로 아래 「진행 중인 게임」 목록이 같은 이름을 이미 보여준다. */
+    @media (max-width: 560px) {
+        .rs-label-name {
+            display: none;
+        }
+    }
+    .rs-label-name {
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        font-weight: var(--weight-regular, 400);
+    }
     .rs-dot {
         width: 8px;
         height: 8px;
         border-radius: var(--radius-pill);
         background: var(--text-muted);
         flex-shrink: 0;
+    }
+    .live-offline {
+        display: block;
+        margin-bottom: var(--space-3);
+        padding: var(--space-2) var(--space-3);
+        border: 1px solid var(--color-orange-text);
+        border-radius: var(--radius-control);
+        background: var(--color-warning-bg);
+        color: var(--color-orange-text);
+        font-size: var(--text-sm);
+        font-weight: var(--weight-medium);
     }
     .rs-dot.live {
         background: var(--color-green-dark);
@@ -1677,9 +1941,9 @@
 
     .btn-ghost {
         background: none;
-        border: 1px solid var(--border-medium);
+        border: 1px solid var(--border-control);
         color: var(--text-secondary);
-        padding: 0.25rem 0.5rem;
+        padding: var(--space-1) var(--space-2);
         border-radius: var(--radius-control);
         cursor: pointer;
     }
@@ -1691,7 +1955,7 @@
         background: var(--color-blue-bright);
         color: white;
         border: none;
-        padding: 0.5rem 1.25rem;
+        padding: var(--space-2) 1.25rem;
         border-radius: var(--radius-control);
         cursor: pointer;
         font-weight: 700;
@@ -1700,7 +1964,7 @@
         background: var(--color-red-dark);
     }
     .btn-confirm-action.danger:hover {
-        background: #b71c1c;
+        background: var(--color-red-darker);
     }
 
     .attendee-list {
@@ -1711,14 +1975,14 @@
         display: flex;
         justify-content: space-between;
         align-items: center;
-        gap: 0.75rem;
-        padding: 0.5rem;
+        gap: var(--space-3);
+        padding: var(--space-2);
         border-bottom: 1px solid var(--border-default);
     }
     .attendee-info {
         display: flex;
         align-items: center;
-        gap: 0.5rem;
+        gap: var(--space-2);
         min-width: 0;
     }
     .attendee-link {
@@ -1742,7 +2006,7 @@
         font-size: var(--text-xs);
         color: var(--text-secondary);
         font-variant-numeric: var(--numeric);
-        background: #eee;
+        background: var(--border-light);
         padding: 0.1rem 0.4rem;
         border-radius: var(--radius-control);
     }
@@ -1763,7 +2027,7 @@
         gap: var(--space-2);
         min-height: 44px;
         padding: 0 var(--space-3);
-        border: 1px solid var(--border-medium);
+        border: 1px solid var(--border-control);
         border-radius: var(--radius-control);
         background: var(--bg-primary);
         color: var(--text-primary);
@@ -1775,17 +2039,75 @@
     .btn-qr:hover {
         background: var(--bg-hover);
     }
-    .add-form, .game-form {
-        margin-top: 1rem;
+    /* .add-form은 「인원 추가」 같은 한 줄짜리 인라인 폼이고,
+       .game-form은 모달 안의 여러 필드를 쌓는 세로 폼이다. 같은 가로 flex
+       규칙을 공유하는 바람에 모달 폼의 필드들이 한 줄에 눌려, 게임 이름
+       입력이 162x23px까지 찌그러지고 placeholder가 잘렸다. */
+    .add-form {
+        margin-top: var(--space-4);
         display: flex;
-        gap: 0.5rem;
+        gap: var(--space-2);
         flex-wrap: wrap;
     }
+    /* 테두리가 유일한 경계다. 전역 #ddd로는 흰 배경에서 1.36:1이었다. */
+    .add-form input {
+        min-height: 44px;
+        padding: 0 var(--space-3);
+        border: 1px solid var(--border-control);
+        border-radius: var(--radius-control);
+        background: var(--bg-primary);
+        color: var(--text-primary);
+    }
+    .game-form {
+        margin-top: var(--space-4);
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-4);
+    }
+    .game-form .input-group {
+        margin-bottom: 0;
+    }
+    .game-form label:not(.sr-only):not(.checkbox-option) {
+        display: block;
+        margin-bottom: var(--space-1);
+        font-size: var(--text-sm);
+        font-weight: var(--weight-medium);
+        color: var(--text-primary);
+    }
+    /* 모달 안 입력 높이는 한 가지다 — 23 / 32 / 35 / 44px가 섞여 있었다. */
+    .game-form input[type='text'],
+    .game-form input[type='number'],
+    .game-form input[type='datetime-local'] {
+        width: 100%;
+        box-sizing: border-box;
+        min-height: 44px;
+        padding: 0 var(--space-3);
+        border: 1px solid var(--border-control);
+        border-radius: var(--radius-control);
+        font-size: var(--text-sm);
+        font-family: inherit;
+        color: var(--text-primary);
+        background: var(--bg-primary);
+    }
+    /* 숫자 몇 자리만 받는 칸은 폭까지 늘릴 이유가 없다 */
+    .game-form input.number-input,
+    .game-form input.duration-input {
+        width: 6.5rem;
+    }
+    .game-form .pp-search {
+        min-height: 44px;
+    }
+    /* 최소·최대 인원은 한 쌍이다. 규칙이 아예 없어서 세로로 흩어져 있었다. */
+    .player-limits {
+        display: flex;
+        gap: var(--space-4);
+    }
     .quick-add {
-        margin-top: 1.5rem;
-        padding-top: 1rem;
+        margin-top: var(--space-5);
+        padding-top: var(--space-4);
         border-top: 1px dashed var(--border-default);
     }
+
     /* 접기 표시는 details > summary 와 같은 방식으로 한 번만 정의한다 */
     .toggle-header::after {
         content: '▾';
@@ -1797,98 +2119,133 @@
     .toggle-header[aria-expanded='false']::after {
         transform: rotate(-90deg);
     }
+    /* 목록을 펼치는 장치이지 무언가를 만드는 버튼이 아니다. 전역 규칙에 기대
+       파란 primary로 렌더됐고, hover는 파란 배경 위에 파란 글자를 얹어
+       레이블이 사라졌다(1:1). 텍스트 disclosure로 되돌린다. */
     .toggle-header {
         cursor: pointer;
         user-select: none;
         display: flex;
         align-items: center;
-        gap: 0.25rem;
+        gap: var(--space-1);
+        color: var(--text-secondary);
+        font-weight: var(--weight-medium);
     }
     .toggle-header:hover {
-        color: var(--color-blue-bright);
+        background: var(--bg-hover);
+        color: var(--text-primary);
     }
     .quick-add .toggle-header {
         font-size: var(--text-sm);
-        margin-bottom: 0.5rem;
+        margin-bottom: var(--space-2);
     }
     .member-chips {
         display: flex;
         flex-wrap: wrap;
-        gap: 0.5rem;
+        gap: var(--space-2);
     }
     .chip-container {
         display: flex;
         align-items: center;
-        background: #e0e0e0;
+        background: var(--bg-active);
         border-radius: var(--radius-card);
-        padding-left: 0.75rem;
+        padding-left: var(--space-3);
         overflow: hidden;
     }
     .chip-link {
         text-decoration: none;
         color: var(--text-primary);
         font-size: var(--text-sm);
-        margin-right: 0.5rem;
+        margin-right: var(--space-2);
     }
     .chip-link:hover {
         text-decoration: underline;
         color: var(--color-blue-bright);
     }
     .chip-add {
-        background: #bdbdbd;
+        background: var(--color-slate);
         color: var(--text-primary);
         border: none;
-        padding: 0.25rem 0.6rem;
+        padding: var(--space-1) 0.6rem;
         font-size: var(--text-sm);
         cursor: pointer;
         transition: background 0.2s;
         border-left: 1px solid var(--border-medium);
     }
     .chip-add:hover {
-        background: #a0a0a0;
+        background: var(--color-slate-dark);
+        color: var(--bg-primary);
     }
     .btn-delete {
         background: var(--color-red-dark);
         color: white;
         border: none;
-        padding: 0.25rem 0.5rem;
+        padding: var(--space-1) var(--space-2);
         border-radius: var(--radius-control);
         cursor: pointer;
     }
     /* 파괴적이지 않은 세션 종료 — 빨강과 구분 */
-    .btn-end-session {
-        background: #495057;
-        color: white;
+    /* 시트를 닫는 것은 아무 일도 하지 않는다. 전폭 회색 채움은 그보다 무겁게 읽혔다. */
+    .btn-sheet-close {
+        width: 100%;
+        margin-top: var(--space-3);
+        padding: var(--space-3);
+        background: none;
         border: none;
-        padding: 0.5rem 1rem;
+        color: var(--text-secondary);
+        font-weight: var(--weight-medium);
+        cursor: pointer;
+    }
+    .btn-sheet-close:hover {
+        background: var(--bg-hover);
+        color: var(--text-primary);
+    }
+
+    /* 되돌릴 수 없는 유일한 동작. 이 모달에서 강한 색을 쓰는 것은 이것뿐이다. */
+    .btn-end-session {
+        width: 100%;
+        background: var(--bg-primary);
+        color: var(--color-red-dark);
+        border: 1px solid var(--color-red-dark);
+        padding: var(--space-3) var(--space-4);
         border-radius: var(--radius-control);
         cursor: pointer;
         font-weight: 700;
     }
     .btn-end-session:hover {
-        background: #343a40;
+        background: var(--color-error-bg);
     }
     .btn-warning {
         background: var(--color-warning-bg);
         color: var(--text-darker);
         border: 1px solid var(--border-warning);
-        padding: 0.25rem 0.5rem;
+        padding: var(--space-1) var(--space-2);
         border-radius: var(--radius-control);
         cursor: pointer;
     }
+    /* 모든 <button>이 파란 CTA였다. primary가 기본값이면 아무것도 primary가
+       아니다 — 「저장된 멤버」 펼치기 토글까지 「+ 새 게임 시작」과 같은 무게로
+       렌더됐다. 여기서는 형태만 맞추고, 색은 역할이 요구할 때만 준다. */
     button {
-        padding: 0.5rem 1rem;
-        background: var(--color-blue-bright);
-        color: white;
+        padding: var(--space-2) var(--space-4);
+        background: none;
+        color: inherit;
         border: none;
         border-radius: var(--radius-control);
         cursor: pointer;
+        font-family: inherit;
+        font-size: var(--text-sm);
         text-decoration: none;
         display: inline-block;
     }
+    /* 비활성은 opacity로 흐리지 않는다. 배경과 곱해져 대비를 예측할 수 없게
+       떨어뜨리고, 운영자가 "무엇이 막혔는지" 읽지 못한다. 명시적인 무채색 조합으로
+       비활성을 알리되 레이블은 계속 읽히게 한다(var(--text-secondary) on var(--bg-hover) = 4.84:1). */
     button:disabled {
         cursor: default;
-        opacity: 0.55;
+        background: var(--bg-hover);
+        color: var(--text-secondary);
+        border-color: var(--border-medium);
     }
     button:global([aria-busy="true"]) {
         cursor: progress;
@@ -1896,36 +2253,36 @@
     .player-select {
         width: 100%;
         display: flex;
-        gap: 1rem;
+        gap: var(--space-4);
         flex-wrap: wrap;
-        margin: 1rem 0;
+        margin: var(--space-4) 0;
     }
     .time-remaining {
         font-weight: bold;
-        color: #c2410c;
-        margin-left: 0.5rem;
+        color: var(--color-orange-text);
+        margin-left: var(--space-2);
         white-space: nowrap;
     }
     .status-text {
         font-size: var(--text-xs);
         color: var(--color-orange);
-        margin-left: 0.25rem;
+        margin-left: var(--space-1);
     }
 
     /* 새 게임 참여자 피커 */
     .player-picker {
         width: 100%;
-        margin: 1rem 0;
+        margin: var(--space-4) 0;
         border: 1px solid var(--border-default);
         border-radius: var(--radius-control);
-        padding: 0.75rem;
+        padding: var(--space-3);
     }
     .pp-head {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        gap: 0.5rem;
-        margin-bottom: 0.5rem;
+        gap: var(--space-2);
+        margin-bottom: var(--space-2);
     }
     .pp-label {
         font-weight: 600;
@@ -1939,14 +2296,14 @@
         display: flex;
         flex-wrap: wrap;
         gap: 0.35rem;
-        margin-bottom: 0.5rem;
+        margin-bottom: var(--space-2);
     }
     .pp-chip {
         display: inline-flex;
         align-items: center;
         gap: 0.3rem;
-        background: #e7f1ff;
-        color: #0b5ed7;
+        background: var(--color-info-bg);
+        color: var(--color-blue-bright);
         border-radius: var(--radius-card);
         padding: 0.15rem 0.3rem 0.15rem 0.6rem;
         font-size: var(--text-sm);
@@ -1955,10 +2312,10 @@
         all: unset;
         cursor: pointer;
         line-height: 1;
-        padding: 0 0.25rem;
+        padding: 0 var(--space-1);
         border-radius: 50%;
         font-size: var(--text-sm);
-        color: #0b5ed7;
+        color: var(--color-blue-bright);
     }
     .pp-chip button:hover {
         background: rgba(11, 94, 215, 0.15);
@@ -1966,13 +2323,13 @@
     .pp-search {
         width: 100%;
         box-sizing: border-box;
-        padding: 0.4rem 0.5rem;
-        border: 1px solid var(--border-default);
+        padding: 0.4rem var(--space-2);
+        border: 1px solid var(--border-control);
         border-radius: var(--radius-control);
         font-size: var(--text-sm);
     }
     .pp-list {
-        margin-top: 0.5rem;
+        margin-top: var(--space-2);
         max-height: 180px;
         overflow-y: auto;
         display: flex;
@@ -1983,52 +2340,84 @@
         box-sizing: border-box;
         display: flex;
         align-items: center;
-        gap: 0.5rem;
+        gap: var(--space-2);
         width: 100%;
-        padding: 0.4rem 0.5rem;
+        padding: 0.4rem var(--space-2);
         cursor: pointer;
         border-radius: var(--radius-control);
         font-size: var(--text-sm);
     }
     .pp-option:hover:not(:disabled),
     .pp-option:focus-visible {
-        background: #f1f3f5;
+        background: var(--bg-tertiary);
     }
     .pp-option.checked {
-        background: #e7f1ff;
-        color: #0b5ed7;
+        background: var(--color-info-bg);
+        color: var(--color-blue-bright);
         font-weight: 600;
     }
     .pp-option:disabled {
-        color: var(--text-muted);
+        color: var(--text-secondary);
         cursor: not-allowed;
     }
+    /* 체크 표시만 있으면 고르지 않은 행은 그냥 텍스트로 보인다.
+       빈 상자를 항상 그려 "고를 수 있는 목록"임을 알린다. */
     .pp-check {
-        width: 1rem;
-        text-align: center;
-        color: #0b5ed7;
+        width: 1.1rem;
+        height: 1.1rem;
+        flex-shrink: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid var(--border-medium);
+        border-radius: 3px;
+        background: var(--bg-primary);
+        font-size: var(--text-xs);
+        line-height: 1;
+        color: var(--color-blue-bright);
+    }
+    .pp-option.checked .pp-check {
+        border-color: var(--color-blue-bright);
+    }
+    .pp-option:disabled .pp-check {
+        background: var(--bg-hover);
+        border-color: var(--border-medium);
     }
     .pp-name {
         flex: 1;
     }
-    .pp-toggle {
-        all: unset;
-        cursor: pointer;
-        display: block;
-        margin-top: 0.5rem;
-        font-size: var(--text-sm);
-        color: #0b5ed7;
+    /* 범위 세그먼트 — 목록이 무엇을 보여주는지가 목록 위에서 결정된다 */
+    .pp-scope {
+        display: flex;
+        gap: 2px;
+        padding: 2px;
+        margin-bottom: var(--space-2);
+        border: 1px solid var(--border-control);
+        border-radius: var(--radius-control);
+        background: var(--bg-surface);
     }
-    .pp-toggle:hover {
-        text-decoration: underline;
+    .pp-scope-btn {
+        flex: 1;
+        min-height: 36px;
+        border: none;
+        border-radius: 4px;
+        background: none;
+        color: var(--text-secondary);
+        font-size: var(--text-sm);
+        font-weight: var(--weight-medium);
+        cursor: pointer;
+    }
+    .pp-scope-btn.active {
+        background: var(--bg-primary);
+        color: var(--text-primary);
     }
     .section-header {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        margin-bottom: 1rem;
-        border-bottom: 2px solid #e0e0e0;
-        padding-bottom: 0.5rem;
+        margin-bottom: var(--space-4);
+        border-bottom: 2px solid var(--border-default);
+        padding-bottom: var(--space-2);
     }
     .section-header h2 {
         margin: 0;
@@ -2039,13 +2428,13 @@
         background: var(--color-blue-bright);
         color: white;
         border: none;
-        padding: 0.75rem 1.5rem;
+        padding: var(--space-3) var(--space-5);
         border-radius: var(--radius-control);
         cursor: pointer;
         font-weight: bold;
     }
     .btn-cancel {
-        background: #ccc;
+        background: var(--border-medium);
         color: var(--text-primary);
     }
     /* 모달 계층 — 시트 위에 확인, 확인 위에 결과 알림.
@@ -2065,7 +2454,7 @@
     }
     .modal-content {
         background: var(--bg-primary);
-        padding: 2rem;
+        padding: var(--space-6);
         border-radius: var(--radius-card);
         width: 100%;
         max-width: 500px;
@@ -2077,7 +2466,7 @@
         margin-top: 0;
         display: flex;
         align-items: center;
-        gap: 0.75rem;
+        gap: var(--space-3);
     }
     .confirm-modal {
         max-width: 400px;
@@ -2085,22 +2474,22 @@
     .modal-actions {
         display: flex;
         justify-content: flex-end;
-        gap: 1rem;
-        margin-top: 1.5rem;
+        gap: var(--space-4);
+        margin-top: var(--space-5);
     }
     .column-actions {
         flex-direction: column;
-        gap: 0.5rem;
+        gap: var(--space-2);
     }
     .full-width {
         width: 100%;
-        padding: 0.75rem;
+        padding: var(--space-3);
         font-size: var(--text-base);
     }
     .empty-state {
-        color: #6b7280;
+        color: var(--text-secondary);
         text-align: center;
-        padding: 2rem;
+        padding: var(--space-6);
         background: rgba(255, 255, 255, 0.5);
         border-radius: var(--radius-control);
         list-style: none;
@@ -2109,7 +2498,7 @@
         /* 행 액션이 「관리」 하나뿐이라 줄을 따로 쓸 이유가 없다.
            세로로 쌓으면 한 행이 90px까지 커져 목록 스캔이 나빠진다. */
         .attendee-list li {
-            gap: 0.5rem;
+            gap: var(--space-2);
         }
         .attendee-info {
             min-width: 0;
@@ -2120,14 +2509,14 @@
         }
         .btn-delete {
             width: 100%; /* Keep specific override or reset if needed */
-            margin-top: 0.5rem;
+            margin-top: var(--space-2);
         }
     }
     .winner-option {
         display: flex;
         align-items: center;
-        gap: 0.5rem;
-        padding: 0.75rem;
+        gap: var(--space-2);
+        padding: var(--space-3);
         border: 1px solid var(--border-default);
         border-radius: var(--radius-control);
         cursor: pointer;
@@ -2137,8 +2526,8 @@
         background: var(--bg-surface);
     }
     .winner-option:has(input:checked) {
-        background: #fff8e1;
-        border-color: #ffc107;
+        background: var(--color-warning-bg);
+        border-color: var(--color-amber-dark);
     }
     .winner-option .player-name {
         flex: 1;
@@ -2156,7 +2545,7 @@
     .name-row {
         display: flex;
         align-items: center;
-        gap: 0.5rem;
+        gap: var(--space-2);
         min-width: 0;
     }
     .name-row .attendee-link {
@@ -2173,9 +2562,15 @@
     }
     /* 블랙리스트는 경고가 아니라 하드 블록이다. 페널티 배지와 절대 같은
        공식(연한 배경 + 빨강 아웃라인)을 쓰지 않는다 — 처방이 서로 다르다. */
+    /* 매니저는 게임을 만들 수 있는 사람이다. 페널티·블랙과 달리 경고가 아니므로
+       중립 톤으로 둔다. */
+    .badge.manager {
+        background: var(--tint-blue-bg);
+        color: var(--color-blue-bright);
+    }
     .badge.blacklist {
         background: var(--color-red-dark);
-        color: #fff;
+        color: var(--bg-primary);
         border: 1px solid var(--color-red-dark);
     }
     .badge.penalty {
@@ -2198,12 +2593,12 @@
         display: flex;
         align-items: center;
         flex-wrap: wrap;
-        gap: 0.5rem;
+        gap: var(--space-2);
     }
     .queue-flag {
         font-size: var(--text-xs);
         font-weight: 700;
-        padding: 0.15rem 0.5rem;
+        padding: 0.15rem var(--space-2);
         border-radius: var(--radius-pill);
         border: 1px solid transparent;
     }
@@ -2218,18 +2613,18 @@
         border-color: var(--color-red-dark);
     }
     .queue-empty {
-        margin: 0.5rem 0 0;
+        margin: var(--space-2) 0 0;
     }
     .queue-group + .queue-group {
-        margin-top: 1rem;
-        padding-top: 1rem;
+        margin-top: var(--space-4);
+        padding-top: var(--space-4);
         border-top: 1px solid var(--border-light);
     }
     .queue-group-head {
         display: flex;
         align-items: baseline;
         flex-wrap: wrap;
-        gap: 0.5rem;
+        gap: var(--space-2);
         margin-bottom: 0.4rem;
     }
     .queue-group-head strong {
@@ -2250,12 +2645,12 @@
         grid-template-columns: minmax(0, 1fr) auto;
         grid-template-areas: 'who actions' 'note actions';
         align-items: center;
-        gap: 0.15rem 0.75rem;
-        padding: 0.5rem 0.6rem;
+        gap: 0.15rem var(--space-3);
+        padding: var(--space-2) 0.6rem;
         border-radius: var(--radius-control);
     }
     .queue-row + .queue-row {
-        margin-top: 0.25rem;
+        margin-top: var(--space-1);
     }
     .queue-row.is-overdue {
         background: var(--color-error-bg);
@@ -2334,8 +2729,11 @@
         color: white;
         border: 1px solid transparent;
     }
-    .btn-queue-confirm:disabled {
-        opacity: 0.45;
+    .btn-queue-confirm:disabled,
+    .btn-penalty.remove:disabled {
+        background: var(--bg-hover);
+        color: var(--text-secondary);
+        border-color: var(--border-medium);
         cursor: not-allowed;
     }
     /* 이름 링크도 손가락이 닿는 크기로 (WCAG 2.5.8) */
@@ -2364,10 +2762,12 @@
         white-space: nowrap;
         border: 0;
     }
+    /* 비활성 버튼도 --bg-hover를 쓴다. 같은 회색이 한 섹션에서는 "죽음",
+       다음 섹션에서는 "누르세요"를 뜻하면 안 된다. 테두리로 세운다. */
     .btn-manage {
-        background: var(--bg-hover);
+        background: var(--bg-primary);
         color: var(--text-primary);
-        border: 1px solid #ced4da;
+        border: 1px solid var(--border-control);
         padding: 0.3rem 0.7rem;
         border-radius: var(--radius-control);
         font-size: var(--text-xs);
@@ -2385,8 +2785,8 @@
         display: flex;
         align-items: center;
         justify-content: space-between;
-        gap: 1rem;
-        padding: 0.75rem 0;
+        gap: var(--space-4);
+        padding: var(--space-3) 0;
         border-bottom: 1px solid var(--border-light);
     }
     .manage-label {
@@ -2410,7 +2810,7 @@
     .manage-divider {
         border: none;
         border-top: 1px solid var(--border-light);
-        margin: 1rem 0 0.75rem;
+        margin: var(--space-4) 0 var(--space-3);
     }
     /* 페널티 조작 — 부여(무거움)와 취소(가벼움)를 무게로 구분한다 */
     .manage-row-stacked {
@@ -2426,7 +2826,7 @@
         display: flex;
         flex-wrap: wrap;
         align-items: center;
-        gap: 0.5rem;
+        gap: var(--space-2);
         margin-top: 0.6rem;
     }
     .penalty-grant {
@@ -2436,7 +2836,7 @@
     }
     .penalty-grant select {
         min-height: 44px;
-        padding: 0 0.5rem;
+        padding: 0 var(--space-2);
         border: 1px solid var(--border-medium);
         border-radius: var(--radius-control);
         background: var(--bg-primary);
@@ -2452,18 +2852,22 @@
         font-size: var(--text-sm);
         font-weight: 600;
     }
+    /* 「페널티 부여」는 바로 옆의 「1점 취소」로 되돌릴 수 있다. 같은 시트 안의
+       블랙리스트 등록·삭제(.btn-role.is-destructive)와 똑같은 채움 빨강을 쓰면
+       되돌릴 수 있는 것과 없는 것이 같아 보인다. 부정적 동작이라는 신호는
+       테두리로 유지하고, 채움 빨강은 되돌릴 수 없는 것에만 남긴다. */
     .btn-penalty.add {
-        background: var(--color-red-dark);
-        color: white;
+        background: var(--bg-primary);
+        color: var(--color-red-dark);
+        border-color: var(--color-red-dark);
+    }
+    .btn-penalty.add:hover {
+        background: var(--color-error-bg);
     }
     .btn-penalty.remove {
         background: var(--bg-hover);
         color: var(--text-primary);
         border-color: var(--border-medium);
-    }
-    .btn-penalty.remove:disabled {
-        opacity: 0.5;
-        cursor: not-allowed;
     }
     /* ── 버튼 역할 4개 ──
        primary(진행) / secondary(대안) / destructive(되돌릴 수 없음) / quiet(무동작).
@@ -2492,12 +2896,12 @@
     }
     .btn-role.is-destructive {
         background: var(--color-red-dark);
-        color: #fff;
+        color: var(--bg-primary);
     }
     .btn-role.is-secondary {
         background: var(--bg-primary);
         color: var(--text-primary);
-        border-color: var(--border-medium);
+        border-color: var(--border-control);
     }
     .btn-role.is-quiet {
         background: none;
@@ -2511,11 +2915,11 @@
     }
     .chip-container.blacklisted {
         opacity: 0.5;
-        background: #bdbdbd;
+        background: var(--color-slate);
     }
     .penalty-dot {
         font-size: var(--text-xs);
-        color: #f44336;
+        color: var(--color-red);
         margin-left: 0.2rem;
     }
 
@@ -2523,14 +2927,14 @@
         width: 60px;
         padding: 0.4rem;
         border-radius: var(--radius-control);
-        border: 1px solid var(--border-default);
+        border: 1px solid var(--border-control);
         font-size: var(--text-sm);
     }
 
 
     .input-group {
         position: relative;
-        margin-bottom: 0.5rem;
+        margin-bottom: var(--space-2);
     }
 
     /* Custom Dropdown Styles */
@@ -2562,12 +2966,12 @@
     .dropdown-menu button {
         width: 100%;
         text-align: left;
-        padding: 0.75rem;
+        padding: var(--space-3);
         background: none;
         border: none;
         display: flex;
         align-items: center;
-        gap: 0.75rem;
+        gap: var(--space-3);
         cursor: pointer;
         transition: background 0.2s;
     }
@@ -2584,7 +2988,7 @@
         height: 40px;
         border-radius: var(--radius-control);
         object-fit: cover;
-        background: #eee;
+        background: var(--border-light);
     }
     .game-option-info {
         display: flex;
@@ -2602,9 +3006,9 @@
     .winner-row {
         display: flex;
         align-items: center;
-        gap: 0.5rem;
+        gap: var(--space-2);
         width: 100%;
-        margin-bottom: 0.5rem;
+        margin-bottom: var(--space-2);
     }
     .winner-row .winner-option {
         flex: 1;
@@ -2612,34 +3016,65 @@
     }
     .score-input {
         width: 80px;
-        padding: 0.75rem;
-        border: 1px solid var(--border-default);
+        padding: var(--space-3);
+        border: 1px solid var(--border-control);
         border-radius: var(--radius-control);
     }
 
     .btn-mini {
         padding: 0.4rem 0.8rem;
-        background: #4c6ef5;
+        background: var(--color-blue-bright);
         color: white;
         border: none;
         border-radius: var(--radius-control);
         cursor: pointer;
         font-size: var(--text-sm);
     }
+    /* --text-dark는 글자색 토큰이다. 배경으로 쓰면 시스템이 어긋난다. */
     .btn-guest {
-        background: var(--text-dark);
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        border: 1px solid var(--border-control);
     }
     .btn-guest:hover {
-        background: #495057;
+        background: var(--bg-hover);
     }
     .btn-manager-toggle:hover {
         opacity: 0.9;
     }
+    /* 연장은 일상적인 조정이지 "실행"이 아니다. 초록은 이 콘솔 어디에도 쓰이지
+       않는 색이었고, 채움색이라 「게임 종료」와 같은 무게로 읽혔다. */
     .btn-extend {
-        background: #216e39;
+        background: var(--tint-blue-bg);
+        color: var(--color-blue-bright);
+        border: 1px solid transparent;
+        font-weight: var(--weight-medium);
     }
     .btn-extend:hover {
-        background: #43a047;
+        background: var(--tint-blue-bg-hover);
+    }
+    .detail-group {
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-2);
+        margin-top: var(--space-3);
+    }
+    .detail-group-label {
+        font-size: var(--text-xs);
+        font-weight: var(--weight-medium);
+        color: var(--text-secondary);
+    }
+    .detail-extend-row {
+        display: flex;
+        gap: var(--space-2);
+    }
+    .time-remaining.is-soon {
+        color: var(--color-red-dark);
+        font-weight: 700;
+    }
+    .time-remaining.is-expired {
+        color: var(--color-orange-text);
+        font-weight: 700;
     }
     .input-label {
         font-size: var(--text-sm);
@@ -2653,7 +3088,7 @@
         width: 16px;
         height: 16px;
         border-radius: 50%;
-        background: #868e96;
+        background: var(--text-secondary);
         color: white;
         font-size: var(--text-xs);
         font-weight: bold;
@@ -2661,71 +3096,71 @@
         vertical-align: middle;
     }
     .guest-input-group {
-        margin-top: 0.5rem;
-        padding-top: 0.5rem;
+        margin-top: var(--space-2);
+        padding-top: var(--space-2);
         border-top: 1px solid var(--border-light);
     }
     .number-input {
         width: 80px;
-        padding: 0.5rem;
-        border: 1px solid var(--border-default);
+        padding: var(--space-2);
+        border: 1px solid var(--border-control);
         border-radius: var(--radius-control);
     }
     .hint {
         font-size: var(--text-xs);
         color: var(--text-secondary);
-        margin-top: 0.25rem;
+        margin-top: var(--space-1);
     }
 
     /* Recurring Game Management */
     .admin-options {
-        background: #f0f4ff;
-        border: 1px solid #d0d9f0;
+        background: var(--color-info-bg);
+        border: 1px solid var(--border-default);
         border-radius: var(--radius-control);
-        padding: 1rem;
-        margin-top: 0.5rem;
+        padding: var(--space-4);
+        margin-top: var(--space-2);
     }
 
     .admin-options-title {
         font-size: var(--text-sm);
-        color: #4a5568;
-        margin: 0 0 0.5rem 0;
+        color: var(--text-dark);
+        margin: 0 0 var(--space-2) 0;
         font-weight: 600;
     }
 
     .checkbox-option {
         display: flex;
         align-items: center;
-        gap: 0.5rem;
+        gap: var(--space-2);
         font-size: var(--text-sm);
         color: var(--text-primary);
         cursor: pointer;
-        padding: 0.25rem 0;
+        padding: var(--space-1) 0;
     }
 
     .checkbox-option input[type="checkbox"] {
         width: 16px;
         height: 16px;
-        accent-color: #4a90d9;
+        accent-color: var(--color-blue-bright);
     }
 
     /* 오늘 갈 예정 */
     .visit-plan-section {
-        margin-bottom: 1.5rem;
+        margin-bottom: var(--space-5);
     }
     .visit-plan-grid {
         display: flex;
         flex-wrap: wrap;
-        gap: 0.5rem;
+        gap: var(--space-2);
     }
     .visit-plan-chip {
         display: inline-flex;
         align-items: center;
         gap: 0.35rem;
         background: var(--bg-primary);
-        border: 1px solid #e0e0e0;
+        border: 1px solid var(--border-default);
         border-radius: var(--radius-card);
-        padding: 0.35rem 0.75rem;
+        padding: 0.35rem var(--space-3);
         font-size: var(--text-sm);
     }
     .vp-name {
@@ -2734,15 +3169,15 @@
     }
     .vp-party {
         font-size: var(--text-xs);
-        background: #e3f2fd;
-        color: #1565c0;
+        background: var(--color-info-bg);
+        color: var(--color-blue-bright);
         padding: 0.1rem 0.35rem;
         border-radius: var(--radius-control);
         font-weight: 700;
     }
     .vp-time {
         font-size: var(--text-xs);
-        color: #c2410c;
+        color: var(--color-orange-text);
         font-weight: 500;
     }
 
@@ -2758,9 +3193,9 @@
     .game-list-item {
         display: flex;
         align-items: center;
-        gap: 0.75rem;
+        gap: var(--space-3);
         width: 100%;
-        padding: 0.6rem 0.5rem;
+        padding: 0.6rem var(--space-2);
         border: none;
         border-bottom: 1px solid var(--border-light);
         border-radius: 0;
@@ -2774,6 +3209,10 @@
     .game-list-item:hover {
         background: var(--bg-surface);
     }
+    /* 만료 행은 자기 배경이 이미 틴트라 기본 hover가 아무 변화도 주지 못했다 */
+    .game-row.is-expired .game-list-item:hover {
+        background: transparent;
+    }
     .game-list-item:last-child {
         border-bottom: none;
     }
@@ -2781,11 +3220,61 @@
         background: var(--color-error-bg);
     }
     .game-list-item.ending-soon:hover {
-        background: #ffecec;
+        background: var(--color-error-bg-strong);
     }
     .game-list-item.ending-soon .time-remaining {
         color: var(--color-red-dark);
         font-weight: 700;
+    }
+    /* 만료는 "곧 끝남"과 다른 상태다 — 경보가 아니라 처리 대기다.
+       빨강을 나눠 쓰면 5분 남은 게임과 이미 끝난 게임이 같아 보인다. */
+    .game-row {
+        display: flex;
+        align-items: center;
+        gap: var(--space-2);
+        border-bottom: 1px solid var(--border-light);
+    }
+    .game-row:last-child {
+        border-bottom: none;
+    }
+    .game-row .game-list-item {
+        border-bottom: none;
+        /* width:100%인 flex 아이템은 기본 min-width:auto 때문에 좁은 폭에서 줄지 않는다 */
+        flex: 1 1 auto;
+        width: auto;
+        min-width: 0;
+    }
+    /* 만료는 "비활성"이 아니라 "처리 대기"다. 회색으로 죽이면 조명이 나쁜 방에서
+       폰으로 볼 때 가장 안 보이는 상태가 되는데, 실은 지금 손이 가야 할 유일한 행이다.
+       이름은 본문색을 지키고, 상태는 색이 아니라 왼쪽 레일과 배경 틴트로 말한다. */
+    .game-row.is-expired {
+        background: var(--color-warning-bg);
+        padding-right: var(--space-2);
+    }
+    .game-list-item.expired .time-remaining {
+        color: var(--color-orange-text);
+        font-weight: 700;
+    }
+    .game-row.is-expired:hover {
+        background: var(--color-warning-bg-strong);
+    }
+    .row-end-form {
+        flex-shrink: 0;
+    }
+    .btn-row-end {
+        min-height: 36px;
+        padding: 0 var(--space-3);
+        border: 1px solid var(--border-control);
+        border-radius: var(--radius-control);
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        font-size: var(--text-xs);
+        font-weight: var(--weight-medium);
+        white-space: nowrap;
+        cursor: pointer;
+    }
+    .btn-row-end:hover {
+        background: var(--bg-hover);
     }
     .list-thumb {
         width: 32px;
@@ -2803,6 +3292,7 @@
     }
     .list-name {
         flex: 1;
+        min-width: 0;
         font-weight: 600;
         font-size: var(--text-sm);
         overflow: hidden;
@@ -2822,8 +3312,8 @@
     .show-more-btn {
         display: block;
         width: 100%;
-        padding: 0.5rem;
-        margin-top: 0.5rem;
+        padding: var(--space-2);
+        margin-top: var(--space-2);
         background: none;
         border: 1px dashed var(--border-medium);
         border-radius: var(--radius-control);
@@ -2834,7 +3324,7 @@
     }
     .show-more-btn:hover {
         background: var(--bg-primary);
-        border-color: #999;
+        border-color: var(--text-muted);
     }
 
     /* 게임 상세 모달 */
@@ -2843,12 +3333,12 @@
     }
     .detail-header {
         display: flex;
-        gap: 1rem;
+        gap: var(--space-4);
         align-items: flex-start;
-        margin-bottom: 1rem;
+        margin-bottom: var(--space-4);
     }
     .detail-header h3 {
-        margin: 0 0 0.25rem 0;
+        margin: 0 0 var(--space-1) 0;
         font-size: var(--text-lg);
     }
     .detail-thumb {
@@ -2864,8 +3354,8 @@
         color: var(--text-secondary);
     }
     .detail-section {
-        margin-bottom: 1rem;
-        padding: 0.75rem;
+        margin-bottom: var(--space-4);
+        padding: var(--space-3);
         background: var(--bg-primary);
         border-radius: var(--radius-control);
     }
@@ -2874,24 +3364,24 @@
         color: var(--text-darker);
     }
     .detail-participants {
-        margin: 0.25rem 0 0;
+        margin: var(--space-1) 0 0;
         font-size: var(--text-sm);
         color: var(--text-primary);
     }
     .detail-actions {
         display: flex;
         flex-direction: column;
-        gap: 0.5rem;
+        gap: var(--space-2);
     }
     .detail-divider {
         border: none;
         border-top: 1px solid var(--border-light);
-        margin: 0.5rem 0;
+        margin: var(--space-2) 0;
     }
     .detail-form-row {
         display: flex;
         align-items: center;
-        gap: 0.5rem;
+        gap: var(--space-2);
     }
     /* 참여자 검색 셀렉트 */
     .search-select {
@@ -2900,8 +3390,8 @@
     }
     .search-select input[type="text"] {
         width: 100%;
-        padding: 0.4rem 0.5rem;
-        border: 1px solid var(--border-default);
+        padding: 0.4rem var(--space-2);
+        border: 1px solid var(--border-control);
         border-radius: var(--radius-control);
         font-size: var(--text-sm);
         box-sizing: border-box;
@@ -2926,14 +3416,14 @@
         display: block;
         width: 100%;
         text-align: left;
-        padding: 0.5rem 0.75rem;
+        padding: var(--space-2) var(--space-3);
         cursor: pointer;
         font: inherit;
         font-size: var(--text-sm);
         color: inherit;
         background: transparent;
         border: none;
-        border-bottom: 1px solid #f0f0f0;
+        border-bottom: 1px solid var(--bg-elevated);
         border-radius: 0;
     }
     .search-option:last-child {
@@ -2948,21 +3438,21 @@
     @media (max-width: 768px) {
         /* 모바일 하단 탭 위로 띄운다 */
         section {
-            margin-bottom: 1.5rem;
-            padding: 1rem;
+            margin-bottom: var(--space-5);
+            padding: var(--space-4);
         }
         section h2 {
             font-size: var(--text-base);
-            gap: 0.5rem;
+            gap: var(--space-2);
         }
         .section-header {
             flex-direction: column;
             align-items: stretch;
-            gap: 0.5rem;
+            gap: var(--space-2);
         }
         /* 폰은 서서 한 손으로 쓰는 주 사용 장면 — 탭 타깃을 44px 아래로 줄이지 않는다 */
         button, .btn-primary, .btn-delete, .btn-mini {
-            padding: 0.4rem 0.75rem;
+            padding: 0.4rem var(--space-3);
             font-size: var(--text-sm);
             min-height: 44px;
         }
@@ -2976,10 +3466,10 @@
             min-height: 44px;
         }
         .attendee-list li {
-            padding: 0.4rem 0.25rem;
+            padding: 0.4rem var(--space-1);
             font-size: var(--text-sm);
         }
-        .attendee-info { gap: 0.25rem; }
+        .attendee-info { gap: var(--space-1); }
         .attendee-actions { gap: 0.15rem; }
         .badge { font-size: var(--text-xs); padding: 0.05rem 0.3rem; }
         .arrival-time { font-size: var(--text-xs); }
@@ -2989,7 +3479,7 @@
         .chip-link { font-size: var(--text-xs); }
         .chip-add { font-size: var(--text-xs); padding: 0.2rem 0.6rem; }
         .modal-content { width: 95%; padding: 1.25rem; }
-        .player-select { gap: 0.5rem; }
+        .player-select { gap: var(--space-2); }
         .empty-state { font-size: var(--text-sm); }
         .visit-plan-chip { font-size: var(--text-xs); padding: 0.3rem 0.6rem; }
     }

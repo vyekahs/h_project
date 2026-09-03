@@ -2,11 +2,53 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { actions } from './+page.server';
 import { db } from '$lib/server/db/index';
+import { takeUndo } from '$lib/server/adminUndo';
 
-// Mock DB
-vi.mock('$lib/server/db/index', () => ({
-    db: { execute: vi.fn(), transaction: vi.fn() }
+/**
+ * db.transaction(cb) 는 tx를 받아 콜백을 실행한다.
+ * 예전 테스트는 db.execute만 목으로 두고 transaction은 비워둬서,
+ * createGame이 undefined를 받아 항상 500으로 떨어지고 있었다.
+ */
+vi.mock('$lib/server/db/index', () => {
+    const execute = vi.fn();
+    return {
+        db: {
+            execute,
+            transaction: vi.fn(async (cb: any) => cb({ execute }))
+        }
+    };
+});
+vi.mock('$lib/server/auth', () => ({
+    verifyAdminSession: vi.fn(async () => true),
+    verifyAttendeeSession: vi.fn(async () => null)
 }));
+vi.mock('$lib/server/liveEvents', () => ({ emitLiveEvent: vi.fn() }));
+// 종료·노쇼는 되돌릴 수 있어야 하므로 원상태를 서버에 남긴다.
+// 그 기록 자체는 여기서 검증 대상이 아니라 손잡이만 확인한다.
+vi.mock('$lib/server/adminUndo', () => ({
+    recordUndo: vi.fn(async (_kind: string, _payload: unknown, label: string) => ({ id: 1, label })),
+    takeUndo: vi.fn()
+}));
+vi.mock('$lib/server/reservations', () => ({
+    applyPenalty: vi.fn(async () => 0),
+    promoteWaitlist: vi.fn(async () => null)
+}));
+vi.mock('$lib/server/ble', () => ({ updateSettingsCache: vi.fn(), markAllLeft: vi.fn() }));
+
+/** 관리자 쿠키를 가진 요청. canModifyGame이 headers.get('cookie')를 읽는다. */
+function makeRequest(fields: Record<string, string | string[]>) {
+    const single = Object.entries(fields).filter(([, v]) => !Array.isArray(v)) as [string, string][];
+    return {
+        headers: { get: (h: string) => (h === 'cookie' ? 'admin_session=tok' : null) },
+        formData: async () => ({
+            get: (key: string) => (Array.isArray(fields[key]) ? null : (fields[key] ?? null)),
+            getAll: (key: string) => (Array.isArray(fields[key]) ? (fields[key] as string[]) : []),
+            entries: function* () {
+                for (const pair of single) yield pair;
+            }
+        })
+    } as any;
+}
 
 describe('Game Management', () => {
     beforeEach(() => {
@@ -15,122 +57,125 @@ describe('Game Management', () => {
 
     describe('createGame', () => {
         it('should fail if required fields are missing', async () => {
-             const request = {
-                formData: async () => ({
-                    get: (key: string) => null,
-                    getAll: (key: string) => []
-                })
-            };
-            const result = await actions.createGame({ request } as any);
+            const result = await actions.createGame({ request: makeRequest({}) } as any);
             expect(result).toEqual({ status: 400, data: { missing: true } });
         });
 
         it('should fail if players are already playing', async () => {
-             const request = {
-                formData: async () => ({
-                    get: (key: string) => {
-                        if (key === 'gameName') return 'Test Game';
-                        if (key === 'duration') return '60';
-                        return null;
-                    },
-                    getAll: (key: string) => {
-                        if (key === 'players') return ['1', '2'];
-                        return [];
-                    }
-                })
-            };
+            (db.execute as any).mockResolvedValueOnce([{ name: 'Player 1' }]); // playingCheck
 
-            (db.execute as any).mockResolvedValueOnce({ rows: [] }); // BEGIN
-            (db.execute as any).mockResolvedValueOnce({ rows: [{ name: 'Player 1' }] }); // playingCheck
-            (db.execute as any).mockResolvedValueOnce({ rows: [] }); // ROLLBACK
+            const result = await actions.createGame({
+                request: makeRequest({ gameName: 'Test Game', duration: '60', players: ['1', '2'] })
+            } as any);
 
-            const result = await actions.createGame({ request } as any);
-            expect(result).toEqual({ status: 400, data: { error: '다음 인원은 이미 게임 중입니다: Player 1' } });
+            expect(result).toEqual({
+                status: 400,
+                data: { error: '다음 인원은 이미 게임 중입니다: Player 1' }
+            });
         });
 
         it('should succeed if all checks pass', async () => {
-             const request = {
-                formData: async () => ({
-                    get: (key: string) => {
-                        if (key === 'gameName') return 'Test Game';
-                        if (key === 'duration') return '60';
-                        return null;
-                    },
-                    getAll: (key: string) => {
-                        if (key === 'players') return ['1', '2'];
-                        return [];
-                    }
-                })
-            };
+            (db.execute as any)
+                .mockResolvedValueOnce([])              // playingCheck — 비어 있음
+                .mockResolvedValueOnce([{ id: 100 }])   // INSERT game_sessions RETURNING id
+                .mockResolvedValueOnce([])              // INSERT participant 1
+                .mockResolvedValueOnce([]);             // INSERT participant 2
 
-            (db.execute as any).mockResolvedValueOnce({ rows: [] }); // BEGIN
-            (db.execute as any).mockResolvedValueOnce({ rows: [] }); // playingCheck
-            (db.execute as any).mockResolvedValueOnce({ rows: [{ id: 100 }] }); // INSERT game_sessions
-            (db.execute as any).mockResolvedValueOnce({ rows: [] }); // INSERT session_participants 1
-            (db.execute as any).mockResolvedValueOnce({ rows: [] }); // INSERT session_participants 2
-            (db.execute as any).mockResolvedValueOnce({ rows: [] }); // COMMIT
+            const result = await actions.createGame({
+                request: makeRequest({ gameName: 'Test Game', duration: '60', players: ['1', '2'] })
+            } as any);
 
-            const result = await actions.createGame({ request } as any);
             expect(result).toBeUndefined();
-            
-            expect(db.execute).toHaveBeenCalledTimes(6);
-
+            expect(db.execute).toHaveBeenCalledTimes(4);
         });
     });
 
     describe('endGame', () => {
         it('should fail if id is missing', async () => {
-             const request = {
-                formData: async () => ({
-                    get: (key: string) => null,
-                    getAll: (key: string) => [],
-                    entries: function* () { }
-                })
-            };
-            const result = await actions.endGame({ request } as any);
+            const result = await actions.endGame({ request: makeRequest({}) } as any);
             expect(result).toEqual({ status: 400, data: { missing: true } });
         });
 
-        it('should succeed and update scores', async () => {
-             const request = {
-                formData: async () => ({
-                    get: (key: string) => {
-                        if (key === 'id') return '100';
-                        if (key === 'score_1') return '10';
-                        if (key === 'score_2') return '5';
-                        return null;
-                    },
-                    getAll: (key: string) => {
-                        if (key === 'winnerIds') return ['1'];
-                        return [];
-                    },
-                    entries: function* () {
-                        yield ['id', '100'];
-                        yield ['winnerIds', '1'];
-                        yield ['score_1', '10'];
-                        yield ['score_2', '5'];
-                    }
-                })
-            };
+        it('이미 종료된 게임이면 404로 알린다', async () => {
+            // status='playing'인 행이 없으면 닫을 것이 없다.
+            (db.execute as any).mockResolvedValueOnce([]);
 
-            (db.execute as any).mockResolvedValueOnce({ rows: [] }); // BEGIN
-            (db.execute as any).mockResolvedValueOnce({ rows: [] }); // UPDATE game_sessions
-            (db.execute as any).mockResolvedValueOnce({ rows: [] }); // UPDATE session_participants (winners)
-            (db.execute as any).mockResolvedValueOnce({ rows: [] }); // UPDATE session_participants (score 1)
-            (db.execute as any).mockResolvedValueOnce({ rows: [] }); // UPDATE session_participants (score 2)
-            (db.execute as any).mockResolvedValueOnce({ rows: [] }); // COMMIT
+            const result = await actions.endGame({ request: makeRequest({ id: '100' }) } as any);
 
-            const result = await actions.endGame({ request } as any);
-            expect(result).toBeUndefined();
+            expect(result).toEqual({
+                status: 404,
+                data: { error: '이미 종료되었거나 없는 게임입니다.' }
+            });
+        });
 
-            // Verify calls
-            // 1. BEGIN
-            // 2. UPDATE game_sessions
-            // 3. UPDATE session_participants (winners)
-            // 4. UPDATE session_participants (score 1)
-            // 5. UPDATE session_participants (score 2)
-            // 6. COMMIT
-            expect(db.execute).toHaveBeenCalledTimes(6);
+        it('승자를 고르면 hadWinners가 true다', async () => {
+            (db.execute as any)
+                .mockResolvedValueOnce([{ game_name: '스플렌더' }]) // 이름 조회
+                .mockResolvedValue([]);                             // UPDATE들
+
+            const result = await actions.endGame({
+                request: makeRequest({ id: '100', winnerIds: ['1'], score_1: '10' })
+            } as any);
+
+            expect(result).toEqual({
+                success: true,
+                endedName: '스플렌더',
+                hadWinners: true,
+                undo: { id: 1, label: '스플렌더 종료' }
+            });
+        });
+
+        it('승자를 고르지 않아도 게임은 닫히고 hadWinners는 false다', async () => {
+            // 승자 기록은 선택이다. 화면이 "승자가 기록되었습니다"라고
+            // 거짓으로 알리지 않도록 서버가 실제 기록 여부를 돌려준다.
+            (db.execute as any)
+                .mockResolvedValueOnce([{ game_name: '아그리콜라' }])
+                .mockResolvedValue([]);
+
+            const result = await actions.endGame({ request: makeRequest({ id: '100' }) } as any);
+
+            expect(result).toEqual({
+                success: true,
+                endedName: '아그리콜라',
+                hadWinners: false,
+                undo: { id: 1, label: '아그리콜라 종료' }
+            });
+        });
+    });
+
+    describe('undoAdminAction', () => {
+        it('되돌릴 수 없는 기록이면 왜인지 구분해 알린다', async () => {
+            (takeUndo as any).mockResolvedValueOnce({ ok: false, reason: 'already_undone' });
+            const already = await actions.undoAdminAction({ request: makeRequest({ undoId: '7' }) } as any);
+            expect(already).toEqual({ status: 410, data: { error: '이미 되돌린 조치입니다.' } });
+
+            (takeUndo as any).mockResolvedValueOnce({ ok: false, reason: 'expired' });
+            const expired = await actions.undoAdminAction({ request: makeRequest({ undoId: '7' }) } as any);
+            expect(expired).toEqual({ status: 410, data: { error: '되돌릴 수 있는 시간이 지났습니다.' } });
+        });
+
+        it('무엇을 되돌릴지는 클라이언트가 아니라 서버 기록에서 읽는다', async () => {
+            // 클라이언트는 불투명한 id만 보낸다. payload를 실어 보내도 무시돼야
+            // 되돌리기가 임의 변경 수단이 되지 않는다.
+            (takeUndo as any).mockResolvedValueOnce({
+                ok: true,
+                kind: 'end_game',
+                label: '스플렌더 종료',
+                payload: { sessionId: 42, prevEndTime: '2026-09-03T00:00:00Z' }
+            });
+            (db.execute as any).mockResolvedValue([]);
+
+            const result = await actions.undoAdminAction({
+                request: makeRequest({ undoId: '7', sessionId: '999', payload: '{"sessionId":999}' })
+            } as any);
+
+            expect(result).toEqual({ success: true, undoneLabel: '스플렌더 종료' });
+            expect(takeUndo).toHaveBeenCalledWith(7);
+            // 서버 기록의 42가 쓰이고 클라이언트가 보낸 999는 어디에도 닿지 않는다
+            const touched = (db.execute as any).mock.calls
+                .map(([q]: any[]) => JSON.stringify(q?.queryChunks ?? []))
+                .join(' ');
+            expect(touched).not.toContain('999');
         });
     });
 });

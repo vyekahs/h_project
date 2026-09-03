@@ -1,26 +1,20 @@
 <script lang="ts">
     import { enhance } from '$app/forms';
     import { trapFocus } from '$lib/actions/modal';
+    // 결과 알림은 레이아웃의 <AdminFeedback />가 렌더한다
+    import { showAlert, showToast } from '$lib/stores/adminFeedback';
 
-    export let data: any;
+    let { data }: { data: any } = $props();
 
-    let showGrantModal = false;
-    let selectedUserId = '';
-    let seasonPassStartDate = new Date().toISOString().split('T')[0];
-
-    let alertVisible = false;
-    let alertMessage = '';
-
-    function showAlert(msg: string) {
-        alertMessage = msg;
-        alertVisible = true;
-    }
+    let showGrantModal = $state(false);
+    let selectedUserId = $state('');
+    let seasonPassStartDate = $state(new Date().toISOString().split('T')[0]);
 
     /**
      * 파괴적 액션 확인. 정기권 해지/삭제는 되돌릴 수 없고
      * 재발급해도 원래 만료일은 복구되지 않으므로 반드시 한 번 묻는다.
      */
-    let confirmState: { title: string; message: string; confirmLabel: string } | null = null;
+    let confirmState: { title: string; message: string; confirmLabel: string } | null = $state(null);
     let pendingForm: HTMLFormElement | null = null;
 
     function askConfirm(e: Event, title: string, message: string, confirmLabel: string) {
@@ -62,14 +56,14 @@
         });
     }
 
-    $: activeHolders = (data.passHolders || []).filter((h: any) => !isExpired(h.season_pass_expires_at));
-    $: expiredHolders = (data.passHolders || []).filter((h: any) => isExpired(h.season_pass_expires_at));
+    const activeHolders = $derived((data.passHolders || []).filter((h: any) => !isExpired(h.season_pass_expires_at)));
+    const expiredHolders = $derived((data.passHolders || []).filter((h: any) => isExpired(h.season_pass_expires_at)));
 </script>
 
 <div class="page">
     <div class="page-header">
         <h1>정기권 관리</h1>
-        <button class="btn-primary" on:click={() => { showGrantModal = true; selectedUserId = ''; seasonPassStartDate = new Date().toISOString().split('T')[0]; }}>
+        <button class="btn-primary" onclick={() => { showGrantModal = true; selectedUserId = ''; seasonPassStartDate = new Date().toISOString().split('T')[0]; }}>
             + 정기권 발급
         </button>
     </div>
@@ -124,7 +118,7 @@
                             <form
                                 method="POST"
                                 action="?/cancelPass"
-                                on:submit={(e) =>
+                                onsubmit={(e) =>
                                     askConfirm(
                                         e,
                                         '정기권 해지',
@@ -134,7 +128,7 @@
                                 use:enhance={() => {
                                     return async ({ result, update }) => {
                                         if (result.type === 'failure') showAlert((result.data as any)?.error || '요청을 처리하지 못했습니다. 잠시 후 다시 시도해주세요.');
-                                        else showAlert(`${holder.name}님의 정기권을 해지했습니다.`);
+                                        else showToast(`${holder.name}님의 정기권을 해지했습니다.`);
                                         await update();
                                     };
                                 }}
@@ -193,12 +187,12 @@
     <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
     <div 
         class="modal-backdrop" 
-        on:click={() => showGrantModal = false}
+        onclick={() => showGrantModal = false}
         role="button"
         tabindex="-1"
         aria-label="모달 닫기"
     >
-        <div class="modal-content" use:trapFocus={() => (showGrantModal = false)} on:click|stopPropagation on:keydown|stopPropagation role="dialog" aria-modal="true" tabindex="-1">
+        <div class="modal-content" use:trapFocus={() => (showGrantModal = false)} onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="dialog" aria-modal="true" tabindex="-1">
             <h3>정기권 발급</h3>
             <p class="modal-desc">시작일을 선택하면 30일간 유효한 정기권이 발급됩니다.</p>
             <form method="POST" action="?/grantPass" use:enhance={() => {
@@ -225,7 +219,7 @@
                     <input type="date" id="startDate" name="startDate" bind:value={seasonPassStartDate} required />
                 </div>
                 <div class="modal-actions">
-                    <button type="button" class="btn-secondary" on:click={() => showGrantModal = false}>취소</button>
+                    <button type="button" class="btn-secondary" onclick={() => showGrantModal = false}>취소</button>
                     <button type="submit" class="btn-primary">발급하기 (30일)</button>
                 </div>
             </form>
@@ -236,12 +230,12 @@
 {#if confirmState}
     <!-- 백드롭은 편의용 클릭 영역. 키보드 경로는 모달의 Escape(trapFocus)와 닫기 버튼이 담당한다. -->
     <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
-    <div class="modal-backdrop confirm-layer" on:click={closeConfirm} role="presentation">
+    <div class="modal-backdrop confirm-layer" onclick={closeConfirm} role="presentation">
         <div
             class="modal-content"
             use:trapFocus={closeConfirm}
-            on:click|stopPropagation
-            on:keydown|stopPropagation
+            onclick={(e) => e.stopPropagation()}
+            onkeydown={(e) => e.stopPropagation()}
             role="alertdialog"
             aria-modal="true"
             tabindex="-1"
@@ -249,31 +243,13 @@
             <h3>{confirmState.title}</h3>
             <p class="modal-desc">{confirmState.message}</p>
             <div class="modal-actions">
-                <button type="button" class="btn-secondary" data-autofocus on:click={closeConfirm}>돌아가기</button>
-                <button type="button" class="btn-danger" on:click={runConfirm}>{confirmState.confirmLabel}</button>
+                <button type="button" class="btn-secondary" data-autofocus onclick={closeConfirm}>돌아가기</button>
+                <button type="button" class="btn-danger" onclick={runConfirm}>{confirmState.confirmLabel}</button>
             </div>
         </div>
     </div>
 {/if}
 
-{#if alertVisible}
-    <!-- 백드롭은 편의용 클릭 영역. 키보드 경로는 모달의 Escape(trapFocus)와 닫기 버튼이 담당한다. -->
-    <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
-    <div 
-        class="modal-backdrop" 
-        on:click={() => alertVisible = false}
-        role="button"
-        tabindex="-1"
-        aria-label="알림 닫기"
-    >
-        <div class="modal-content alert-modal" use:trapFocus={() => (alertVisible = false)} on:click|stopPropagation on:keydown|stopPropagation role="alertdialog" aria-modal="true" tabindex="-1">
-            <p>{alertMessage}</p>
-            <div class="modal-actions">
-                <button class="btn-primary" data-autofocus on:click={() => alertVisible = false}>확인</button>
-            </div>
-        </div>
-    </div>
-{/if}
 
 <style>
     .page { max-width: 800px; }
@@ -281,33 +257,33 @@
         display: flex;
         justify-content: space-between;
         align-items: center;
-        margin-bottom: 2rem;
+        margin-bottom: var(--space-6);
     }
     .page-header h1 { margin: 0; font-size: var(--text-xl); }
 
-    .section { margin-bottom: 2rem; }
+    .section { margin-bottom: var(--space-6); }
     .section h2 {
         font-size: var(--text-lg);
-        color: #555;
-        margin-bottom: 0.75rem;
-        padding-bottom: 0.5rem;
-        border-bottom: 1px solid #eee;
+        color: var(--text-darker);
+        margin-bottom: var(--space-3);
+        padding-bottom: var(--space-2);
+        border-bottom: 1px solid var(--border-light);
     }
-    .empty { color: #999; font-size: var(--text-sm); }
+    .empty { color: var(--text-muted); font-size: var(--text-sm); }
 
-    .card-list { display: flex; flex-direction: column; gap: 0.5rem; }
+    .card-list { display: flex; flex-direction: column; gap: var(--space-2); }
 
     .pass-card {
         display: flex;
         justify-content: space-between;
         align-items: center;
         background: white;
-        padding: 0.75rem 1rem;
+        padding: var(--space-3) var(--space-4);
         border-radius: var(--radius-control);
-        border-left: 1px solid #ddd;
+        border-left: 1px solid var(--border-default);
     }
-    .pass-card.warning { border-left-color: #ff9800; }
-    .pass-card.expired { border-left-color: #ccc; opacity: 0.7; }
+    .pass-card.warning { border-left-color: var(--color-orange); }
+    .pass-card.expired { border-left-color: var(--border-medium); opacity: 0.7; }
 
     .pass-info { display: flex; flex-direction: column; gap: 0.2rem; }
     .pass-name {
@@ -315,26 +291,27 @@
         align-items: center;
         min-height: 24px;
         font-weight: 600;
-        color: #333;
+        color: var(--text-primary);
         text-decoration: none;
     }
     .pass-name:hover { text-decoration: underline; }
-    .pass-expiry { font-size: var(--text-xs); color: #888; }
+    .pass-expiry { font-size: var(--text-xs); color: var(--text-tertiary); }
 
-    .pass-actions { display: flex; align-items: center; gap: 0.5rem; }
+    .pass-actions { display: flex; align-items: center; gap: var(--space-2); }
 
     .days-badge {
-        background: #e8f5e9;
-        color: #2e7d32;
-        padding: 0.25rem 0.6rem;
+        background: var(--color-success-bg);
+        color: var(--color-green-dark);
+        padding: var(--space-1) 0.6rem;
         border-radius: var(--radius-card);
         font-weight: 700;
         font-size: var(--text-sm);
         min-width: 45px;
         text-align: center;
     }
-    .days-badge.urgent { background: #fff3e0; color: #e65100; }
-    .expired-badge { background: #f5f5f5; color: #999; }
+    .days-badge.urgent { background: var(--color-warning-bg); color: var(--color-orange-text); }
+    /* --text-muted(var(--text-muted))는 이 회색 위에서 2.61:1이라 읽히지 않았다 */
+    .expired-badge { background: var(--bg-surface); color: var(--text-secondary); }
 
     .btn-sm {
         padding: 0.3rem 0.6rem;
@@ -344,26 +321,26 @@
         cursor: pointer;
         font-weight: 600;
     }
-    .btn-minus { background: #fce4ec; color: #c62828; }
-    .btn-minus:hover { background: #f8bbd0; }
-    .btn-plus { background: #e3f2fd; color: #1976d2; }
-    .btn-plus:hover { background: #bbdefb; }
-    .btn-extend { background: #e3f2fd; color: #1565c0; }
-    .btn-extend:hover { background: #bbdefb; }
+    .btn-minus { background: var(--tint-red-bg); color: var(--color-red-darker); }
+    .btn-minus:hover { background: var(--tint-red-bg-hover); }
+    .btn-plus { background: var(--tint-blue-bg); color: var(--color-blue-bright); }
+    .btn-plus:hover { background: var(--tint-blue-bg-hover); }
+    .btn-extend { background: var(--tint-blue-bg); color: var(--color-blue-bright); }
+    .btn-extend:hover { background: var(--tint-blue-bg-hover); }
     /* 대시보드의 .btn-cancel은 "다이얼로그 닫기"라 같은 이름을 쓰지 않는다 */
     .modal-backdrop.confirm-layer { z-index: 1100; }
     .btn-danger {
-        background: var(--color-red-dark, #d32f2f);
-        color: #fff;
+        background: var(--color-red-dark, var(--color-red-dark));
+        color: var(--bg-primary);
         border: none;
-        padding: 0.6rem 1rem;
+        padding: 0.6rem var(--space-4);
         min-height: 44px;
         border-radius: var(--radius-control);
         font-weight: 600;
         cursor: pointer;
     }
-    .btn-revoke { background: #fce4ec; color: #b71c1c; border: 1px solid #b71c1c; }
-    .btn-revoke:hover { background: #ffcdd2; }
+    .btn-revoke { background: var(--tint-red-bg); color: var(--color-red-darker); border: 1px solid var(--color-red-darker); }
+    .btn-revoke:hover { background: var(--tint-red-bg-hover); }
 
     .btn-primary {
         background: var(--color-blue-bright);
@@ -375,9 +352,9 @@
         font-weight: 600;
     }
     .btn-secondary {
-        background: #f5f5f5;
-        color: #333;
-        border: 1px solid #ddd;
+        background: var(--bg-surface);
+        color: var(--text-primary);
+        border: 1px solid var(--border-default);
         padding: 0.6rem 1.2rem;
         border-radius: var(--radius-control);
         cursor: pointer;
@@ -392,21 +369,20 @@
     }
     .modal-content {
         background: white;
-        padding: 1.5rem;
+        padding: var(--space-5);
         border-radius: var(--radius-card);
         width: 90%;
         max-width: 400px;
     }
-    .modal-content h3 { margin: 0 0 1rem 0; }
-    .alert-modal { text-align: center; }
+    .modal-content h3 { margin: 0 0 var(--space-4) 0; }
     .modal-actions {
         display: flex;
         justify-content: flex-end;
-        gap: 0.75rem;
-        margin-top: 1.5rem;
+        gap: var(--space-3);
+        margin-top: var(--space-5);
     }
 
-    .form-group { margin-bottom: 1rem; }
+    .form-group { margin-bottom: var(--space-4); }
     .form-group label {
         display: block;
         margin-bottom: 0.4rem;
@@ -415,20 +391,20 @@
     }
     .form-group select, .form-group input[type="date"] {
         width: 100%;
-        padding: 0.5rem;
-        border: 1px solid #ddd;
+        padding: var(--space-2);
+        border: 1px solid var(--border-default);
         border-radius: var(--radius-control);
         font-size: var(--text-base);
         box-sizing: border-box;
     }
     .modal-desc {
-        color: #666;
+        color: var(--text-secondary);
         font-size: var(--text-sm);
-        margin: 0 0 1rem 0;
+        margin: 0 0 var(--space-4) 0;
     }
 
     @media (max-width: 600px) {
-        .pass-card { flex-direction: column; align-items: flex-start; gap: 0.5rem; }
+        .pass-card { flex-direction: column; align-items: flex-start; gap: var(--space-2); }
         .pass-actions { width: 100%; justify-content: flex-end; }
     }
 

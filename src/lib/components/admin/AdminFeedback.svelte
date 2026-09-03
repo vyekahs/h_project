@@ -3,26 +3,47 @@
 	 * 어드민 전역 결과 알림 표면. 레이아웃에 한 번만 놓으면 모든 어드민 화면이
 	 * showToast / showAlert 로 결과를 알릴 수 있다.
 	 */
-	import { toastMessage, alertMessage, alertKind, dismissAlert } from '$lib/stores/adminFeedback';
+	import {
+		toastMessage,
+		toastAction,
+		alertMessage,
+		alertKind,
+		dismissAlert,
+		dismissToast
+	} from '$lib/stores/adminFeedback';
 	import { trapFocus } from '$lib/actions/modal';
 </script>
 
 <!-- 라이브 리전은 항상 DOM에 있어야 스크린리더가 변화를 읽는다 -->
 <div class="toast-region" role="status" aria-live="polite">
 	{#if $toastMessage}
-		<div class="toast">{$toastMessage}</div>
+		<div class="toast">
+			<span class="toast-text">{$toastMessage}</span>
+			{#if $toastAction}
+				<!-- 되돌리기는 결과를 알리는 그 자리에 있어야 눌린다 -->
+				<button
+					type="button"
+					class="toast-action"
+					onclick={() => {
+						const act = $toastAction;
+						dismissToast();
+						act?.run();
+					}}>{$toastAction.label}</button
+				>
+			{/if}
+		</div>
 	{/if}
 </div>
 
 {#if $alertMessage}
 	<!-- 백드롭은 편의용 클릭 영역. 키보드 경로는 Escape(trapFocus)와 확인 버튼이 담당한다. -->
 	<!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
-	<div class="alert-backdrop" on:click={dismissAlert} role="presentation">
+	<div class="alert-backdrop" onclick={dismissAlert} role="presentation">
 		<div
 			class="alert-card alert-{$alertKind}"
 			use:trapFocus={dismissAlert}
-			on:click|stopPropagation
-			on:keydown|stopPropagation
+			onclick={(e) => e.stopPropagation()}
+			onkeydown={(e) => e.stopPropagation()}
 			role="alertdialog"
 			aria-modal="true"
 			aria-labelledby="admin-alert-title"
@@ -33,7 +54,7 @@
 			</h3>
 			<p>{$alertMessage}</p>
 			<div class="alert-actions">
-				<button type="button" class="alert-confirm" data-autofocus on:click={dismissAlert}>확인</button>
+				<button type="button" class="alert-confirm" data-autofocus onclick={dismissAlert}>확인</button>
 			</div>
 		</div>
 	</div>
@@ -52,6 +73,10 @@
 		justify-content: center;
 	}
 	.toast {
+		display: flex;
+		align-items: center;
+		gap: var(--space-3, 0.75rem);
+		pointer-events: auto;
 		background: var(--text-darker, #555);
 		color: var(--bg-primary, #fff);
 		padding: 0.7rem 1.1rem;
@@ -62,6 +87,28 @@
 		box-shadow: var(--shadow-lg, 0 10px 25px rgba(0, 0, 0, 0.15));
 		word-break: keep-all;
 		overflow-wrap: anywhere;
+	}
+	.toast-text {
+		flex: 1;
+		min-width: 0;
+		text-align: left;
+	}
+	/* 어두운 토스트 위에서 읽혀야 하므로 흰 테두리로 세운다 (#fff on #555 = 7.5:1) */
+	.toast-action {
+		flex-shrink: 0;
+		min-height: 32px;
+		padding: 0 var(--space-3, 0.75rem);
+		border: 1px solid var(--bg-primary, #fff);
+		border-radius: var(--radius-control, 6px);
+		background: none;
+		color: var(--bg-primary, #fff);
+		font-size: var(--text-sm, 0.875rem);
+		font-weight: var(--weight-medium, 600);
+		white-space: nowrap;
+		cursor: pointer;
+	}
+	.toast-action:hover {
+		background: rgba(255, 255, 255, 0.16);
 	}
 	.alert-backdrop {
 		position: fixed;

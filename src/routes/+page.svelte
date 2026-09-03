@@ -1502,7 +1502,8 @@
         </section>
     {/snippet}
 
-    <main>
+    <!-- 바깥 레이아웃이 이미 <main>이다. 여기서 또 열면 랜드마크가 둘이 된다. -->
+    <div class="home-main">
         {#if isTablet}
             <div class="main-panels">
                 <div class="panel">
@@ -1532,7 +1533,7 @@
                 {@render gamesContent()}
             {/if}
         {/if}
-    </main>
+    </div>
 </div>
 
 {#if showModal}

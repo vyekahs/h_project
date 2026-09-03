@@ -2,33 +2,45 @@
     import type { PageData } from './$types';
     
     import { enhance } from '$app/forms';
-    export let data: PageData;
-    export let form;
+    import { trapFocus } from '$lib/actions/modal';
+    // 결과 알림은 레이아웃의 <AdminFeedback />가 렌더한다
+    import { showToast, reportResult } from '$lib/stores/adminFeedback';
 
-    let activeTab = 'history'; // 'history' | 'record' | 'visits' | 'account' | 'season_pass'
+    let { data, form }: { data: PageData; form: any } = $props();
+
+    let activeTab = $state('history'); // 'history' | 'record' | 'visits' | 'account' | 'season_pass'
 
     const PENALTY_REASON: Record<string, string> = { no_show: '노쇼', late: '지각', other: '기타', revoke: '취소' };
     const RES_STATUS: Record<string, string> = { pending_approval: '승인 대기', waitlisted: '대기', confirmed: '확정', pending: '신청' };
-    let viewMode = 'list'; // 'list' | 'calendar'
+    let viewMode = $state('list'); // 'list' | 'calendar'
     
     // Season Pass Logic
-    let showSeasonPassModal = false;
-    let seasonPassStartDate = new Date().toISOString().split('T')[0];
+    let showSeasonPassModal = $state(false);
+    /** 정기권 취소는 남은 기간이 사라지고 재발급해도 복구되지 않는다 — 반드시 한 번 묻는다 */
+    let confirmCancelPass = $state(false);
+    let seasonPassStartDate = $state(new Date().toISOString().split('T')[0]);
 
-    $: activeSeasonPass = data.attendee.season_pass_expires_at ? new Date(data.attendee.season_pass_expires_at) > new Date() : false;
-    $: seasonPassDaysLeft = data.attendee.season_pass_expires_at 
-        ? Math.ceil((new Date(data.attendee.season_pass_expires_at).getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)) 
-        : 0;
+    const activeSeasonPass = $derived(
+        data.attendee.season_pass_expires_at ? new Date(data.attendee.season_pass_expires_at) > new Date() : false
+    );
+    const seasonPassDaysLeft = $derived(
+        data.attendee.season_pass_expires_at
+            ? Math.ceil(
+                  (new Date(data.attendee.season_pass_expires_at).getTime() - new Date().getTime()) /
+                      (1000 * 60 * 60 * 24)
+              )
+            : 0
+    );
 
     // Calendar Logic
     const today = new Date();
-    let currentYear = today.getFullYear();
-    let currentMonth = today.getMonth(); // 0-indexed
+    let currentYear = $state(today.getFullYear());
+    let currentMonth = $state(today.getMonth()); // 0-indexed
 
-    $: daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
-    $: firstDayOfMonth = new Date(currentYear, currentMonth, 1).getDay(); // 0 (Sun) - 6 (Sat)
+    const daysInMonth = $derived(new Date(currentYear, currentMonth + 1, 0).getDate());
+    const firstDayOfMonth = $derived(new Date(currentYear, currentMonth, 1).getDay()); // 0 (Sun) - 6 (Sat)
     
-    $: calendarDays = Array.from({ length: daysInMonth }, (_, i) => {
+    const calendarDays = $derived(Array.from({ length: daysInMonth }, (_, i) => {
         const date = new Date(currentYear, currentMonth, i + 1);
         const dateString = date.toISOString().split('T')[0];
         const games = data.history.filter((h: any) => {
@@ -36,7 +48,7 @@
             return gameDate === dateString;
         });
         return { day: i + 1, games, dateString };
-    });
+    }));
 
     function prevMonth() {
         if (currentMonth === 0) {
@@ -76,21 +88,21 @@
     </div>
 
     <div class="tabs">
-        <button class:active={activeTab === 'history'} on:click={() => activeTab = 'history'}>게임 이력</button>
-        <button class:active={activeTab === 'record'} on:click={() => activeTab = 'record'}>
+        <button class:active={activeTab === 'history'} onclick={() => activeTab = 'history'}>게임 이력</button>
+        <button class:active={activeTab === 'record'} onclick={() => activeTab = 'record'}>
             예약 · 페널티
             {#if data.attendee.penalty_points > 0}<span class="tab-count">{data.attendee.penalty_points}</span>{/if}
         </button>
-        <button class:active={activeTab === 'visits'} on:click={() => activeTab = 'visits'}>방문 기록</button>
-        <button class:active={activeTab === 'season_pass'} on:click={() => activeTab = 'season_pass'}>정기권 관리</button>
-        <button class:active={activeTab === 'account'} on:click={() => activeTab = 'account'}>계정 관리</button>
+        <button class:active={activeTab === 'visits'} onclick={() => activeTab = 'visits'}>방문 기록</button>
+        <button class:active={activeTab === 'season_pass'} onclick={() => activeTab = 'season_pass'}>정기권 관리</button>
+        <button class:active={activeTab === 'account'} onclick={() => activeTab = 'account'}>계정 관리</button>
     </div>
 
     <div class="content">
         {#if activeTab === 'history'}
             <div class="view-controls">
-                <button class:active={viewMode === 'list'} on:click={() => viewMode = 'list'}>목록 보기</button>
-                <button class:active={viewMode === 'calendar'} on:click={() => viewMode = 'calendar'}>달력 보기</button>
+                <button class:active={viewMode === 'list'} onclick={() => viewMode = 'list'}>목록 보기</button>
+                <button class:active={viewMode === 'calendar'} onclick={() => viewMode = 'calendar'}>달력 보기</button>
             </div>
 
             {#if viewMode === 'list'}
@@ -128,9 +140,9 @@
             {:else}
                 <div class="calendar-view">
                     <div class="calendar-header">
-                        <button on:click={prevMonth}>&lt;</button>
+                        <button onclick={prevMonth}>&lt;</button>
                         <h3>{currentYear}년 {monthNames[currentMonth]}</h3>
-                        <button on:click={nextMonth}>&gt;</button>
+                        <button onclick={nextMonth}>&gt;</button>
                     </div>
                     <div class="calendar-grid">
                         <div class="weekday">일</div>
@@ -308,23 +320,12 @@
 
                 <div class="actions-row">
                     {#if activeSeasonPass}
-                        <form method="POST" action="?/cancelSeasonPass" use:enhance={({ cancel }) => {
-                            if (!confirm('정말로 정기권을 취소하시겠습니까?')) {
-                                cancel();
-                                return;
-                            }
-                            return async ({ result, update }) => {
-                                if (result.type === 'success') {
-                                    alert('정기권이 취소되었습니다.');
-                                    await update();
-                                }
-                            };
-                        }}>
-                            <button class="btn-cancel-pass">정기권 취소</button>
-                        </form>
+                        <button type="button" class="btn-cancel-pass" onclick={() => (confirmCancelPass = true)}>
+                            정기권 취소
+                        </button>
                     {/if}
 
-                    <button class="btn-grant" on:click={() => showSeasonPassModal = true}>
+                    <button class="btn-grant" onclick={() => showSeasonPassModal = true}>
                         {activeSeasonPass ? '정기권 연장/재발급' : '정기권 시작'}
                     </button>
                 </div>
@@ -361,12 +362,46 @@
         {/if}
     </div>
 
+    {#if confirmCancelPass}
+        <!-- 백드롭은 편의용 클릭 영역. 키보드 경로는 Escape(trapFocus)와 돌아가기 버튼이 담당한다. -->
+        <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+        <div class="modal-overlay" onclick={() => (confirmCancelPass = false)} role="presentation">
+            <div
+                class="modal"
+                use:trapFocus={() => (confirmCancelPass = false)}
+                onclick={(e) => e.stopPropagation()}
+                onkeydown={(e) => e.stopPropagation()}
+                role="alertdialog"
+                aria-modal="true"
+                tabindex="-1"
+            >
+                <h3>정기권 취소</h3>
+                <p>
+                    {data.attendee.name}님의 정기권을 취소합니다.
+                    남은 {seasonPassDaysLeft}일이 사라지고, 재발급해도 원래 만료일은 돌아오지 않습니다.
+                </p>
+                <div class="modal-actions">
+                    <button type="button" class="btn-cancel" data-autofocus onclick={() => (confirmCancelPass = false)}>
+                        돌아가기
+                    </button>
+                    <form method="POST" action="?/cancelSeasonPass" use:enhance={() => async ({ result, update }) => {
+                        if (!reportResult(result)) showToast(`${data.attendee.name}님의 정기권을 취소했습니다.`);
+                        confirmCancelPass = false;
+                        await update();
+                    }}>
+                        <button type="submit" class="btn-cancel-pass">정기권 취소</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    {/if}
+
     {#if showSeasonPassModal}
         <!-- 백드롭은 편의용 클릭 영역. 키보드 경로는 모달의 Escape(trapFocus)와 닫기 버튼이 담당한다. -->
         <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
         <div 
             class="modal-overlay" 
-            on:click|self={() => showSeasonPassModal = false}
+            onclick={(e) => { if (e.target === e.currentTarget) showSeasonPassModal = false; }}
             role="button"
             tabindex="-1"
             aria-label="모달 닫기"
@@ -378,25 +413,19 @@
                 </h3>
                 <p>시작일을 선택하면 30일간 유효한 정기권이 발급됩니다.</p>
                 
-                <form method="POST" action="?/updateSeasonPass" use:enhance={({ cancel }) => {
-                    if (!confirm(`${seasonPassStartDate}부터 30일간 정기권을 발급하시겠습니까?`)) {
-                        cancel();
-                        return;
+                <form method="POST" action="?/updateSeasonPass" use:enhance={() => async ({ result, update }) => {
+                    if (!reportResult(result)) {
+                        showSeasonPassModal = false;
+                        showToast(`${data.attendee.name}님의 정기권을 ${seasonPassStartDate}부터 30일간 발급했습니다.`);
                     }
-                    return async ({ result, update }) => {
-                        if (result.type === 'success') {
-                            showSeasonPassModal = false;
-                            alert('정기권이 성공적으로 발급되었습니다!');
-                            await update();
-                        }
-                    };
+                    await update();
                 }}>
                     <div class="form-group">
                         <label for="startDate">시작일 선택</label>
                         <input type="date" id="startDate" name="startDate" bind:value={seasonPassStartDate} required />
                     </div>
                     <div class="modal-actions">
-                        <button type="button" class="btn-cancel" on:click={() => showSeasonPassModal = false}>취소</button>
+                        <button type="button" class="btn-cancel" onclick={() => showSeasonPassModal = false}>취소</button>
                         <button type="submit" class="btn-primary">발급하기 (30일)</button>
                     </div>
                 </form>
@@ -411,20 +440,20 @@
         margin-left: 0.3rem;
         padding: 0 0.35rem;
         border-radius: var(--radius-pill, 999px);
-        background: var(--color-red-dark, #d32f2f);
-        color: #fff;
+        background: var(--color-red-dark, var(--color-red-dark));
+        color: var(--bg-primary);
         font-size: var(--text-xs, 0.75rem);
         font-weight: 700;
     }
     .record-block {
-        margin-top: var(--space-5, 1.5rem);
+        margin-top: var(--space-5, var(--space-5));
     }
     .record-block:first-child {
         margin-top: 0;
     }
     .record-block h3 {
         font-size: var(--text-base, 1rem);
-        margin: 0 0 var(--space-3, 0.75rem);
+        margin: 0 0 var(--space-3, var(--space-3));
     }
     .record-list {
         list-style: none;
@@ -432,15 +461,15 @@
         padding: 0;
         display: flex;
         flex-direction: column;
-        gap: var(--space-2, 0.5rem);
+        gap: var(--space-2, var(--space-2));
     }
     .record-row {
         display: flex;
         align-items: center;
         flex-wrap: wrap;
-        gap: var(--space-2, 0.5rem);
-        padding: var(--space-3, 0.75rem);
-        border: 1px solid var(--border-light, #eee);
+        gap: var(--space-2, var(--space-2));
+        padding: var(--space-3, var(--space-3));
+        border: 1px solid var(--border-light, var(--border-light));
         border-radius: var(--radius-control, 6px);
     }
     .record-main {
@@ -448,19 +477,19 @@
         font-variant-numeric: tabular-nums;
     }
     .record-main.is-add {
-        color: var(--color-red-dark, #d32f2f);
+        color: var(--color-red-dark, var(--color-red-dark));
     }
     .record-tag {
         font-size: var(--text-xs, 0.75rem);
         font-weight: 600;
         padding: 0.1rem 0.45rem;
         border-radius: var(--radius-control, 6px);
-        background: var(--bg-hover, #e9ecef);
-        color: var(--text-dark, #495057);
+        background: var(--bg-hover, var(--bg-hover));
+        color: var(--text-dark, var(--text-dark));
     }
     .record-meta {
         font-size: var(--text-xs, 0.75rem);
-        color: var(--text-secondary, #666);
+        color: var(--text-secondary, var(--text-secondary));
         font-variant-numeric: tabular-nums;
     }
 
@@ -473,54 +502,54 @@
         text-align: center;
     }
     .status-card {
-        padding: 2rem;
+        padding: var(--space-6);
         border-radius: var(--radius-card);
         background: white;
-        border: 1px solid #eee;
-        margin-bottom: 2rem;
+        border: 1px solid var(--border-light);
+        margin-bottom: var(--space-6);
         box-shadow: 0 4px 6px rgba(0,0,0,0.05);
     }
     .status-card.active {
-        border-color: #2196f3;
-        background: #e3f2fd;
+        border-color: var(--color-blue-bright);
+        background: var(--tint-blue-bg);
     }
     .status-badge {
         display: inline-block;
-        padding: 0.5rem 1rem;
+        padding: var(--space-2) var(--space-4);
         border-radius: var(--radius-card);
         font-weight: bold;
-        margin-bottom: 1rem;
+        margin-bottom: var(--space-4);
     }
     .status-badge.active {
-        background: #2196f3;
+        background: var(--color-blue-bright);
         color: white;
     }
     .status-badge.inactive {
-        background: #9e9e9e;
+        background: var(--text-secondary);
         color: white;
     }
     .days-left {
         font-size: 2.5rem;
         font-weight: bold;
-        color: #1976d2;
-        margin: 0.5rem 0;
+        color: var(--color-blue-bright);
+        margin: var(--space-2) 0;
     }
     .date {
-        color: #666;
+        color: var(--text-secondary);
     }
     
     .actions-row {
         display: flex;
-        gap: 1rem;
+        gap: var(--space-4);
         justify-content: center;
     }
 
     .btn-grant {
-        padding: 1rem 2rem;
+        padding: var(--space-4) var(--space-6);
         font-size: var(--text-lg);
         font-weight: bold;
         color: white;
-        background: #4caf50;
+        background: var(--color-green-dark);
         border: none;
         border-radius: var(--radius-control);
         cursor: pointer;
@@ -528,15 +557,15 @@
         transition: background 0.2s;
     }
     .btn-grant:hover {
-        background: #388e3c;
+        background: var(--color-green-dark);
     }
 
     .btn-cancel-pass {
-        padding: 1rem 2rem;
+        padding: var(--space-4) var(--space-6);
         font-size: var(--text-lg);
         font-weight: bold;
         color: white;
-        background: #f44336;
+        background: var(--color-red-dark);
         border: none;
         border-radius: var(--radius-control);
         cursor: pointer;
@@ -544,43 +573,43 @@
         transition: background 0.2s;
     }
     .btn-cancel-pass:hover {
-        background: #d32f2f;
+        background: var(--color-red-dark);
     }
 
     .adjust-row {
         display: flex;
         align-items: center;
         justify-content: center;
-        gap: 1rem;
-        margin-top: 1rem;
+        gap: var(--space-4);
+        margin-top: var(--space-4);
     }
     .adjust-label {
         font-size: var(--text-sm);
-        color: #666;
+        color: var(--text-secondary);
     }
     .btn-adjust {
         width: 60px;
         height: 40px;
         font-size: var(--text-base);
         font-weight: bold;
-        border: 1px solid #ddd;
+        border: 1px solid var(--border-default);
         border-radius: var(--radius-control);
         cursor: pointer;
         transition: all 0.2s;
     }
     .btn-adjust.plus {
-        background: #e3f2fd;
-        color: #1976d2;
+        background: var(--tint-blue-bg);
+        color: var(--color-blue-bright);
     }
     .btn-adjust.plus:hover {
-        background: #bbdefb;
+        background: var(--tint-blue-bg-hover);
     }
     .btn-adjust.minus {
-        background: #fce4ec;
-        color: #c62828;
+        background: var(--tint-red-bg);
+        color: var(--color-red-darker);
     }
     .btn-adjust.minus:hover {
-        background: #f8bbd0;
+        background: var(--tint-red-bg-hover);
     }
 
     /* Modal Styles */
@@ -598,7 +627,7 @@
     }
     .modal {
         background: white;
-        padding: 2rem;
+        padding: var(--space-6);
         border-radius: var(--radius-card);
         width: 90%;
         max-width: 400px;
@@ -609,39 +638,39 @@
     }
     .modal-actions {
         display: flex;
-        gap: 1rem;
-        margin-top: 2rem;
+        gap: var(--space-4);
+        margin-top: var(--space-6);
     }
     .btn-cancel {
         flex: 1;
-        padding: 0.75rem;
-        border: 1px solid #ddd;
+        padding: var(--space-3);
+        border: 1px solid var(--border-default);
         background: white;
         border-radius: var(--radius-control);
         cursor: pointer;
     }
     .btn-cancel:hover {
-        background: #f5f5f5;
+        background: var(--bg-surface);
     }
 
     .header {
-        margin-bottom: 2rem;
+        margin-bottom: var(--space-6);
     }
     .back-link {
         text-decoration: none;
-        color: #666;
+        color: var(--text-secondary);
         font-size: var(--text-sm);
         display: inline-block;
-        margin-bottom: 1rem;
+        margin-bottom: var(--space-4);
     }
     .stats {
         display: flex;
-        gap: 1rem;
-        margin-top: 1rem;
+        gap: var(--space-4);
+        margin-top: var(--space-4);
     }
     .stat-card {
-        background: #f5f5f5;
-        padding: 1rem;
+        background: var(--bg-surface);
+        padding: var(--space-4);
         border-radius: var(--radius-control);
         flex: 1;
         text-align: center;
@@ -649,27 +678,27 @@
     .stat-card .label {
         display: block;
         font-size: var(--text-xs);
-        color: #666;
-        margin-bottom: 0.25rem;
+        color: var(--text-secondary);
+        margin-bottom: var(--space-1);
     }
     .stat-card .value {
         font-size: var(--text-xl);
         font-weight: bold;
-        color: #333;
+        color: var(--text-primary);
     }
     .tabs {
         display: flex;
-        border-bottom: 1px solid #ddd;
-        margin-bottom: 1.5rem;
+        border-bottom: 1px solid var(--border-default);
+        margin-bottom: var(--space-5);
     }
     .tabs button {
-        padding: 0.75rem 1.5rem;
+        padding: var(--space-3) var(--space-5);
         background: none;
         border: none;
         border-bottom: 2px solid transparent;
         cursor: pointer;
         font-size: var(--text-base);
-        color: #666;
+        color: var(--text-secondary);
     }
     .tabs button.active {
         color: var(--color-blue-bright);
@@ -678,13 +707,13 @@
     }
     .view-controls {
         display: flex;
-        gap: 0.5rem;
-        margin-bottom: 1rem;
+        gap: var(--space-2);
+        margin-bottom: var(--space-4);
         justify-content: flex-end;
     }
     .view-controls button {
-        padding: 0.25rem 0.75rem;
-        background: #eee;
+        padding: var(--space-1) var(--space-3);
+        background: var(--border-light);
         border: none;
         border-radius: var(--radius-control);
         cursor: pointer;
@@ -699,76 +728,76 @@
         border-collapse: collapse;
     }
     .history-table th, .history-table td {
-        padding: 0.75rem;
+        padding: var(--space-3);
         text-align: left;
-        border-bottom: 1px solid #eee;
+        border-bottom: 1px solid var(--border-light);
     }
     .history-table th {
-        background: #f9f9f9;
+        background: var(--bg-secondary);
         font-weight: 600;
     }
     .status-badge {
-        padding: 0.25rem 0.5rem;
+        padding: var(--space-1) var(--space-2);
         border-radius: var(--radius-card);
         font-size: var(--text-xs);
     }
     .status-badge.playing {
-        background: #e3f2fd;
-        color: #1976d2;
+        background: var(--tint-blue-bg);
+        color: var(--color-blue-bright);
     }
     .status-badge.finished {
-        background: #eee;
-        color: #666;
+        background: var(--border-light);
+        color: var(--text-secondary);
     }
     
     /* Calendar Styles */
     .calendar-view {
-        border: 1px solid #eee;
+        border: 1px solid var(--border-light);
         border-radius: var(--radius-control);
-        padding: 1rem;
+        padding: var(--space-4);
     }
     .calendar-header {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        margin-bottom: 1rem;
+        margin-bottom: var(--space-4);
     }
     .calendar-header button {
         background: none;
-        border: 1px solid #ddd;
+        border: 1px solid var(--border-default);
         border-radius: var(--radius-control);
-        padding: 0.25rem 0.75rem;
+        padding: var(--space-1) var(--space-3);
         cursor: pointer;
     }
     .calendar-grid {
         display: grid;
         grid-template-columns: repeat(7, 1fr);
-        gap: 0.5rem;
+        gap: var(--space-2);
     }
     .weekday {
         text-align: center;
         font-weight: bold;
-        color: #666;
-        padding-bottom: 0.5rem;
+        color: var(--text-secondary);
+        padding-bottom: var(--space-2);
     }
     .day {
-        border: 1px solid #eee;
+        border: 1px solid var(--border-light);
         border-radius: var(--radius-control);
         min-height: 80px;
-        padding: 0.25rem;
+        padding: var(--space-1);
         position: relative;
     }
     .day.empty {
-        background: #fafafa;
+        background: var(--bg-secondary);
         border: none;
     }
     .day.has-games {
-        background: #e3f2fd;
-        border-color: #90caf9;
+        background: var(--tint-blue-bg);
+        border-color: var(--tint-blue-bg-hover);
     }
     .day-number {
         font-size: var(--text-xs);
-        color: #666;
+        color: var(--text-secondary);
         position: absolute;
         top: 4px;
         left: 4px;
@@ -782,98 +811,98 @@
     .dot {
         width: 6px;
         height: 6px;
-        background: #1976d2;
+        background: var(--color-blue-bright);
         border-radius: 50%;
     }
     .game-count {
         font-size: var(--text-xs);
-        color: #1976d2;
-        margin-top: 0.25rem;
+        color: var(--color-blue-bright);
+        margin-top: var(--space-1);
         text-align: center;
     }
 
     /* Partners Styles */
     .partners-list {
         display: grid;
-        gap: 1rem;
+        gap: var(--space-4);
     }
     .partner-card {
         display: flex;
         align-items: center;
-        padding: 1rem;
+        padding: var(--space-4);
         background: white;
-        border: 1px solid #eee;
+        border: 1px solid var(--border-light);
         border-radius: var(--radius-control);
     }
     .rank {
         width: 30px;
         height: 30px;
-        background: #333;
+        background: var(--text-primary);
         color: white;
         border-radius: 50%;
         display: flex;
         justify-content: center;
         align-items: center;
         font-weight: bold;
-        margin-right: 1rem;
+        margin-right: var(--space-4);
     }
-    .partner-card:nth-child(1) .rank { background: #ffd700; color: #333; }
-    .partner-card:nth-child(2) .rank { background: #c0c0c0; color: #333; }
-    .partner-card:nth-child(3) .rank { background: #cd7f32; color: white; }
+    .partner-card:nth-child(1) .rank { background: var(--medal-gold); color: var(--text-primary); }
+    .partner-card:nth-child(2) .rank { background: var(--medal-silver); color: var(--text-primary); }
+    .partner-card:nth-child(3) .rank { background: var(--medal-bronze); color: white; }
     
     .info .name {
         font-weight: bold;
         font-size: var(--text-lg);
     }
     .info .count {
-        color: #666;
+        color: var(--text-secondary);
         font-size: var(--text-sm);
     }
     .empty {
         text-align: center;
-        color: #999;
-        padding: 2rem;
+        color: var(--text-muted);
+        padding: var(--space-6);
     }
 
     /* Account Section */
     .account-section {
         max-width: 400px;
         margin: 0 auto;
-        padding: 2rem;
+        padding: var(--space-6);
         background: white;
         border-radius: var(--radius-control);
-        border: 1px solid #eee;
+        border: 1px solid var(--border-light);
         text-align: center;
     }
     .account-section h3 {
-        margin-bottom: 0.5rem;
+        margin-bottom: var(--space-2);
     }
     .account-section .description {
-        color: #666;
-        margin-bottom: 2rem;
+        color: var(--text-secondary);
+        margin-bottom: var(--space-6);
         font-size: var(--text-sm);
     }
     .form-group {
         text-align: left;
-        margin-bottom: 1.5rem;
+        margin-bottom: var(--space-5);
     }
     .form-group label {
         display: block;
-        margin-bottom: 0.5rem;
+        margin-bottom: var(--space-2);
         font-weight: bold;
-        color: #555;
+        color: var(--text-darker);
     }
     .form-group input {
         width: 100%;
-        padding: 0.75rem;
-        border: 1px solid #ddd;
+        padding: var(--space-3);
+        border: 1px solid var(--border-default);
         border-radius: var(--radius-control);
         font-size: var(--text-base);
         box-sizing: border-box;
     }
     .btn-primary {
         width: 100%;
-        padding: 0.75rem;
+        padding: var(--space-3);
         background: var(--color-blue-bright);
         color: white;
         border: none;
@@ -883,16 +912,16 @@
         font-size: var(--text-base);
     }
     .btn-primary:hover {
-        background: #0056b3;
+        background: var(--color-blue-darker);
     }
     .success-msg {
-        color: #2e7d32;
-        margin-top: 1rem;
+        color: var(--color-green-dark);
+        margin-top: var(--space-4);
         font-weight: bold;
     }
     .error-msg {
-        color: #d32f2f;
-        margin-top: 1rem;
+        color: var(--color-red-dark);
+        margin-top: var(--space-4);
         font-weight: bold;
     }
 </style>

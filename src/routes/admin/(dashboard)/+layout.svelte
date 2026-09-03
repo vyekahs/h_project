@@ -36,77 +36,78 @@
 </script>
 
 <div data-theme="light" class="force-light">
+<a class="skip-link" href="#admin-main">본문으로 건너뛰기</a>
 <div class="admin-layout">
     <aside class="sidebar">
         <div class="sidebar-header">
             <h2>관리자 콘솔</h2>
         </div>
-        <nav class="sidebar-nav">
+        <nav class="sidebar-nav" aria-label="관리자 메뉴">
             <a href="/admin" class="nav-item" class:active={$page.url.pathname === '/admin'}>
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px;"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>
+                <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px;"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>
                 대시보드
             </a>
             <a href="/admin/games" class="nav-item" class:active={$page.url.pathname === '/admin/games'}>
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px;"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></svg>
+                <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px;"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></svg>
                 게임 도감
             </a>
             <a href="/admin/stats" class="nav-item" class:active={$page.url.pathname === '/admin/stats'}>
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px;"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+                <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px;"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
                 통계
             </a>
             <a href="/admin/monitor" class="nav-item" class:active={$page.url.pathname === '/admin/monitor'}>
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px;"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+                <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px;"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
                 모니터
             </a>
             <a href="/admin/passes" class="nav-item" class:active={$page.url.pathname === '/admin/passes'}>
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px;"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+                <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px;"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
                 정기권
             </a>
         </nav>
         <div class="sidebar-footer">
             <form method="POST" action="/logout">
                 <button type="submit" class="btn-sidebar">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px;"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                    <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px;"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
                     로그아웃
                 </button>
             </form>
             <a href="/admin/settings" class="btn-sidebar">
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px;"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.47a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+                <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px;"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.47a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
                 설정
             </a>
         </div>
     </aside>
 
-    <main class="main-content">
+    <main class="main-content" id="admin-main">
         {#if $page.url.pathname === '/admin'}
         <div class="header">
             <div>
                 <h1>관리자 대시보드</h1>
                 {#if data.settings.is_open === 'false'}
                     <p class="closing-info">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px; vertical-align:middle; color:#fa5252;"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
+                        <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px; vertical-align:middle; color:#fa5252;"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
                         현재 <strong>마감</strong> 상태입니다.
                     </p>
                 {:else}
                     <p class="closing-info">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px; vertical-align:middle; color:#4c6ef5;"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+                        <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px; vertical-align:middle; color:#4c6ef5;"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
                         오늘의 마감: <strong>{data.closingDisplay}</strong>
                     </p>
                 {/if}
             </div>
             <div class="header-actions">
                 <a href="/" class="btn-secondary">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:6px;"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                    <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:6px;"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
                     메인으로
                 </a>
                 {#if data.settings.is_open === 'false'}
                     <button class="btn-primary" onclick={() => openDayModalVisible = true}>
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:6px;"><circle cx="12" cy="12" r="5"/><path d="M12 1v2"/><path d="M12 21v2"/><path d="M4.22 4.22l1.42 1.42"/><path d="M18.36 18.36l1.42 1.42"/><path d="M1 12h2"/><path d="M21 12h2"/><path d="M4.22 19.78l1.42-1.42"/><path d="M18.36 5.64l1.42-1.42"/></svg>
+                        <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:6px;"><circle cx="12" cy="12" r="5"/><path d="M12 1v2"/><path d="M12 21v2"/><path d="M4.22 4.22l1.42 1.42"/><path d="M18.36 18.36l1.42 1.42"/><path d="M1 12h2"/><path d="M21 12h2"/><path d="M4.22 19.78l1.42-1.42"/><path d="M18.36 5.64l1.42-1.42"/></svg>
                         오픈 하기
                     </button>
                 {:else}
                     <button class="btn-danger" onclick={() => closeDayModalVisible = true}>
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:6px;"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+                        <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:6px;"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
                         마감 하기
                     </button>
                 {/if}
@@ -117,40 +118,40 @@
         {@render children()}
     </main>
 
-    <nav class="mobile-bottom-nav">
+    <nav class="mobile-bottom-nav" aria-label="관리자 메뉴">
         <a href="/admin" class="bottom-nav-item" class:active={$page.url.pathname === '/admin'}>
             <span class="icon">
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>
+                <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>
             </span>
             <span class="label">대시보드</span>
         </a>
         <a href="/admin/games" class="bottom-nav-item" class:active={$page.url.pathname === '/admin/games'}>
             <span class="icon">
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></svg>
+                <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></svg>
             </span>
             <span class="label">게임 도감</span>
         </a>
         <a href="/admin/stats" class="bottom-nav-item" class:active={$page.url.pathname === '/admin/stats'}>
             <span class="icon">
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+                <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
             </span>
             <span class="label">통계</span>
         </a>
         <a href="/admin/monitor" class="bottom-nav-item" class:active={$page.url.pathname === '/admin/monitor'}>
             <span class="icon">
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+                <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
             </span>
             <span class="label">모니터</span>
         </a>
         <a href="/admin/passes" class="bottom-nav-item" class:active={$page.url.pathname === '/admin/passes'}>
             <span class="icon">
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
+                <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
             </span>
             <span class="label">정기권</span>
         </a>
         <a href="/admin/settings" class="bottom-nav-item" class:active={$page.url.pathname === '/admin/settings'}>
             <span class="icon">
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.47a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+                <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.47a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
             </span>
             <span class="label">설정</span>
         </a>
@@ -172,7 +173,7 @@
     >
         <div class="modal-content confirm-modal" use:trapFocus={() => closeDayModalVisible = false} onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="dialog" aria-modal="true" tabindex="-1">
             <h3>
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px; vertical-align:text-bottom;"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+                <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px; vertical-align:text-bottom;"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
                 마감 하기
             </h3>
             <p>정말 마감하시겠습니까?</p>
@@ -210,7 +211,7 @@
     >
         <div class="modal-content confirm-modal" use:trapFocus={() => openDayModalVisible = false} onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="dialog" aria-modal="true" tabindex="-1">
             <h3>
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px; vertical-align:text-bottom;"><circle cx="12" cy="12" r="5"/><path d="M12 1v2"/><path d="M12 21v2"/><path d="M4.22 4.22l1.42 1.42"/><path d="M18.36 18.36l1.42 1.42"/><path d="M1 12h2"/><path d="M21 12h2"/><path d="M4.22 19.78l1.42-1.42"/><path d="M18.36 5.64l1.42-1.42"/></svg>
+                <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px; vertical-align:text-bottom;"><circle cx="12" cy="12" r="5"/><path d="M12 1v2"/><path d="M12 21v2"/><path d="M4.22 4.22l1.42 1.42"/><path d="M18.36 18.36l1.42 1.42"/><path d="M1 12h2"/><path d="M21 12h2"/><path d="M4.22 19.78l1.42-1.42"/><path d="M18.36 5.64l1.42-1.42"/></svg>
                 오픈 하기
             </h3>
             <p>새로운 하루를 시작하시겠습니까?</p>
@@ -288,6 +289,11 @@
         --border-default: #ddd;
         --border-light: #eee;
         --border-medium: #ccc;
+        /* 테두리가 유일한 경계인 컨트롤용. --border-default(#ddd)와
+           --border-medium(#ccc)는 흰 배경에서 1.36:1 / 1.61:1이라 글자는
+           읽히는데 상자 가장자리가 보이지 않았다(WCAG 1.4.11은 3:1 요구).
+           흰 배경 4.54 · #f5f5f5 4.17 · #e9ecef 3.83. */
+        --border-control: #767676;
 
         /* Shadows */
         --shadow-sm: rgba(0,0,0,0.03);
@@ -310,15 +316,25 @@
         /* 흰 글자를 얹는 기본 파랑. #007bff는 3.98:1로 AA 미달이라 5.1:1인 값으로 내렸다.
            밝은 파랑이 필요한 곳(배경/테두리)은 --color-blue를 쓸 것. */
         --color-blue-bright: #0b5ed7;
-        --focus-ring: #0b5ed7;
+        /* 포커스 링은 브랜드 색과 달라야 한다. --color-blue-bright와 같은 값이면
+           파란 버튼 위에서 링과 버튼이 한 덩어리로 보여 포커스가 사라진다.
+           빨강(마감 하기)·초록 위에서도 통하도록 중립 먹색을 쓴다. */
+        --focus-ring: #111827;
         --focus-ring-on-dark: #9ec5fe;
         --color-amber: #fbbf24;
         --color-amber-dark: #f59e0b;
         --color-amber-darker: #d97706;
         --color-green: #22c55e;
-        --color-green-dark: #2b8a3e;
+        --color-green-dark: #1b6b2c;
         --color-red: #ef4444;
         --color-red-dark: #d32f2f;
+        --color-red-darker: #b71c1c;      /* 파괴적 동작의 hover */
+        --color-green-darker: #14532d;    /* 초록 버튼의 hover */
+        /* 흰 배경에서 AA를 통과하는 주황 텍스트.
+           --color-orange-dark(#e67700)는 3.00:1이라 텍스트로 쓸 수 없다. */
+        --color-orange-text: #c2410c;
+        --color-error-bg-strong: #ffecec;   /* 오류 틴트의 hover */
+        --color-warning-bg-strong: #ffeccc; /* 경고 틴트의 hover */
         --color-orange: #ff9800;
         --color-orange-dark: #e67700;
 
@@ -331,6 +347,21 @@
         /* Additional Colors */
         --border-warning: #ffe0b2;
         --color-purple-bg: #e8d5f5;
+
+        /* 연한 배경 + 진한 글자 톤 버튼. +/- 조정, 연장/해지처럼 짝을 이루는
+           동작에 쓴다. 세 화면에 같은 값이 흩어져 있던 것을 모았다.
+           hover 틴트는 글자가 4.5:1을 지키는 선까지만 진해진다
+           (예전 #bbdefb / #f8bbd0 은 4.16 / 4.07 로 미달이었다). */
+        --tint-blue-bg: #e3f2fd;
+        --tint-blue-bg-hover: #d4e6fc;
+        --tint-red-bg: #fce4ec;
+        --tint-red-bg-hover: #fbd0de;
+        --color-blue-darker: #0a4bad;   /* 파랑 버튼의 hover */
+
+        /* 순위 메달. 동메달은 흰 글자에서 3.14:1이던 #cd7f32를 내렸다. */
+        --medal-gold: #ffd700;
+        --medal-silver: #c0c0c0;
+        --medal-bronze: #9c6320;
         --color-indigo: #364fc7;
 
         color-scheme: light;
@@ -408,7 +439,7 @@
         overflow-y: auto;
     }
     .sidebar-header {
-        margin-bottom: 2rem;
+        margin-bottom: var(--space-6);
         text-align: center;
     }
     .sidebar-header h2 {
@@ -419,13 +450,13 @@
     .sidebar-nav {
         display: flex;
         flex-direction: column;
-        gap: 0.5rem;
+        gap: var(--space-2);
         flex: 1;
     }
     .nav-item {
         color: #ecf0f1;
         text-decoration: none;
-        padding: 0.75rem 1rem;
+        padding: var(--space-3) var(--space-4);
         border-radius: var(--radius-control);
         transition: background 0.2s;
     }
@@ -434,18 +465,18 @@
     }
     .sidebar-footer {
         margin-top: auto;
-        padding-top: 1rem;
+        padding-top: var(--space-4);
         border-top: 1px solid #34495e;
         display: flex;
         flex-direction: column;
-        gap: 0.5rem;
+        gap: var(--space-2);
     }
     .btn-sidebar {
         width: 100%;
         background: #34495e;
         color: #ecf0f1;
         border: none;
-        padding: 0.75rem;
+        padding: var(--space-3);
         border-radius: var(--radius-control);
         cursor: pointer;
         text-align: left;
@@ -472,27 +503,45 @@
         display: flex;
         justify-content: space-between;
         align-items: center;
-        margin-bottom: 2rem;
+        margin-bottom: var(--space-6);
     }
     .header-actions {
         display: flex;
-        gap: 1rem;
+        gap: var(--space-4);
     }
     
     .mobile-bottom-nav {
         display: none;
     }
 
+    /* 모션을 줄이도록 설정한 사용자에게는 전환을 끈다.
+       여기 남은 것은 배경색 페이드뿐이지만, 설정을 존중하지 않는 것 자체가
+       사용자에게 이 화면이 자기 설정 밖에 있다고 말한다. */
+    @media (prefers-reduced-motion: reduce) {
+        :global(.force-light *),
+        :global(.force-light *::before),
+        :global(.force-light *::after) {
+            animation-duration: 0.01ms !important;
+            animation-iteration-count: 1 !important;
+            transition-duration: 0.01ms !important;
+            scroll-behavior: auto !important;
+        }
+    }
+
     /* Mobile Responsive Styles */
     @media (max-width: 768px) {
         .admin-layout {
             flex-direction: column;
+            /* 데스크톱의 align-items:flex-start는 sticky 사이드바를 위한 것이다.
+               세로 배치에서는 그것이 교차축(가로) 사이징이 되어 main-content가
+               max-content로 부풀고, 넓은 행 하나가 콘솔 전체를 가로로 밀어냈다. */
+            align-items: stretch;
         }
         .sidebar {
             position: static;
             height: auto;
             width: 100%;
-            padding: 1rem;
+            padding: var(--space-4);
             box-sizing: border-box;
             flex-direction: row;
             align-items: center;
@@ -513,20 +562,21 @@
         }
         
         .main-content {
-            padding: 1rem;
+            padding: var(--space-4);
             padding-bottom: 80px; /* Space for bottom nav */
         }
         .header {
             flex-direction: column;
             align-items: flex-start;
-            gap: 1rem;
+            gap: var(--space-4);
         }
+        /* stretch + flex:1 은 되돌릴 수 없는 「마감 하기」를 화면에서 가장 큰
+           탭 타깃(200px)으로 만들었다 — 옆의 「메인으로」(127px)보다 크다.
+           하루 한 번 쓰는 파괴적 동작이 헤더에서 가장 누르기 쉬우면 안 된다.
+           내용 크기로 두면 높이는 46px 그대로라 손가락에는 충분하다. */
         .header-actions {
             width: 100%;
-            justify-content: stretch;
-        }
-        .header-actions button {
-            flex: 1;
+            flex-wrap: wrap;
         }
 
         /* Show Bottom Nav */
@@ -538,7 +588,7 @@
             width: 100%;
             background: white;
             border-top: 1px solid #ddd;
-            padding: 0.5rem 0;
+            padding: var(--space-2) 0;
             justify-content: space-around;
             z-index: 100;
             box-shadow: 0 -2px 10px rgba(0,0,0,0.05);
@@ -553,8 +603,8 @@
             background: none;
             border: none;
             font-size: var(--text-xs);
-            gap: 0.25rem;
-            padding: 0.5rem;
+            gap: var(--space-1);
+            padding: var(--space-2);
             flex: 1;
         }
         .bottom-nav-item .icon {
@@ -564,11 +614,28 @@
             color: var(--color-blue-bright);
         }
     }
+    /* 키보드로 들어오면 사이드바 링크 7개를 지나야 주 액션에 닿았다 */
+    .skip-link {
+        position: absolute;
+        left: var(--space-2);
+        top: -100%;
+        z-index: 1300;
+        padding: var(--space-2) var(--space-4);
+        border-radius: var(--radius-control);
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        font-size: var(--text-sm);
+        font-weight: var(--weight-medium);
+        box-shadow: var(--shadow-lg);
+    }
+    .skip-link:focus {
+        top: var(--space-2);
+    }
     .btn-secondary {
-        background: white;
-        color: #333;
-        border: 1px solid #ddd;
-        padding: 0.75rem 1.5rem;
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        border: 1px solid var(--border-control);
+        padding: var(--space-3) var(--space-5);
         border-radius: var(--radius-control);
         text-decoration: none;
         font-weight: bold;
@@ -583,7 +650,7 @@
         background: var(--color-blue-bright);
         color: white;
         border: none;
-        padding: 0.75rem 1.5rem;
+        padding: var(--space-3) var(--space-5);
         border-radius: var(--radius-control);
         cursor: pointer;
         font-weight: bold;
@@ -592,7 +659,7 @@
         background: #d32f2f;
         color: white;
         border: none;
-        padding: 0.75rem 1.5rem;
+        padding: var(--space-3) var(--space-5);
         border-radius: var(--radius-control);
         cursor: pointer;
         font-weight: bold;
@@ -602,14 +669,14 @@
         background: #b71c1c;
     }
     .closing-info {
-        margin: 0.5rem 0 0 0;
+        margin: var(--space-2) 0 0 0;
         color: #666;
         font-size: var(--text-sm);
     }
     .warning-text {
         color: #d32f2f;
         font-size: var(--text-sm);
-        margin-top: 0.5rem;
+        margin-top: var(--space-2);
     }
     .modal-backdrop {
         position: fixed;
@@ -625,24 +692,24 @@
     }
     .modal-content {
         background: white;
-        padding: 2rem;
+        padding: var(--space-6);
         border-radius: var(--radius-card);
         width: 90%;
         max-width: 420px;
         box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
     }
     .modal-content h3 {
-        margin: 0 0 1rem;
+        margin: 0 0 var(--space-4);
         font-size: var(--text-lg);
     }
     .modal-content p {
-        margin: 0.5rem 0;
+        margin: var(--space-2) 0;
         color: #555;
     }
     .modal-actions {
         display: flex;
-        gap: 0.75rem;
-        margin-top: 1.5rem;
+        gap: var(--space-3);
+        margin-top: var(--space-5);
         justify-content: flex-end;
     }
     .modal-actions form {
