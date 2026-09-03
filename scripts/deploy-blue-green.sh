@@ -42,6 +42,11 @@ echo "[deploy] 현재 활성: app_${CURRENT} → 새로 배포: app_${TARGET}"
 # db/caddy는 항상 최신 상태 유지. ble-server는 코드가 바뀌었으면 재빌드
 # (사용자 트래픽과 무관한 백그라운드 서비스라 짧은 재시작은 감수한다).
 docker compose up -d db caddy
+
+# 새 코드가 아직 없는 컬럼/제약을 가정할 수 있으므로, 새 앱 슬롯을 띄우기 전에
+# 마이그레이션부터 적용한다. 실패하면 배포 자체를 중단한다(set -e).
+./scripts/migrate-db.sh
+
 docker compose up -d --build ble-server
 
 # 비활성 슬롯을 새로 빌드/기동 — 이 사이 기존 활성 슬롯은 계속 트래픽을 받는다.

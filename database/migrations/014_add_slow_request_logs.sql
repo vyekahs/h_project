@@ -13,9 +13,9 @@ CREATE TABLE IF NOT EXISTS slow_request_logs (
 );
 
 -- Performance indexes for common queries
-CREATE INDEX idx_slow_request_logs_timestamp ON slow_request_logs(timestamp DESC);
-CREATE INDEX idx_slow_request_logs_path ON slow_request_logs(path);
-CREATE INDEX idx_slow_request_logs_duration ON slow_request_logs(duration DESC);
+CREATE INDEX IF NOT EXISTS idx_slow_request_logs_timestamp ON slow_request_logs(timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_slow_request_logs_path ON slow_request_logs(path);
+CREATE INDEX IF NOT EXISTS idx_slow_request_logs_duration ON slow_request_logs(duration DESC);
 
 -- Table and column comments
 COMMENT ON TABLE slow_request_logs IS 'Persistent log of slow HTTP requests (≥200ms) for performance monitoring';
