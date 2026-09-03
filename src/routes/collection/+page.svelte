@@ -37,20 +37,37 @@
     const selectedGame = $derived(selectedGameId ? data.games.find((g: any) => g.id === selectedGameId) : null);
     const selectedGamePlays = $derived(selectedGameId ? (data.playedByGameId[selectedGameId] ?? []) : []);
 
-    // 같은 게임을 오래 반복해서 플레이했으면 기록이 길어지므로 연도로 좁혀볼 수 있게 한다.
+    // 같은 게임을 오래 반복해서 플레이했으면 기록이 길어지므로 여러 기준으로 좁혀볼 수 있게 한다.
     let playYearFilter = $state('all');
+    let playMonthFilter = $state('all');
+    let playDayFilter = $state('all');
+    let playOpponentQuery = $state('');
+    let playWinOnly = $state(false);
     const playYears = $derived(
         [...new Set(selectedGamePlays.map((p: any) => new Date(p.endTime).getFullYear()))].sort((a: any, b: any) => b - a)
     );
     const filteredPlays = $derived(
-        playYearFilter === 'all'
-            ? selectedGamePlays
-            : selectedGamePlays.filter((p: any) => new Date(p.endTime).getFullYear().toString() === playYearFilter)
+        selectedGamePlays.filter((p: any) => {
+            const d = new Date(p.endTime);
+            if (playYearFilter !== 'all' && d.getFullYear().toString() !== playYearFilter) return false;
+            if (playMonthFilter !== 'all' && (d.getMonth() + 1).toString() !== playMonthFilter) return false;
+            if (playDayFilter !== 'all' && d.getDate().toString() !== playDayFilter) return false;
+            if (playWinOnly && !p.isWinner) return false;
+            if (playOpponentQuery.trim()) {
+                const q = playOpponentQuery.trim().toLowerCase();
+                if (!(p.opponents || []).some((o: any) => o.name.toLowerCase().includes(q))) return false;
+            }
+            return true;
+        })
     );
 
     function openGameModal(game: any) {
         selectedGameId = game.id;
         playYearFilter = 'all';
+        playMonthFilter = 'all';
+        playDayFilter = 'all';
+        playOpponentQuery = '';
+        playWinOnly = false;
     }
     function closeGameModal() {
         selectedGameId = null;
@@ -185,13 +202,43 @@
                 </div>
             </div>
 
-            {#if playYears.length > 1}
-                <select class="play-year-select" bind:value={playYearFilter} aria-label="연도 필터">
-                    <option value="all">전체 연도</option>
-                    {#each playYears as year}
-                        <option value={year.toString()}>{year}년</option>
-                    {/each}
-                </select>
+            <div class="play-filters">
+                <div class="play-filters-dates">
+                    <select class="play-date-select" bind:value={playYearFilter} aria-label="연도 필터">
+                        <option value="all">전체 연도</option>
+                        {#each playYears as year}
+                            <option value={year.toString()}>{year}년</option>
+                        {/each}
+                    </select>
+                    <select class="play-date-select" bind:value={playMonthFilter} aria-label="월 필터">
+                        <option value="all">전체 월</option>
+                        {#each Array(12) as _, i}
+                            <option value={(i + 1).toString()}>{i + 1}월</option>
+                        {/each}
+                    </select>
+                    <select class="play-date-select" bind:value={playDayFilter} aria-label="일 필터">
+                        <option value="all">전체 일</option>
+                        {#each Array(31) as _, i}
+                            <option value={(i + 1).toString()}>{i + 1}일</option>
+                        {/each}
+                    </select>
+                </div>
+                <div class="play-filters-row">
+                    <input
+                        type="text"
+                        class="play-opponent-input"
+                        placeholder="같이 한 사람 검색..."
+                        bind:value={playOpponentQuery}
+                    />
+                    <label class="win-only-toggle">
+                        <input type="checkbox" bind:checked={playWinOnly} />
+                        승리한 게임만
+                    </label>
+                </div>
+            </div>
+
+            {#if filteredPlays.length === 0}
+                <p class="no-play-results">조건에 맞는 기록이 없어요.</p>
             {/if}
 
             <div class="modal-play-list">
@@ -237,18 +284,20 @@
                         </div>
                     {:else}
                         <div class="modal-play-row" class:win={play.isWinner}>
-                            <div class="play-row-top">
-                                <span class="play-date">{formatDate(play.endTime)}</span>
-                                <span class="play-result">
-                                    {#if play.isWinner}<span class="result-badge">승리</span>{/if}
-                                    {#if play.myScore}<span class="play-score">{play.myScore}점</span>{/if}
-                                </span>
+                            <div class="play-row-main">
+                                <div class="play-row-top">
+                                    <span class="play-date">{formatDate(play.endTime)}</span>
+                                    <span class="play-result">
+                                        {#if play.isWinner}<span class="result-badge">승리</span>{/if}
+                                        {#if play.myScore}<span class="play-score">{play.myScore}점</span>{/if}
+                                    </span>
+                                </div>
+                                {#if play.opponents && play.opponents.length > 0}
+                                    <p class="play-opponents">
+                                        함께: {play.opponents.map((o: any) => o.name + (o.score ? `(${o.score})` : '')).join(', ')}
+                                    </p>
+                                {/if}
                             </div>
-                            {#if play.opponents && play.opponents.length > 0}
-                                <p class="play-opponents">
-                                    함께: {play.opponents.map((o: any) => o.name + (o.score ? `(${o.score})` : '')).join(', ')}
-                                </p>
-                            {/if}
                             {#if canEditPlay(play)}
                                 <button type="button" class="btn-edit-play" onclick={() => openPlayEdit(play)}>수정</button>
                             {/if}
@@ -559,16 +608,56 @@
         font-size: 0.82rem;
         color: var(--text-secondary);
     }
-    .play-year-select {
+    .play-filters {
         flex-shrink: 0;
-        align-self: flex-start;
+        display: flex;
+        flex-direction: column;
+        gap: 0.4rem;
         margin-bottom: 0.75rem;
+    }
+    .play-filters-dates {
+        display: flex;
+        gap: 0.4rem;
+    }
+    .play-date-select {
+        flex: 1;
+        min-width: 0;
+        padding: 0.35rem 0.4rem;
+        border: 1px solid var(--border-default);
+        border-radius: 6px;
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        font-size: 0.78rem;
+    }
+    .play-filters-row {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    .play-opponent-input {
+        flex: 1;
+        min-width: 0;
         padding: 0.35rem 0.6rem;
         border: 1px solid var(--border-default);
         border-radius: 6px;
         background: var(--bg-primary);
         color: var(--text-primary);
         font-size: 0.8rem;
+    }
+    .win-only-toggle {
+        display: flex;
+        align-items: center;
+        gap: 0.3rem;
+        font-size: 0.78rem;
+        color: var(--text-secondary);
+        white-space: nowrap;
+        cursor: pointer;
+    }
+    .no-play-results {
+        text-align: center;
+        font-size: 0.82rem;
+        color: var(--text-tertiary);
+        padding: 1rem 0;
     }
     .modal-play-list {
         display: flex;
@@ -584,6 +673,17 @@
     }
     .modal-play-row.win {
         border-left: 3px solid var(--color-amber);
+    }
+    /* 수정 버튼을 오른쪽에 두기 위한 가로 배치 — 수정 폼(.editing)은
+       에러 문구 + 폼이 세로로 쌓여야 하므로 이 레이아웃에서 제외한다. */
+    .modal-play-row:not(.editing) {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    .play-row-main {
+        flex: 1;
+        min-width: 0;
     }
     .play-row-top {
         display: flex;
@@ -619,7 +719,7 @@
         color: var(--text-secondary);
     }
     .btn-edit-play {
-        margin-top: 0.5rem;
+        flex-shrink: 0;
         background: none;
         border: 1px solid var(--border-default);
         color: var(--text-secondary);
