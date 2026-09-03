@@ -157,9 +157,14 @@
         </a>
     </nav>
 </div>
-</div>
-
+<!--
+    래퍼 안이어야 한다. 밖에 두면 :global(.force-light :focus-visible) 규칙이
+    닿지 않아 되돌리기 버튼의 포커스 링이 브라우저 기본값(#005fcc)으로 떨어지고,
+    토스트 배경 #555 위에서 1.25:1이 된다. 컴포넌트의 var(--토큰, 폴백)도
+    전부 폴백으로 해석된다.
+-->
 <AdminFeedback />
+</div>
 
 {#if closeDayModalVisible}
     <!-- 백드롭은 편의용 클릭 영역. 키보드 경로는 모달의 Escape(trapFocus)와 닫기 버튼이 담당한다. -->
@@ -334,7 +339,9 @@
            --color-orange-dark(#e67700)는 3.00:1이라 텍스트로 쓸 수 없다. */
         --color-orange-text: #c2410c;
         --color-error-bg-strong: #ffecec;   /* 오류 틴트의 hover */
-        --color-warning-bg-strong: #ffeccc; /* 경고 틴트의 hover */
+        /* #ffeccc 는 --color-orange-text(#c2410c)가 4.469:1로 바로 아래 줄의
+           약속을 못 지켰다. 4.579:1까지만 진해진다. */
+        --color-warning-bg-strong: #ffefd6; /* 경고 틴트의 hover */
         --color-orange: #ff9800;
         --color-orange-dark: #e67700;
 
@@ -592,6 +599,13 @@
             justify-content: space-around;
             z-index: 100;
             box-shadow: 0 -2px 10px rgba(0,0,0,0.05);
+            transition: opacity 0.15s;
+        }
+        /* 백드롭(z-index 1000)이 이 바를 덮어 기능은 죽는데 모습은 선명해서,
+           엄지가 닿는 자리에서 누를 수 있는 것처럼 보였다. 실제로 누르면
+           이동이 아니라 작성 중이던 시트가 닫혔다. */
+        :global(body:has(.modal-backdrop)) .mobile-bottom-nav {
+            opacity: 0.35;
         }
         .bottom-nav-item {
             display: flex;

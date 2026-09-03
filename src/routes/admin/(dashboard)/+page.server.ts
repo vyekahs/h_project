@@ -367,23 +367,51 @@ export const actions: Actions = {
         // 이전에는 승자가 없어도 무조건 기록됐다고 알렸다.
         return { success: true, endedName: gameName, hadWinners: winnerIds.length > 0, undo };
     },
+    /**
+     * 게임 시간 조정. 음수도 받는다.
+     *
+     * 연장만 되고 줄일 수 없어서, 잘못 눌러 +20분이 되면 교정할 방법이 게임을
+     * 종료하는 것뿐이었다. 다만 지금보다 앞으로는 못 당긴다 — 그건 종료이고,
+     * 종료에는 승자 기록과 되돌리기가 붙는 별도의 경로가 있다.
+     */
     extendGame: async ({ request }) => {
         const data = await request.formData();
         const id = data.get('id')?.toString();
         const minutes = parseInt(data.get('minutes')?.toString() || '0');
 
-        if (!id || minutes <= 0) {
+        if (!id || !Number.isFinite(minutes) || minutes === 0) {
             return fail(400, { missing: true });
         }
         if (!(await canModifyGame(request, id))) return fail(403, { error: '권한이 없습니다.' });
 
         try {
-            await db.execute(sql`
-                UPDATE game_sessions SET end_time = end_time + ${minutes + ' minutes'}::INTERVAL WHERE id = ${id}
+            // 연장은 "지금부터 더"를 뜻한다. 이미 14분 초과된 게임에 +10분을 눌렀는데
+            // 여전히 과거로 남으면 운영자의 의도와 다르다. 그래서 늘릴 때는
+            // 이미 지난 종료 시각이 아니라 지금을 기준으로 더한다.
+            // 줄일 때만 "지금보다 이전으로는 못 간다"를 지킨다 — 그건 종료이고,
+            // 종료에는 승자 기록과 되돌리기가 붙는 별도 경로가 있다.
+            const base = minutes > 0 ? sql`GREATEST(end_time, NOW())` : sql`end_time`;
+            const rows = await db.execute(sql`
+                UPDATE game_sessions
+                SET end_time = ${base} + ${minutes + ' minutes'}::INTERVAL
+                WHERE id = ${id}
+                  AND status = 'playing'
+                  AND ${base} + ${minutes + ' minutes'}::INTERVAL > NOW()
+                RETURNING game_name, end_time
             `);
+            const row = (rows as any[])[0];
+            if (!row) {
+                const stillPlaying = await db.execute(sql`SELECT 1 FROM game_sessions WHERE id = ${id} AND status = 'playing'`);
+                return fail(400, {
+                    error: stillPlaying.length === 0
+                        ? '이미 종료된 게임입니다.'
+                        : '더 줄이면 지금보다 이전이 됩니다. 끝났다면 「게임 종료」를 쓰세요.'
+                });
+            }
             emitLiveEvent('games');
+            return { success: true, gameName: row.game_name as string, endTime: row.end_time, minutes };
         } catch (error) {
-            return fail(500, { error: '게임 시간 연장에 실패했습니다.' });
+            return fail(500, { error: '게임 시간 조정에 실패했습니다.' });
         }
     },
     updateSettings: async ({ request }) => {

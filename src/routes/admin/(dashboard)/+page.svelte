@@ -421,6 +421,27 @@
         dropdownOpen = true;
     }
 
+    /**
+     * 폼 모달의 백드롭 처리.
+     *
+     * 375px에서 화면 아래 64px은 엄지가 놓이는 자리이고, 거기 한 번 닿으면
+     * 채워 넣은 새 게임 폼이 경고 없이 사라졌다. 시끄러운 방에서 한 손으로
+     * 쓰는 장면 그대로다. 입력이 있으면 백드롭으로는 닫지 않는다 —
+     * 「취소」 버튼과 Escape는 의도된 행동이라 그대로 둔다.
+     */
+    function dismissFormModal(close: () => void, dirty: boolean) {
+        if (dirty) {
+            showToast('입력한 내용이 있습니다. 닫으려면 「취소」를 눌러주세요.');
+            return;
+        }
+        close();
+    }
+
+    const newGameDirty = $derived(
+        selectedGameName.trim() !== '' || selectedPlayerIds.length > 0 || guestCount > 0
+    );
+    const scheduledGameDirty = $derived(scheduledGameName.trim() !== '' || guestCount > 0);
+
     function handleModalClick(event: MouseEvent) {
         event.stopPropagation();
         const target = event.target as HTMLElement;
@@ -1074,7 +1095,7 @@
     <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
     <div
         class="modal-backdrop"
-        onclick={() => showModal = false} 
+        onclick={() => dismissFormModal(() => showModal = false, newGameDirty)}
         role="button" 
         tabindex="-1"
         aria-label="Close modal"
@@ -1406,7 +1427,12 @@
                 </div>
                 <form method="POST" action="?/toggleBlacklist" use:enhance={m.is_blacklisted ? pending(undefined, `${m.name}님을 블랙리스트에서 해제했습니다.`) : confirmSubmit({ title: '블랙리스트 등록', message: `${m.name}님을 블랙리스트에 등록합니다. 이후 입장·게임 참여가 제한되고, 진행 중이거나 예정된 참여도 막힙니다.`, confirmLabel: '블랙 등록', danger: true, success: `${m.name}님을 블랙리스트에 등록했습니다.` })} style="display:inline;">
                     <input type="hidden" name="attendeeId" value={m.id} />
-                    <button type="submit" class="btn-role {m.is_blacklisted ? 'is-secondary' : 'is-destructive'}">
+                    <!--
+                        채움 빨강이라 시트에서 가장 강한 요소였다. 40명 동아리에서
+                        한 사람을 배제하는 조치를 시트의 기본 CTA처럼 그릴 이유가 없다.
+                        부정적 조치라는 신호는 테두리로 유지한다.
+                    -->
+                    <button type="submit" class="btn-role {m.is_blacklisted ? 'is-secondary' : 'is-danger-outline'}">
                         {m.is_blacklisted ? '블랙 해제' : '블랙 등록'}
                     </button>
                 </form>
@@ -1417,7 +1443,19 @@
                     <span>게임 관리 권한</span>
                     <span class="manage-sub">{m.can_manage_games ? '매니저' : '일반 유저'}</span>
                 </div>
-                <form method="POST" action="?/toggleManager" use:enhance={pending(undefined, m.can_manage_games ? `${m.name}님의 매니저 권한을 해제했습니다.` : `${m.name}님을 매니저로 지정했습니다.`)} style="display:inline;">
+                <!--
+                    되돌릴 수 있는 페널티 1점에는 확인창이 있는데, 이 제품의 유일한
+                    권한 부여에는 없었다. 위험 보정이 반대였다.
+                -->
+                <form method="POST" action="?/toggleManager" use:enhance={m.can_manage_games
+                    ? pending(undefined, `${m.name}님의 매니저 권한을 해제했습니다.`)
+                    : confirmSubmit({
+                        title: '매니저 지정',
+                        message: `${m.name}님에게 매니저 권한을 줍니다. 매니저는 게임을 만들고 자기가 만든 게임의 인원과 시간을 관리할 수 있습니다.`,
+                        confirmLabel: '매니저 지정',
+                        danger: false,
+                        success: `${m.name}님을 매니저로 지정했습니다.`
+                    })} style="display:inline;">
                     <input type="hidden" name="attendeeId" value={m.id} />
                     <button type="submit" class="btn-role is-secondary">
                         {m.can_manage_games ? '매니저 해제' : '매니저 지정'}
@@ -1425,8 +1463,16 @@
                 </form>
             </div>
 
-            <hr class="manage-divider" />
-
+            <!--
+                전폭 버튼으로 시트 맨 아래, 네이티브 시트가 "완료"에 쓰는 자리에
+                있었다. 닫으려고 손을 뻗으면 퇴장 처리에 닿았다. 다른 속성 행들과
+                같은 줄로 내리고, 그 자리는 닫기가 가져간다.
+            -->
+            <div class="manage-row">
+                <div class="manage-label">
+                    <span>입장 상태</span>
+                    <span class="manage-sub">방에 있음</span>
+                </div>
             <form method="POST" action="?/removeAttendee" use:enhance={(arg) => {
                 if (m.is_playing) {
                     arg.cancel();
@@ -1446,10 +1492,11 @@
                 })(arg);
             }}>
                 <input type="hidden" name="id" value={m.id} />
-                <button type="submit" class="btn-role is-secondary full-width">퇴장 처리</button>
+                <button type="submit" class="btn-role is-danger-outline">퇴장 처리</button>
             </form>
+            </div>
 
-            <button type="button" class="btn-role is-quiet manage-close" onclick={() => (manageTarget = null)}>
+            <button type="button" class="btn-sheet-close manage-close" onclick={() => (manageTarget = null)}>
                 닫기
             </button>
         </div>
@@ -1506,7 +1553,7 @@
     <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
     <div
         class="modal-backdrop"
-        onclick={() => showScheduledGameModal = false} 
+        onclick={() => dismissFormModal(() => showScheduledGameModal = false, scheduledGameDirty)}
         role="button" 
         tabindex="-1"
         aria-label="Close modal"
@@ -1720,7 +1767,9 @@
             <div class="detail-actions">
                 <form method="POST" action="?/joinGame" use:enhance={() => {
                     return async ({ result, update }) => {
-                        reportResult(result);
+                        // 조용히 끝나는 폼이 없어야 한다 — 이 셋만 예외로 남아 있었다
+                        const who = participantSearch.trim();
+                        if (!reportResult(result)) showToast(`${who || '참여자'}님을 ${g.game_name}에 추가했습니다`);
                         resetParticipantSearch();
                         await update();
                         refreshSelectedPlayingGame();
@@ -1732,7 +1781,7 @@
                 </form>
                 <form method="POST" action="?/addGuestToGame" use:enhance={() => {
                     return async ({ result, update }) => {
-                        reportResult(result);
+                        if (!reportResult(result)) showToast(`${g.game_name}에 게스트를 추가했습니다`);
                         await update();
                         refreshSelectedPlayingGame();
                     };
@@ -1742,29 +1791,30 @@
                 </form>
                 <div class="detail-group">
                     <span class="detail-group-label">시간 조정</span>
+                    <!--
+                        연장만 있고 줄이는 수단이 없었다. 게다가 눌러도 아무 응답이
+                        없어 시끄러운 방에서는 다시 누르게 되고, 그러면 +20분이
+                        되는데 교정할 방법이 게임 종료뿐이었다.
+                    -->
                     <div class="detail-extend-row">
-                    <form method="POST" action="?/extendGame" use:enhance={pending(() => {
-                        return async ({ result, update }: any) => {
-                            reportResult(result);
-                            await update();
-                            refreshSelectedPlayingGame();
-                        };
-                    })} style="flex:1;">
-                        <input type="hidden" name="id" value={g.id} />
-                        <input type="hidden" name="minutes" value="10" />
-                        <button type="submit" class="btn-extend" style="width:100%;">+10분</button>
-                    </form>
-                    <form method="POST" action="?/extendGame" use:enhance={pending(() => {
-                        return async ({ result, update }: any) => {
-                            reportResult(result);
-                            await update();
-                            refreshSelectedPlayingGame();
-                        };
-                    })} style="flex:1;">
-                        <input type="hidden" name="id" value={g.id} />
-                        <input type="hidden" name="minutes" value="30" />
-                        <button type="submit" class="btn-extend" style="width:100%;">+30분</button>
-                    </form>
+                        {#each [-10, 10, 30] as delta (delta)}
+                            <form method="POST" action="?/extendGame" use:enhance={pending(
+                                () => async (res: any) => {
+                                    if (!reportResult(res.result)) {
+                                        const d = res.result?.data ?? {};
+                                        showToast(`${d.gameName ?? g.game_name} ${delta > 0 ? '+' : ''}${delta}분 · 종료 예정 ${formatTime(d.endTime)}`);
+                                    }
+                                    await res.update();
+                                    refreshSelectedPlayingGame();
+                                }
+                            )} style="flex:1;">
+                                <input type="hidden" name="id" value={g.id} />
+                                <input type="hidden" name="minutes" value={delta} />
+                                <button type="submit" class="btn-extend" class:is-reduce={delta < 0} style="width:100%;">
+                                    {delta > 0 ? '+' : '−'}{Math.abs(delta)}분
+                                </button>
+                            </form>
+                        {/each}
                     </div>
                 </div>
                 <!--
@@ -2898,6 +2948,16 @@
         background: var(--color-red-dark);
         color: var(--bg-primary);
     }
+    /* 부정적이지만 되돌릴 수 있는 조치. 채움 빨강(is-destructive)은
+       되돌릴 수 없는 것에만 남긴다. */
+    .btn-role.is-danger-outline {
+        background: var(--bg-primary);
+        color: var(--color-red-dark);
+        border-color: var(--color-red-dark);
+    }
+    .btn-role.is-danger-outline:hover {
+        background: var(--color-error-bg);
+    }
     .btn-role.is-secondary {
         background: var(--bg-primary);
         color: var(--text-primary);
@@ -3052,6 +3112,15 @@
     }
     .btn-extend:hover {
         background: var(--tint-blue-bg-hover);
+    }
+    /* 줄이는 건 늘리는 것과 반대 방향이다. 같은 톤이면 세 버튼이 한 덩어리로 읽힌다. */
+    .btn-extend.is-reduce {
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        border-color: var(--border-control);
+    }
+    .btn-extend.is-reduce:hover {
+        background: var(--bg-hover);
     }
     .detail-group {
         display: flex;
@@ -3304,8 +3373,10 @@
         color: var(--text-secondary);
         white-space: nowrap;
     }
+    /* 20px bold라 큰 글씨 기준 3:1이 적용되고, 방향 지시자라 1.4.11로도 3:1이다.
+       --text-muted(#999)로는 흰 배경 2.85 · 만료 행 hover 위 2.46이었다. */
     .list-arrow {
-        color: var(--text-muted);
+        color: var(--text-tertiary);
         font-size: var(--text-lg);
         font-weight: bold;
     }
