@@ -267,9 +267,13 @@
             return;
         }
         const line = `${p.name} 페널티 ${p.points > 0 ? `+1 · ${p.reason}` : '−1 · 취소'} → ${p.total}/${p.threshold}점`;
-        // 임계에 닿은 경우는 멈춰 세워 읽혀야 하므로 모달로 간다. 되돌리기는
-        // 그 뒤 토스트가 받는다 — 예약 제한까지 걸린 조치일수록 무를 수 있어야 한다.
-        if (p.blocked && p.points > 0) showAlert(`${line} — 누적 ${p.total}점이 되어 이제 예약이 제한됩니다.`, 'info');
+        // 한 사건에 한 번만 알린다. 예전에는 임계에 닿으면 알림 모달과 토스트가
+        // 동시에 떴는데, 모달이 토스트를 가려서 거기 실린 되돌리기는 보이지도
+        // 않는 채 타이머만 흘렀다. 멈춰 세워야 하면 모달이 전부를 말한다.
+        if (p.blocked && p.points > 0) {
+            showAlert(`${line} — 누적 ${p.total}점이 되어 이제 예약이 제한됩니다.`, 'info');
+            return;
+        }
         toastUndoable(line, d?.undo);
     }
 
@@ -425,6 +429,27 @@
         dropdownOpen = true;
     }
 
+    /**
+     * 폼 모달의 백드롭 처리.
+     *
+     * 375px에서 화면 아래 64px은 엄지가 놓이는 자리이고, 거기 한 번 닿으면
+     * 채워 넣은 새 게임 폼이 경고 없이 사라졌다. 시끄러운 방에서 한 손으로
+     * 쓰는 장면 그대로다. 입력이 있으면 백드롭으로는 닫지 않는다 —
+     * 「취소」 버튼과 Escape는 의도된 행동이라 그대로 둔다.
+     */
+    function dismissFormModal(close: () => void, dirty: boolean) {
+        if (dirty) {
+            showToast('입력한 내용이 있습니다. 닫으려면 「취소」를 눌러주세요.');
+            return;
+        }
+        close();
+    }
+
+    const newGameDirty = $derived(
+        selectedGameName.trim() !== '' || selectedPlayerIds.length > 0 || guestCount > 0
+    );
+    const scheduledGameDirty = $derived(scheduledGameName.trim() !== '' || guestCount > 0);
+
     function handleModalClick(event: MouseEvent) {
         event.stopPropagation();
         const target = event.target as HTMLElement;
@@ -456,9 +481,14 @@
     function getTimeRemaining(endTime: string, nowTs: number = Date.now()) {
         const end = new Date(endTime).getTime();
         const diff = end - nowTs;
-        if (diff <= 0) return '종료됨';
-        
+        // 「종료됨」만으로는 14분 초과와 2분 초과가 같아 보였다. 어느 테이블을
+        // 먼저 치울지 정하는 데 필요한 건 그 차이다.
+        if (diff <= 0) {
+            const overMins = Math.floor(-diff / 60000);
+            return overMins < 1 ? '방금 종료' : `${overMins}분 초과`;
+        }
         const totalMins = Math.floor(diff / 60000);
+        if (totalMins < 1) return '곧 종료';
         if (totalMins < 60) {
             return `${totalMins}분 남음`;
         } else {
@@ -490,6 +520,7 @@
         is_blacklisted: boolean;
         game_id: number | null;
         game_name: string | null;
+        game_end_time: string | null;
         is_playing: boolean;
         can_manage_games: boolean;
     }
@@ -596,6 +627,15 @@
 
     // 방 현황 요약 스트립
     const attendeeCount = $derived((attendees || []).length);
+    /*
+     * 명단은 도착 시각으로 키잉돼 있었다. 방에 서 있는 운영자의 실제 질문은
+     * "누가 지금 비어 있어?"이고, is_playing / game_name 은 이미 Attendee 에
+     * 있으면서 새 게임 피커에서 행을 비활성화하는 데만 쓰이고 있었다.
+     * 콘솔이 알면서 말하지 않던 것을 말하게 한다.
+     */
+    const freeAttendees = $derived((attendees || []).filter((a: Attendee) => !a.is_playing));
+    const busyAttendees = $derived((attendees || []).filter((a: Attendee) => a.is_playing));
+
     // 종료 임박 순 정렬 — "진행 중인 게임" 목록에서 끝나가는 게임을 위로
     const playingSorted = $derived([...(games || [])].sort(
         (a, b) => new Date(a.end_time).getTime() - new Date(b.end_time).getTime()
@@ -692,9 +732,9 @@
         <span class="rs-value">{attendeeCount}<span class="rs-unit">명</span></span>
     </div>
     <div class="rs-stat">
-        <span class="rs-label">진행 중인 게임</span>
-        <!-- 끝난 게임은 여기서 빠진다. 세 번째 칸이 정리 대기를 따로 센다. -->
-        <span class="rs-value">{liveGames.length}<span class="rs-unit">판</span></span>
+        <!-- 판을 짤 수 있는 사람. 모달을 열기 전에 알아야 하는 숫자다. -->
+        <span class="rs-label">대기 중</span>
+        <span class="rs-value" class:rs-value-none={freeAttendees.length === 0}>{freeAttendees.length}<span class="rs-unit">명</span></span>
     </div>
     <!--
         시간이 지난 게임은 "임박"이 아니라 처리 대기다. 스트립이 그걸 이미 아는데
@@ -729,10 +769,211 @@
             {/if}
         {/if}
     </div>
+    <!--
+        큐가 방 아래로 내려갔으므로 급한 건수는 여기가 들고 있어야 한다.
+        누르면 그 자리로 데려간다.
+    -->
+    <div class="rs-stat">
+        <span class="rs-label">처리 대기</span>
+        {#if queueActionable === 0}
+            <span class="rs-value rs-value-none">없음</span>
+        {:else}
+            <a class="rs-value rs-value-link" href="#sec-queue">{queueActionable}<span class="rs-unit">건</span></a>
+        {/if}
+    </div>
 </section>
 
-<!-- 대기 · 승인 큐 — 개입이 필요한 것부터. 확정된 현황보다 위에 온다. -->
-<section class="section-primary queue-section" aria-label="대기 및 승인 큐">
+<!-- 넓은 화면에서 게임과 사람이 같은 화면에 들어오도록 2열로 묶는다 -->
+<div class="room-columns">
+<section class="section-primary" aria-labelledby="sec-playing">
+    <div class="section-header">
+        <h2 id="sec-playing">
+            게임
+            <span class="count-split">
+                진행 중 {liveGames.length}{#if expiredGames.length > 0}<span class="count-pending">&nbsp;· 정리 대기 {expiredGames.length}</span>{/if}
+            </span>
+        </h2>
+        <button class="btn-primary" onclick={() => {
+            showModal = true;
+            selectedGameName = '';
+            selectedDuration = '60';
+            selectedGameId = '';
+            guestCount = 0;
+            dropdownOpen = false;
+            selectedPlayerIds = [];
+            playerSearch = '';
+            showPlayingInPicker = false;
+        }}>+ 새 게임 시작</button>
+    </div>
+    <ul class="game-list">
+        {#each (showAllPlaying ? playingSorted : playingSorted.slice(0, 5)) as game (game.id)}
+            {@const msLeft = new Date(game.end_time).getTime() - now}
+            {@const expired = msLeft <= 0}
+            {@const endingSoon = !expired && msLeft < 5 * 60000}
+            <li class="game-row" class:is-expired={expired}>
+                <button type="button" class="game-list-item" class:ending-soon={endingSoon} class:expired onclick={() => { selectedPlayingGame = game; resetParticipantSearch(); }}>
+                    {#if game.image_url}
+                        <img src={game.image_url} alt={game.game_name} width="32" height="32" class="list-thumb" />
+                    {:else}
+                        <div class="list-thumb placeholder" aria-hidden="true">
+                            <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1"/><circle cx="15.5" cy="15.5" r="1"/><circle cx="15.5" cy="8.5" r="1"/><circle cx="8.5" cy="15.5" r="1"/></svg>
+                        </div>
+                    {/if}
+                    <span class="list-name">{game.game_name}</span>
+                    <span class="list-meta">{game.players.length}명</span>
+                    <span class="list-meta time-remaining">{getTimeRemaining(game.end_time, now)}</span>
+                    <span class="list-arrow" aria-hidden="true">›</span>
+                </button>
+                {#if expired}
+                    <!--
+                        시간이 지나도 게임은 playing으로 남는다 — autoClose는 마감 때만 닫는다.
+                        승자 기록은 선택이므로 여기서 한 번에 닫을 수 있어야 한다.
+                        승자를 남기려면 행을 눌러 종료 모달로 간다.
+                    -->
+                    <form method="POST" action="?/endGame" class="row-end-form" use:enhance={() => {
+                        return async ({ result, update }: { result: any, update: (options?: { reset?: boolean }) => Promise<void> }) => {
+                            if (!reportResult(result)) {
+                                const d = (result?.data as any) ?? {};
+                                toastUndoable(`${d.endedName ?? game.game_name} 종료됨 · 승자는 기록하지 않았습니다`, d.undo);
+                            }
+                            await update();
+                        };
+                    }}>
+                        <input type="hidden" name="id" value={game.id} />
+                        <button type="submit" class="btn-row-end">게임 종료</button>
+                    </form>
+                {/if}
+            </li>
+        {/each}
+        {#if (games || []).length === 0}
+            <p class="empty-state">진행 중인 게임이 없습니다. 「+ 새 게임 시작」으로 시작할 수 있습니다.</p>
+        {/if}
+    </ul>
+    {#if (games || []).length > 5}
+        <button class="show-more-btn" onclick={() => showAllPlaying = !showAllPlaying}>
+            {showAllPlaying ? '접기' : `+${(games || []).length - 5}개 더보기`}
+        </button>
+    {/if}
+</section>
+
+<section class="section-primary" aria-labelledby="sec-attendees">
+    <h2 id="sec-attendees">
+        현재 참여 인원
+        <span class="count-split">
+            대기 중 {freeAttendees.length}{#if busyAttendees.length > 0}<span class="count-busy">&nbsp;· 게임 중 {busyAttendees.length}</span>{/if}
+        </span>
+    </h2>
+    {#snippet attendeeRow(a: Attendee)}
+            <li>
+                <div class="attendee-info">
+                    <div class="name-row">
+                        <a href="/admin/attendees/{a.id}" class="attendee-link">{a.name}</a>
+                        {#if a.is_blacklisted}
+                            <span class="badge blacklist">
+                                <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:2px; vertical-align:middle;"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
+                                블랙
+                            </span>
+                        {/if}
+                        {#if a.can_manage_games}
+                            <!-- 게임을 만들 수 있는 사람인지가 시트를 열어야만 보였다 -->
+                            <span class="badge manager">매니저</span>
+                        {/if}
+                        {#if a.penalty_points > 0}
+                            <span class="badge penalty" class:blocked={a.penalty_points >= penaltyThreshold}>
+                                <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:2px; vertical-align:middle;"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                                페널티 {a.penalty_points}/{penaltyThreshold}
+                            </span>
+                        {/if}
+                    </div>
+                    <!--
+                        좌석을 별도 열로 두면 좁은 열에서 이름·배지·시각과 3단으로
+                        겹쳐 뭉개진다. 메타 한 줄로 합쳐 자연스럽게 줄바꿈시킨다.
+                        종료 시각은 서버가 같은 행에서 준다 — 이름으로 찾으면 같은
+                        이름의 판이 둘일 때 엉뚱한 시간이 붙는다.
+                    -->
+                    <span class="attendee-meta">
+                        <span class="arrival-time">{formatTime(a.arrival_time)} 입장</span>
+                        {#if a.is_playing && a.game_name}
+                            <span class="seat-game" title={a.game_name}>· {a.game_name}</span>
+                            {#if a.game_end_time}<span class="seat-time">{getTimeRemaining(a.game_end_time, now)}</span>{/if}
+                        {/if}
+                    </span>
+                </div>
+                <div class="attendee-actions">
+                    <button type="button" class="btn-manage" onclick={() => openManage(a)}>
+                        관리<span class="sr-only"> — {a.name}</span>
+                    </button>
+                </div>
+            </li>
+    {/snippet}
+
+    {#if (attendees || []).length === 0}
+        <p class="empty-state">아직 아무도 없습니다. 아래에서 이름을 입력하거나 등록 멤버를 눌러 입장 처리하세요.</p>
+    {:else}
+        <!-- 판을 짤 수 있는 사람이 먼저 온다 -->
+        <p class="roster-group-label">대기 중 {freeAttendees.length}</p>
+        <ul class="attendee-list">
+            {#each freeAttendees as a (a.id)}{@render attendeeRow(a as Attendee)}{/each}
+            {#if freeAttendees.length === 0}
+                <li class="roster-empty">방에 있는 {attendeeCount}명이 모두 게임 중입니다.</li>
+            {/if}
+        </ul>
+        {#if busyAttendees.length > 0}
+            <p class="roster-group-label">게임 중 {busyAttendees.length}</p>
+            <ul class="attendee-list">
+                {#each busyAttendees as a (a.id)}{@render attendeeRow(a as Attendee)}{/each}
+            </ul>
+        {/if}
+    {/if}
+
+    <div class="add-row">
+        <form method="POST" action="?/addAttendee" use:enhance={pending(undefined, '입장 처리했습니다.')} class="add-form">
+            <input type="text" name="name" placeholder="이름 입력" aria-label="추가할 인원 이름" required />
+            <button type="submit" class="btn-primary">인원 추가</button>
+        </form>
+        <!-- 처음 온 사람은 QR로 직접 가입·입장한다. 그 순간이 바로 여기다. -->
+        <a href="/admin/qr" class="btn-qr">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
+            QR 보여주기
+        </a>
+    </div>
+
+    {#if (data.savedMembers || []).length > 0}
+        <div class="quick-add">
+            <button type="button" class="toggle-header" aria-expanded={savedMembersOpen} onclick={() => savedMembersOpen = !savedMembersOpen}>
+                저장된 멤버 ({(savedMembers || []).length})
+            </button>
+            {#if savedMembersOpen}
+            <div class="member-chips">
+                {#each (savedMembers || []) as member (member.id)}
+                    <div class="chip-container {member.is_blacklisted ? 'blacklisted' : ''}">
+                        <a href="/admin/attendees/{member.id}" class="chip-link">
+                            {member.name}
+                            {#if member.penalty_points > 0}
+                                <span class="penalty-dot">({member.penalty_points})</span>
+                            {/if}
+                        </a>
+                        <form method="POST" action="?/addAttendee" use:enhance={pending(undefined, `${member.name}님을 입장 처리했습니다.`)} style="display:inline;">
+                            <input type="hidden" name="name" value={member.name} />
+                            <button type="submit" class="chip-add" title="입장" disabled={member.is_blacklisted}>+</button>
+                        </form>
+                    </div>
+                {/each}
+            </div>
+            {/if}
+        </div>
+    {/if}
+</section>
+</div>
+
+<!--
+    대기 · 승인 큐.
+    예전에는 이 섹션이 방보다 위에 있었다. 그래서 1280x900에서 접힌 선 위에
+    게임 한 판도 사람 한 명도 없었다 — 시인성이 존재 이유인 콘솔에서.
+    큐는 서류 네 줄이고 방은 사람 일곱과 테이블 셋이다. 급한 건수는 위
+    스트립이 들고 있으므로, 여기는 방 아래로 온다.
+-->
+<section id="sec-queue" class="section-primary queue-section" aria-label="대기 및 승인 큐">
     <div class="section-header">
         <h2>
             대기 · 승인 큐 ({queueActionable})
@@ -858,156 +1099,6 @@
     {/if}
 </section>
 
-<section class="section-primary" aria-labelledby="sec-playing">
-    <div class="section-header">
-        <h2 id="sec-playing">
-            게임
-            <span class="count-split">
-                진행 중 {liveGames.length}{#if expiredGames.length > 0}<span class="count-pending">&nbsp;· 정리 대기 {expiredGames.length}</span>{/if}
-            </span>
-        </h2>
-        <button class="btn-primary" onclick={() => {
-            showModal = true;
-            selectedGameName = '';
-            selectedDuration = '60';
-            selectedGameId = '';
-            guestCount = 0;
-            dropdownOpen = false;
-            selectedPlayerIds = [];
-            playerSearch = '';
-            showPlayingInPicker = false;
-        }}>+ 새 게임 시작</button>
-    </div>
-    <ul class="game-list">
-        {#each (showAllPlaying ? playingSorted : playingSorted.slice(0, 5)) as game (game.id)}
-            {@const msLeft = new Date(game.end_time).getTime() - now}
-            {@const expired = msLeft <= 0}
-            {@const endingSoon = !expired && msLeft < 5 * 60000}
-            <li class="game-row" class:is-expired={expired}>
-                <button type="button" class="game-list-item" class:ending-soon={endingSoon} class:expired onclick={() => { selectedPlayingGame = game; resetParticipantSearch(); }}>
-                    {#if game.image_url}
-                        <img src={game.image_url} alt={game.game_name} width="32" height="32" class="list-thumb" />
-                    {:else}
-                        <div class="list-thumb placeholder" aria-hidden="true">
-                            <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1"/><circle cx="15.5" cy="15.5" r="1"/><circle cx="15.5" cy="8.5" r="1"/><circle cx="8.5" cy="15.5" r="1"/></svg>
-                        </div>
-                    {/if}
-                    <span class="list-name">{game.game_name}</span>
-                    <span class="list-meta">{game.players.length}명</span>
-                    <span class="list-meta time-remaining">{getTimeRemaining(game.end_time, now)}</span>
-                    <span class="list-arrow" aria-hidden="true">›</span>
-                </button>
-                {#if expired}
-                    <!--
-                        시간이 지나도 게임은 playing으로 남는다 — autoClose는 마감 때만 닫는다.
-                        승자 기록은 선택이므로 여기서 한 번에 닫을 수 있어야 한다.
-                        승자를 남기려면 행을 눌러 종료 모달로 간다.
-                    -->
-                    <form method="POST" action="?/endGame" class="row-end-form" use:enhance={() => {
-                        return async ({ result, update }: { result: any, update: (options?: { reset?: boolean }) => Promise<void> }) => {
-                            if (!reportResult(result)) {
-                                const d = (result?.data as any) ?? {};
-                                toastUndoable(`${d.endedName ?? game.game_name} 종료됨 · 승자는 기록하지 않았습니다`, d.undo);
-                            }
-                            await update();
-                        };
-                    }}>
-                        <input type="hidden" name="id" value={game.id} />
-                        <button type="submit" class="btn-row-end">게임 종료</button>
-                    </form>
-                {/if}
-            </li>
-        {/each}
-        {#if (games || []).length === 0}
-            <p class="empty-state">진행 중인 게임이 없습니다. 「+ 새 게임 시작」으로 시작할 수 있습니다.</p>
-        {/if}
-    </ul>
-    {#if (games || []).length > 5}
-        <button class="show-more-btn" onclick={() => showAllPlaying = !showAllPlaying}>
-            {showAllPlaying ? '접기' : `+${(games || []).length - 5}개 더보기`}
-        </button>
-    {/if}
-</section>
-
-<section class="section-primary" aria-labelledby="sec-attendees">
-    <h2 id="sec-attendees">현재 참여 인원 ({(attendees || []).length})</h2>
-    <ul class="attendee-list">
-        {#each (attendees || []) as attendee (attendee.id)}
-            {@const a = attendee as Attendee}
-            <li>
-                <div class="attendee-info">
-                    <div class="name-row">
-                        <a href="/admin/attendees/{a.id}" class="attendee-link">{a.name}</a>
-                        {#if a.is_blacklisted}
-                            <span class="badge blacklist">
-                                <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:2px; vertical-align:middle;"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
-                                블랙
-                            </span>
-                        {/if}
-                        {#if a.can_manage_games}
-                            <!-- 게임을 만들 수 있는 사람인지가 시트를 열어야만 보였다 -->
-                            <span class="badge manager">매니저</span>
-                        {/if}
-                        {#if a.penalty_points > 0}
-                            <span class="badge penalty" class:blocked={a.penalty_points >= penaltyThreshold}>
-                                <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:2px; vertical-align:middle;"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                                페널티 {a.penalty_points}/{penaltyThreshold}
-                            </span>
-                        {/if}
-                    </div>
-                    <span class="arrival-time">{formatTime(a.arrival_time)} 입장</span>
-                </div>
-                <div class="attendee-actions">
-                    <button type="button" class="btn-manage" onclick={() => openManage(a)}>
-                        관리<span class="sr-only"> — {a.name}</span>
-                    </button>
-                </div>
-            </li>
-        {/each}
-        {#if (attendees || []).length === 0}
-            <li class="empty-state">아직 아무도 없습니다. 아래에서 이름을 입력하거나 등록 멤버를 눌러 입장 처리하세요.</li>
-        {/if}
-    </ul>
-
-    <div class="add-row">
-        <form method="POST" action="?/addAttendee" use:enhance={pending(undefined, '입장 처리했습니다.')} class="add-form">
-            <input type="text" name="name" placeholder="이름 입력" aria-label="추가할 인원 이름" required />
-            <button type="submit" class="btn-primary">인원 추가</button>
-        </form>
-        <!-- 처음 온 사람은 QR로 직접 가입·입장한다. 그 순간이 바로 여기다. -->
-        <a href="/admin/qr" class="btn-qr">
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
-            QR 보여주기
-        </a>
-    </div>
-
-    {#if (data.savedMembers || []).length > 0}
-        <div class="quick-add">
-            <button type="button" class="toggle-header" aria-expanded={savedMembersOpen} onclick={() => savedMembersOpen = !savedMembersOpen}>
-                저장된 멤버 ({(savedMembers || []).length})
-            </button>
-            {#if savedMembersOpen}
-            <div class="member-chips">
-                {#each (savedMembers || []) as member (member.id)}
-                    <div class="chip-container {member.is_blacklisted ? 'blacklisted' : ''}">
-                        <a href="/admin/attendees/{member.id}" class="chip-link">
-                            {member.name}
-                            {#if member.penalty_points > 0}
-                                <span class="penalty-dot">({member.penalty_points})</span>
-                            {/if}
-                        </a>
-                        <form method="POST" action="?/addAttendee" use:enhance={pending(undefined, `${member.name}님을 입장 처리했습니다.`)} style="display:inline;">
-                            <input type="hidden" name="name" value={member.name} />
-                            <button type="submit" class="chip-add" title="입장" disabled={member.is_blacklisted}>+</button>
-                        </form>
-                    </div>
-                {/each}
-            </div>
-            {/if}
-        </div>
-    {/if}
-</section>
-
 <section aria-labelledby="sec-scheduled">
     <div class="section-header">
         <h2 id="sec-scheduled">
@@ -1078,7 +1169,7 @@
     <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
     <div
         class="modal-backdrop"
-        onclick={() => showModal = false} 
+        onclick={() => dismissFormModal(() => showModal = false, newGameDirty)}
         role="button" 
         tabindex="-1"
         aria-label="Close modal"
@@ -1410,6 +1501,12 @@
                 </div>
                 <form method="POST" action="?/toggleBlacklist" use:enhance={m.is_blacklisted ? pending(undefined, `${m.name}님을 블랙리스트에서 해제했습니다.`) : confirmSubmit({ title: '블랙리스트 등록', message: `${m.name}님을 블랙리스트에 등록합니다. 이후 입장·게임 참여가 제한되고, 진행 중이거나 예정된 참여도 막힙니다.`, confirmLabel: '블랙 등록', danger: true, success: `${m.name}님을 블랙리스트에 등록했습니다.` })} style="display:inline;">
                     <input type="hidden" name="attendeeId" value={m.id} />
+                    <!--
+                        3단 체계: 채움 빨강은 「되돌릴 수 없거나 제3자에게 파급되는 것」
+                        에만 쓴다. 이 시트에서 그건 블랙 등록 하나뿐이다.
+                        지난 라운드에 테두리로 내렸더니 페널티 부여·퇴장 처리와
+                        구별되지 않아, 영구 배제와 사소한 퇴장이 같아 보였다.
+                    -->
                     <button type="submit" class="btn-role {m.is_blacklisted ? 'is-secondary' : 'is-destructive'}">
                         {m.is_blacklisted ? '블랙 해제' : '블랙 등록'}
                     </button>
@@ -1421,7 +1518,19 @@
                     <span>게임 관리 권한</span>
                     <span class="manage-sub">{m.can_manage_games ? '매니저' : '일반 유저'}</span>
                 </div>
-                <form method="POST" action="?/toggleManager" use:enhance={pending(undefined, m.can_manage_games ? `${m.name}님의 매니저 권한을 해제했습니다.` : `${m.name}님을 매니저로 지정했습니다.`)} style="display:inline;">
+                <!--
+                    되돌릴 수 있는 페널티 1점에는 확인창이 있는데, 이 제품의 유일한
+                    권한 부여에는 없었다. 위험 보정이 반대였다.
+                -->
+                <form method="POST" action="?/toggleManager" use:enhance={m.can_manage_games
+                    ? pending(undefined, `${m.name}님의 매니저 권한을 해제했습니다.`)
+                    : confirmSubmit({
+                        title: '매니저 지정',
+                        message: `${m.name}님에게 매니저 권한을 줍니다. 매니저는 게임을 만들고 자기가 만든 게임의 인원과 시간을 관리할 수 있습니다.`,
+                        confirmLabel: '매니저 지정',
+                        danger: false,
+                        success: `${m.name}님을 매니저로 지정했습니다.`
+                    })} style="display:inline;">
                     <input type="hidden" name="attendeeId" value={m.id} />
                     <button type="submit" class="btn-role is-secondary">
                         {m.can_manage_games ? '매니저 해제' : '매니저 지정'}
@@ -1429,8 +1538,20 @@
                 </form>
             </div>
 
-            <hr class="manage-divider" />
-
+            <!--
+                전폭 버튼으로 시트 맨 아래, 네이티브 시트가 "완료"에 쓰는 자리에
+                있었다. 닫으려고 손을 뻗으면 퇴장 처리에 닿았다. 다른 속성 행들과
+                같은 줄로 내리고, 그 자리는 닫기가 가져간다.
+            -->
+            <div class="manage-row">
+                <div class="manage-label">
+                    <span>입장 상태</span>
+                    <!-- 하드코딩이라 게임 중인 사람도 「방에 있음」이라 말했고,
+                         그래서 퇴장 처리가 예고 없이 다른 시트로 분기했다. -->
+                    <span class="manage-sub">
+                        {m.is_playing && m.game_name ? `${m.game_name} 진행 중 — 퇴장 시 게임에서도 빠집니다` : '방에 있음'}
+                    </span>
+                </div>
             <form method="POST" action="?/removeAttendee" use:enhance={(arg) => {
                 if (m.is_playing) {
                     arg.cancel();
@@ -1450,10 +1571,11 @@
                 })(arg);
             }}>
                 <input type="hidden" name="id" value={m.id} />
-                <button type="submit" class="btn-role is-secondary full-width">퇴장 처리</button>
+                <button type="submit" class="btn-role is-danger-outline">퇴장 처리</button>
             </form>
+            </div>
 
-            <button type="button" class="btn-role is-quiet manage-close" onclick={() => (manageTarget = null)}>
+            <button type="button" class="btn-sheet-close manage-close" onclick={() => (manageTarget = null)}>
                 닫기
             </button>
         </div>
@@ -1510,7 +1632,7 @@
     <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
     <div
         class="modal-backdrop"
-        onclick={() => showScheduledGameModal = false} 
+        onclick={() => dismissFormModal(() => showScheduledGameModal = false, scheduledGameDirty)}
         role="button" 
         tabindex="-1"
         aria-label="Close modal"
@@ -1690,9 +1812,14 @@
                         }
                         await update();
                     }
-                })} class="detail-form-row">
+                })} class="detail-form-row destructive-row">
                     <input type="hidden" name="sessionId" value={g.id} />
-                    <button type="submit" class="btn-delete" style="width:100%;">게임 폭파</button>
+                    <!--
+                        전폭 채움 빨강이 「닫기」 바로 위에, 구분선도 없이 붙어 있었다.
+                        폰에서 엄지가 놓이는 자리 8px 위에서 모두의 예약을 취소하는
+                        버튼이다. 관리 시트에서 이미 고친 패턴을 여기에도 적용한다.
+                    -->
+                    <button type="submit" class="btn-delete">게임 폭파</button>
                 </form>
             </div>
             <button class="btn-sheet-close" onclick={() => selectedScheduledGame = null}>닫기</button>
@@ -1728,7 +1855,9 @@
             <div class="detail-actions">
                 <form method="POST" action="?/joinGame" use:enhance={() => {
                     return async ({ result, update }) => {
-                        reportResult(result);
+                        // 조용히 끝나는 폼이 없어야 한다 — 이 셋만 예외로 남아 있었다
+                        const who = participantSearch.trim();
+                        if (!reportResult(result)) showToast(`${who || '참여자'}님을 ${g.game_name}에 추가했습니다`);
                         resetParticipantSearch();
                         await update();
                         refreshSelectedPlayingGame();
@@ -1740,7 +1869,7 @@
                 </form>
                 <form method="POST" action="?/addGuestToGame" use:enhance={() => {
                     return async ({ result, update }) => {
-                        reportResult(result);
+                        if (!reportResult(result)) showToast(`${g.game_name}에 게스트를 추가했습니다`);
                         await update();
                         refreshSelectedPlayingGame();
                     };
@@ -1750,29 +1879,30 @@
                 </form>
                 <div class="detail-group">
                     <span class="detail-group-label">시간 조정</span>
+                    <!--
+                        연장만 있고 줄이는 수단이 없었다. 게다가 눌러도 아무 응답이
+                        없어 시끄러운 방에서는 다시 누르게 되고, 그러면 +20분이
+                        되는데 교정할 방법이 게임 종료뿐이었다.
+                    -->
                     <div class="detail-extend-row">
-                    <form method="POST" action="?/extendGame" use:enhance={pending(() => {
-                        return async ({ result, update }: any) => {
-                            reportResult(result);
-                            await update();
-                            refreshSelectedPlayingGame();
-                        };
-                    })} style="flex:1;">
-                        <input type="hidden" name="id" value={g.id} />
-                        <input type="hidden" name="minutes" value="10" />
-                        <button type="submit" class="btn-extend" style="width:100%;">+10분</button>
-                    </form>
-                    <form method="POST" action="?/extendGame" use:enhance={pending(() => {
-                        return async ({ result, update }: any) => {
-                            reportResult(result);
-                            await update();
-                            refreshSelectedPlayingGame();
-                        };
-                    })} style="flex:1;">
-                        <input type="hidden" name="id" value={g.id} />
-                        <input type="hidden" name="minutes" value="30" />
-                        <button type="submit" class="btn-extend" style="width:100%;">+30분</button>
-                    </form>
+                        {#each [-10, 10, 30] as delta (delta)}
+                            <form method="POST" action="?/extendGame" use:enhance={pending(
+                                () => async (res: any) => {
+                                    if (!reportResult(res.result)) {
+                                        const d = res.result?.data ?? {};
+                                        showToast(`${d.gameName ?? g.game_name} ${delta > 0 ? '+' : ''}${delta}분 · 종료 예정 ${formatTime(d.endTime)}`);
+                                    }
+                                    await res.update();
+                                    refreshSelectedPlayingGame();
+                                }
+                            )} style="flex:1;">
+                                <input type="hidden" name="id" value={g.id} />
+                                <input type="hidden" name="minutes" value={delta} />
+                                <button type="submit" class="btn-extend" class:is-reduce={delta < 0} style="width:100%;">
+                                    {delta > 0 ? '+' : '−'}{Math.abs(delta)}분
+                                </button>
+                            </form>
+                        {/each}
                     </div>
                 </div>
                 <!--
@@ -1781,7 +1911,9 @@
                     구분선으로 끊고, 되돌릴 수 없는 것만 이 아래에 둔다.
                 -->
                 <hr class="detail-divider" />
-                <button class="btn-end-session" onclick={() => { openEndGameModal(g); selectedPlayingGame = null; }}>게임 종료</button>
+                <div class="destructive-row">
+                    <button class="btn-end-session" onclick={() => { openEndGameModal(g); selectedPlayingGame = null; }}>게임 종료</button>
+                </div>
             </div>
             <button class="btn-sheet-close" onclick={() => selectedPlayingGame = null}>닫기</button>
         </div>
@@ -1822,8 +1954,54 @@
         border-radius: var(--radius-card);
         background: var(--bg-primary);
         display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
+        grid-template-columns: repeat(4, minmax(0, 1fr));
         gap: var(--space-4);
+    }
+    @media (max-width: 720px) {
+        .room-summary {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: var(--space-3);
+            padding: var(--space-3) var(--space-4);
+        }
+        /* 40px 숫자 넷이 두 줄이면 스트립만으로 화면 절반을 먹는다.
+           방(게임·사람)이 접힌 선 위에 남는 것이 이 콘솔의 존재 이유다. */
+        .room-summary .rs-value {
+            font-size: var(--text-xl);
+        }
+        .room-summary .rs-unit {
+            font-size: var(--text-base);
+        }
+        .rs-value-done,
+        .rs-value-pending {
+            font-size: var(--text-xl);
+        }
+    }
+    .rs-value-link {
+        color: var(--color-blue-bright);
+        text-decoration: none;
+    }
+    .rs-value-link:hover {
+        text-decoration: underline;
+    }
+    /*
+        게임과 사람이 같은 화면에 들어오게 한다. 전에는 한 열로 쌓여 있어
+        1280x900의 접힌 선 위에 둘 다 없었다.
+    */
+    .room-columns {
+        display: grid;
+        /* 그리드 아이템의 기본 min-width는 auto라, 열이 내용의 min-content까지
+           늘어나 좁은 화면에서 페이지 전체를 가로로 밀어냈다. */
+        grid-template-columns: minmax(0, 1fr);
+        gap: var(--space-5);
+    }
+    @media (min-width: 1100px) {
+        .room-columns {
+            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+            align-items: start;
+        }
+        .room-columns > section {
+            margin-bottom: 0;
+        }
     }
     .rs-stat {
         display: flex;
@@ -1989,9 +2167,20 @@
     }
     .attendee-info {
         display: flex;
-        align-items: center;
-        gap: var(--space-2);
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 2px;
         min-width: 0;
+        flex: 1 1 auto;
+    }
+    .attendee-meta {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        gap: var(--space-1);
+        min-width: 0;
+        font-size: var(--text-xs);
+        color: var(--text-secondary);
     }
     .attendee-link {
         text-decoration: none;
@@ -2009,6 +2198,36 @@
     .time-remaining,
     .queue-note {
         font-variant-numeric: var(--numeric);
+    }
+    /* 명단 그룹 — 「대기 중」이 먼저 오고, 그게 판을 짤 수 있는 사람이다 */
+    .roster-group-label {
+        margin: var(--space-4) 0 var(--space-1);
+        font-size: var(--text-xs);
+        font-weight: var(--weight-medium);
+        color: var(--text-secondary);
+    }
+    .attendee-list + .roster-group-label {
+        margin-top: var(--space-5);
+    }
+    .roster-empty {
+        list-style: none;
+        padding: var(--space-3) var(--space-1);
+        font-size: var(--text-sm);
+        color: var(--text-secondary);
+    }
+    /* 행마다 가로 66%가 비어 있었다. 그 자리에 그 사람이 앉은 게임이 들어간다. */
+    .seat-game {
+        max-width: 12rem;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        color: var(--text-primary);
+    }
+    .seat-time {
+        white-space: nowrap;
+    }
+    .count-busy {
+        color: var(--text-secondary);
     }
     .arrival-time {
         font-size: var(--text-xs);
@@ -2193,13 +2412,31 @@
         cursor: pointer;
     }
     /* 파괴적이지 않은 세션 종료 — 빨강과 구분 */
+    /*
+        되돌릴 수 없는 동작은 전폭을 벗고 오른쪽에 선다. 전폭이면 그 아래
+        「닫기」와 같은 모양·같은 폭으로 8px 간격을 두고 붙어, 폰에서 엄지가
+        어느 쪽에 닿았는지 형태로 구분할 수 없었다.
+    */
+    .destructive-row {
+        display: flex;
+        justify-content: flex-end;
+        padding-top: var(--space-2);
+    }
+    .destructive-row > button,
+    .destructive-row .btn-end-session,
+    .destructive-row .btn-delete {
+        width: auto;
+        min-width: 8rem;
+    }
+
     /* 시트를 닫는 것은 아무 일도 하지 않는다. 전폭 회색 채움은 그보다 무겁게 읽혔다. */
     .btn-sheet-close {
         width: 100%;
-        margin-top: var(--space-3);
+        margin-top: var(--space-5);
         padding: var(--space-3);
         background: none;
         border: none;
+        border-top: 1px solid var(--border-light);
         color: var(--text-secondary);
         font-weight: var(--weight-medium);
         cursor: pointer;
@@ -2552,9 +2789,11 @@
     /* New Admin UI Styles */
     .name-row {
         display: flex;
+        flex-wrap: wrap;
         align-items: center;
-        gap: var(--space-2);
+        gap: var(--space-1) var(--space-2);
         min-width: 0;
+        max-width: 100%;
     }
     .name-row .attendee-link {
         min-width: 0;
@@ -2872,10 +3111,14 @@
     .btn-penalty.add:hover {
         background: var(--color-error-bg);
     }
+    /* 시트에서 유일한 채움 버튼이라 관대한 쪽이 주 CTA로 읽혔다. 1단(중립)이다. */
     .btn-penalty.remove {
-        background: var(--bg-hover);
+        background: var(--bg-primary);
         color: var(--text-primary);
-        border-color: var(--border-medium);
+        border-color: var(--border-control);
+    }
+    .btn-penalty.remove:hover:not(:disabled) {
+        background: var(--bg-hover);
     }
     /* ── 버튼 역할 4개 ──
        primary(진행) / secondary(대안) / destructive(되돌릴 수 없음) / quiet(무동작).
@@ -2905,6 +3148,16 @@
     .btn-role.is-destructive {
         background: var(--color-red-dark);
         color: var(--bg-primary);
+    }
+    /* 부정적이지만 되돌릴 수 있는 조치. 채움 빨강(is-destructive)은
+       되돌릴 수 없는 것에만 남긴다. */
+    .btn-role.is-danger-outline {
+        background: var(--bg-primary);
+        color: var(--color-red-dark);
+        border-color: var(--color-red-dark);
+    }
+    .btn-role.is-danger-outline:hover {
+        background: var(--color-error-bg);
     }
     .btn-role.is-secondary {
         background: var(--bg-primary);
@@ -3060,6 +3313,15 @@
     }
     .btn-extend:hover {
         background: var(--tint-blue-bg-hover);
+    }
+    /* 줄이는 건 늘리는 것과 반대 방향이다. 같은 톤이면 세 버튼이 한 덩어리로 읽힌다. */
+    .btn-extend.is-reduce {
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        border-color: var(--border-control);
+    }
+    .btn-extend.is-reduce:hover {
+        background: var(--bg-hover);
     }
     .detail-group {
         display: flex;
@@ -3312,8 +3574,10 @@
         color: var(--text-secondary);
         white-space: nowrap;
     }
+    /* 20px bold라 큰 글씨 기준 3:1이 적용되고, 방향 지시자라 1.4.11로도 3:1이다.
+       --text-muted(#999)로는 흰 배경 2.85 · 만료 행 hover 위 2.46이었다. */
     .list-arrow {
-        color: var(--text-muted);
+        color: var(--text-tertiary);
         font-size: var(--text-lg);
         font-weight: bold;
     }

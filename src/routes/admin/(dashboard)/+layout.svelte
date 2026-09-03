@@ -37,29 +37,38 @@
 
 <div data-theme="light" class="force-light">
 <a class="skip-link" href="#admin-main">본문으로 건너뛰기</a>
+<!--
+    래퍼 안이어야 한다. 밖에 두면 :global(.force-light :focus-visible) 규칙이
+    닿지 않아 되돌리기 버튼의 포커스 링이 브라우저 기본값으로 떨어진다.
+    그리고 문서 맨 끝이면 안 된다 — 되돌리기가 포커스 순서 41개 중 41번째라
+    30초 안에 키보드로 도달할 수 없었다. position:fixed 라 화면 위치는
+    그대로이고 순서만 앞으로 온다.
+-->
+<AdminFeedback />
+
 <div class="admin-layout">
     <aside class="sidebar">
         <div class="sidebar-header">
             <h2>관리자 콘솔</h2>
         </div>
         <nav class="sidebar-nav" aria-label="관리자 메뉴">
-            <a href="/admin" class="nav-item" class:active={$page.url.pathname === '/admin'}>
+            <a href="/admin" class="nav-item" class:active={$page.url.pathname === '/admin'} aria-current={$page.url.pathname === '/admin' ? "page" : undefined}>
                 <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px;"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>
                 대시보드
             </a>
-            <a href="/admin/games" class="nav-item" class:active={$page.url.pathname === '/admin/games'}>
+            <a href="/admin/games" class="nav-item" class:active={$page.url.pathname === '/admin/games'} aria-current={$page.url.pathname === '/admin/games' ? "page" : undefined}>
                 <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px;"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></svg>
                 게임 도감
             </a>
-            <a href="/admin/stats" class="nav-item" class:active={$page.url.pathname === '/admin/stats'}>
+            <a href="/admin/stats" class="nav-item" class:active={$page.url.pathname === '/admin/stats'} aria-current={$page.url.pathname === '/admin/stats' ? "page" : undefined}>
                 <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px;"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
                 통계
             </a>
-            <a href="/admin/monitor" class="nav-item" class:active={$page.url.pathname === '/admin/monitor'}>
+            <a href="/admin/monitor" class="nav-item" class:active={$page.url.pathname === '/admin/monitor'} aria-current={$page.url.pathname === '/admin/monitor' ? "page" : undefined}>
                 <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px;"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
                 모니터
             </a>
-            <a href="/admin/passes" class="nav-item" class:active={$page.url.pathname === '/admin/passes'}>
+            <a href="/admin/passes" class="nav-item" class:active={$page.url.pathname === '/admin/passes'} aria-current={$page.url.pathname === '/admin/passes' ? "page" : undefined}>
                 <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px;"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
                 정기권
             </a>
@@ -119,37 +128,37 @@
     </main>
 
     <nav class="mobile-bottom-nav" aria-label="관리자 메뉴">
-        <a href="/admin" class="bottom-nav-item" class:active={$page.url.pathname === '/admin'}>
+        <a href="/admin" class="bottom-nav-item" class:active={$page.url.pathname === '/admin'} aria-current={$page.url.pathname === '/admin' ? "page" : undefined}>
             <span class="icon">
                 <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>
             </span>
             <span class="label">대시보드</span>
         </a>
-        <a href="/admin/games" class="bottom-nav-item" class:active={$page.url.pathname === '/admin/games'}>
+        <a href="/admin/games" class="bottom-nav-item" class:active={$page.url.pathname === '/admin/games'} aria-current={$page.url.pathname === '/admin/games' ? "page" : undefined}>
             <span class="icon">
                 <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></svg>
             </span>
             <span class="label">게임 도감</span>
         </a>
-        <a href="/admin/stats" class="bottom-nav-item" class:active={$page.url.pathname === '/admin/stats'}>
+        <a href="/admin/stats" class="bottom-nav-item" class:active={$page.url.pathname === '/admin/stats'} aria-current={$page.url.pathname === '/admin/stats' ? "page" : undefined}>
             <span class="icon">
                 <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
             </span>
             <span class="label">통계</span>
         </a>
-        <a href="/admin/monitor" class="bottom-nav-item" class:active={$page.url.pathname === '/admin/monitor'}>
+        <a href="/admin/monitor" class="bottom-nav-item" class:active={$page.url.pathname === '/admin/monitor'} aria-current={$page.url.pathname === '/admin/monitor' ? "page" : undefined}>
             <span class="icon">
                 <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
             </span>
             <span class="label">모니터</span>
         </a>
-        <a href="/admin/passes" class="bottom-nav-item" class:active={$page.url.pathname === '/admin/passes'}>
+        <a href="/admin/passes" class="bottom-nav-item" class:active={$page.url.pathname === '/admin/passes'} aria-current={$page.url.pathname === '/admin/passes' ? "page" : undefined}>
             <span class="icon">
                 <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
             </span>
             <span class="label">정기권</span>
         </a>
-        <a href="/admin/settings" class="bottom-nav-item" class:active={$page.url.pathname === '/admin/settings'}>
+        <a href="/admin/settings" class="bottom-nav-item" class:active={$page.url.pathname === '/admin/settings'} aria-current={$page.url.pathname === '/admin/settings' ? "page" : undefined}>
             <span class="icon">
                 <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.47a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
             </span>
@@ -157,9 +166,8 @@
         </a>
     </nav>
 </div>
-</div>
 
-<AdminFeedback />
+</div>
 
 {#if closeDayModalVisible}
     <!-- 백드롭은 편의용 클릭 영역. 키보드 경로는 모달의 Escape(trapFocus)와 닫기 버튼이 담당한다. -->
@@ -334,7 +342,9 @@
            --color-orange-dark(#e67700)는 3.00:1이라 텍스트로 쓸 수 없다. */
         --color-orange-text: #c2410c;
         --color-error-bg-strong: #ffecec;   /* 오류 틴트의 hover */
-        --color-warning-bg-strong: #ffeccc; /* 경고 틴트의 hover */
+        /* #ffeccc 는 --color-orange-text(#c2410c)가 4.469:1로 바로 아래 줄의
+           약속을 못 지켰다. 4.579:1까지만 진해진다. */
+        --color-warning-bg-strong: #ffefd6; /* 경고 틴트의 hover */
         --color-orange: #ff9800;
         --color-orange-dark: #e67700;
 
@@ -460,8 +470,15 @@
         border-radius: var(--radius-control);
         transition: background 0.2s;
     }
-    .nav-item:hover, .nav-item.active {
+    .nav-item:hover {
         background: #34495e;
+    }
+    /* 현재 페이지가 hover 와 완전히 같은 선언이라(1.18:1) 구별되지 않았다.
+       aria-current 와 함께 형태로도 말한다. */
+    .nav-item.active {
+        background: #34495e;
+        box-shadow: inset 3px 0 0 var(--focus-ring-on-dark);
+        font-weight: var(--weight-bold);
     }
     .sidebar-footer {
         margin-top: auto;
@@ -592,6 +609,13 @@
             justify-content: space-around;
             z-index: 100;
             box-shadow: 0 -2px 10px rgba(0,0,0,0.05);
+            transition: opacity 0.15s;
+        }
+        /* 백드롭(z-index 1000)이 이 바를 덮어 기능은 죽는데 모습은 선명해서,
+           엄지가 닿는 자리에서 누를 수 있는 것처럼 보였다. 실제로 누르면
+           이동이 아니라 작성 중이던 시트가 닫혔다. */
+        :global(body:has(.modal-backdrop)) .mobile-bottom-nav {
+            opacity: 0.35;
         }
         .bottom-nav-item {
             display: flex;

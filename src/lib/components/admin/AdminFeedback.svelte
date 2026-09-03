@@ -94,9 +94,15 @@
 		text-align: left;
 	}
 	/* 어두운 토스트 위에서 읽혀야 하므로 흰 테두리로 세운다 (#fff on #555 = 7.5:1) */
+	/* 토스트는 어두운 표면이라 밝은 표면용 포커스 링(#111827)이 2.38:1로 묻힌다.
+	   사이드바와 같은 어두운 표면용 링을 쓴다. */
+	.toast-action:focus-visible {
+		outline-color: var(--focus-ring-on-dark, #9ec5fe);
+	}
+	/* 실수를 무르는 버튼이 페이지에서 가장 작은 축에 들면 안 된다 (74.5x32였다) */
 	.toast-action {
 		flex-shrink: 0;
-		min-height: 32px;
+		min-height: 44px;
 		padding: 0 var(--space-3, 0.75rem);
 		border: 1px solid var(--bg-primary, #fff);
 		border-radius: var(--radius-control, 6px);

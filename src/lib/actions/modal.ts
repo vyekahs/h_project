@@ -18,9 +18,16 @@ const FOCUSABLE =
  * Tab을 컨텐츠 안에 가두고, Escape로 onClose를 호출하고,
  * 닫힐 때 열기 직전의 포커스를 복원한다.
  */
+/**
+ * 현재 열려 있는 트랩들. 마지막 것이 가장 위에 있는 모달이다.
+ * 시트 위에 확인 모달이 겹칠 때, 아래 것이 포커스를 도로 끌어가면 안 된다.
+ */
+const stack: HTMLElement[] = [];
+
 export function trapFocus(node: HTMLElement, onClose?: () => void) {
 	const returnTo = document.activeElement as HTMLElement | null;
 	let close = onClose;
+	stack.push(node);
 
 	const focusable = () =>
 		Array.from(node.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
@@ -60,13 +67,35 @@ export function trapFocus(node: HTMLElement, onClose?: () => void) {
 		}
 	}
 
+	/**
+	 * 모달 안에서 폼을 제출하면 눌린 버튼이 다시 그려지면서 포커스가 body로
+	 * 떨어진다. 그러면 이 노드의 keydown 핸들러에 아무것도 닿지 않아
+	 * Escape도 Tab 가두기도 조용히 죽는다 — 「+10분」을 한 번 누른 뒤부터
+	 * 모달이 Escape로 닫히지 않았다. 포커스가 밖으로 나가면 도로 데려온다.
+	 */
+	function onFocusOut(e: FocusEvent) {
+		if (stack[stack.length - 1] !== node) return;
+		const next = e.relatedTarget as Node | null;
+		if (next && node.contains(next)) return;
+		// 포커스를 아예 잃은 경우(body)만 회수한다. 다른 트랩으로 옮겨간 것은 건드리지 않는다.
+		queueMicrotask(() => {
+			if (!node.isConnected || stack[stack.length - 1] !== node) return;
+			const active = document.activeElement;
+			if (!active || active === document.body) node.focus();
+		});
+	}
+
 	node.addEventListener('keydown', onKeydown);
+	node.addEventListener('focusout', onFocusOut);
 	return {
 		update(next?: () => void) {
 			close = next;
 		},
 		destroy() {
 			node.removeEventListener('keydown', onKeydown);
+			node.removeEventListener('focusout', onFocusOut);
+			const i = stack.lastIndexOf(node);
+			if (i !== -1) stack.splice(i, 1);
 			returnTo?.focus?.();
 		}
 	};

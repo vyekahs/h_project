@@ -20,8 +20,13 @@ export const alertKind = writable<AlertKind>('error');
 let toastTimer: ReturnType<typeof setTimeout> | null = null;
 
 const PLAIN_MS = 4500;
-/** 되돌리기가 달린 토스트는 더 오래 남는다 — 읽고 판단할 시간이 필요하다. */
-const ACTION_MS = 9000;
+/**
+ * 되돌리기가 달린 토스트는 훨씬 오래 남는다.
+ * 서버의 되돌리기 창은 10분(UNDO_WINDOW_MS)인데 그걸 담은 유일한 표면이
+ * 9초만 살아서, UI가 서버가 주는 여유를 버리고 있었다. 실수를 알아차리는
+ * 데는 보통 그 자리를 떠난 뒤가 걸린다.
+ */
+const ACTION_MS = 30000;
 
 /**
  * 지나가도 되는 결과.

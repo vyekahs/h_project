@@ -31,16 +31,27 @@ async function canModifyGame(request: Request, gameId: string | number): Promise
 export const load: PageServerLoad = async () => {
     const [attendeesResult, historyResult, gamesResult, scheduledGamesResult, reservationsResult, gameNamesResult, allGamesResult, settingsResult, dailyVisitPlansResult, todayScheduledParticipantsResult] = await Promise.all([
         db.execute(sql`
+            -- MAX(g.id)와 MAX(g.game_name)을 따로 집계하면 한 사람이 두 판에
+            -- 걸쳐 있을 때 이름과 id가 서로 다른 판에서 올 수 있다. 게임 이름은
+            -- 이 제품에서 고유하지 않다 — 예약 게임이 자동 시작되면 같은 이름의
+            -- 판이 둘 돈다. 한 판을 확정해 이름·id·종료 시각을 같은 행에서 가져오고,
+            -- 여러 판이면 먼저 끝나는 쪽을 고른다(운영자가 먼저 볼 판).
             SELECT a.id, a.name, a.arrival_time, a.status, a.penalty_points, a.is_blacklisted, a.can_manage_games,
-                   MAX(g.id) as game_id,
-                   MAX(g.game_name) as game_name,
-                   BOOL_OR(g.id IS NOT NULL) as is_playing
+                   s.id AS game_id,
+                   s.game_name,
+                   s.end_time AS game_end_time,
+                   (s.id IS NOT NULL) AS is_playing
             FROM attendees a
-            LEFT JOIN session_participants sp ON a.id = sp.attendee_id
-            LEFT JOIN game_sessions g ON sp.session_id = g.id AND g.status = 'playing'
+            LEFT JOIN LATERAL (
+                SELECT g.id, g.game_name, g.end_time
+                FROM session_participants sp
+                JOIN game_sessions g ON g.id = sp.session_id AND g.status = 'playing'
+                WHERE sp.attendee_id = a.id
+                ORDER BY g.end_time ASC
+                LIMIT 1
+            ) s ON TRUE
             WHERE a.status = 'present'
-            GROUP BY a.id, a.name, a.arrival_time, a.status, a.penalty_points, a.is_blacklisted, a.can_manage_games
-            ORDER BY is_playing, a.arrival_time DESC
+            ORDER BY (s.id IS NOT NULL), a.arrival_time DESC
         `),
         db.execute(sql`
             SELECT id, name, penalty_points, is_blacklisted
@@ -368,23 +379,51 @@ export const actions: Actions = {
         // 이전에는 승자가 없어도 무조건 기록됐다고 알렸다.
         return { success: true, endedName: gameName, hadWinners: winnerIds.length > 0, undo };
     },
+    /**
+     * 게임 시간 조정. 음수도 받는다.
+     *
+     * 연장만 되고 줄일 수 없어서, 잘못 눌러 +20분이 되면 교정할 방법이 게임을
+     * 종료하는 것뿐이었다. 다만 지금보다 앞으로는 못 당긴다 — 그건 종료이고,
+     * 종료에는 승자 기록과 되돌리기가 붙는 별도의 경로가 있다.
+     */
     extendGame: async ({ request }) => {
         const data = await request.formData();
         const id = data.get('id')?.toString();
         const minutes = parseInt(data.get('minutes')?.toString() || '0');
 
-        if (!id || minutes <= 0) {
+        if (!id || !Number.isFinite(minutes) || minutes === 0) {
             return fail(400, { missing: true });
         }
         if (!(await canModifyGame(request, id))) return fail(403, { error: '권한이 없습니다.' });
 
         try {
-            await db.execute(sql`
-                UPDATE game_sessions SET end_time = end_time + ${minutes + ' minutes'}::INTERVAL WHERE id = ${id}
+            // 연장은 "지금부터 더"를 뜻한다. 이미 14분 초과된 게임에 +10분을 눌렀는데
+            // 여전히 과거로 남으면 운영자의 의도와 다르다. 그래서 늘릴 때는
+            // 이미 지난 종료 시각이 아니라 지금을 기준으로 더한다.
+            // 줄일 때만 "지금보다 이전으로는 못 간다"를 지킨다 — 그건 종료이고,
+            // 종료에는 승자 기록과 되돌리기가 붙는 별도 경로가 있다.
+            const base = minutes > 0 ? sql`GREATEST(end_time, NOW())` : sql`end_time`;
+            const rows = await db.execute(sql`
+                UPDATE game_sessions
+                SET end_time = ${base} + ${minutes + ' minutes'}::INTERVAL
+                WHERE id = ${id}
+                  AND status = 'playing'
+                  AND ${base} + ${minutes + ' minutes'}::INTERVAL > NOW()
+                RETURNING game_name, end_time
             `);
+            const row = (rows as any[])[0];
+            if (!row) {
+                const stillPlaying = await db.execute(sql`SELECT 1 FROM game_sessions WHERE id = ${id} AND status = 'playing'`);
+                return fail(400, {
+                    error: stillPlaying.length === 0
+                        ? '이미 종료된 게임입니다.'
+                        : '더 줄이면 지금보다 이전이 됩니다. 끝났다면 「게임 종료」를 쓰세요.'
+                });
+            }
             emitLiveEvent('games');
+            return { success: true, gameName: row.game_name as string, endTime: row.end_time, minutes };
         } catch (error) {
-            return fail(500, { error: '게임 시간 연장에 실패했습니다.' });
+            return fail(500, { error: '게임 시간 조정에 실패했습니다.' });
         }
     },
     updateSettings: async ({ request }) => {
