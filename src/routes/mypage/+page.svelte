@@ -63,12 +63,6 @@
 
 
 
-    // 활동 기록 탭(연/월 필터, 수정)은 장식장의 "전체 기록" 보기로 대체되어 제거됐다.
-    // 대시보드 통계(총 전적, 자주 만난 사람, 자주 한 게임)는 계속 이 데이터를 쓴다.
-    $: history = data.history || [];
-    $: filteredTotalGames = history.length;
-    $: filteredTotalWins = history.filter((g: any) => g.is_winner).length;
-
     // Season Pass Logic
     $: hasSeasonPass = data.user.season_pass_expires_at && new Date(data.user.season_pass_expires_at) > new Date();
     $: seasonPassDaysLeft = hasSeasonPass
@@ -89,38 +83,6 @@
             };
         }
         return null;
-    })();
-
-    // Top Opponents
-    // 판 수가 아니라 "함께한 날짜 수"로 센다 — 하루에 같은 사람과 여러 판 해도 1회.
-    // (판 수로 세면 긴 게임 한 판보다 짧은 게임 여러 판 한 상대가 과대평가됨)
-    $: topOpponents = (() => {
-        const daysByName: Record<string, Set<string>> = {};
-        for (const game of history) {
-            if (!game.opponents || !game.end_time) continue;
-            const date = new Date(game.end_time);
-            if (Number.isNaN(date.getTime())) continue;
-            // 같은 사람과 하루에 여러 판을 해도 "함께한 날짜 수"로는 1회
-            const dayKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-            for (const opp of game.opponents) {
-                (daysByName[opp.name] ??= new Set<string>()).add(dayKey);
-            }
-        }
-        return Object.entries(daysByName)
-            .map(([name, days]) => [name, days.size] as [string, number])
-            .sort((a, b) => b[1] - a[1])
-            .slice(0, 3);
-    })();
-
-    // Top Games
-    $: topGames = (() => {
-        const counts: Record<string, number> = {};
-        for (const game of history) {
-            counts[game.game_name] = (counts[game.game_name] || 0) + 1;
-        }
-        return Object.entries(counts)
-            .sort((a, b) => b[1] - a[1])
-            .slice(0, 3);
     })();
 
     let showGuideModal = false;
@@ -411,9 +373,6 @@
         <h1>마이페이지</h1>
         <div class="header-icons">
             <NotificationBell />
-            <button class="header-settings-btn" on:click={() => showSettings = true} aria-label="설정">
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
-            </button>
         </div>
     </header>
     <!-- 칭호를 장착하면 텍스트가 길어져(예: "킬러 스도쿠 마스터") 마이페이지 h1과
@@ -480,55 +439,6 @@
                     </div>
                 {/if}
 
-                <div class="stats-overview">
-                    <div class="stats-row primary">
-                        <div class="stat-card">
-                            <span class="stat-value">{filteredTotalGames}</span>
-                            <span class="stat-label">플레이</span>
-                        </div>
-                        <div class="stat-card highlight">
-                            <span class="stat-value">{filteredTotalWins}</span>
-                            <span class="stat-label">승리</span>
-                        </div>
-                    </div>
-                    
-                    {#if filteredTotalGames > 0}
-                        <div class="analysis-row">
-                            <!-- Top Opponents -->
-                            <div class="analysis-card">
-                                <h2>자주 만난 친구</h2>
-                                <ul>
-                                    {#each topOpponents as [name, count]}
-                                        <li>
-                                            <span class="name text-truncate" title={name}>{name}</span>
-                                            <span class="count">{count}회</span>
-                                        </li>
-                                    {:else}
-                                        <li class="empty">-</li>
-                                    {/each}
-                                </ul>
-                            </div>
-
-                            <!-- Top Games -->
-                            <div class="analysis-card">
-                                <h2>
-                                    최애 게임
-                                </h2>
-                                <ul>
-                                    {#each topGames as [game, count]}
-                                        <li>
-                                            <span class="name text-truncate" title={game}>{game}</span>
-                                            <span class="count">{count}회</span>
-                                        </li>
-                                    {:else}
-                                        <li class="empty">-</li>
-                                    {/each}
-                                </ul>
-                            </div>
-                        </div>
-                    {/if}
-                </div>
-
                 <div class="devices-section">
                     <div class="section-header">
                         <h2>
@@ -577,6 +487,23 @@
                             </div>
                         {/if}
                     </div>
+                </div>
+
+                <div class="settings-section">
+                    <button class="btn-settings-block" on:click={() => showSettings = true}>
+                        <div class="settings-content">
+                            <span class="settings-icon">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+                            </span>
+                            <span class="text-group">
+                                <span class="settings-title">설정</span>
+                                <span class="settings-subtitle">알림, 화면 등 앱 설정</span>
+                            </span>
+                        </div>
+                        <span class="settings-arrow">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+                        </span>
+                    </button>
                 </div>
 
                 <div class="feedback-section">
@@ -1106,21 +1033,6 @@
         padding-bottom: 1rem;
         border-bottom: 1px solid var(--border-light);
     }
-    .header-settings-btn {
-        background: none;
-        border: none;
-        padding: 6px;
-        cursor: pointer;
-        color: var(--text-secondary);
-        display: flex;
-        align-items: center;
-        border-radius: 8px;
-        transition: all 0.2s;
-    }
-    .header-settings-btn:hover {
-        background: var(--bg-hover);
-        color: var(--text-primary);
-    }
     .user-simple {
         display: flex;
         align-items: center;
@@ -1228,110 +1140,6 @@
             align-self: flex-end;
         }
     }
-
-    /* Stats */
-    .stats-overview {
-        margin-bottom: 2rem;
-    }
-    .stats-row.primary {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 1rem;
-        margin-bottom: 1rem;
-    }
-    .stat-card {
-        background: var(--bg-primary);
-        padding: 1.75rem 1.5rem;
-        border-radius: 16px;
-        text-align: center;
-        box-shadow: 0 4px 16px var(--shadow-sm);
-    }
-    .stat-card.highlight {
-        /* 승리 카드: 이 페이지의 활동 기록 탭이 승리 표시에 이미 쓰는
-           amber 톤(.history-card.winner)을 그대로 가져와, "승리 = 금빛"이라는
-           같은 브랜드 언어를 대시보드 첫 화면에서도 반복한다 */
-        background: linear-gradient(135deg, var(--color-warning-bg) 0%, var(--bg-primary) 70%);
-        box-shadow: 0 6px 20px var(--shadow-md);
-    }
-    .stat-value {
-        display: block;
-        font-size: 3rem;
-        font-weight: 800;
-        line-height: 1;
-        letter-spacing: -0.02em;
-        font-variant-numeric: tabular-nums;
-        color: var(--color-blue);
-        margin-bottom: 0.35rem;
-    }
-    .stat-card.highlight .stat-value {
-        /* amber-darker는 그라데이션의 크림색 쪽 끝에서 3:1 미만으로 떨어진다 */
-        color: var(--color-achievement-text);
-    }
-    .stat-label {
-        color: var(--text-secondary);
-        font-size: 0.85rem;
-        font-weight: 600;
-        letter-spacing: 0.01em;
-    }
-
-    .analysis-row {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 1rem;
-    }
-    .analysis-card {
-        background: var(--bg-primary);
-        padding: 1rem;
-        border-radius: 12px;
-        box-shadow: 0 2px 10px var(--shadow-sm);
-        font-size: 0.9rem;
-    }
-    .analysis-card h2 {
-        margin: 0 0 0.8rem 0;
-        font-size: 0.95rem;
-        color: var(--text-darker);
-        border-bottom: 1px solid var(--border-light);
-        padding-bottom: 0.5rem;
-    }
-    .analysis-card ul {
-        list-style: none;
-        padding: 0;
-        margin: 0;
-    }
-    .analysis-card li {
-        display: flex;
-        justify-content: space-between;
-        margin-bottom: 0.4rem;
-        color: var(--text-primary);
-    }
-    .analysis-card li:last-child {
-        margin-bottom: 0;
-    }
-    .analysis-card .count {
-        font-weight: bold;
-        color: var(--text-tertiary);
-        font-size: 0.8rem;
-        flex-shrink: 0;
-    }
-    .analysis-card .empty {
-        color: var(--border-medium);
-        text-align: center;
-    }
-    .text-truncate {
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        display: inline-block;
-        vertical-align: middle;
-        max-width: 110px; /* Mobile default */
-    }
-    
-    @media (min-width: 600px) {
-        .text-truncate {
-            max-width: 200px; /* PC/Tablet */
-        }
-    }
-
 
     /* History Headers & Filters */
     .section-header {
@@ -1764,6 +1572,59 @@
         color: var(--text-tertiary);
     }
     .feedback-arrow {
+        color: var(--border-medium);
+    }
+
+    /* 헤더에 있던 설정 아이콘을 대시보드 안으로 옮김 — 서비스 건의함과 같은 블록 스타일 */
+    .settings-section {
+        margin-top: 1rem;
+        margin-bottom: 1rem;
+    }
+    .btn-settings-block {
+        width: 100%;
+        background: var(--bg-primary);
+        border: 1px solid var(--border-light);
+        border-radius: 12px;
+        padding: 1.2rem;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        cursor: pointer;
+        transition: all 0.2s;
+        box-shadow: 0 2px 8px var(--shadow-sm);
+        text-align: left;
+    }
+    .btn-settings-block:hover {
+        border-color: var(--color-blue);
+        background: var(--bg-secondary);
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+    }
+    .settings-content {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+    }
+    .settings-icon {
+        width: 40px;
+        height: 40px;
+        background: var(--color-info-bg);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--color-blue);
+    }
+    .settings-title {
+        font-weight: 700;
+        color: var(--text-primary);
+        font-size: 1rem;
+    }
+    .settings-subtitle {
+        font-size: 0.85rem;
+        color: var(--text-tertiary);
+    }
+    .settings-arrow {
         color: var(--border-medium);
     }
 
