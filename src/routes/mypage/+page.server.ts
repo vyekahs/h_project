@@ -24,6 +24,7 @@ export const load: PageServerLoad = async ({ parent }) => {
             sp.is_winner as is_winner,
             (
                 SELECT json_agg(json_build_object(
+                    'attendee_id', a2.id,
                     'name', a2.name,
                     'score', sp2.score,
                     'is_winner', sp2.is_winner
@@ -233,6 +234,71 @@ export const actions: Actions = {
             return { success: true };
         } catch (e: any) {
             return fail(400, { error: e.message || '고정팟 나가기에 실패했습니다.' });
+        }
+    },
+
+    // 게임 종료 시 입력한 승자/점수를 잘못 기록했을 때 고치는 액션.
+    // 홈 화면의 endGame과 같은 권한(참여자 아무나) + 필드로 동작하되,
+    // end_time/status는 건드리지 않는다 — endGame을 재사용하면 end_time이
+    // 수정 시각으로 갱신되어 7일 제한을 계속 미룰 수 있는 구멍이 생긴다.
+    editHistory: async ({ request, cookies }) => {
+        const userSessionToken = cookies.get('user_session');
+        if (!userSessionToken) return fail(401, { error: '로그인이 필요합니다.' });
+        const user = await verifyAttendeeSession(userSessionToken);
+        if (!user) return fail(401, { error: '로그인이 필요합니다.' });
+
+        const data = await request.formData();
+        const sessionId = data.get('sessionId')?.toString();
+        if (!sessionId) return fail(400, { error: '잘못된 요청입니다.' });
+
+        const sessionResult = await db.execute(sql`
+            SELECT gs.status, gs.end_time
+            FROM game_sessions gs
+            WHERE gs.id = ${sessionId}
+        `);
+        const session = sessionResult[0] as any;
+        if (!session || session.status !== 'finished') {
+            return fail(404, { error: '게임 기록을 찾을 수 없습니다.' });
+        }
+
+        const oneWeekMs = 7 * 24 * 60 * 60 * 1000;
+        if (Date.now() - new Date(session.end_time).getTime() > oneWeekMs) {
+            return fail(403, { error: '게임을 마친 지 일주일이 지나 더 이상 수정할 수 없습니다.' });
+        }
+
+        const participantResult = await db.execute(sql`
+            SELECT 1 FROM session_participants WHERE session_id = ${sessionId} AND attendee_id = ${user.id}
+        `);
+        if (participantResult.length === 0) {
+            return fail(403, { error: '해당 게임의 참여자만 수정할 수 있습니다.' });
+        }
+
+        const winnerIds = data.getAll('winnerIds').map(id => id.toString());
+        const scores: Record<string, number> = {};
+        for (const [key, value] of data.entries()) {
+            if (key.startsWith('score_')) {
+                const attendeeId = key.replace('score_', '');
+                if (value.toString().trim() !== '') {
+                    scores[attendeeId] = parseInt(value.toString());
+                }
+            }
+        }
+
+        try {
+            await db.transaction(async (tx) => {
+                // 이전에 기록된 승자 표시를 먼저 지워야, 승자를 바꿔 수정했을 때
+                // 옛 승자가 그대로 남는 문제가 없다.
+                await tx.execute(sql`UPDATE session_participants SET is_winner = false WHERE session_id = ${sessionId}`);
+                if (winnerIds.length > 0) {
+                    await tx.execute(sql`UPDATE session_participants SET is_winner = true WHERE session_id = ${sessionId} AND attendee_id = ANY(${'{' + winnerIds.join(',') + '}'}::int[])`);
+                }
+                for (const [attendeeId, score] of Object.entries(scores)) {
+                    await tx.execute(sql`UPDATE session_participants SET score = ${score} WHERE session_id = ${sessionId} AND attendee_id = ${attendeeId}`);
+                }
+            });
+            return { success: true };
+        } catch (e) {
+            return fail(500, { error: '기록 수정에 실패했습니다.' });
         }
     },
 

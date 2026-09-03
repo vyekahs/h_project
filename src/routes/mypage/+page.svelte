@@ -331,6 +331,19 @@
 
     let partyModalError = '';
     let partyLeaveError = '';
+
+    // 게임 종료 시 승자/점수를 잘못 입력했을 때 고칠 수 있게 한다.
+    // 일주일이 지나면 수정 버튼 자체를 숨긴다 — 서버에서도 같은 기준으로 막는다.
+    let editingHistory: any = null;
+    let historyEditError = '';
+    const HISTORY_EDIT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+    function canEditHistory(game: any) {
+        return Date.now() - new Date(game.end_time).getTime() <= HISTORY_EDIT_WINDOW_MS;
+    }
+    function openHistoryEdit(game: any) {
+        historyEditError = '';
+        editingHistory = game;
+    }
     let partySubmitting = false;
     let showPartyAdvanced = false;
     let partyMemberSearch = '';
@@ -921,6 +934,9 @@
                                         </div>
                                     </div>
                                 {/if}
+                                {#if canEditHistory(game)}
+                                    <button type="button" class="btn-edit-history" on:click={() => openHistoryEdit(game)}>기록 수정</button>
+                                {/if}
                             </div>
                         {/each}
 
@@ -1040,6 +1056,58 @@
                 <button class="btn-cancel" on:click={() => handleConfirm(false)}>취소</button>
                 <button class="btn-danger" on:click={() => handleConfirm(true)}>삭제</button>
             </div>
+        </div>
+    </div>
+{/if}
+
+{#if editingHistory}
+    <div
+        class="modal-backdrop"
+        on:click|self={() => editingHistory = null}
+        transition:fade
+        role="presentation"
+    >
+        <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="edit-history-title" tabindex="-1" use:trapFocus={{ onEscape: () => editingHistory = null }}>
+            <h3 id="edit-history-title">기록 수정</h3>
+            <p><strong>{editingHistory.game_name}</strong> 기록을 수정합니다.</p>
+            {#if historyEditError}
+                <p class="inline-error">{historyEditError}</p>
+            {/if}
+            <form method="POST" action="?/editHistory" use:enhance={() => {
+                historyEditError = '';
+                return async ({ result, update }) => {
+                    if (result.type === 'success') {
+                        editingHistory = null;
+                        await update();
+                    } else if (result.type === 'failure') {
+                        historyEditError = (result.data as any)?.error || '기록 수정에 실패했습니다.';
+                    }
+                };
+            }}>
+                <input type="hidden" name="sessionId" value={editingHistory.id} />
+                <div class="player-select">
+                    <div class="player-score-row">
+                        <label class="checkbox-label">
+                            <input type="checkbox" name="winnerIds" value={data.user.id} checked={editingHistory.is_winner}>
+                            <span class="p-name">{data.user.name} (나)</span>
+                        </label>
+                        <input type="number" name="score_{data.user.id}" placeholder="점수" class="score-input" value={editingHistory.my_score ?? ''}>
+                    </div>
+                    {#each editingHistory.opponents || [] as opp}
+                        <div class="player-score-row">
+                            <label class="checkbox-label">
+                                <input type="checkbox" name="winnerIds" value={opp.attendee_id} checked={opp.is_winner}>
+                                <span class="p-name">{opp.name}</span>
+                            </label>
+                            <input type="number" name="score_{opp.attendee_id}" placeholder="점수" class="score-input" value={opp.score ?? ''}>
+                        </div>
+                    {/each}
+                </div>
+                <div class="modal-actions">
+                    <button type="button" class="btn-cancel" on:click={() => editingHistory = null}>취소</button>
+                    <button type="submit" class="btn-primary">저장</button>
+                </div>
+            </form>
         </div>
     </div>
 {/if}
@@ -1636,6 +1704,62 @@
     }
     .opp-name {
         display: inline-block;
+    }
+    .btn-edit-history {
+        margin-top: 0.6rem;
+        background: none;
+        border: 1px solid var(--border-default);
+        color: var(--text-secondary);
+        font-size: 0.8rem;
+        padding: 0.3rem 0.7rem;
+        border-radius: 6px;
+        cursor: pointer;
+        transition: all 0.15s;
+    }
+    .btn-edit-history:hover {
+        background: var(--bg-hover);
+        color: var(--text-primary);
+    }
+    /* 홈 화면 "게임 종료" 모달과 같은 승자/점수 입력 UI를 재사용한다 */
+    .player-select {
+        max-height: 300px;
+        overflow-y: auto;
+        border: 1px solid var(--border-light);
+        border-radius: 8px;
+        padding: 0.5rem;
+        margin-bottom: 1.5rem;
+    }
+    .player-score-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.5rem;
+        border-bottom: 1px solid var(--bg-secondary);
+        gap: 0.5rem;
+    }
+    .player-score-row:last-child {
+        border-bottom: none;
+    }
+    .checkbox-label {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        cursor: pointer;
+        flex: 1;
+        min-width: 0;
+    }
+    .p-name {
+        display: inline-flex;
+        align-items: center;
+        gap: 2px;
+    }
+    .score-input {
+        width: 70px;
+        padding: 0.4rem;
+        border: 1px solid var(--border-default);
+        border-radius: 6px;
+        font-size: 0.9rem;
+        text-align: center;
     }
     .empty-state {
         text-align: center;
