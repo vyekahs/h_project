@@ -778,6 +778,9 @@ export const actions: Actions = {
         const sessionToken = request.headers.get('cookie')?.match(/admin_session=([^;]+)/)?.[1];
         let authorized = false;
         let isAdmin = false;
+        // 관리자는 attendees 테이블의 계정이 아니므로(admin_sessions는 별도 users 테이블 참조)
+        // 취소자 표시를 할 attendee id가 없다 — 그 경우 null로 남기고 화면에서 "관리자"로 표시한다.
+        let cancelledByAttendeeId: number | null = null;
 
         if (sessionToken && await verifyAdminSession(sessionToken)) {
             authorized = true;
@@ -792,6 +795,7 @@ export const actions: Actions = {
             // Participants can only dissolve non-recurring games
             if (!isRecurringGame && await isParticipant(sessionId, user.id)) {
                 authorized = true;
+                cancelledByAttendeeId = user.id;
             }
         }
 
@@ -820,13 +824,18 @@ export const actions: Actions = {
                     `);
                 }
 
-                await tx.execute(sql`DELETE FROM session_participants WHERE session_id = ${sessionId}`);
-                await tx.execute(sql`DELETE FROM reservations WHERE session_id = ${sessionId}`);
-                await tx.execute(sql`DELETE FROM game_sessions WHERE id = ${sessionId}`);
+                // 삭제 대신 취소 상태로 남긴다 — 누가 취소했는지 알 수 있어야 한다.
+                // 참여자/예약 기록도 지우지 않는다: 취소된 게임 카드에 계속 표시할 참가자 목록이 필요하다.
+                await tx.execute(sql`
+                    UPDATE game_sessions
+                    SET status = 'cancelled', cancelled_by = ${cancelledByAttendeeId}, cancelled_at = NOW()
+                    WHERE id = ${sessionId}
+                `);
             });
             emitLiveEvent('games');
             return { success: true };
         } catch (e) {
+            console.error('[dissolveScheduledGame] Failed:', e);
             return fail(500, { error: 'Failed to dissolve game' });
         }
     },

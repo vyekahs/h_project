@@ -42,6 +42,8 @@ export const gameSessions = pgTable('game_sessions', {
 	showOnMain: boolean('show_on_main').default(false),
 	recurringScheduleId: integer('recurring_schedule_id'),
 	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+	cancelledBy: integer('cancelled_by').references(() => attendees.id, { onDelete: 'set null' }),
+	cancelledAt: timestamp('cancelled_at', { withTimezone: true }),
 });
 
 export const sessionParticipants = pgTable('session_participants', {

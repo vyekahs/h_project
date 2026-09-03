@@ -86,6 +86,8 @@
         participants: { id: number; name: string; is_guest?: boolean }[];
         players: { id: number; name: string; is_guest?: boolean }[];
         scheduled_at: string;
+        cancelled_at?: string | null;
+        cancelled_by_name?: string | null;
     }
 
     interface Reservation {
@@ -1410,7 +1412,8 @@
             <div class="tables-grid">
                 {#each scheduledGames.slice(0, limitScheduledGames) as game}
                     {@const time = formatScheduledTime(game.scheduled_at)}
-                    <div class="table-card available">
+                    {@const isCancelled = game.status === 'cancelled'}
+                    <div class="table-card available" class:cancelled={isCancelled}>
                         <div class="table-header">
                             <h3>
                                 <span class="game-title-text">{game.game_name}</span>
@@ -1418,42 +1421,46 @@
                                 <span class="sub-text">({(game.participants || []).length} / {game.max_players})</span>
                             </h3>
                             <div class="header-meta-row">
-                                {#if data.user && (game.participants || []).some((p: any) => p.id === data.user!.id)}
-                                    <div class="manage-controls">
-                                        <form method="POST" action="?/startScheduledGame" use:enhance style="display:inline;">
-                                            <input type="hidden" name="sessionId" value={game.id}>
-                                            <button class="btn-action-text primary">시작</button>
-                                        </form>
-                                        {#if !game.recurring_schedule_id || data.isAdmin}
-                                            <form method="POST" action="?/dissolveScheduledGame" use:enhance style="display:inline;">
+                                {#if isCancelled}
+                                    <span class="cancelled-badge">취소됨</span>
+                                {:else}
+                                    {#if data.user && (game.participants || []).some((p: any) => p.id === data.user!.id)}
+                                        <div class="manage-controls">
+                                            <form method="POST" action="?/startScheduledGame" use:enhance style="display:inline;">
                                                 <input type="hidden" name="sessionId" value={game.id}>
-                                                <button class="btn-action-text danger">삭제</button>
+                                                <button class="btn-action-text primary">시작</button>
                                             </form>
+                                            {#if !game.recurring_schedule_id || data.isAdmin}
+                                                <form method="POST" action="?/dissolveScheduledGame" use:enhance style="display:inline;">
+                                                    <input type="hidden" name="sessionId" value={game.id}>
+                                                    <button class="btn-action-text danger">취소</button>
+                                                </form>
+                                            {/if}
+                                        </div>
+                                    {/if}
+                                    {#if data.user && !(game.participants || []).some((p: any) => p.id === data.user!.id)}
+                                        {#if canJoinGame(game)}
+                                            <div class="actions">
+                                                <form method="POST" action="?/joinScheduledGame"
+                                                    use:enhance={() => {
+                                                        return async ({ result }) => {
+                                                            await applyAction(result);
+                                                            await invalidateAll();
+                                                        };
+                                                    }}>
+                                                    <input type="hidden" name="sessionId" value={game.id}>
+                                                    <button type="submit" class="btn-join">
+                                                        {(game.participants || []).length >= game.max_players ? '대기열 합류' : '참여하기'}
+                                                    </button>
+                                                </form>
+                                            </div>
+                                        {:else}
+                                            <div class="actions">
+                                                <span class="btn-join-blocked" title={joinBlockedReason(game)}>
+                                                    {joinBlockedReason(game)}
+                                                </span>
+                                            </div>
                                         {/if}
-                                    </div>
-                                {/if}
-                                {#if data.user && !(game.participants || []).some((p: any) => p.id === data.user!.id)}
-                                    {#if canJoinGame(game)}
-                                        <div class="actions">
-                                            <form method="POST" action="?/joinScheduledGame"
-                                                use:enhance={() => {
-                                                    return async ({ result }) => {
-                                                        await applyAction(result);
-                                                        await invalidateAll();
-                                                    };
-                                                }}>
-                                                <input type="hidden" name="sessionId" value={game.id}>
-                                                <button type="submit" class="btn-join">
-                                                    {(game.participants || []).length >= game.max_players ? '대기열 합류' : '참여하기'}
-                                                </button>
-                                            </form>
-                                        </div>
-                                    {:else}
-                                        <div class="actions">
-                                            <span class="btn-join-blocked" title={joinBlockedReason(game)}>
-                                                {joinBlockedReason(game)}
-                                            </span>
-                                        </div>
                                     {/if}
                                 {/if}
                             </div>
@@ -1462,10 +1469,16 @@
                         <div class="table-content">
                             <div class="session-info next">
                                 <div class="session-header">
-                                    <span class="start-time">
-                                        <span class="highlight-green">{time.relative}</span>
-                                        <span class="sub-text">({time.absolute} 시작)</span>
-                                    </span>
+                                    {#if isCancelled}
+                                        <span class="cancelled-by-text">
+                                            {game.cancelled_by_name ?? '관리자'}님이 {formatScheduledTime(game.cancelled_at ?? game.scheduled_at).absolute}에 취소함
+                                        </span>
+                                    {:else}
+                                        <span class="start-time">
+                                            <span class="highlight-green">{time.relative}</span>
+                                            <span class="sub-text">({time.absolute} 시작)</span>
+                                        </span>
+                                    {/if}
                                 </div>
                                 <div class="participants">
                                     <div class="participant-list">
@@ -3293,6 +3306,32 @@
     .table-card:hover {
         transform: translateY(-2px);
         box-shadow: 0 4px 12px var(--shadow-sm);
+    }
+    /* 취소된 예정 게임 — 삭제해서 사라지는 대신 회색으로 남겨 누가 취소했는지 보여준다 */
+    .table-card.cancelled {
+        opacity: 0.55;
+        filter: grayscale(0.6);
+    }
+    .table-card.cancelled:hover {
+        transform: none;
+        box-shadow: 0 2px 4px var(--overlay-light);
+    }
+    .table-card.cancelled .table-header h3::before {
+        background: var(--text-tertiary) !important;
+    }
+    .cancelled-badge {
+        font-size: 0.75rem;
+        font-weight: 700;
+        color: var(--text-tertiary);
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-default);
+        padding: 0.2rem 0.6rem;
+        border-radius: 100px;
+        flex-shrink: 0;
+    }
+    .cancelled-by-text {
+        font-size: 0.85rem;
+        color: var(--text-tertiary);
     }
     .table-header {
         display: flex;

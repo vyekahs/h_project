@@ -57,6 +57,7 @@ async function fetchSharedData(): Promise<SharedData> {
         `),
         db.execute(sql`
             SELECT gs.id, gs.game_name, gs.game_id, gs.min_players, gs.max_players, gs.scheduled_at, gs.created_by, gs.party_id, gs.show_on_main, gs.recurring_schedule_id, g.image_url,
+                   gs.status, gs.cancelled_at, canceller.name as cancelled_by_name,
                    COALESCE(json_agg(json_build_object(
                        'id', COALESCE(a.id, -sp.id),
                        'name', COALESCE(a.name, sp.guest_name),
@@ -69,9 +70,13 @@ async function fetchSharedData(): Promise<SharedData> {
             LEFT JOIN games g ON gs.game_id = g.id
             LEFT JOIN minigame_user_points up ON a.id = up.user_id
             LEFT JOIN minigame_titles t ON up.equipped_title_id = t.id
+            LEFT JOIN attendees canceller ON gs.cancelled_by = canceller.id
+            -- 취소된 건 카드가 사라지지 않고 회색으로 표시되게, 취소 후 24시간까지는
+            -- 계속 이 목록에 포함시킨다 (화면에서 status로 취소 처리를 구분한다)
             WHERE gs.status = 'scheduled'
-            GROUP BY gs.id, gs.game_name, gs.game_id, gs.min_players, gs.max_players, gs.scheduled_at, gs.created_by, gs.party_id, gs.show_on_main, gs.recurring_schedule_id, g.image_url
-            ORDER BY gs.scheduled_at ASC
+               OR (gs.status = 'cancelled' AND gs.cancelled_at > NOW() - INTERVAL '24 hours')
+            GROUP BY gs.id, gs.game_name, gs.game_id, gs.min_players, gs.max_players, gs.scheduled_at, gs.created_by, gs.party_id, gs.show_on_main, gs.recurring_schedule_id, g.image_url, gs.status, gs.cancelled_at, canceller.name
+            ORDER BY gs.status = 'cancelled', gs.scheduled_at ASC
         `),
         db.execute(sql`SELECT id, name, min_players, max_players, playtime_min, image_url FROM games ORDER BY name ASC`),
         db.execute(sql`
