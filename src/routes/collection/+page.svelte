@@ -197,11 +197,21 @@
 <!-- 게임별 모달과 전체 기록 목록이 같은 행 UI(표시/수정 폼)를 쓰므로 스니펫으로 공유한다 -->
 {#snippet playRow(play: any, showGameName: boolean)}
     {#if editingSessionId === play.sessionId}
+        {@const initialWinnerCount = (play.isWinner ? 1 : 0) + (play.opponents || []).filter((o: any) => o.is_winner).length}
         <div class="modal-play-row editing">
             {#if historyEditError}
                 <p class="inline-error">{historyEditError}</p>
             {/if}
-            <form method="POST" action="?/editHistory" use:enhance={() => {
+            <form
+                method="POST"
+                action="?/editHistory"
+                oninput={(e) => {
+                    const form = e.currentTarget as HTMLFormElement;
+                    const count = new FormData(form).getAll('winnerIds').length;
+                    const el = form.querySelector('.edit-winner-count');
+                    if (el) el.textContent = `${count}명 선택됨`;
+                }}
+                use:enhance={() => {
                 historyEditError = '';
                 return async ({ result, update }) => {
                     if (result.type === 'success') {
@@ -222,7 +232,8 @@
                         <input type="checkbox" name="winnerIds" value={data.userId} checked={play.isWinner}>
                         <span class="p-name">{data.userName} (나)</span>
                     </label>
-                    <input type="number" name="score_{data.userId}" placeholder="점수" class="score-input" value={play.myScore ?? ''}>
+                    <label class="visually-hidden" for="score_{data.userId}_{play.sessionId}">{data.userName} 점수</label>
+                    <input type="number" id="score_{data.userId}_{play.sessionId}" name="score_{data.userId}" placeholder="점수" class="score-input" value={play.myScore ?? ''}>
                 </div>
                 {#each play.opponents || [] as opp}
                     <div class="edit-player-row">
@@ -230,9 +241,11 @@
                             <input type="checkbox" name="winnerIds" value={opp.attendee_id} checked={opp.is_winner}>
                             <span class="p-name">{opp.name}</span>
                         </label>
-                        <input type="number" name="score_{opp.attendee_id}" placeholder="점수" class="score-input" value={opp.score ?? ''}>
+                        <label class="visually-hidden" for="score_{opp.attendee_id}_{play.sessionId}">{opp.name} 점수</label>
+                        <input type="number" id="score_{opp.attendee_id}_{play.sessionId}" name="score_{opp.attendee_id}" placeholder="점수" class="score-input" value={opp.score ?? ''}>
                     </div>
                 {/each}
+                <p class="edit-winner-count" aria-live="polite">{initialWinnerCount}명 선택됨</p>
                 <div class="edit-play-actions">
                     <button type="button" class="btn-cancel-inline" onclick={closePlayEdit}>취소</button>
                     <button type="submit" class="btn-save-inline">저장</button>
@@ -277,7 +290,7 @@
         <p class="collection-progress">
             <strong>{playedCount}</strong> / {totalCount}종 수집
             <span class="progress-track">
-                <span class="progress-fill" style="width: {totalCount > 0 ? (playedCount / totalCount) * 100 : 0}%"></span>
+                <span class="progress-fill" style="transform: scaleX({totalCount > 0 ? playedCount / totalCount : 0})"></span>
             </span>
         </p>
         <div class="view-toggle" role="group" aria-label="보기 방식">
@@ -295,6 +308,18 @@
                 <input type="checkbox" bind:checked={showOwnedOnly} />
                 내가 보유한 것만 보기
             </label>
+        {:else}
+            <!-- 게임별 보기의 검색창과 같은 자리에 둬서, 뷰를 전환해도 손가락이 다시
+                 찾아야 하는 위치가 바뀌지 않게 한다 -->
+            <button
+                type="button"
+                class="filter-disclosure-toggle"
+                aria-expanded={showAllFilters}
+                onclick={() => showAllFilters = !showAllFilters}
+            >
+                <svg class="filter-chevron" class:open={showAllFilters} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                필터{allActiveFilterCount > 0 ? ` (${allActiveFilterCount})` : ''}
+            </button>
         {/if}
     </header>
 
@@ -380,15 +405,6 @@
             </section>
         {/if}
     {:else}
-        <button
-            type="button"
-            class="filter-disclosure-toggle"
-            aria-expanded={showAllFilters}
-            onclick={() => showAllFilters = !showAllFilters}
-        >
-            <svg class="filter-chevron" class:open={showAllFilters} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-            필터{allActiveFilterCount > 0 ? ` (${allActiveFilterCount})` : ''}
-        </button>
         {#if showAllFilters}
             <div class="play-filters">
                 <span class="filter-group-label">언제</span>
@@ -649,7 +665,7 @@
         flex-shrink: 0;
         font-weight: bold;
         color: var(--text-tertiary);
-        font-size: 0.75rem;
+        font-size: 0.82rem;
     }
     .summary-empty {
         color: var(--border-medium);
@@ -689,10 +705,12 @@
     }
     .progress-fill {
         display: block;
+        width: 100%;
         height: 100%;
         background: var(--color-blue);
         border-radius: 100px;
-        transition: width 0.3s ease;
+        transform-origin: left;
+        transition: transform 0.3s ease;
     }
 
     .shelf-grid {
@@ -710,7 +728,11 @@
             max-width: 960px;
         }
         .shelf-grid {
-            grid-template-columns: repeat(6, 1fr);
+            /* 보유 게임이 적으면 고정 6열 중 상당수가 빈 회색 여백으로 남아
+               미완성처럼 보였다 — auto-fill은 콘텐츠와 무관하게 트랙을 채워
+               같은 문제가 재발하므로, 빈 트랙을 접어 남은 아이템이 채우는
+               auto-fit을 쓴다 */
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
         }
     }
 
@@ -799,7 +821,7 @@
     }
 
     .shelf-label {
-        font-size: 0.72rem;
+        font-size: 0.8rem;
         font-weight: 600;
         color: var(--text-primary);
         text-align: center;
@@ -839,14 +861,18 @@
     .search-clear {
         position: absolute;
         top: 50%;
-        right: 0.5rem;
+        right: 0.1rem;
         transform: translateY(-50%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 44px;
+        min-height: 44px;
         border: none;
         background: none;
         color: var(--text-secondary);
         font-size: 0.9rem;
         line-height: 1;
-        padding: 0.35rem;
         cursor: pointer;
         border-radius: 50%;
     }
@@ -1021,6 +1047,7 @@
         display: flex;
         align-items: center;
         gap: 0.3rem;
+        min-height: 44px;
         margin-bottom: 0.6rem;
         padding: 0.3rem 0;
         background: none;
@@ -1229,6 +1256,22 @@
         color: var(--text-primary);
         font-size: 0.85rem;
         text-align: center;
+    }
+    .visually-hidden {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+    }
+    .edit-winner-count {
+        font-size: 0.72rem;
+        color: var(--text-tertiary);
+        margin: 0.2rem 0 0;
     }
     .edit-play-actions {
         display: flex;
