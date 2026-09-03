@@ -1,8 +1,9 @@
 import { db } from '$lib/server/db/index';
 import { sql } from 'drizzle-orm';
-import { redirect } from '@sveltejs/kit';
-import type { PageServerLoad } from './$types';
+import { redirect, fail } from '@sveltejs/kit';
+import type { PageServerLoad, Actions } from './$types';
 import { verifyAttendeeSession } from '$lib/server/auth';
+import { editGameResult, GameHistoryEditError } from '$lib/server/services/gameHistoryService';
 
 export const load: PageServerLoad = async ({ cookies }) => {
     const userSessionToken = cookies.get('user_session');
@@ -29,11 +30,13 @@ export const load: PageServerLoad = async ({ cookies }) => {
         db.execute(sql`
             SELECT
                 g.id AS game_id,
+                gs.id AS session_id,
                 gs.end_time,
                 sp.score AS my_score,
                 sp.is_winner,
                 (
                     SELECT json_agg(json_build_object(
+                        'attendee_id', a2.id,
                         'name', a2.name,
                         'score', sp2.score,
                         'is_winner', sp2.is_winner
@@ -53,6 +56,7 @@ export const load: PageServerLoad = async ({ cookies }) => {
     const playedByGameId: Record<number, any[]> = {};
     for (const row of playedResult as any[]) {
         (playedByGameId[row.game_id] ??= []).push({
+            sessionId: row.session_id,
             endTime: row.end_time,
             myScore: row.my_score,
             isWinner: row.is_winner,
@@ -61,7 +65,30 @@ export const load: PageServerLoad = async ({ cookies }) => {
     }
 
     return {
+        userId: user.id,
+        userName: user.name,
         games: gamesResult as any[],
         playedByGameId
     };
+};
+
+export const actions: Actions = {
+    editHistory: async ({ request, cookies }) => {
+        const userSessionToken = cookies.get('user_session');
+        if (!userSessionToken) return fail(401, { error: '로그인이 필요합니다.' });
+        const user = await verifyAttendeeSession(userSessionToken);
+        if (!user) return fail(401, { error: '로그인이 필요합니다.' });
+
+        const data = await request.formData();
+        const sessionId = data.get('sessionId')?.toString();
+        if (!sessionId) return fail(400, { error: '잘못된 요청입니다.' });
+
+        try {
+            await editGameResult(sessionId, user.id, data);
+            return { success: true };
+        } catch (e) {
+            if (e instanceof GameHistoryEditError) return fail(e.status, { error: e.message });
+            return fail(500, { error: '기록 수정에 실패했습니다.' });
+        }
+    }
 };

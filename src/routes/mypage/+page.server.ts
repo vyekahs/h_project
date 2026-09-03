@@ -4,6 +4,7 @@ import { verifyAttendeeSession } from '$lib/server/auth';
 import { removeFromIrkCache } from '$lib/server/ble';
 import { PartyService } from '$lib/server/services/partyService';
 import { NotificationService } from '$lib/server/services/notificationService';
+import { editGameResult, GameHistoryEditError } from '$lib/server/services/gameHistoryService';
 import type { PageServerLoad, Actions } from './$types';
 import { redirect, fail } from '@sveltejs/kit';
 
@@ -251,53 +252,11 @@ export const actions: Actions = {
         const sessionId = data.get('sessionId')?.toString();
         if (!sessionId) return fail(400, { error: '잘못된 요청입니다.' });
 
-        const sessionResult = await db.execute(sql`
-            SELECT gs.status, gs.end_time
-            FROM game_sessions gs
-            WHERE gs.id = ${sessionId}
-        `);
-        const session = sessionResult[0] as any;
-        if (!session || session.status !== 'finished') {
-            return fail(404, { error: '게임 기록을 찾을 수 없습니다.' });
-        }
-
-        const oneWeekMs = 7 * 24 * 60 * 60 * 1000;
-        if (Date.now() - new Date(session.end_time).getTime() > oneWeekMs) {
-            return fail(403, { error: '게임을 마친 지 일주일이 지나 더 이상 수정할 수 없습니다.' });
-        }
-
-        const participantResult = await db.execute(sql`
-            SELECT 1 FROM session_participants WHERE session_id = ${sessionId} AND attendee_id = ${user.id}
-        `);
-        if (participantResult.length === 0) {
-            return fail(403, { error: '해당 게임의 참여자만 수정할 수 있습니다.' });
-        }
-
-        const winnerIds = data.getAll('winnerIds').map(id => id.toString());
-        const scores: Record<string, number> = {};
-        for (const [key, value] of data.entries()) {
-            if (key.startsWith('score_')) {
-                const attendeeId = key.replace('score_', '');
-                if (value.toString().trim() !== '') {
-                    scores[attendeeId] = parseInt(value.toString());
-                }
-            }
-        }
-
         try {
-            await db.transaction(async (tx) => {
-                // 이전에 기록된 승자 표시를 먼저 지워야, 승자를 바꿔 수정했을 때
-                // 옛 승자가 그대로 남는 문제가 없다.
-                await tx.execute(sql`UPDATE session_participants SET is_winner = false WHERE session_id = ${sessionId}`);
-                if (winnerIds.length > 0) {
-                    await tx.execute(sql`UPDATE session_participants SET is_winner = true WHERE session_id = ${sessionId} AND attendee_id = ANY(${'{' + winnerIds.join(',') + '}'}::int[])`);
-                }
-                for (const [attendeeId, score] of Object.entries(scores)) {
-                    await tx.execute(sql`UPDATE session_participants SET score = ${score} WHERE session_id = ${sessionId} AND attendee_id = ${attendeeId}`);
-                }
-            });
+            await editGameResult(sessionId, user.id, data);
             return { success: true };
         } catch (e) {
+            if (e instanceof GameHistoryEditError) return fail(e.status, { error: e.message });
             return fail(500, { error: '기록 수정에 실패했습니다.' });
         }
     },

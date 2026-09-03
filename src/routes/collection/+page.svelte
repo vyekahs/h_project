@@ -1,5 +1,6 @@
 <script lang="ts">
     import { trapFocus } from '$lib/actions/modal';
+    import { enhance } from '$app/forms';
 
     let { data } = $props();
 
@@ -30,12 +31,33 @@
 
     // 카드를 누르면 페이지 이동 대신 모달로 바로 보여준다 — 장식장을
     // 훑어보다가 매번 마이페이지로 튕기면 훑어보는 흐름이 끊긴다.
-    let selectedGame: any = $state(null);
+    // id만 들고 있다가 game/plays를 매번 data에서 파생시켜야, 모달 안에서
+    // 기록을 수정한 뒤(update()로 data가 새로고침된 뒤) 그 결과가 바로 반영된다.
+    let selectedGameId: number | null = $state(null);
+    const selectedGame = $derived(selectedGameId ? data.games.find((g: any) => g.id === selectedGameId) : null);
+    const selectedGamePlays = $derived(selectedGameId ? (data.playedByGameId[selectedGameId] ?? []) : []);
     function openGameModal(game: any) {
-        selectedGame = { ...game, plays: data.playedByGameId[game.id] };
+        selectedGameId = game.id;
     }
     function closeGameModal() {
-        selectedGame = null;
+        selectedGameId = null;
+    }
+
+    // 게임 종료 시 승자/점수를 잘못 입력했을 때 이 모달 안에서 바로 고칠 수 있게 한다
+    // (마이페이지로 보내지 않는다). 일주일이 지나면 수정 버튼을 숨기고,
+    // 서버(editHistory 액션)에서도 같은 기준으로 다시 막는다.
+    const HISTORY_EDIT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+    function canEditPlay(play: any) {
+        return Date.now() - new Date(play.endTime).getTime() <= HISTORY_EDIT_WINDOW_MS;
+    }
+    let editingSessionId: number | null = $state(null);
+    let historyEditError = $state('');
+    function openPlayEdit(play: any) {
+        historyEditError = '';
+        editingSessionId = play.sessionId;
+    }
+    function closePlayEdit() {
+        editingSessionId = null;
     }
 </script>
 
@@ -146,32 +168,72 @@
                 </div>
                 <div>
                     <h3 id="game-modal-title">{selectedGame.name}</h3>
-                    <p class="modal-stats">{selectedGame.plays.length}회 플레이 · {selectedGame.plays.filter((p: any) => p.isWinner).length}승</p>
+                    <p class="modal-stats">{selectedGamePlays.length}회 플레이 · {selectedGamePlays.filter((p: any) => p.isWinner).length}승</p>
                 </div>
             </div>
 
             <div class="modal-play-list">
-                {#each selectedGame.plays as play}
-                    <div class="modal-play-row" class:win={play.isWinner}>
-                        <div class="play-row-top">
-                            <span class="play-date">{formatDate(play.endTime)}</span>
-                            <span class="play-result">
-                                {#if play.isWinner}<span class="result-badge">승리</span>{/if}
-                                {#if play.myScore}<span class="play-score">{play.myScore}점</span>{/if}
-                            </span>
+                {#each selectedGamePlays as play (play.sessionId)}
+                    {#if editingSessionId === play.sessionId}
+                        <div class="modal-play-row editing">
+                            {#if historyEditError}
+                                <p class="inline-error">{historyEditError}</p>
+                            {/if}
+                            <form method="POST" action="?/editHistory" use:enhance={() => {
+                                historyEditError = '';
+                                return async ({ result, update }) => {
+                                    if (result.type === 'success') {
+                                        editingSessionId = null;
+                                        await update();
+                                    } else if (result.type === 'failure') {
+                                        historyEditError = (result.data as any)?.error || '수정에 실패했습니다.';
+                                    }
+                                };
+                            }}>
+                                <input type="hidden" name="sessionId" value={play.sessionId} />
+                                <div class="edit-player-row">
+                                    <label class="checkbox-label">
+                                        <input type="checkbox" name="winnerIds" value={data.userId} checked={play.isWinner}>
+                                        <span class="p-name">{data.userName} (나)</span>
+                                    </label>
+                                    <input type="number" name="score_{data.userId}" placeholder="점수" class="score-input" value={play.myScore ?? ''}>
+                                </div>
+                                {#each play.opponents || [] as opp}
+                                    <div class="edit-player-row">
+                                        <label class="checkbox-label">
+                                            <input type="checkbox" name="winnerIds" value={opp.attendee_id} checked={opp.is_winner}>
+                                            <span class="p-name">{opp.name}</span>
+                                        </label>
+                                        <input type="number" name="score_{opp.attendee_id}" placeholder="점수" class="score-input" value={opp.score ?? ''}>
+                                    </div>
+                                {/each}
+                                <div class="edit-play-actions">
+                                    <button type="button" class="btn-cancel-inline" onclick={closePlayEdit}>취소</button>
+                                    <button type="submit" class="btn-save-inline">저장</button>
+                                </div>
+                            </form>
                         </div>
-                        {#if play.opponents && play.opponents.length > 0}
-                            <p class="play-opponents">
-                                함께: {play.opponents.map((o: any) => o.name + (o.score ? `(${o.score})` : '')).join(', ')}
-                            </p>
-                        {/if}
-                    </div>
+                    {:else}
+                        <div class="modal-play-row" class:win={play.isWinner}>
+                            <div class="play-row-top">
+                                <span class="play-date">{formatDate(play.endTime)}</span>
+                                <span class="play-result">
+                                    {#if play.isWinner}<span class="result-badge">승리</span>{/if}
+                                    {#if play.myScore}<span class="play-score">{play.myScore}점</span>{/if}
+                                </span>
+                            </div>
+                            {#if play.opponents && play.opponents.length > 0}
+                                <p class="play-opponents">
+                                    함께: {play.opponents.map((o: any) => o.name + (o.score ? `(${o.score})` : '')).join(', ')}
+                                </p>
+                            {/if}
+                            {#if canEditPlay(play)}
+                                <button type="button" class="btn-edit-play" onclick={() => openPlayEdit(play)}>수정</button>
+                            {/if}
+                        </div>
+                    {/if}
                 {/each}
             </div>
-
-            <a href="/mypage?tab=history&game={encodeURIComponent(selectedGame.name)}" class="modal-history-link">
-                마이페이지 활동 기록에서 수정하기 →
-            </a>
         </div>
     </div>
 {/if}
@@ -517,14 +579,86 @@
         font-size: 0.78rem;
         color: var(--text-secondary);
     }
-    .modal-history-link {
-        display: block;
+    .btn-edit-play {
+        margin-top: 0.5rem;
+        background: none;
+        border: 1px solid var(--border-default);
+        color: var(--text-secondary);
+        font-size: 0.75rem;
+        padding: 0.25rem 0.6rem;
+        border-radius: 6px;
+        cursor: pointer;
+    }
+    .btn-edit-play:hover {
+        background: var(--bg-hover);
+        color: var(--text-primary);
+    }
+
+    /* 인라인 수정 폼 — 홈 화면 "게임 종료" 모달과 같은 승자/점수 입력 UI */
+    .modal-play-row.editing {
+        padding: 0.75rem;
+    }
+    .inline-error {
+        color: var(--color-red-dark, #d32f2f);
+        font-size: 0.78rem;
+        margin: 0 0 0.5rem 0;
+    }
+    .edit-player-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.35rem 0;
+        border-bottom: 1px solid var(--border-light);
+    }
+    .edit-player-row:last-of-type {
+        border-bottom: none;
+    }
+    .checkbox-label {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        cursor: pointer;
+        flex: 1;
+        min-width: 0;
+    }
+    .p-name {
+        font-size: 0.85rem;
+        color: var(--text-primary);
+    }
+    .score-input {
+        width: 64px;
+        padding: 0.3rem;
+        border: 1px solid var(--border-default);
+        border-radius: 6px;
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        font-size: 0.85rem;
         text-align: center;
-        font-size: 0.82rem;
+    }
+    .edit-play-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 0.5rem;
+        margin-top: 0.6rem;
+    }
+    .btn-cancel-inline {
+        background: none;
+        border: 1px solid var(--border-default);
+        color: var(--text-secondary);
+        font-size: 0.8rem;
+        padding: 0.35rem 0.8rem;
+        border-radius: 6px;
+        cursor: pointer;
+    }
+    .btn-save-inline {
+        background: var(--color-blue);
+        border: none;
+        color: #fff;
+        font-size: 0.8rem;
         font-weight: 600;
-        color: var(--color-blue);
-        text-decoration: none;
-        padding-top: 0.5rem;
-        border-top: 1px solid var(--border-light);
+        padding: 0.35rem 0.8rem;
+        border-radius: 6px;
+        cursor: pointer;
     }
 </style>
