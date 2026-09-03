@@ -98,6 +98,17 @@
         })
     );
 
+    // 게임별 모달 필터는 컨트롤이 5개라 항상 펼쳐두면 정작 기록보다 필터가
+    // 더 눈에 띈다. 기본은 접어두고, 몇 개가 걸려있는지만 버튼에 보여준다.
+    let showModalFilters = $state(false);
+    const modalActiveFilterCount = $derived(
+        (playYearFilter !== 'all' ? 1 : 0) +
+        (playMonthFilter !== 'all' ? 1 : 0) +
+        (playDayFilter !== 'all' ? 1 : 0) +
+        (playOpponentQuery.trim() ? 1 : 0) +
+        (playWinOnly ? 1 : 0)
+    );
+
     function openGameModal(game: any) {
         selectedGameId = game.id;
         playYearFilter = 'all';
@@ -105,6 +116,7 @@
         playDayFilter = 'all';
         playOpponentQuery = '';
         playWinOnly = false;
+        showModalFilters = false;
     }
     function closeGameModal() {
         selectedGameId = null;
@@ -119,12 +131,23 @@
     }
     let editingSessionId: number | null = $state(null);
     let historyEditError = $state('');
+    let ownershipError = $state('');
     function openPlayEdit(play: any) {
         historyEditError = '';
         editingSessionId = play.sessionId;
     }
     function closePlayEdit() {
         editingSessionId = null;
+    }
+
+    // 저장이 조용히 끝나버리면 "정말 반영됐나" 싶어진다 — 저장한 행에
+    // 잠깐 확인 표시를 띄운다.
+    let justSavedSessionId: number | null = $state(null);
+    function flashSaved(sessionId: number) {
+        justSavedSessionId = sessionId;
+        setTimeout(() => {
+            if (justSavedSessionId === sessionId) justSavedSessionId = null;
+        }, 2000);
     }
 
     // "전체 기록" 보기 — 어떤 게임인지 기억 안 날 때 게임과 무관하게 시간순으로
@@ -155,6 +178,16 @@
             return true;
         })
     );
+
+    let showAllFilters = $state(false);
+    const allActiveFilterCount = $derived(
+        (allYearFilter !== 'all' ? 1 : 0) +
+        (allMonthFilter !== 'all' ? 1 : 0) +
+        (allDayFilter !== 'all' ? 1 : 0) +
+        (allGameQuery.trim() ? 1 : 0) +
+        (allOpponentQuery.trim() ? 1 : 0) +
+        (allWinOnly ? 1 : 0)
+    );
 </script>
 
 <svelte:head>
@@ -174,6 +207,7 @@
                     if (result.type === 'success') {
                         editingSessionId = null;
                         await update();
+                        flashSaved(play.sessionId);
                     } else if (result.type === 'failure') {
                         historyEditError = (result.data as any)?.error || '수정에 실패했습니다.';
                     }
@@ -223,7 +257,9 @@
                     </p>
                 {/if}
             </div>
-            {#if canEditPlay(play)}
+            {#if justSavedSessionId === play.sessionId}
+                <span class="save-flash">✓ 저장됨</span>
+            {:else if canEditPlay(play)}
                 <button type="button" class="btn-edit-play" onclick={() => openPlayEdit(play)}>수정</button>
             {/if}
         </div>
@@ -243,12 +279,12 @@
             </span>
         </p>
         <div class="view-toggle" role="group" aria-label="보기 방식">
-            <button type="button" class:active={viewMode === 'byGame'} onclick={() => viewMode = 'byGame'}>게임별</button>
-            <button type="button" class:active={viewMode === 'all'} onclick={() => viewMode = 'all'}>전체 기록</button>
+            <button type="button" class:active={viewMode === 'byGame'} aria-pressed={viewMode === 'byGame'} onclick={() => viewMode = 'byGame'}>게임별</button>
+            <button type="button" class:active={viewMode === 'all'} aria-pressed={viewMode === 'all'} onclick={() => viewMode = 'all'}>전체 기록</button>
         </div>
         {#if viewMode === 'byGame'}
             <div class="search-input-wrap">
-                <input type="text" placeholder="게임 검색..." bind:value={searchQuery} class="search-input" />
+                <input type="text" placeholder="게임 검색..." bind:value={searchQuery} class="search-input" aria-label="게임 검색" />
                 {#if searchQuery}
                     <button type="button" class="search-clear" onclick={() => searchQuery = ''} aria-label="검색어 지우기">✕</button>
                 {/if}
@@ -346,41 +382,53 @@
             </section>
         {/if}
     {:else}
-        <div class="play-filters">
-            <div class="play-filters-dates">
-                <select class="play-date-select" bind:value={allYearFilter} aria-label="연도 필터">
-                    <option value="all">전체 연도</option>
-                    {#each allYears as year}
-                        <option value={year.toString()}>{year}년</option>
-                    {/each}
-                </select>
-                <select class="play-date-select" bind:value={allMonthFilter} aria-label="월 필터">
-                    <option value="all">전체 월</option>
-                    {#each Array(12) as _, i}
-                        <option value={(i + 1).toString()}>{i + 1}월</option>
-                    {/each}
-                </select>
-                <select class="play-date-select" bind:value={allDayFilter} aria-label="일 필터">
-                    <option value="all">전체 일</option>
-                    {#each Array(31) as _, i}
-                        <option value={(i + 1).toString()}>{i + 1}일</option>
-                    {/each}
-                </select>
+        <button
+            type="button"
+            class="filter-disclosure-toggle"
+            aria-expanded={showAllFilters}
+            onclick={() => showAllFilters = !showAllFilters}
+        >
+            <svg class="filter-chevron" class:open={showAllFilters} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+            필터{allActiveFilterCount > 0 ? ` (${allActiveFilterCount})` : ''}
+        </button>
+        {#if showAllFilters}
+            <div class="play-filters">
+                <div class="play-filters-dates">
+                    <select class="play-date-select" bind:value={allYearFilter} aria-label="연도 필터">
+                        <option value="all">전체 연도</option>
+                        {#each allYears as year}
+                            <option value={year.toString()}>{year}년</option>
+                        {/each}
+                    </select>
+                    <select class="play-date-select" bind:value={allMonthFilter} aria-label="월 필터">
+                        <option value="all">전체 월</option>
+                        {#each Array(12) as _, i}
+                            <option value={(i + 1).toString()}>{i + 1}월</option>
+                        {/each}
+                    </select>
+                    <select class="play-date-select" bind:value={allDayFilter} aria-label="일 필터">
+                        <option value="all">전체 일</option>
+                        {#each Array(31) as _, i}
+                            <option value={(i + 1).toString()}>{i + 1}일</option>
+                        {/each}
+                    </select>
+                </div>
+                <input type="text" class="play-game-input" placeholder="게임 이름 검색..." bind:value={allGameQuery} aria-label="게임 이름 검색" />
+                <div class="play-filters-row">
+                    <input
+                        type="text"
+                        class="play-opponent-input"
+                        placeholder="같이 한 사람 검색..."
+                        bind:value={allOpponentQuery}
+                        aria-label="같이 한 사람 검색"
+                    />
+                    <label class="win-only-toggle">
+                        <input type="checkbox" bind:checked={allWinOnly} />
+                        승리한 게임만
+                    </label>
+                </div>
             </div>
-            <input type="text" class="play-game-input" placeholder="게임 이름 검색..." bind:value={allGameQuery} />
-            <div class="play-filters-row">
-                <input
-                    type="text"
-                    class="play-opponent-input"
-                    placeholder="같이 한 사람 검색..."
-                    bind:value={allOpponentQuery}
-                />
-                <label class="win-only-toggle">
-                    <input type="checkbox" bind:checked={allWinOnly} />
-                    승리한 게임만
-                </label>
-            </div>
-        </div>
+        {/if}
 
         {#if data.allPlays.length === 0}
             <div class="empty-state">
@@ -432,12 +480,20 @@
                 </div>
             </div>
 
+            {#if ownershipError}
+                <p class="inline-error">{ownershipError}</p>
+            {/if}
             <form
                 method="POST"
                 action="?/toggleOwnership"
                 use:enhance={() => {
+                    ownershipError = '';
                     return async ({ result, update }) => {
-                        await update();
+                        if (result.type === 'success') {
+                            await update();
+                        } else if (result.type === 'failure') {
+                            ownershipError = (result.data as any)?.error || '처리에 실패했습니다.';
+                        }
                     };
                 }}
             >
@@ -452,40 +508,52 @@
             {#if selectedGamePlays.length === 0}
                 <p class="no-play-results">아직 플레이 기록이 없어요.</p>
             {:else}
-                <div class="play-filters">
-                    <div class="play-filters-dates">
-                        <select class="play-date-select" bind:value={playYearFilter} aria-label="연도 필터">
-                            <option value="all">전체 연도</option>
-                            {#each playYears as year}
-                                <option value={year.toString()}>{year}년</option>
-                            {/each}
-                        </select>
-                        <select class="play-date-select" bind:value={playMonthFilter} aria-label="월 필터">
-                            <option value="all">전체 월</option>
-                            {#each Array(12) as _, i}
-                                <option value={(i + 1).toString()}>{i + 1}월</option>
-                            {/each}
-                        </select>
-                        <select class="play-date-select" bind:value={playDayFilter} aria-label="일 필터">
-                            <option value="all">전체 일</option>
-                            {#each Array(31) as _, i}
-                                <option value={(i + 1).toString()}>{i + 1}일</option>
-                            {/each}
-                        </select>
+                <button
+                    type="button"
+                    class="filter-disclosure-toggle"
+                    aria-expanded={showModalFilters}
+                    onclick={() => showModalFilters = !showModalFilters}
+                >
+                    <svg class="filter-chevron" class:open={showModalFilters} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                    필터{modalActiveFilterCount > 0 ? ` (${modalActiveFilterCount})` : ''}
+                </button>
+                {#if showModalFilters}
+                    <div class="play-filters">
+                        <div class="play-filters-dates">
+                            <select class="play-date-select" bind:value={playYearFilter} aria-label="연도 필터">
+                                <option value="all">전체 연도</option>
+                                {#each playYears as year}
+                                    <option value={year.toString()}>{year}년</option>
+                                {/each}
+                            </select>
+                            <select class="play-date-select" bind:value={playMonthFilter} aria-label="월 필터">
+                                <option value="all">전체 월</option>
+                                {#each Array(12) as _, i}
+                                    <option value={(i + 1).toString()}>{i + 1}월</option>
+                                {/each}
+                            </select>
+                            <select class="play-date-select" bind:value={playDayFilter} aria-label="일 필터">
+                                <option value="all">전체 일</option>
+                                {#each Array(31) as _, i}
+                                    <option value={(i + 1).toString()}>{i + 1}일</option>
+                                {/each}
+                            </select>
+                        </div>
+                        <div class="play-filters-row">
+                            <input
+                                type="text"
+                                class="play-opponent-input"
+                                placeholder="같이 한 사람 검색..."
+                                bind:value={playOpponentQuery}
+                                aria-label="같이 한 사람 검색"
+                            />
+                            <label class="win-only-toggle">
+                                <input type="checkbox" bind:checked={playWinOnly} />
+                                승리한 게임만
+                            </label>
+                        </div>
                     </div>
-                    <div class="play-filters-row">
-                        <input
-                            type="text"
-                            class="play-opponent-input"
-                            placeholder="같이 한 사람 검색..."
-                            bind:value={playOpponentQuery}
-                        />
-                        <label class="win-only-toggle">
-                            <input type="checkbox" bind:checked={playWinOnly} />
-                            승리한 게임만
-                        </label>
-                    </div>
-                </div>
+                {/if}
 
                 {#if filteredPlays.length === 0}
                     <p class="no-play-results">조건에 맞는 기록이 없어요.</p>
@@ -702,7 +770,7 @@
         right: 4px;
         background: var(--color-blue);
         color: #fff;
-        font-size: 0.65rem;
+        font-size: 0.7rem;
         font-weight: 800;
         padding: 0.1rem 0.4rem;
         border-radius: 100px;
@@ -944,6 +1012,35 @@
         border-color: var(--color-amber);
         color: var(--color-achievement-text);
     }
+    /* 필터가 항상 펼쳐져 있으면 컨트롤 5~6개가 정작 기록 몇 건보다 눈에 띈다 —
+       기본은 접어두고 몇 개 걸려있는지만 보여준다 */
+    .filter-disclosure-toggle {
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        gap: 0.3rem;
+        margin-bottom: 0.6rem;
+        padding: 0.3rem 0;
+        background: none;
+        border: none;
+        color: var(--text-secondary);
+        font-size: 0.8rem;
+        font-weight: 600;
+        cursor: pointer;
+    }
+    .filter-chevron {
+        transition: transform 0.15s ease;
+    }
+    .filter-chevron.open {
+        transform: rotate(90deg);
+    }
+    .save-flash {
+        flex-shrink: 0;
+        font-size: 0.75rem;
+        font-weight: 700;
+        color: var(--color-green, #22c55e);
+        white-space: nowrap;
+    }
     .play-filters {
         flex-shrink: 0;
         display: flex;
@@ -1041,8 +1138,12 @@
         font-weight: bold;
         padding: 0.1rem 0.45rem;
         border-radius: 4px;
-        background: var(--color-amber-darker);
-        color: var(--text-primary);
+        /* --color-warning-bg/--color-achievement-text 조합은 다크 모드에서 1.29:1로
+           .btn-ownership-toggle.active에도 있는 기존 토큰 버그라 재사용하지 않는다.
+           --color-amber(#fbbf24)는 라이트/다크 값이 동일해 검증도 한 번으로 끝나고,
+           .owned-badge와 같은 패턴이라 8.4:1로 두 테마 모두 WCAG AA를 넉넉히 통과한다. */
+        background: var(--color-amber);
+        color: #451a03;
     }
     .play-score {
         font-size: 0.82rem;
