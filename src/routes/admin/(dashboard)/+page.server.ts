@@ -30,16 +30,27 @@ async function canModifyGame(request: Request, gameId: string | number): Promise
 export const load: PageServerLoad = async () => {
     const [attendeesResult, historyResult, gamesResult, scheduledGamesResult, reservationsResult, gameNamesResult, allGamesResult, settingsResult, dailyVisitPlansResult, todayScheduledParticipantsResult] = await Promise.all([
         db.execute(sql`
+            -- MAX(g.id)와 MAX(g.game_name)을 따로 집계하면 한 사람이 두 판에
+            -- 걸쳐 있을 때 이름과 id가 서로 다른 판에서 올 수 있다. 게임 이름은
+            -- 이 제품에서 고유하지 않다 — 예약 게임이 자동 시작되면 같은 이름의
+            -- 판이 둘 돈다. 한 판을 확정해 이름·id·종료 시각을 같은 행에서 가져오고,
+            -- 여러 판이면 먼저 끝나는 쪽을 고른다(운영자가 먼저 볼 판).
             SELECT a.id, a.name, a.arrival_time, a.status, a.penalty_points, a.is_blacklisted, a.can_manage_games,
-                   MAX(g.id) as game_id,
-                   MAX(g.game_name) as game_name,
-                   BOOL_OR(g.id IS NOT NULL) as is_playing
+                   s.id AS game_id,
+                   s.game_name,
+                   s.end_time AS game_end_time,
+                   (s.id IS NOT NULL) AS is_playing
             FROM attendees a
-            LEFT JOIN session_participants sp ON a.id = sp.attendee_id
-            LEFT JOIN game_sessions g ON sp.session_id = g.id AND g.status = 'playing'
+            LEFT JOIN LATERAL (
+                SELECT g.id, g.game_name, g.end_time
+                FROM session_participants sp
+                JOIN game_sessions g ON g.id = sp.session_id AND g.status = 'playing'
+                WHERE sp.attendee_id = a.id
+                ORDER BY g.end_time ASC
+                LIMIT 1
+            ) s ON TRUE
             WHERE a.status = 'present'
-            GROUP BY a.id, a.name, a.arrival_time, a.status, a.penalty_points, a.is_blacklisted, a.can_manage_games
-            ORDER BY is_playing, a.arrival_time DESC
+            ORDER BY (s.id IS NOT NULL), a.arrival_time DESC
         `),
         db.execute(sql`
             SELECT id, name, penalty_points, is_blacklisted
