@@ -733,27 +733,17 @@
         <span class="rs-value" class:rs-value-none={freeAttendees.length === 0}>{freeAttendees.length}<span class="rs-unit">명</span></span>
     </div>
     <!--
-        시간이 지난 게임은 "임박"이 아니라 처리 대기다. 스트립이 그걸 이미 아는데
-        운영자가 목록까지 스크롤해 찾아야 했다. 여기서 바로 닫는다.
-        버튼은 항상 자기가 닫을 게임의 이름을 달고 있으므로, 여러 판이 밀려 있어도
-        누를 때마다 무엇이 끝나는지가 분명하다.
+        시간이 지난 게임은 "임박"이 아니라 처리 대기다. 여기는 그 건수를 말하는
+        자리이지 처리하는 자리가 아니다 — 종료 버튼을 이 칸에 두었더니 만료가
+        0→1이 되는 순간 스트립이 90px 자라 읽던 페이지를 밀어냈고, 좁은 칸에서
+        「글룸헤이븐 죽음의 아…」로 잘린 이름 옆이라 무엇이 끝나는지도 흐렸다.
+        게임 섹션이 스트립 바로 아래 왼쪽 열에 있고 만료 행마다 자기 이름을
+        단 「게임 종료」를 이미 갖고 있다.
     -->
     <div class="rs-stat" class:rs-stat-pending={expiredGames.length > 0}>
         {#if expiredGames.length > 0}
             <span class="rs-label">정리 대기</span>
             <span class="rs-value rs-value-pending">{expiredGames.length}<span class="rs-unit">판</span></span>
-            <form method="POST" action="?/endGame" class="rs-action-form" use:enhance={() => {
-                return async ({ result, update }: { result: any, update: (options?: { reset?: boolean }) => Promise<void> }) => {
-                    if (!reportResult(result)) {
-                        const d = (result?.data as any) ?? {};
-                        toastUndoable(`${d.endedName ?? '게임'} 종료됨 · 승자는 기록하지 않았습니다`, d.undo);
-                    }
-                    await update();
-                };
-            }}>
-                <input type="hidden" name="id" value={expiredGames[0].id} />
-                <button type="submit" class="rs-action">{expiredGames[0].game_name} 종료</button>
-            </form>
         {:else}
             <span class="rs-label">
                 첫 종료까지{#if nextEndingGame}<span class="rs-label-name" title={nextEndingGame.game_name}>· {nextEndingGame.game_name}</span>{/if}
@@ -766,28 +756,38 @@
         {/if}
     </div>
     <!--
-        큐가 방 아래로 내려갔으므로 급한 건수는 여기가 들고 있어야 한다.
-        누르면 그 자리로 데려간다.
+        큐의 헤드라인 숫자. 예전에는 큐가 접힌 선 204px 아래에 있어서 이 숫자가
+        거기로 데려가는 앵커였는데, 이제 큐가 왼쪽 열 게임 아래로 올라와 같은
+        화면에 보인다. 보이는 것을 가리키는 링크는 계단을 하나 더 만들 뿐이다.
     -->
     <div class="rs-stat">
         <span class="rs-label">처리 대기</span>
         {#if queueActionable === 0}
             <span class="rs-value rs-value-none">없음</span>
         {:else}
-            <a class="rs-value rs-value-link" href="#sec-queue">{queueActionable}<span class="rs-unit">건</span></a>
+            <span class="rs-value">{queueActionable}<span class="rs-unit">건</span></span>
         {/if}
     </div>
 </section>
 
-<!-- 넓은 화면에서 게임과 사람이 같은 화면에 들어오도록 2열로 묶는다 -->
+<!--
+    넓은 화면에서 게임·큐·사람이 같은 화면에 들어오도록 2열로 묶는다.
+    왼쪽 열에 게임과 큐가 쌓이고 오른쪽 열은 명단이 통째로 쓴다.
+
+    DOM 순서는 게임 → 명단 → 큐다. 데스크톱에서 보이는 순서(왼쪽 위→아래,
+    오른쪽)와 어긋나지만, 이 순서가 접히는 폰에서는 명단이 큐보다 먼저 와야
+    한다 — 게임 → 큐 → 명단으로 쌓으면 큐가 591px이라 375x812에서 사람이
+    한 명도 접힌 선 위에 남지 않는다. 세 섹션 모두 랜드마크라 보조기술은
+    순서와 무관하게 건너뛴다.
+-->
 <div class="room-columns">
-<section class="section-primary" aria-labelledby="sec-playing">
+<section class="section-primary room-col-games" aria-labelledby="sec-playing">
     <div class="section-header">
+        <!-- 「정리 대기 n」은 스트립이 헤드라인으로 든다. 여기서 또 세면 같은 숫자가
+             500px 안에 세 번 나오고, 만료 행은 이미 자기 틴트와 「n분 초과」로 말한다. -->
         <h2 id="sec-playing">
             게임
-            <span class="count-split">
-                진행 중 {liveGames.length}{#if expiredGames.length > 0}<span class="count-pending">&nbsp;· 정리 대기 {expiredGames.length}</span>{/if}
-            </span>
+            <span class="count-split">진행 중 {liveGames.length}</span>
         </h2>
         <button class="btn-primary" onclick={() => {
             showModal = true;
@@ -852,13 +852,10 @@
     {/if}
 </section>
 
-<section class="section-primary" aria-labelledby="sec-attendees">
-    <h2 id="sec-attendees">
-        현재 참여 인원
-        <span class="count-split">
-            대기 중 {freeAttendees.length}{#if busyAttendees.length > 0}<span class="count-busy">&nbsp;· 게임 중 {busyAttendees.length}</span>{/if}
-        </span>
-    </h2>
+<section class="section-primary room-col-roster" aria-labelledby="sec-attendees">
+    <!-- 「대기 중 n」은 스트립이 헤드라인으로 들고, 이 섹션 안에서는 바로 아래
+         그룹 라벨이 같은 말을 한다. 제목에서까지 세면 한 화면에 세 번이 된다. -->
+    <h2 id="sec-attendees">현재 참여 인원</h2>
     {#snippet attendeeRow(a: Attendee)}
             <li>
                 <div class="attendee-info">
@@ -960,19 +957,21 @@
         </div>
     {/if}
 </section>
-</div>
 
 <!--
     대기 · 승인 큐.
-    예전에는 이 섹션이 방보다 위에 있었다. 그래서 1280x900에서 접힌 선 위에
-    게임 한 판도 사람 한 명도 없었다 — 시인성이 존재 이유인 콘솔에서.
-    큐는 서류 네 줄이고 방은 사람 일곱과 테이블 셋이다. 급한 건수는 위
-    스트립이 들고 있으므로, 여기는 방 아래로 온다.
+    한때 이 섹션이 방보다 위에 있어서 1280x900의 접힌 선 위에 게임 한 판도
+    사람 한 명도 없었다. 그래서 방 아래로 내렸더니 이번에는 큐가 접힌 선
+    204px 아래로 밀려났다 — 명단이 801px인데 그 옆 왼쪽 열은 525px이 빈 땅인
+    채로. 두 카드를 나란히 짝지은 게 문제였지 큐의 자리가 문제가 아니었다.
+    이제 큐는 그 빈 땅, 즉 왼쪽 열 게임 아래로 들어간다.
 -->
-<section id="sec-queue" class="section-primary queue-section" aria-label="대기 및 승인 큐">
+<section id="sec-queue" class="section-primary queue-section room-col-queue" aria-label="대기 및 승인 큐">
     <div class="section-header">
+        <!-- 총 건수도 스트립의 「처리 대기」가 든다. 제목은 자기 섹션이 무엇으로
+             나뉘어 있는지(승인 대기 · 노쇼 판정 초과 · 확정)만 말한다. -->
         <h2>
-            대기 · 승인 큐 ({queueActionable})
+            대기 · 승인 큐
             {#if queueSettled > 0}<span class="count-aside">확정 {queueSettled}</span>{/if}
             {#if approvalCount > 0}<span class="queue-flag approval">승인 대기 {approvalCount}</span>{/if}
             {#if overdueCount > 0}<span class="queue-flag overdue">노쇼 판정 초과 {overdueCount}</span>{/if}
@@ -1094,8 +1093,9 @@
         {/each}
     {/if}
 </section>
+</div>
 
-<section aria-labelledby="sec-scheduled">
+<section class="scheduled-section" aria-labelledby="sec-scheduled">
     <div class="section-header">
         <h2 id="sec-scheduled">
             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
@@ -1953,7 +1953,6 @@
         폰에서 스트립이 238px — iPhone SE 접힌 선의 36% — 을 숫자 넷에 쓰고,
         그 대가로 사람이 한 명도 접힌 선 위에 오지 못했다. 시인성이 존재
         이유인 콘솔에서. 폰에서는 한 줄로 눕히고 값 위에 레이블을 둔다.
-        정리 대기의 종료 버튼은 스트립에서 뺀다 — 게임 행이 이미 갖고 있다.
     */
     /* 가로로 든 폰은 폭이 844px이라 위 규칙에 안 걸리는데, 거기서 부족한 건
        폭이 아니라 높이다(390px). 제약을 그대로 질의한다. */
@@ -1980,22 +1979,19 @@
         .rs-label {
             font-size: var(--text-xs);
         }
-        .rs-action-form {
-            display: none;
-        }
-    }
-    .rs-value-link {
-        color: var(--color-blue-bright);
-        text-decoration: none;
-    }
-    .rs-value-link:hover {
-        text-decoration: underline;
     }
     /*
         게임과 사람이 같은 화면에 들어오게 한다. 전에는 한 열로 쌓여 있어
         1280x900의 접힌 선 위에 둘 다 없었다.
     */
-    .room-columns > section {
+    /*
+        게임 목록을 담은 카드는 자기 폭을 질의할 수 있어야 한다 — 아래
+        @container room-card 규칙이 좁을 때 이름에 온전한 한 줄을 내준다.
+        예정 게임 섹션은 2열 밖에 있어 이 선언이 없었고, 그래서 375px에서
+        긴 이름이 형제 메타(시각·정원)에 폭을 뺏겨 홀로 잘렸다.
+    */
+    .room-columns > section,
+    .scheduled-section {
         container: room-card / inline-size;
     }
     .room-columns {
@@ -2009,11 +2005,35 @@
        나란히 놓아야 게임과 사람이 한 화면에 들어온다. */
     @media (min-width: 1100px), (min-width: 820px) and (max-height: 560px) {
         .room-columns {
-            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+            /*
+                223px짜리 게임 카드와 801px짜리 명단을 1:1로 짝지었더니 왼쪽 열
+                아래에 525px이 빈 땅으로 남았고, 그 사이 큐는 접힌 선 204px
+                아래에 있었다. 큐(188px)는 그 공백에 두 번 들어간다.
+                왼쪽 열은 게임 → 큐 두 칸, 오른쪽 열은 명단 한 칸이 그 둘의
+                높이를 함께 쓴다. 명단이 이름·배지·메타를 한 줄에 담아야 하므로
+                오른쪽에 1.1을 준다.
+            */
+            grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+            /* 행을 명시해야 아래 grid-row의 -1이 가리킬 줄이 생긴다.
+               암묵 행만 있으면 -1이 첫 줄로 접혀 span이 사라진다. */
+            grid-template-rows: auto auto;
             align-items: start;
         }
         .room-columns > section {
             margin-bottom: 0;
+        }
+        /* DOM 순서(게임 → 명단 → 큐)와 열 배치가 다르므로 셋 다 명시한다 */
+        .room-col-games {
+            grid-column: 1;
+            grid-row: 1;
+        }
+        .room-col-queue {
+            grid-column: 1;
+            grid-row: 2;
+        }
+        .room-col-roster {
+            grid-column: 2;
+            grid-row: 1 / -1;
         }
     }
     .rs-stat {
@@ -2053,44 +2073,12 @@
     .rs-stat-pending .rs-unit {
         color: var(--color-orange-text);
     }
-    .rs-action-form {
-        margin-top: var(--space-2);
-    }
-    /*
-        이 버튼의 존재 이유는 자기가 닫을 게임의 이름을 달고 있다는 것이다.
-        4열 스트립에서 한 칸은 좁아 「글룸헤이븐 죽음의 아…」로 잘렸고, 그러면
-        여러 판이 밀렸을 때 누를 때마다 무엇이 끝나는지 알 수 없다.
-        말줄임 대신 두 줄로 접는다 — 폰에서는 이 버튼이 아예 숨겨지므로
-        높이가 늘어나는 대가는 세로가 넉넉한 화면에서만 치른다.
-    */
-    .rs-action {
-        min-height: 36px;
-        max-width: 100%;
-        padding: var(--space-1) var(--space-3);
-        border: 1px solid var(--color-orange-text);
-        border-radius: var(--radius-control);
-        background: var(--bg-primary);
-        color: var(--color-orange-text);
-        font-size: var(--text-sm);
-        font-weight: var(--weight-medium);
-        line-height: 1.3;
-        text-align: left;
-        /* 공백 없는 아주 긴 이름도 칸 밖으로 밀지 않게 */
-        overflow-wrap: anywhere;
-        cursor: pointer;
-    }
-    .rs-action:hover {
-        background: var(--color-warning-bg);
-    }
     /* 제목 옆 숫자 분해. 제목만큼 크면 제목이 아니게 된다. */
     .count-split {
         font-size: var(--text-sm);
         font-weight: var(--weight-medium);
         color: var(--text-secondary);
         margin-left: var(--space-2);
-    }
-    .count-pending {
-        color: var(--color-orange-text);
     }
     .count-aside {
         font-size: var(--text-xs);
@@ -2103,6 +2091,18 @@
     @media (max-width: 560px) {
         .rs-label-name {
             display: none;
+        }
+    }
+    /*
+        이름이 붙는 폭에서는 라벨을 한 줄로 못박는다.
+        「첫 종료까지」는 flex의 익명 아이템이라 이름이 자리를 요구하면 자기가
+        먼저 두 줄로 접혔다. 그래서 만료 게임이 0→1이 되어 라벨이 「정리 대기」로
+        바뀌는 순간 스트립이 16~32px 줄어들며(1280 94↔110, 820 94↔126) 읽던
+        페이지를 위로 당겼다. 넘치는 폭은 이름이 말줄임으로 흡수한다.
+    */
+    @media (min-width: 561px) {
+        .rs-label {
+            white-space: nowrap;
         }
     }
     .rs-label-name {
@@ -2712,7 +2712,10 @@
     }
     .modal-content {
         background: var(--bg-primary);
-        padding: var(--space-6);
+        /* 카드 안쪽 여백을 변수로 든다 — 아래 sticky 푸터가 카드 가장자리까지
+           번지려면 음수 마진이 이 값을 그대로 되돌려야 한다. */
+        --modal-pad: var(--space-6);
+        padding: var(--modal-pad);
         border-radius: var(--radius-card);
         width: 100%;
         max-width: 500px;
@@ -2737,6 +2740,20 @@
         justify-content: flex-end;
         gap: var(--space-4);
         margin-top: var(--space-5);
+    }
+    /*
+        새 게임·일정 등록 폼은 필드가 여섯이라 375x812에서 푸터가 접힌 선
+        아래로 잘렸고, 잘렸다는 표시가 없어 폼을 다 채우고도 「게임 시작」이
+        어디 있는지 알 수 없었다. 액션 줄을 스크롤 영역 바닥에 붙인다 —
+        위쪽 경계선이 "위에 아직 더 있다"까지 함께 말한다.
+    */
+    .game-form .modal-actions {
+        position: sticky;
+        bottom: 0;
+        margin: var(--space-5) calc(var(--modal-pad) * -1) calc(var(--modal-pad) * -1);
+        padding: var(--space-4) var(--modal-pad);
+        border-top: 1px solid var(--border-light);
+        background: var(--bg-primary);
     }
     .column-actions {
         flex-direction: column;
@@ -3824,7 +3841,7 @@
         .chip-container { font-size: var(--text-xs); }
         .chip-link { font-size: var(--text-xs); }
         .chip-add { font-size: var(--text-xs); padding: 0.2rem 0.6rem; }
-        .modal-content { width: 95%; padding: 1.25rem; }
+        .modal-content { width: 95%; --modal-pad: var(--space-5); }
         .player-select { gap: var(--space-2); }
         .empty-state { font-size: var(--text-sm); }
         .visit-plan-chip { font-size: var(--text-xs); padding: 0.3rem 0.6rem; }
