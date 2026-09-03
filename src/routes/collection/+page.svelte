@@ -65,6 +65,12 @@
     const selectedGame = $derived(selectedGameId ? data.games.find((g: any) => g.id === selectedGameId) : null);
     const selectedGamePlays = $derived(selectedGameId ? (data.playedByGameId[selectedGameId] ?? []) : []);
 
+    // 혼놀 보유 여부와 무관하게, 본인이 직접 소장 중이라고 체크한 게임.
+    const ownedGameIds = $derived(new Set<number>(data.ownedGameIds));
+    function isOwned(gameId: number) {
+        return ownedGameIds.has(gameId);
+    }
+
     // 같은 게임을 오래 반복해서 플레이했으면 기록이 길어지므로 여러 기준으로 좁혀볼 수 있게 한다.
     let playYearFilter = $state('all');
     let playMonthFilter = $state('all');
@@ -291,42 +297,38 @@
             <section class="shelf-grid">
                 {#each filteredGames as game}
                     {@const played = data.playedByGameId[game.id]}
-                    {#if played}
-                        <button
-                            type="button"
-                            class="shelf-item played"
-                            onclick={() => openGameModal(game)}
-                            aria-label="{game.name} — {played.length}회 플레이, 기록 보기"
-                        >
-                            <div class="cover">
-                                {#if game.image_url}
-                                    <img src={game.image_url} alt={game.name} loading="lazy" />
-                                {:else}
-                                    <div class="cover-placeholder">
-                                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-                                    </div>
-                                {/if}
+                    {@const owned = isOwned(game.id)}
+                    <button
+                        type="button"
+                        class="shelf-item"
+                        class:played={!!played}
+                        class:locked={!played}
+                        onclick={() => openGameModal(game)}
+                        aria-label="{game.name}{played ? ` — ${played.length}회 플레이` : ' — 아직 플레이하지 않음'}{owned ? ', 내 소장 게임' : ''}"
+                    >
+                        <div class="cover">
+                            {#if game.image_url}
+                                <img src={game.image_url} alt={game.name} loading="lazy" />
+                            {:else}
+                                <div class="cover-placeholder">
+                                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                                </div>
+                            {/if}
+                            {#if owned}
+                                <span class="owned-badge" title="내 소장 게임" aria-hidden="true">
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+                                </span>
+                            {/if}
+                            {#if played}
                                 <span class="play-badge" title="{formatDate(played[played.length - 1].endTime)}에 처음 플레이">×{played.length}</span>
-                            </div>
-                            <span class="shelf-label">{game.name}</span>
-                        </button>
-                    {:else}
-                        <div class="shelf-item locked" aria-label="{game.name} — 아직 플레이하지 않음">
-                            <div class="cover">
-                                {#if game.image_url}
-                                    <img src={game.image_url} alt="" loading="lazy" />
-                                {:else}
-                                    <div class="cover-placeholder">
-                                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-                                    </div>
-                                {/if}
+                            {:else}
                                 <span class="lock-badge" aria-hidden="true">
                                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
                                 </span>
-                            </div>
-                            <span class="shelf-label">{game.name}</span>
+                            {/if}
                         </div>
-                    {/if}
+                        <span class="shelf-label">{game.name}</span>
+                    </button>
                 {/each}
             </section>
         {/if}
@@ -417,50 +419,71 @@
                 </div>
             </div>
 
-            <div class="play-filters">
-                <div class="play-filters-dates">
-                    <select class="play-date-select" bind:value={playYearFilter} aria-label="연도 필터">
-                        <option value="all">전체 연도</option>
-                        {#each playYears as year}
-                            <option value={year.toString()}>{year}년</option>
-                        {/each}
-                    </select>
-                    <select class="play-date-select" bind:value={playMonthFilter} aria-label="월 필터">
-                        <option value="all">전체 월</option>
-                        {#each Array(12) as _, i}
-                            <option value={(i + 1).toString()}>{i + 1}월</option>
-                        {/each}
-                    </select>
-                    <select class="play-date-select" bind:value={playDayFilter} aria-label="일 필터">
-                        <option value="all">전체 일</option>
-                        {#each Array(31) as _, i}
-                            <option value={(i + 1).toString()}>{i + 1}일</option>
-                        {/each}
-                    </select>
-                </div>
-                <div class="play-filters-row">
-                    <input
-                        type="text"
-                        class="play-opponent-input"
-                        placeholder="같이 한 사람 검색..."
-                        bind:value={playOpponentQuery}
-                    />
-                    <label class="win-only-toggle">
-                        <input type="checkbox" bind:checked={playWinOnly} />
-                        승리한 게임만
-                    </label>
-                </div>
-            </div>
+            <form
+                method="POST"
+                action="?/toggleOwnership"
+                use:enhance={() => {
+                    return async ({ result, update }) => {
+                        await update();
+                    };
+                }}
+            >
+                <input type="hidden" name="gameId" value={selectedGame.id} />
+                <input type="hidden" name="owned" value={(!isOwned(selectedGame.id)).toString()} />
+                <button type="submit" class="btn-ownership-toggle" class:active={isOwned(selectedGame.id)}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill={isOwned(selectedGame.id) ? 'currentColor' : 'none'} stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+                    {isOwned(selectedGame.id) ? '내가 소장 중' : '내 소장 게임으로 표시'}
+                </button>
+            </form>
 
-            {#if filteredPlays.length === 0}
-                <p class="no-play-results">조건에 맞는 기록이 없어요.</p>
+            {#if selectedGamePlays.length === 0}
+                <p class="no-play-results">아직 플레이 기록이 없어요.</p>
+            {:else}
+                <div class="play-filters">
+                    <div class="play-filters-dates">
+                        <select class="play-date-select" bind:value={playYearFilter} aria-label="연도 필터">
+                            <option value="all">전체 연도</option>
+                            {#each playYears as year}
+                                <option value={year.toString()}>{year}년</option>
+                            {/each}
+                        </select>
+                        <select class="play-date-select" bind:value={playMonthFilter} aria-label="월 필터">
+                            <option value="all">전체 월</option>
+                            {#each Array(12) as _, i}
+                                <option value={(i + 1).toString()}>{i + 1}월</option>
+                            {/each}
+                        </select>
+                        <select class="play-date-select" bind:value={playDayFilter} aria-label="일 필터">
+                            <option value="all">전체 일</option>
+                            {#each Array(31) as _, i}
+                                <option value={(i + 1).toString()}>{i + 1}일</option>
+                            {/each}
+                        </select>
+                    </div>
+                    <div class="play-filters-row">
+                        <input
+                            type="text"
+                            class="play-opponent-input"
+                            placeholder="같이 한 사람 검색..."
+                            bind:value={playOpponentQuery}
+                        />
+                        <label class="win-only-toggle">
+                            <input type="checkbox" bind:checked={playWinOnly} />
+                            승리한 게임만
+                        </label>
+                    </div>
+                </div>
+
+                {#if filteredPlays.length === 0}
+                    <p class="no-play-results">조건에 맞는 기록이 없어요.</p>
+                {/if}
+
+                <div class="modal-play-list">
+                    {#each filteredPlays as play (play.sessionId)}
+                        {@render playRow(play, false)}
+                    {/each}
+                </div>
             {/if}
-
-            <div class="modal-play-list">
-                {#each filteredPlays as play (play.sessionId)}
-                    {@render playRow(play, false)}
-                {/each}
-            </div>
         </div>
     </div>
 {/if}
@@ -614,16 +637,13 @@
         align-items: center;
         gap: 0.4rem;
         text-decoration: none;
-        cursor: default;
+        cursor: pointer;
         background: none;
         border: none;
         padding: 0;
         font: inherit;
         color: inherit;
         width: 100%;
-    }
-    button.shelf-item.played {
-        cursor: pointer;
     }
 
     .cover {
@@ -656,10 +676,10 @@
         opacity: 0.35;
     }
 
-    .shelf-item.played .cover {
+    .cover {
         transition: transform 0.15s ease;
     }
-    .shelf-item.played:active .cover {
+    .shelf-item:active .cover {
         transform: scale(0.96);
     }
 
@@ -682,6 +702,20 @@
         transform: translate(-50%, -50%);
         color: var(--text-tertiary);
         opacity: 0.7;
+    }
+    .owned-badge {
+        position: absolute;
+        top: 4px;
+        left: 4px;
+        background: var(--color-amber);
+        color: #451a03;
+        width: 18px;
+        height: 18px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 1px 3px var(--shadow-sm);
     }
 
     .shelf-label {
@@ -864,6 +898,28 @@
         margin: 0;
         font-size: 0.82rem;
         color: var(--text-secondary);
+    }
+    .btn-ownership-toggle {
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.4rem;
+        width: 100%;
+        margin-bottom: 1rem;
+        padding: 0.55rem;
+        border: 1px solid var(--border-default);
+        border-radius: 8px;
+        background: var(--bg-secondary);
+        color: var(--text-secondary);
+        font-size: 0.82rem;
+        font-weight: 600;
+        cursor: pointer;
+    }
+    .btn-ownership-toggle.active {
+        background: var(--color-warning-bg);
+        border-color: var(--color-amber);
+        color: var(--color-achievement-text);
     }
     .play-filters {
         flex-shrink: 0;

@@ -1,4 +1,4 @@
-import { pgTable, serial, integer, varchar, text, boolean, timestamp, real } from 'drizzle-orm/pg-core';
+import { pgTable, serial, integer, varchar, text, boolean, timestamp, real, primaryKey } from 'drizzle-orm/pg-core';
 import { attendees } from './core';
 
 export const games = pgTable('games', {
@@ -54,6 +54,16 @@ export const sessionParticipants = pgTable('session_participants', {
 	isWinner: boolean('is_winner').default(false),
 	score: integer('score').default(0),
 });
+
+// 개인이 "이 게임을 내가 소장하고 있다"고 스스로 체크하는 기록.
+// 혼놀(동아리)이 그 게임을 보유하고 있는지와는 별개 — 관리자 승인 없이 본인이 직접 토글한다.
+export const gameOwnership = pgTable('game_ownership', {
+	attendeeId: integer('attendee_id').notNull().references(() => attendees.id, { onDelete: 'cascade' }),
+	gameId: integer('game_id').notNull().references(() => games.id, { onDelete: 'cascade' }),
+	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+}, (table) => [
+	primaryKey({ columns: [table.attendeeId, table.gameId] }),
+]);
 
 export const reservations = pgTable('reservations', {
 	id: serial('id').primaryKey(),

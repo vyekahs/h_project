@@ -15,7 +15,7 @@ export const load: PageServerLoad = async ({ cookies }) => {
         throw redirect(303, '/login?redirectTo=/collection');
     }
 
-    const [gamesResult, playedResult] = await Promise.all([
+    const [gamesResult, playedResult, ownedResult] = await Promise.all([
         db.execute(sql`
             SELECT id, name, image_url, playtime_min, min_players, max_players, difficulty
             FROM games
@@ -51,7 +51,9 @@ export const load: PageServerLoad = async ({ cookies }) => {
             JOIN games g ON (gs.game_id = g.id) OR (gs.game_id IS NULL AND gs.game_name = g.name)
             WHERE sp.attendee_id = ${user.id} AND gs.status = 'finished'
             ORDER BY gs.end_time DESC
-        `)
+        `),
+        // 혼놀 보유 여부와 무관하게 본인이 직접 체크한 "내 소장 게임" 목록
+        db.execute(sql`SELECT game_id FROM game_ownership WHERE attendee_id = ${user.id}`)
     ]);
 
     const playedByGameId: Record<number, any[]> = {};
@@ -76,7 +78,8 @@ export const load: PageServerLoad = async ({ cookies }) => {
         playedByGameId,
         // 마이페이지 활동기록 탭을 대체하는 "전체 기록" 보기용 —
         // 게임과 무관하게 시간순으로 쭉 훑어야 하는 경우("지난주에 뭐 했더라")를 위한 것.
-        allPlays
+        allPlays,
+        ownedGameIds: (ownedResult as any[]).map((r) => r.game_id)
     };
 };
 
@@ -97,6 +100,33 @@ export const actions: Actions = {
         } catch (e) {
             if (e instanceof GameHistoryEditError) return fail(e.status, { error: e.message });
             return fail(500, { error: '기록 수정에 실패했습니다.' });
+        }
+    },
+
+    // 관리자 승인 없이 본인이 직접 체크/해제한다 — 혼놀 보유 여부와는 무관.
+    toggleOwnership: async ({ request, cookies }) => {
+        const userSessionToken = cookies.get('user_session');
+        if (!userSessionToken) return fail(401, { error: '로그인이 필요합니다.' });
+        const user = await verifyAttendeeSession(userSessionToken);
+        if (!user) return fail(401, { error: '로그인이 필요합니다.' });
+
+        const data = await request.formData();
+        const gameId = data.get('gameId')?.toString();
+        const owned = data.get('owned') === 'true';
+        if (!gameId) return fail(400, { error: '잘못된 요청입니다.' });
+
+        try {
+            if (owned) {
+                await db.execute(sql`
+                    INSERT INTO game_ownership (attendee_id, game_id) VALUES (${user.id}, ${gameId})
+                    ON CONFLICT DO NOTHING
+                `);
+            } else {
+                await db.execute(sql`DELETE FROM game_ownership WHERE attendee_id = ${user.id} AND game_id = ${gameId}`);
+            }
+            return { success: true, ownershipToggled: true };
+        } catch (e) {
+            return fail(500, { error: '처리에 실패했습니다.' });
         }
     }
 };
