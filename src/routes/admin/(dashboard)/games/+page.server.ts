@@ -10,6 +10,53 @@ function blankToNull(v: FormDataEntryValue | null) {
     return s ? s : null;
 }
 
+/**
+ * 카탈로그 이름 끝의 괄호 영문 표기만 떼어낸다. "글룸헤이븐 (Gloomhaven)" → "글룸헤이븐".
+ * 부분포함/유사도로 매칭하면 "스플렌더"가 "스플렌더 듀얼"(다른 게임)까지 잡아버리는
+ * 오매칭이 생기므로, 자동 연결 후보의 "확실함" 판정은 이 정규화 후 완전일치로만 본다.
+ */
+function normalizeGameName(name: string): string {
+    return name.trim().replace(/\s*\([^)]*\)\s*$/, '').trim();
+}
+
+type LinkCandidate = {
+    table: 'game_sessions' | 'want_to_play_posts';
+    gameName: string;
+    count: number;
+    confidence: 'exact' | 'partial';
+};
+
+/**
+ * 카탈로그에 없어서 game_id가 비어있던 예약/하고싶어요 기록 중,
+ * 방금 등록/수정된 게임과 이름이 비슷한 것들을 찾는다. 자동으로 연결하지 않고
+ * 운영자가 체크박스로 확인 후 연결하게 하기 위한 "후보" 목록일 뿐이다.
+ */
+async function findLinkCandidates(newGameName: string): Promise<LinkCandidate[]> {
+    const normalizedNew = normalizeGameName(newGameName);
+
+    const [sessionRows, wtpRows] = await Promise.all([
+        db.execute(
+            sql`SELECT game_name, COUNT(*)::int AS cnt FROM game_sessions WHERE game_id IS NULL GROUP BY game_name`
+        ),
+        db.execute(
+            sql`SELECT game_name, COUNT(*)::int AS cnt FROM want_to_play_posts WHERE game_id IS NULL GROUP BY game_name`
+        )
+    ]);
+
+    const build = (rows: any[], table: LinkCandidate['table']): LinkCandidate[] =>
+        rows
+            .map((r) => {
+                const normalized = normalizeGameName(r.game_name);
+                let confidence: LinkCandidate['confidence'] | null = null;
+                if (normalized === normalizedNew) confidence = 'exact';
+                else if (normalized.includes(normalizedNew) || normalizedNew.includes(normalized)) confidence = 'partial';
+                return confidence ? { table, gameName: r.game_name as string, count: r.cnt as number, confidence } : null;
+            })
+            .filter((c): c is LinkCandidate => c !== null);
+
+    return [...build(sessionRows as any[], 'game_sessions'), ...build(wtpRows as any[], 'want_to_play_posts')];
+}
+
 export const load: PageServerLoad = async () => {
     // has_history: 이 게임으로 진행된 세션이 하나라도 있는지.
     // 삭제 버튼이 "삭제인지 비활성화인지"를 서버만 알던 것을 화면도 알게 한다.
@@ -45,11 +92,14 @@ export const actions: Actions = {
         if (!name?.toString().trim()) return fail(400, { error: '게임 이름을 입력해주세요.' });
 
         try {
-            await db.execute(sql`
+            const inserted = await db.execute(sql`
                 INSERT INTO games (name, min_players, max_players, playtime_min, max_playtime, min_age, best_players, complexity, description, image_url, included_dlcs)
                 VALUES (${name}, ${minPlayers}, ${maxPlayers}, ${playtimeMin}, ${maxPlaytime}, ${minAge}, ${bestPlayers}, ${complexity}, ${description}, ${imageUrl}, ${includedDlcs})
+                RETURNING id
             `);
-            return { success: true, savedName: name.toString() };
+            const newId = (inserted as any[])[0].id as number;
+            const linkCandidates = await findLinkCandidates(name.toString());
+            return { success: true, savedName: name.toString(), gameId: newId, linkCandidates };
         } catch (err) {
             console.error(err);
             return fail(500, { error: '게임 추가 중 오류가 발생했습니다.' });
@@ -222,10 +272,11 @@ export const actions: Actions = {
             const keepKeys = data.getAll('keep').map(String);
             const keep = (key: string, incoming: any) =>
                 existing && keepKeys.includes(key) ? existing[key] : incoming;
+            const finalName = keep('name', game.name) as string;
 
-            await db.execute(sql`
+            const upserted = await db.execute(sql`
                 INSERT INTO games (name, min_players, max_players, playtime_min, max_playtime, min_age, complexity, best_players, description, image_url, bgg_id)
-                VALUES (${keep('name', game.name)}, ${keep('min_players', game.minPlayers)}, ${keep('max_players', game.maxPlayers)},
+                VALUES (${finalName}, ${keep('min_players', game.minPlayers)}, ${keep('max_players', game.maxPlayers)},
                         ${keep('playtime_min', game.playtimeMin)}, ${keep('max_playtime', game.playtimeMax)}, ${keep('min_age', game.minAge)},
                         ${keep('complexity', game.complexity.toFixed(2))}, ${keep('best_players', game.bestPlayers)},
                         ${keep('description', game.description)}, ${keep('image_url', game.imageUrl)}, ${bggId})
@@ -234,12 +285,42 @@ export const actions: Actions = {
                 playtime_min = EXCLUDED.playtime_min, max_playtime = EXCLUDED.max_playtime, min_age = EXCLUDED.min_age,
                 complexity = EXCLUDED.complexity, best_players = EXCLUDED.best_players, description = EXCLUDED.description,
                 image_url = EXCLUDED.image_url
+                RETURNING id
             `);
+            const newId = (upserted as any[])[0].id as number;
+            const linkCandidates = await findLinkCandidates(finalName);
 
-            return { success: true, imported: true, importedName: game.name, wasUpdate: !!existing };
+            return { success: true, imported: true, importedName: finalName, gameId: newId, linkCandidates, wasUpdate: !!existing };
         } catch (err) {
             console.error('[BGG Import Error]', err);
             return fail(500, { error: 'BGG 가져오기 중 오류가 발생했습니다.' });
+        }
+    },
+
+    // 운영자가 findLinkCandidates 후보 중 체크한 것만 game_id를 채운다.
+    // 이름 하나하나를 각자 파라미터로 바인딩해서 돌기 때문에(배열 리터럴 문자열
+    // 조립 없이) 게임 이름에 특수문자가 있어도 안전하다.
+    linkGameNames: async ({ request }) => {
+        const data = await request.formData();
+        const gameId = data.get('gameId')?.toString();
+        if (!gameId) return fail(400, { error: '잘못된 요청입니다.' });
+
+        const sessionNames = data.getAll('sessionNames').map(String);
+        const wtpNames = data.getAll('wtpNames').map(String);
+
+        try {
+            await Promise.all([
+                ...sessionNames.map((name) =>
+                    db.execute(sql`UPDATE game_sessions SET game_id = ${gameId} WHERE game_id IS NULL AND game_name = ${name}`)
+                ),
+                ...wtpNames.map((name) =>
+                    db.execute(sql`UPDATE want_to_play_posts SET game_id = ${gameId} WHERE game_id IS NULL AND game_name = ${name}`)
+                )
+            ]);
+            return { success: true, linked: true, linkedCount: sessionNames.length + wtpNames.length };
+        } catch (err) {
+            console.error('[Link Game Names Error]', err);
+            return fail(500, { error: '기록 연결 중 오류가 발생했습니다.' });
         }
     }
 };

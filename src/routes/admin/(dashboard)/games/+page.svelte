@@ -183,6 +183,31 @@
     let lastImportedId: string | null = $state(null);
     let importedIds: Set<string> = $state(new Set());
 
+    // 게임을 추가/가져올 때, 카탈로그에 없어서 이름만 저장돼 있던 예약/하고싶어요
+    // 기록 중 이름이 비슷한 것들을 보여주고 운영자가 골라서 연결하게 한다.
+    let linkCandidatesModal: { gameId: number; gameName: string; candidates: any[] } | null = $state(null);
+    let selectedCandidates: Set<string> = $state(new Set());
+    let isLinking = $state(false);
+    const candidateKey = (c: any) => `${c.table}::${c.gameName}`;
+
+    function openLinkCandidatesIfAny(f: any) {
+        if (f.gameId && f.linkCandidates?.length > 0) {
+            linkCandidatesModal = { gameId: f.gameId, gameName: f.savedName ?? f.importedName, candidates: f.linkCandidates };
+            // 완전일치 후보만 기본으로 체크해둔다. 부분포함은 다른 게임일 수 있어(예:
+            // "스플렌더" 등록 시 "스플렌더 듀얼"도 후보로 뜸) 운영자가 직접 골라야 한다.
+            selectedCandidates = new Set(
+                f.linkCandidates.filter((c: any) => c.confidence === 'exact').map(candidateKey)
+            );
+        }
+    }
+    function toggleCandidate(c: any) {
+        const key = candidateKey(c);
+        const next = new Set(selectedCandidates);
+        if (next.has(key)) next.delete(key);
+        else next.add(key);
+        selectedCandidates = next;
+    }
+
     $effect(() => {
         if (!form?.success) return;
         const f = form as any;
@@ -205,6 +230,11 @@
             bggDiff = null;
             isImporting = false;
             showToast(f.wasUpdate ? `${f.importedName} 정보를 갱신했습니다.` : `${f.importedName}을(를) 도감에 추가했습니다.`);
+            openLinkCandidatesIfAny(f);
+        } else if (f.linked) {
+            linkCandidatesModal = null;
+            isLinking = false;
+            showToast(f.linkedCount > 0 ? `기록 ${f.linkedCount}건을 연결했습니다.` : '연결한 기록이 없습니다.');
         } else if (f.bggGames) {
             bggResults = f.bggGames || [];
             bggVisible = 20;
@@ -218,6 +248,7 @@
         } else if (f.savedName !== undefined) {
             closeModal();
             showToast(`${f.savedName}을(를) 저장했습니다.`);
+            openLinkCandidatesIfAny(f);
         } else {
             closeModal();
         }
@@ -581,6 +612,75 @@
                     {/each}
                     <button type="submit" class="btn-primary" disabled={isImporting}>
                         {isImporting ? '적용 중…' : '선택한 항목 덮어쓰기'}
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+{/if}
+
+{#if linkCandidatesModal}
+    <!-- 백드롭은 편의용 클릭 영역. 키보드 경로는 Escape(trapFocus)와 취소 버튼이 담당한다. -->
+    <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+    <div class="modal-backdrop confirm-layer" onclick={() => (linkCandidatesModal = null)} role="presentation">
+        <div
+            class="modal diff-modal"
+            use:trapFocus={() => (linkCandidatesModal = null)}
+            onclick={(e) => e.stopPropagation()}
+            onkeydown={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            tabindex="-1"
+        >
+            <h2>비슷한 이름의 미등록 기록이 있어요</h2>
+            <p class="diff-lead">
+                카탈로그에 없어서 이름만 저장돼 있던 예약/하고싶어요 기록 중
+                "{linkCandidatesModal.gameName}"과 비슷한 것들이에요.
+                <strong>체크한 것만 이 게임에 연결됩니다.</strong> 완전히 같은 이름은 기본으로 체크돼 있어요.
+            </p>
+
+            <ul class="diff-list">
+                {#each linkCandidatesModal.candidates as c (candidateKey(c))}
+                    <li class="diff-row">
+                        <label>
+                            <input
+                                type="checkbox"
+                                checked={selectedCandidates.has(candidateKey(c))}
+                                onchange={() => toggleCandidate(c)}
+                            />
+                            <span class="diff-label">
+                                "{c.gameName}"
+                                <span class="muted">
+                                    ({c.table === 'game_sessions' ? '게임 기록' : '하고싶어요'} {c.count}건{c.confidence === 'partial' ? ' · 다른 게임일 수 있음' : ''})
+                                </span>
+                            </span>
+                        </label>
+                    </li>
+                {/each}
+            </ul>
+
+            <div class="modal-actions">
+                <button type="button" class="btn-quiet" data-autofocus onclick={() => (linkCandidatesModal = null)}>건너뛰기</button>
+                <form
+                    method="POST"
+                    action="?/linkGameNames"
+                    use:enhance={() => {
+                        isLinking = true;
+                        return async ({ result, update }) => {
+                            if (reportResult(result)) isLinking = false;
+                            await update();
+                        };
+                    }}
+                >
+                    <input type="hidden" name="gameId" value={linkCandidatesModal.gameId} />
+                    {#each linkCandidatesModal.candidates.filter((c) => c.table === 'game_sessions' && selectedCandidates.has(candidateKey(c))) as c (candidateKey(c))}
+                        <input type="hidden" name="sessionNames" value={c.gameName} />
+                    {/each}
+                    {#each linkCandidatesModal.candidates.filter((c) => c.table === 'want_to_play_posts' && selectedCandidates.has(candidateKey(c))) as c (candidateKey(c))}
+                        <input type="hidden" name="wtpNames" value={c.gameName} />
+                    {/each}
+                    <button type="submit" class="btn-primary" disabled={isLinking || selectedCandidates.size === 0}>
+                        {isLinking ? '연결 중…' : `선택한 ${selectedCandidates.size}건 연결`}
                     </button>
                 </form>
             </div>
@@ -1086,6 +1186,7 @@
         cursor: pointer;
     }
     .diff-label { font-weight: var(--weight-medium); font-size: var(--text-sm); }
+    .diff-label .muted { color: var(--text-muted); font-weight: var(--weight-normal); }
     .diff-values {
         display: flex;
         flex-wrap: wrap;
