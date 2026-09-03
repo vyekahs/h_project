@@ -89,11 +89,109 @@
     function closePlayEdit() {
         editingSessionId = null;
     }
+
+    // "전체 기록" 보기 — 어떤 게임인지 기억 안 날 때 게임과 무관하게 시간순으로
+    // 훑어야 하는 용도(마이페이지 활동기록 탭을 대체). 필터는 게임별 모달과
+    // 별개로 둔다 — 두 화면이 동시에 열리진 않지만 상태가 섞이면 헷갈린다.
+    let viewMode: 'byGame' | 'all' = $state('byGame');
+    let allYearFilter = $state('all');
+    let allMonthFilter = $state('all');
+    let allDayFilter = $state('all');
+    let allOpponentQuery = $state('');
+    let allGameQuery = $state('');
+    let allWinOnly = $state(false);
+    const allYears = $derived(
+        [...new Set(data.allPlays.map((p: any) => new Date(p.endTime).getFullYear()))].sort((a: any, b: any) => b - a)
+    );
+    const filteredAllPlays = $derived(
+        data.allPlays.filter((p: any) => {
+            const d = new Date(p.endTime);
+            if (allYearFilter !== 'all' && d.getFullYear().toString() !== allYearFilter) return false;
+            if (allMonthFilter !== 'all' && (d.getMonth() + 1).toString() !== allMonthFilter) return false;
+            if (allDayFilter !== 'all' && d.getDate().toString() !== allDayFilter) return false;
+            if (allWinOnly && !p.isWinner) return false;
+            if (allGameQuery.trim() && !p.gameName.toLowerCase().includes(allGameQuery.trim().toLowerCase())) return false;
+            if (allOpponentQuery.trim()) {
+                const q = allOpponentQuery.trim().toLowerCase();
+                if (!(p.opponents || []).some((o: any) => o.name.toLowerCase().includes(q))) return false;
+            }
+            return true;
+        })
+    );
 </script>
 
 <svelte:head>
     <title>내가 플레이한 게임 - 혼놀 라운지</title>
 </svelte:head>
+
+<!-- 게임별 모달과 전체 기록 목록이 같은 행 UI(표시/수정 폼)를 쓰므로 스니펫으로 공유한다 -->
+{#snippet playRow(play: any, showGameName: boolean)}
+    {#if editingSessionId === play.sessionId}
+        <div class="modal-play-row editing">
+            {#if historyEditError}
+                <p class="inline-error">{historyEditError}</p>
+            {/if}
+            <form method="POST" action="?/editHistory" use:enhance={() => {
+                historyEditError = '';
+                return async ({ result, update }) => {
+                    if (result.type === 'success') {
+                        editingSessionId = null;
+                        await update();
+                    } else if (result.type === 'failure') {
+                        historyEditError = (result.data as any)?.error || '수정에 실패했습니다.';
+                    }
+                };
+            }}>
+                <input type="hidden" name="sessionId" value={play.sessionId} />
+                {#if showGameName}
+                    <p class="edit-game-name">{play.gameName}</p>
+                {/if}
+                <div class="edit-player-row">
+                    <label class="checkbox-label">
+                        <input type="checkbox" name="winnerIds" value={data.userId} checked={play.isWinner}>
+                        <span class="p-name">{data.userName} (나)</span>
+                    </label>
+                    <input type="number" name="score_{data.userId}" placeholder="점수" class="score-input" value={play.myScore ?? ''}>
+                </div>
+                {#each play.opponents || [] as opp}
+                    <div class="edit-player-row">
+                        <label class="checkbox-label">
+                            <input type="checkbox" name="winnerIds" value={opp.attendee_id} checked={opp.is_winner}>
+                            <span class="p-name">{opp.name}</span>
+                        </label>
+                        <input type="number" name="score_{opp.attendee_id}" placeholder="점수" class="score-input" value={opp.score ?? ''}>
+                    </div>
+                {/each}
+                <div class="edit-play-actions">
+                    <button type="button" class="btn-cancel-inline" onclick={closePlayEdit}>취소</button>
+                    <button type="submit" class="btn-save-inline">저장</button>
+                </div>
+            </form>
+        </div>
+    {:else}
+        <div class="modal-play-row" class:win={play.isWinner}>
+            <div class="play-row-main">
+                <div class="play-row-top">
+                    <span class="play-date">
+                        {#if showGameName}<span class="play-game-name">{play.gameName}</span> · {/if}{formatDate(play.endTime)}
+                    </span>
+                    <span class="play-result">
+                        {#if play.isWinner}<span class="result-badge">승리</span>{/if}
+                        {#if play.myScore}<span class="play-score">{play.myScore}점</span>{/if}
+                    </span>
+                </div>
+                {#if play.opponents && play.opponents.length > 0}
+                    <p class="play-opponents">
+                        함께: {play.opponents.map((o: any) => o.name + (o.score ? `(${o.score})` : '')).join(', ')}
+                    </p>
+                {/if}
+            </div>
+            {#if canEditPlay(play)}
+                <button type="button" class="btn-edit-play" onclick={() => openPlayEdit(play)}>수정</button>
+            {/if}
+        </div>
+    {/if}
+{/snippet}
 
 <div class="collection-container">
     <header class="collection-header">
@@ -107,64 +205,122 @@
                 <span class="progress-fill" style="width: {totalCount > 0 ? (playedCount / totalCount) * 100 : 0}%"></span>
             </span>
         </p>
-        <div class="search-input-wrap">
-            <input type="text" placeholder="게임 검색..." bind:value={searchQuery} class="search-input" />
-            {#if searchQuery}
-                <button type="button" class="search-clear" onclick={() => searchQuery = ''} aria-label="검색어 지우기">✕</button>
-            {/if}
+        <div class="view-toggle" role="group" aria-label="보기 방식">
+            <button type="button" class:active={viewMode === 'byGame'} onclick={() => viewMode = 'byGame'}>게임별</button>
+            <button type="button" class:active={viewMode === 'all'} onclick={() => viewMode = 'all'}>전체 기록</button>
         </div>
+        {#if viewMode === 'byGame'}
+            <div class="search-input-wrap">
+                <input type="text" placeholder="게임 검색..." bind:value={searchQuery} class="search-input" />
+                {#if searchQuery}
+                    <button type="button" class="search-clear" onclick={() => searchQuery = ''} aria-label="검색어 지우기">✕</button>
+                {/if}
+            </div>
+        {/if}
     </header>
 
-    {#if totalCount === 0}
-        <div class="empty-state">
-            <p>등록된 게임이 아직 없어요.</p>
-        </div>
-    {:else if filteredGames.length === 0}
-        <div class="empty-state">
-            <p>"{searchQuery}"에 맞는 게임이 없어요.</p>
-        </div>
+    {#if viewMode === 'byGame'}
+        {#if totalCount === 0}
+            <div class="empty-state">
+                <p>등록된 게임이 아직 없어요.</p>
+            </div>
+        {:else if filteredGames.length === 0}
+            <div class="empty-state">
+                <p>"{searchQuery}"에 맞는 게임이 없어요.</p>
+            </div>
+        {:else}
+            <section class="shelf-grid">
+                {#each filteredGames as game}
+                    {@const played = data.playedByGameId[game.id]}
+                    {#if played}
+                        <button
+                            type="button"
+                            class="shelf-item played"
+                            onclick={() => openGameModal(game)}
+                            aria-label="{game.name} — {played.length}회 플레이, 기록 보기"
+                        >
+                            <div class="cover">
+                                {#if game.image_url}
+                                    <img src={game.image_url} alt={game.name} loading="lazy" />
+                                {:else}
+                                    <div class="cover-placeholder">
+                                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                                    </div>
+                                {/if}
+                                <span class="play-badge" title="{formatDate(played[played.length - 1].endTime)}에 처음 플레이">×{played.length}</span>
+                            </div>
+                            <span class="shelf-label">{game.name}</span>
+                        </button>
+                    {:else}
+                        <div class="shelf-item locked" aria-label="{game.name} — 아직 플레이하지 않음">
+                            <div class="cover">
+                                {#if game.image_url}
+                                    <img src={game.image_url} alt="" loading="lazy" />
+                                {:else}
+                                    <div class="cover-placeholder">
+                                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                                    </div>
+                                {/if}
+                                <span class="lock-badge" aria-hidden="true">
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                                </span>
+                            </div>
+                            <span class="shelf-label">{game.name}</span>
+                        </div>
+                    {/if}
+                {/each}
+            </section>
+        {/if}
     {:else}
-        <section class="shelf-grid">
-            {#each filteredGames as game}
-                {@const played = data.playedByGameId[game.id]}
-                {#if played}
-                    <button
-                        type="button"
-                        class="shelf-item played"
-                        onclick={() => openGameModal(game)}
-                        aria-label="{game.name} — {played.length}회 플레이, 기록 보기"
-                    >
-                        <div class="cover">
-                            {#if game.image_url}
-                                <img src={game.image_url} alt={game.name} loading="lazy" />
-                            {:else}
-                                <div class="cover-placeholder">
-                                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-                                </div>
-                            {/if}
-                            <span class="play-badge" title="{formatDate(played[played.length - 1].endTime)}에 처음 플레이">×{played.length}</span>
-                        </div>
-                        <span class="shelf-label">{game.name}</span>
-                    </button>
-                {:else}
-                    <div class="shelf-item locked" aria-label="{game.name} — 아직 플레이하지 않음">
-                        <div class="cover">
-                            {#if game.image_url}
-                                <img src={game.image_url} alt="" loading="lazy" />
-                            {:else}
-                                <div class="cover-placeholder">
-                                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-                                </div>
-                            {/if}
-                            <span class="lock-badge" aria-hidden="true">
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-                            </span>
-                        </div>
-                        <span class="shelf-label">{game.name}</span>
-                    </div>
-                {/if}
-            {/each}
-        </section>
+        <div class="play-filters">
+            <div class="play-filters-dates">
+                <select class="play-date-select" bind:value={allYearFilter} aria-label="연도 필터">
+                    <option value="all">전체 연도</option>
+                    {#each allYears as year}
+                        <option value={year.toString()}>{year}년</option>
+                    {/each}
+                </select>
+                <select class="play-date-select" bind:value={allMonthFilter} aria-label="월 필터">
+                    <option value="all">전체 월</option>
+                    {#each Array(12) as _, i}
+                        <option value={(i + 1).toString()}>{i + 1}월</option>
+                    {/each}
+                </select>
+                <select class="play-date-select" bind:value={allDayFilter} aria-label="일 필터">
+                    <option value="all">전체 일</option>
+                    {#each Array(31) as _, i}
+                        <option value={(i + 1).toString()}>{i + 1}일</option>
+                    {/each}
+                </select>
+            </div>
+            <input type="text" class="play-game-input" placeholder="게임 이름 검색..." bind:value={allGameQuery} />
+            <div class="play-filters-row">
+                <input
+                    type="text"
+                    class="play-opponent-input"
+                    placeholder="같이 한 사람 검색..."
+                    bind:value={allOpponentQuery}
+                />
+                <label class="win-only-toggle">
+                    <input type="checkbox" bind:checked={allWinOnly} />
+                    승리한 게임만
+                </label>
+            </div>
+        </div>
+
+        {#if data.allPlays.length === 0}
+            <div class="empty-state">
+                <p>아직 플레이 기록이 없어요.</p>
+            </div>
+        {:else if filteredAllPlays.length === 0}
+            <p class="no-play-results">조건에 맞는 기록이 없어요.</p>
+        {:else}
+            <div class="all-plays-list">
+                {#each filteredAllPlays as play (play.sessionId)}
+                    {@render playRow(play, true)}
+                {/each}
+            </div>
+        {/if}
     {/if}
 </div>
 
@@ -243,66 +399,7 @@
 
             <div class="modal-play-list">
                 {#each filteredPlays as play (play.sessionId)}
-                    {#if editingSessionId === play.sessionId}
-                        <div class="modal-play-row editing">
-                            {#if historyEditError}
-                                <p class="inline-error">{historyEditError}</p>
-                            {/if}
-                            <form method="POST" action="?/editHistory" use:enhance={() => {
-                                historyEditError = '';
-                                return async ({ result, update }) => {
-                                    if (result.type === 'success') {
-                                        editingSessionId = null;
-                                        await update();
-                                    } else if (result.type === 'failure') {
-                                        historyEditError = (result.data as any)?.error || '수정에 실패했습니다.';
-                                    }
-                                };
-                            }}>
-                                <input type="hidden" name="sessionId" value={play.sessionId} />
-                                <div class="edit-player-row">
-                                    <label class="checkbox-label">
-                                        <input type="checkbox" name="winnerIds" value={data.userId} checked={play.isWinner}>
-                                        <span class="p-name">{data.userName} (나)</span>
-                                    </label>
-                                    <input type="number" name="score_{data.userId}" placeholder="점수" class="score-input" value={play.myScore ?? ''}>
-                                </div>
-                                {#each play.opponents || [] as opp}
-                                    <div class="edit-player-row">
-                                        <label class="checkbox-label">
-                                            <input type="checkbox" name="winnerIds" value={opp.attendee_id} checked={opp.is_winner}>
-                                            <span class="p-name">{opp.name}</span>
-                                        </label>
-                                        <input type="number" name="score_{opp.attendee_id}" placeholder="점수" class="score-input" value={opp.score ?? ''}>
-                                    </div>
-                                {/each}
-                                <div class="edit-play-actions">
-                                    <button type="button" class="btn-cancel-inline" onclick={closePlayEdit}>취소</button>
-                                    <button type="submit" class="btn-save-inline">저장</button>
-                                </div>
-                            </form>
-                        </div>
-                    {:else}
-                        <div class="modal-play-row" class:win={play.isWinner}>
-                            <div class="play-row-main">
-                                <div class="play-row-top">
-                                    <span class="play-date">{formatDate(play.endTime)}</span>
-                                    <span class="play-result">
-                                        {#if play.isWinner}<span class="result-badge">승리</span>{/if}
-                                        {#if play.myScore}<span class="play-score">{play.myScore}점</span>{/if}
-                                    </span>
-                                </div>
-                                {#if play.opponents && play.opponents.length > 0}
-                                    <p class="play-opponents">
-                                        함께: {play.opponents.map((o: any) => o.name + (o.score ? `(${o.score})` : '')).join(', ')}
-                                    </p>
-                                {/if}
-                            </div>
-                            {#if canEditPlay(play)}
-                                <button type="button" class="btn-edit-play" onclick={() => openPlayEdit(play)}>수정</button>
-                            {/if}
-                        </div>
-                    {/if}
+                    {@render playRow(play, false)}
                 {/each}
             </div>
         </div>
@@ -530,6 +627,54 @@
     .search-clear:hover {
         color: var(--text-primary);
         background: var(--bg-secondary);
+    }
+
+    .view-toggle {
+        display: flex;
+        gap: 0.4rem;
+        margin-top: 0.9rem;
+    }
+    .view-toggle button {
+        flex: 1;
+        background: var(--bg-primary);
+        border: 1px solid var(--border-default);
+        color: var(--text-secondary);
+        font-size: 0.85rem;
+        font-weight: 600;
+        padding: 0.5rem;
+        border-radius: 8px;
+        cursor: pointer;
+    }
+    .view-toggle button.active {
+        background: var(--color-blue);
+        border-color: var(--color-blue);
+        color: #fff;
+    }
+
+    .all-plays-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.6rem;
+    }
+    .play-game-name {
+        font-weight: 700;
+        color: var(--text-primary);
+    }
+    .edit-game-name {
+        font-weight: 700;
+        font-size: 0.85rem;
+        color: var(--text-primary);
+        margin: 0 0 0.5rem 0;
+    }
+    .play-game-input {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 0.35rem 0.6rem;
+        border: 1px solid var(--border-default);
+        border-radius: 6px;
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        font-size: 0.8rem;
     }
 
     /* Game Detail Modal */

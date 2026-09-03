@@ -30,6 +30,7 @@ export const load: PageServerLoad = async ({ cookies }) => {
         db.execute(sql`
             SELECT
                 g.id AS game_id,
+                g.name AS game_name,
                 gs.id AS session_id,
                 gs.end_time,
                 sp.score AS my_score,
@@ -54,21 +55,28 @@ export const load: PageServerLoad = async ({ cookies }) => {
     ]);
 
     const playedByGameId: Record<number, any[]> = {};
+    const allPlays: any[] = [];
     for (const row of playedResult as any[]) {
-        (playedByGameId[row.game_id] ??= []).push({
+        const play = {
             sessionId: row.session_id,
+            gameName: row.game_name,
             endTime: row.end_time,
             myScore: row.my_score,
             isWinner: row.is_winner,
             opponents: row.opponents ?? []
-        });
+        };
+        (playedByGameId[row.game_id] ??= []).push(play);
+        allPlays.push(play);
     }
 
     return {
         userId: user.id,
         userName: user.name,
         games: gamesResult as any[],
-        playedByGameId
+        playedByGameId,
+        // 마이페이지 활동기록 탭을 대체하는 "전체 기록" 보기용 —
+        // 게임과 무관하게 시간순으로 쭉 훑어야 하는 경우("지난주에 뭐 했더라")를 위한 것.
+        allPlays
     };
 };
 
