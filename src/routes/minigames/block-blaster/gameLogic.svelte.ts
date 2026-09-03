@@ -328,6 +328,17 @@ export function createBlockBlasterGame() {
 	 * 리스크를 감수해 빌드를 가속하는 로그라이트 루프가 생긴다.
 	 */
 	let draftTokens = $state(0);
+	/**
+	 * 10막 완주 여부. 엔드리스 전환 이후 "클리어"는 런의 종점이 아니라 관문이다.
+	 * 완주 인증(칭호·기록)은 이 플래그로, 랭킹 순위는 그 이후 도달 막수/점수로 갈린다.
+	 */
+	let hasCompletedRun = $state(false);
+	/**
+	 * 신속 해결 연속 스택. 위험을 카운트가 넉넉할 때 해결하면 +1, 만료 1회로 0.
+	 * 점수 배수로 환산되어 "안전하게 버티기"가 아니라 "빠르게 처리하기"가 최적이 되게 한다.
+	 * 클래식이 오래 버티는 게임이라면, 플러스는 빠르게 처리하는 게임이라는 축 분리.
+	 */
+	let swiftStreak = $state(0);
 	const TOKENS_PER_DRAFT = 3;
 	/** 이번 드래프트에서 남은 리롤 횟수 (드래프트가 열릴 때마다 1로 리셋) */
 	let rerollsRemaining = $state(0);
@@ -607,6 +618,7 @@ export function createBlockBlasterGame() {
 				currentDangerStage,
 				bonusDraftsRemaining,
 				draftTokens,
+				hasCompletedRun,
 				cellMeta,
 				lastSnapshots,
 				nextBlocksQueue,
@@ -672,6 +684,7 @@ export function createBlockBlasterGame() {
 			}
 			bonusDraftsRemaining = data.bonusDraftsRemaining || 0;
 			draftTokens = data.draftTokens || 0;
+			hasCompletedRun = data.hasCompletedRun || false;
 			cellMeta = data.cellMeta || {};
 			lastSnapshots = data.lastSnapshots || [];
 			nextBlocksQueue = data.nextBlocksQueue || [];
@@ -748,6 +761,8 @@ export function createBlockBlasterGame() {
 		bonusDraftsRemaining = 0;
 		draftTokens = 0;
 		rerollsRemaining = 0;
+		hasCompletedRun = false;
+		swiftStreak = 0;
 		cellMeta = {};
 		pendingDangerClear = null;
 		gameOverReason = null;
@@ -1441,6 +1456,8 @@ export function createBlockBlasterGame() {
 				score += 200; // 위험 1개 해결 보너스
 				// 카운트가 1 이상 남았는데 해결 = 긴박 보너스 (reinforced는 카운트 의미 없음)
 				if (d.type !== 'reinforced' && d.type !== 'spreading' && d.countdown > 1) score += 100;
+				// 신속 배수 — 연속 신속 해결마다 스택이 쌓여 해결 점수가 커진다.
+				// (스택 n → 배수 1 + n*0.25, 상한 3배)
 				// 신속 해결 토큰 — 카운트가 초기값의 절반 이상 남은 시점에 해결했을 때만.
 				// (카운트를 쓰지 않는 점거형은 해결 자체가 어려우므로 항상 지급)
 				// jam은 제외 — 그냥 놓기만 해도 해결되므로 토큰이 사실상 무상 지급된다.
@@ -1452,6 +1469,8 @@ export function createBlockBlasterGame() {
 					? true
 					: d.countdown * 2 >= d.initialCountdown;
 				if (fast) {
+					swiftStreak++;
+					score += Math.round(200 * Math.min(3, 1 + swiftStreak * 0.25)) - 200;
 					draftTokens++;
 					if (draftTokens >= TOKENS_PER_DRAFT) {
 						draftTokens -= TOKENS_PER_DRAFT;
@@ -1541,8 +1560,7 @@ export function createBlockBlasterGame() {
 				}
 				d.resolved = true;
 				d.expired = true;
-				resolvedDangerCount += EXPIRY_CREDIT;
-				checkStageClearByCount();
+				applyExpiryCredit();
 				if (isMatchedToLock(d, ds)) {
 					ds.lockedSlotDangerIds = ds.lockedSlotDangerIds.filter(id => id !== d.id);
 				}
@@ -1559,8 +1577,7 @@ export function createBlockBlasterGame() {
 				cellMeta = nextMeta;
 				d.resolved = true;
 				d.expired = true; // 만료 — 페널티(석화) + 부분 크레딧
-				resolvedDangerCount += EXPIRY_CREDIT;
-				checkStageClearByCount();
+				applyExpiryCredit();
 			}
 			if (d.type === 'spreading' && d.countdown === 0) {
 				// 증식 활성화 — 인접 빈 셀 1곳으로 증식 후 카운트 리셋
@@ -1577,8 +1594,7 @@ export function createBlockBlasterGame() {
 				cellMeta = nextMeta;
 				d.resolved = true;
 				d.expired = true;
-				resolvedDangerCount += EXPIRY_CREDIT;
-				checkStageClearByCount();
+				applyExpiryCredit();
 				if (isMatchedToLock(d, ds)) {
 					ds.lockedSlotDangerIds = ds.lockedSlotDangerIds.filter(id => id !== d.id);
 				}
@@ -1600,8 +1616,7 @@ export function createBlockBlasterGame() {
 					cellMeta = { ...cellMeta, [cellKey(r, c)]: { ...rest, petrified: true } };
 					d.resolved = true;
 					d.expired = true; // 만료 — 페널티(검은 돌) + 부분 크레딧
-					resolvedDangerCount += EXPIRY_CREDIT;
-					checkStageClearByCount();
+					applyExpiryCredit();
 					// 잠금 매칭 위험이면 슬롯 해제 (1단계 fixpoint와 별개로 명시 처리)
 					if (isMatchedToLock(d, ds)) {
 						ds.lockedSlotDangerIds = ds.lockedSlotDangerIds.filter(id => id !== d.id);
@@ -1629,8 +1644,7 @@ export function createBlockBlasterGame() {
 					cellMeta = nextMeta;
 					d.resolved = true;
 					d.expired = true; // 만료(수명 종료) — 부분 크레딧
-					resolvedDangerCount += EXPIRY_CREDIT;
-					checkStageClearByCount();
+					applyExpiryCredit();
 					if (isMatchedToLock(d, ds)) {
 						ds.lockedSlotDangerIds = ds.lockedSlotDangerIds.filter(id => id !== d.id);
 					}
@@ -1646,8 +1660,7 @@ export function createBlockBlasterGame() {
 					chaserExplode(d);
 					d.resolved = true;
 					d.expired = true; // 만료 — 페널티(폭발) + 부분 크레딧
-					resolvedDangerCount += EXPIRY_CREDIT;
-					checkStageClearByCount();
+					applyExpiryCredit();
 					if (isMatchedToLock(d, ds)) {
 						ds.lockedSlotDangerIds = ds.lockedSlotDangerIds.filter(id => id !== d.id);
 					}
@@ -1661,8 +1674,7 @@ export function createBlockBlasterGame() {
 				addRandomBlackStone();
 				d.resolved = true;
 				d.expired = true;
-				resolvedDangerCount += EXPIRY_CREDIT;
-				checkStageClearByCount();
+				applyExpiryCredit();
 				if (isMatchedToLock(d, ds)) {
 					ds.lockedSlotDangerIds = ds.lockedSlotDangerIds.filter(id => id !== d.id);
 				}
@@ -1671,8 +1683,7 @@ export function createBlockBlasterGame() {
 				// 카운트 만료 — 패턴 미달성(실패). 부분 크레딧만.
 				d.resolved = true;
 				d.expired = true;
-				resolvedDangerCount += EXPIRY_CREDIT;
-				checkStageClearByCount();
+				applyExpiryCredit();
 				if (isMatchedToLock(d, ds)) {
 					ds.lockedSlotDangerIds = ds.lockedSlotDangerIds.filter(id => id !== d.id);
 				}
@@ -2012,8 +2023,20 @@ export function createBlockBlasterGame() {
 	 */
 	const EXPIRY_CREDIT = 0.25;
 
+	/** 만료(실패) 공통 처리 — 부분 크레딧 지급 + 신속 스택 리셋 */
+	function applyExpiryCredit() {
+		swiftStreak = 0; // 하나라도 놓치면 연속이 끊긴다
+		resolvedDangerCount += EXPIRY_CREDIT;
+		checkStageClearByCount();
+	}
+
 	function checkStageClearByCount() {
-		while (stagesCleared < MAX_STAGE) {
+		// 엔드리스 — 상한 없이 계속 진행한다. 10막은 런의 종점이 아니라 관문이며,
+		// 그 이후로도 요구 개수/카운트다운/트레이 잠금이 막 번호에 따라 계속 조여진다.
+		// (클리어율이 곧 만족도 분포 전체였던 이진 구조를 깨기 위한 변경 —
+		//  랭킹은 완주 여부가 아니라 도달 막수와 점수로 갈린다.)
+		// eslint-disable-next-line no-constant-condition
+		while (true) {
 			const nextStage = stagesCleared + 1;
 			const need = dangerRequirementForStage(nextStage);
 			if (resolvedDangerCount < need) break;
@@ -2021,23 +2044,32 @@ export function createBlockBlasterGame() {
 			resolvedDangerCount -= need;
 			stagesCleared = nextStage;
 
-			// 래칫(스테이지 클리어마다 검은 돌 영구 적립)은 시도했다가 되돌렸다.
-			// 난이도는 2pp 내려갔지만(36.5%→34.5%) 능력 격차가 2.0배→3.3배로 다시
-			// 벌어졌다. 검은 돌은 능력으로 못 지우고 라인 완성으로만 사라지는데,
-			// 보드 통제력이 약한 비-clear 빌드가 훨씬 크게 처벌받기 때문이다
-			// (no-clear 클리어율 18.0%→10.5%). 난이도 2pp보다 빌드 다양성이 크다.
+			// === 엔드리스 래칫 ===
+			// 검은 돌을 영구 적립한다. 단 11막부터만.
+			//
+			// 전 구간에 적용했을 때는 능력 격차가 2.0배→3.3배로 벌어졌다. 검은 돌은
+			// 능력으로 못 지우고 라인 완성으로만 사라져서, 보드 통제력이 약한 비-clear
+			// 빌드를 훨씬 크게 처벌하기 때문이다. 그래서 되돌렸었다.
+			//
+			// 그런데 엔드리스 구간에는 정의상 **이미 강한 빌드만** 도달한다. 여기서는
+			// 그 편향이 오히려 필요한 성질이다. 위험 개수를 늘리는 손잡이들은 크레딧도
+			// 함께 늘려 상쇄되므로(요구/카운트다운/생성을 모두 세워도 폭주가 그대로였다:
+			// 15+막 33.9%→36.2%, 최대 58막) 폭주를 끊는 유일한 수단은 보드 압박이다.
+			if (nextStage > MAX_STAGE) {
+				const ratchet = 1 + Math.floor((nextStage - MAX_STAGE) / 3);
+				for (let i = 0; i < ratchet; i++) addRandomBlackStone();
+			}
 
-			// 9~10 스테이지 보너스 드래프트
+			// 9막 이후로는 매 막 보너스 드래프트 (엔드리스 구간의 성장 공급)
 			if (nextStage >= 9) bonusDraftsRemaining += 1;
 
 			// 클리어 배너 (가장 마지막 클리어 정보로 갱신)
 			pendingDangerClear = { stageNumber: nextStage, dangerCount: need };
 			setTimeout(() => { pendingDangerClear = null; }, 1500);
 
-			// 게임 클리어 체크
-			if (stagesCleared >= MAX_STAGE) {
-				setTimeout(() => handleGameClear(), 1200);
-				return;
+			// 10막 도달 = 완주 인증. 게임은 끝나지 않고 엔드리스로 이어진다.
+			if (!hasCompletedRun && stagesCleared >= MAX_STAGE) {
+				hasCompletedRun = true;
 			}
 
 			// 드래프트 모달 (배너 후) — afterPlace의 게임오버 보류 신호 ON
@@ -2238,15 +2270,10 @@ export function createBlockBlasterGame() {
 		afterPlace();
 	}
 
-	function handleGameClear() {
-		localStorage.removeItem('block_blaster_save');
-		gameState = 'finished';
-		stopTimer();
-		isAnimating = false;
-		if (!hasRestarted) {
-			submitScore();
-		}
-	}
+	// handleGameClear는 제거했다. 엔드리스 전환으로 10막 도달이 런의 종점이 아니라
+	// 관문(hasCompletedRun)이 되었고, 런은 항상 게임오버로만 끝난다.
+	// 완주 인증 표시는 handleGameOver 경로에서 hasCompletedRun으로 판단한다.
+
 
 	// ----- Active ability use -----
 
@@ -2771,7 +2798,8 @@ export function createBlockBlasterGame() {
 		get pendingColorChoose() { return pendingColorChoose; },
 		get nextBlocksQueue() { return nextBlocksQueue; },
 		get peekBlocks() { return getPeekBlocks(); },
-		get isCleared() { return stagesCleared >= MAX_STAGE; },
+		get isCleared() { return hasCompletedRun; },
+		get swiftStreak() { return swiftStreak; },
 		get maxStage() { return MAX_STAGE; },
 		get stagesCleared() { return stagesCleared; },
 		get currentDangerStage() { return currentDangerStage; },

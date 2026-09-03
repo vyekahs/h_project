@@ -21,7 +21,10 @@ export function dangerSpawnCountForStage(stage: number): number {
 	// 반드시 결정적이어야 한다 — 생성과 판정이 각각 호출되므로 무작위면 어긋난다.
 	if (stage <= 2) return 1;
 	if (stage <= 5) return 2;
-	return 3;
+	if (stage <= 10) return 3;
+	// 엔드리스 구간(11막~): 3막마다 +1, 상한 6.
+	// 밸런싱이 아니라 수식이어야 하는 구간이므로 막 번호로 외삽한다.
+	return Math.min(6, 3 + Math.floor((stage - 10) / 3));
 }
 
 /**
@@ -41,7 +44,12 @@ export function dangerSpawnCountForStage(stage: number): number {
 export function dangerRequirementForStage(stage: number): number {
 	if (stage <= 2) return 1;
 	if (stage <= 5) return 3;
-	return 4;
+	if (stage <= 10) return 4;
+	// 엔드리스: 3막마다 +1.
+	// 2막마다로 세워봤지만 폭주를 전혀 못 막았다(15+막 33.9%→36.2%, 최대 58막) —
+	// 위험 개수를 늘리면 크레딧도 함께 늘어 상쇄되기 때문이다. 폭주는 요구 개수가
+	// 아니라 보드 압박(엔드리스 래칫)으로 끊는다.
+	return 4 + Math.ceil((stage - 10) / 3);
 }
 
 /**
@@ -53,7 +61,10 @@ export function countdownForStage(stage: number): number {
 	if (stage <= 2) return 6 + Math.floor(Math.random() * 2); // 6~7
 	if (stage <= 5) return 6 + Math.floor(Math.random() * 2); // 6~7
 	if (stage <= 8) return 5 + Math.floor(Math.random() * 2); // 5~6
-	return 4 + Math.floor(Math.random() * 2); // 4~5
+	if (stage <= 10) return 4 + Math.floor(Math.random() * 2); // 4~5
+	// 엔드리스: 3막마다 -1, 최소 2턴
+	const base = Math.max(2, 4 - Math.floor((stage - 10) / 3));
+	return base + Math.floor(Math.random() * 2);
 }
 
 /**
@@ -81,7 +92,9 @@ export function lockedSlotsForStage(stage: number): number {
 	// dangerSpawnCountForStage와 같은 이유로 결정적이어야 한다(생성/판정 이중 호출).
 	if (stage <= 2) return 0;
 	if (stage <= 5) return 1;
-	return 2;
+	if (stage <= 10) return 2;
+	// 엔드리스: 3칸 → 16막부터 4칸
+	return stage >= 16 ? 4 : 3;
 }
 
 /**
