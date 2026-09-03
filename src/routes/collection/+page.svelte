@@ -36,8 +36,21 @@
     let selectedGameId: number | null = $state(null);
     const selectedGame = $derived(selectedGameId ? data.games.find((g: any) => g.id === selectedGameId) : null);
     const selectedGamePlays = $derived(selectedGameId ? (data.playedByGameId[selectedGameId] ?? []) : []);
+
+    // 같은 게임을 오래 반복해서 플레이했으면 기록이 길어지므로 연도로 좁혀볼 수 있게 한다.
+    let playYearFilter = $state('all');
+    const playYears = $derived(
+        [...new Set(selectedGamePlays.map((p: any) => new Date(p.endTime).getFullYear()))].sort((a: any, b: any) => b - a)
+    );
+    const filteredPlays = $derived(
+        playYearFilter === 'all'
+            ? selectedGamePlays
+            : selectedGamePlays.filter((p: any) => new Date(p.endTime).getFullYear().toString() === playYearFilter)
+    );
+
     function openGameModal(game: any) {
         selectedGameId = game.id;
+        playYearFilter = 'all';
     }
     function closeGameModal() {
         selectedGameId = null;
@@ -172,8 +185,17 @@
                 </div>
             </div>
 
+            {#if playYears.length > 1}
+                <select class="play-year-select" bind:value={playYearFilter} aria-label="연도 필터">
+                    <option value="all">전체 연도</option>
+                    {#each playYears as year}
+                        <option value={year.toString()}>{year}년</option>
+                    {/each}
+                </select>
+            {/if}
+
             <div class="modal-play-list">
-                {#each selectedGamePlays as play (play.sessionId)}
+                {#each filteredPlays as play (play.sessionId)}
                     {#if editingSessionId === play.sessionId}
                         <div class="modal-play-row editing">
                             {#if historyEditError}
@@ -483,9 +505,13 @@
         max-width: 420px;
         width: 100%;
         max-height: 85vh;
-        overflow-y: auto;
         box-shadow: 0 4px 20px var(--overlay-medium);
         position: relative;
+        /* 기록이 많아져도 헤더/닫기 버튼은 고정하고 목록만 스크롤되게
+           세로 flex로 짜고, 목록 쪽에서만 overflow를 허용한다. */
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
     }
     .modal-close-btn-icon {
         position: absolute;
@@ -505,6 +531,7 @@
         gap: 0.9rem;
         margin-bottom: 1.25rem;
         padding-right: 1.5rem;
+        flex-shrink: 0;
     }
     .modal-cover {
         flex-shrink: 0;
@@ -532,11 +559,23 @@
         font-size: 0.82rem;
         color: var(--text-secondary);
     }
+    .play-year-select {
+        flex-shrink: 0;
+        align-self: flex-start;
+        margin-bottom: 0.75rem;
+        padding: 0.35rem 0.6rem;
+        border: 1px solid var(--border-default);
+        border-radius: 6px;
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        font-size: 0.8rem;
+    }
     .modal-play-list {
         display: flex;
         flex-direction: column;
         gap: 0.6rem;
-        margin-bottom: 1.25rem;
+        overflow-y: auto;
+        min-height: 0;
     }
     .modal-play-row {
         background: var(--bg-secondary);
