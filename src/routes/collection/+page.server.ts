@@ -24,29 +24,40 @@ export const load: PageServerLoad = async ({ cookies }) => {
         // game_id가 없는 옛 기록은(생성 시 카탈로그에서 안 고르고 이름만 입력한 경우)
         // 이름이 정확히 일치하는 카탈로그 게임으로 대신 매칭한다 —
         // 그렇지 않으면 실제 플레이의 상당수가 장식장에서 누락된다.
+        // 카드를 눌렀을 때 모달에 개별 플레이 내역을 바로 보여줄 수 있게
+        // 집계 대신 판별 행을 그대로 가져온다 (요약은 클라이언트에서 계산).
         db.execute(sql`
             SELECT
                 g.id AS game_id,
-                COUNT(*)::int AS play_count,
-                COUNT(*) FILTER (WHERE sp.is_winner)::int AS win_count,
-                MIN(gs.end_time) AS first_played,
-                MAX(gs.end_time) AS last_played
+                gs.end_time,
+                sp.score AS my_score,
+                sp.is_winner,
+                (
+                    SELECT json_agg(json_build_object(
+                        'name', a2.name,
+                        'score', sp2.score,
+                        'is_winner', sp2.is_winner
+                    ))
+                    FROM session_participants sp2
+                    JOIN attendees a2 ON sp2.attendee_id = a2.id
+                    WHERE sp2.session_id = gs.id AND sp2.attendee_id != ${user.id}
+                ) as opponents
             FROM session_participants sp
             JOIN game_sessions gs ON sp.session_id = gs.id
             JOIN games g ON (gs.game_id = g.id) OR (gs.game_id IS NULL AND gs.game_name = g.name)
             WHERE sp.attendee_id = ${user.id} AND gs.status = 'finished'
-            GROUP BY g.id
+            ORDER BY gs.end_time DESC
         `)
     ]);
 
-    const playedByGameId: Record<number, { playCount: number; winCount: number; firstPlayed: string; lastPlayed: string }> = {};
+    const playedByGameId: Record<number, any[]> = {};
     for (const row of playedResult as any[]) {
-        playedByGameId[row.game_id] = {
-            playCount: row.play_count,
-            winCount: row.win_count,
-            firstPlayed: row.first_played,
-            lastPlayed: row.last_played
-        };
+        (playedByGameId[row.game_id] ??= []).push({
+            endTime: row.end_time,
+            myScore: row.my_score,
+            isWinner: row.is_winner,
+            opponents: row.opponents ?? []
+        });
     }
 
     return {

@@ -1,22 +1,52 @@
 <script lang="ts">
+    import { trapFocus } from '$lib/actions/modal';
+
     let { data } = $props();
 
     const playedCount = $derived(Object.keys(data.playedByGameId).length);
     const totalCount = $derived(data.games.length);
 
+    // 많이 해본 게임이 먼저 보이게 정렬하고(안 해본 건 0회로 취급해 뒤로 밀림),
+    // 같은 횟수면 이름순으로 묶는다.
+    const sortedGames = $derived(
+        [...data.games].sort((a, b) => {
+            const playsA = data.playedByGameId[a.id]?.length ?? 0;
+            const playsB = data.playedByGameId[b.id]?.length ?? 0;
+            if (playsA !== playsB) return playsB - playsA;
+            return a.name.localeCompare(b.name, 'ko');
+        })
+    );
+
+    let searchQuery = $state('');
+    const filteredGames = $derived(
+        searchQuery.trim()
+            ? sortedGames.filter((g) => g.name.toLowerCase().includes(searchQuery.trim().toLowerCase()))
+            : sortedGames
+    );
+
     function formatDate(iso: string) {
         return new Date(iso).toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' });
+    }
+
+    // 카드를 누르면 페이지 이동 대신 모달로 바로 보여준다 — 장식장을
+    // 훑어보다가 매번 마이페이지로 튕기면 훑어보는 흐름이 끊긴다.
+    let selectedGame: any = $state(null);
+    function openGameModal(game: any) {
+        selectedGame = { ...game, plays: data.playedByGameId[game.id] };
+    }
+    function closeGameModal() {
+        selectedGame = null;
     }
 </script>
 
 <svelte:head>
-    <title>장식장 - 혼놀 라운지</title>
+    <title>내가 플레이한 게임 - 혼놀 라운지</title>
 </svelte:head>
 
 <div class="collection-container">
     <header class="collection-header">
         <div class="header-top">
-            <h1>장식장</h1>
+            <h1>내가 플레이한 게임</h1>
             <a href="/games" class="btn-catalog">전체 게임 보기</a>
         </div>
         <p class="collection-progress">
@@ -25,21 +55,32 @@
                 <span class="progress-fill" style="width: {totalCount > 0 ? (playedCount / totalCount) * 100 : 0}%"></span>
             </span>
         </p>
+        <div class="search-input-wrap">
+            <input type="text" placeholder="게임 검색..." bind:value={searchQuery} class="search-input" />
+            {#if searchQuery}
+                <button type="button" class="search-clear" onclick={() => searchQuery = ''} aria-label="검색어 지우기">✕</button>
+            {/if}
+        </div>
     </header>
 
     {#if totalCount === 0}
         <div class="empty-state">
             <p>등록된 게임이 아직 없어요.</p>
         </div>
+    {:else if filteredGames.length === 0}
+        <div class="empty-state">
+            <p>"{searchQuery}"에 맞는 게임이 없어요.</p>
+        </div>
     {:else}
         <section class="shelf-grid">
-            {#each data.games as game}
+            {#each filteredGames as game}
                 {@const played = data.playedByGameId[game.id]}
                 {#if played}
-                    <a
-                        href="/mypage?tab=history&game={encodeURIComponent(game.name)}"
+                    <button
+                        type="button"
                         class="shelf-item played"
-                        aria-label="{game.name} — {played.playCount}회 플레이, 활동 기록 보기"
+                        onclick={() => openGameModal(game)}
+                        aria-label="{game.name} — {played.length}회 플레이, 기록 보기"
                     >
                         <div class="cover">
                             {#if game.image_url}
@@ -49,10 +90,10 @@
                                     <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
                                 </div>
                             {/if}
-                            <span class="play-badge" title="{formatDate(played.firstPlayed)}에 처음 플레이">×{played.playCount}</span>
+                            <span class="play-badge" title="{formatDate(played[played.length - 1].endTime)}에 처음 플레이">×{played.length}</span>
                         </div>
                         <span class="shelf-label">{game.name}</span>
-                    </a>
+                    </button>
                 {:else}
                     <div class="shelf-item locked" aria-label="{game.name} — 아직 플레이하지 않음">
                         <div class="cover">
@@ -74,6 +115,66 @@
         </section>
     {/if}
 </div>
+
+{#if selectedGame}
+    <div
+        class="modal-backdrop"
+        onclick={closeGameModal}
+        onkeydown={(e) => e.key === 'Escape' && closeGameModal()}
+        role="presentation"
+    >
+        <div
+            class="modal-content"
+            use:trapFocus={closeGameModal}
+            onclick={(e) => e.stopPropagation()}
+            onkeydown={(e) => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="game-modal-title"
+            tabindex="-1"
+        >
+            <button type="button" class="modal-close-btn-icon" onclick={closeGameModal} aria-label="닫기">✕</button>
+            <div class="modal-game-header">
+                <div class="modal-cover">
+                    {#if selectedGame.image_url}
+                        <img src={selectedGame.image_url} alt="" />
+                    {:else}
+                        <div class="cover-placeholder">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                        </div>
+                    {/if}
+                </div>
+                <div>
+                    <h3 id="game-modal-title">{selectedGame.name}</h3>
+                    <p class="modal-stats">{selectedGame.plays.length}회 플레이 · {selectedGame.plays.filter((p: any) => p.isWinner).length}승</p>
+                </div>
+            </div>
+
+            <div class="modal-play-list">
+                {#each selectedGame.plays as play}
+                    <div class="modal-play-row" class:win={play.isWinner}>
+                        <div class="play-row-top">
+                            <span class="play-date">{formatDate(play.endTime)}</span>
+                            <span class="play-result">
+                                {#if play.isWinner}<span class="result-badge">승리</span>{/if}
+                                {#if play.myScore}<span class="play-score">{play.myScore}점</span>{/if}
+                            </span>
+                        </div>
+                        {#if play.opponents && play.opponents.length > 0}
+                            <p class="play-opponents">
+                                함께: {play.opponents.map((o: any) => o.name + (o.score ? `(${o.score})` : '')).join(', ')}
+                            </p>
+                        {/if}
+                    </div>
+                {/each}
+            </div>
+
+            <a href="/mypage?tab=history&game={encodeURIComponent(selectedGame.name)}" class="modal-history-link">
+                마이페이지 활동 기록에서 수정하기 →
+            </a>
+        </div>
+    </div>
+{/if}
 
 <style>
     .collection-container {
@@ -172,8 +273,14 @@
         gap: 0.4rem;
         text-decoration: none;
         cursor: default;
+        background: none;
+        border: none;
+        padding: 0;
+        font: inherit;
+        color: inherit;
+        width: 100%;
     }
-    a.shelf-item {
+    button.shelf-item.played {
         cursor: pointer;
     }
 
@@ -255,5 +362,169 @@
         text-align: center;
         padding: 3rem 1rem;
         color: var(--text-tertiary);
+    }
+
+    .search-input-wrap {
+        position: relative;
+        width: 100%;
+        margin-top: 0.9rem;
+    }
+    .search-input {
+        padding: 0.65rem 0.75rem;
+        padding-right: 2.25rem;
+        border: 1px solid var(--border-default);
+        border-radius: 8px;
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        width: 100%;
+        font-size: 0.9rem;
+        box-sizing: border-box;
+    }
+    .search-clear {
+        position: absolute;
+        top: 50%;
+        right: 0.5rem;
+        transform: translateY(-50%);
+        border: none;
+        background: none;
+        color: var(--text-secondary);
+        font-size: 0.9rem;
+        line-height: 1;
+        padding: 0.35rem;
+        cursor: pointer;
+        border-radius: 50%;
+    }
+    .search-clear:hover {
+        color: var(--text-primary);
+        background: var(--bg-secondary);
+    }
+
+    /* Game Detail Modal */
+    .modal-backdrop {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: var(--overlay-heavy);
+        z-index: 999;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 1rem;
+        box-sizing: border-box;
+    }
+    .modal-content {
+        background: var(--bg-primary);
+        padding: 1.75rem;
+        border-radius: 16px;
+        max-width: 420px;
+        width: 100%;
+        max-height: 85vh;
+        overflow-y: auto;
+        box-shadow: 0 4px 20px var(--overlay-medium);
+        position: relative;
+    }
+    .modal-close-btn-icon {
+        position: absolute;
+        top: 0.9rem;
+        right: 0.9rem;
+        background: none;
+        border: none;
+        color: var(--text-secondary);
+        font-size: 1rem;
+        cursor: pointer;
+        padding: 0.3rem;
+        line-height: 1;
+    }
+    .modal-game-header {
+        display: flex;
+        align-items: center;
+        gap: 0.9rem;
+        margin-bottom: 1.25rem;
+        padding-right: 1.5rem;
+    }
+    .modal-cover {
+        flex-shrink: 0;
+        width: 56px;
+        height: 74px;
+        border-radius: 8px;
+        overflow: hidden;
+        background: var(--bg-secondary);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .modal-cover img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+    .modal-game-header h3 {
+        margin: 0 0 0.25rem 0;
+        font-size: 1.05rem;
+        color: var(--text-primary);
+    }
+    .modal-stats {
+        margin: 0;
+        font-size: 0.82rem;
+        color: var(--text-secondary);
+    }
+    .modal-play-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.6rem;
+        margin-bottom: 1.25rem;
+    }
+    .modal-play-row {
+        background: var(--bg-secondary);
+        border-radius: 10px;
+        padding: 0.6rem 0.75rem;
+    }
+    .modal-play-row.win {
+        border-left: 3px solid var(--color-amber);
+    }
+    .play-row-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    .play-date {
+        font-size: 0.78rem;
+        color: var(--text-tertiary);
+    }
+    .play-result {
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+    }
+    .result-badge {
+        font-size: 0.72rem;
+        font-weight: bold;
+        padding: 0.1rem 0.45rem;
+        border-radius: 4px;
+        background: var(--color-amber-darker);
+        color: var(--text-primary);
+    }
+    .play-score {
+        font-size: 0.82rem;
+        font-weight: bold;
+        color: var(--text-primary);
+    }
+    .play-opponents {
+        margin: 0.35rem 0 0 0;
+        font-size: 0.78rem;
+        color: var(--text-secondary);
+    }
+    .modal-history-link {
+        display: block;
+        text-align: center;
+        font-size: 0.82rem;
+        font-weight: 600;
+        color: var(--color-blue);
+        text-decoration: none;
+        padding-top: 0.5rem;
+        border-top: 1px solid var(--border-light);
     }
 </style>
