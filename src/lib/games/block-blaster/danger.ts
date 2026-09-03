@@ -14,23 +14,34 @@ function generateId(prefix: string): string {
 }
 
 /**
- * 위험 스테이지에 등장할 위험 개수 (= 그 막을 클리어하는 데 필요한 해결 개수).
- * 기(1~2): 1개 / 승(3~5): 2개 / 전·결(6~10): 3개 → 10막 완주에 총 23개
- *
- * P3에서 18개로 낮췄던 것을 되돌린다. 그 완화는 위험 감축으로 압박이 몰린 것을
- * 보정하려던 것인데, P1에서 doom 즉사가 사라지며 사망 요인이 통째로 빠졌다.
- * 게다가 이 게임에서는 **위험 등장 자체가 진행 통화**라(해결이든 만료든 크레딧이
- * 쌓인다) 등장을 늘리거나 간격을 좁히면 오히려 쉬워진다. 난이도를 조절하는
- * 실질적인 손잡이는 등장 빈도가 아니라 이 "요구 개수"다.
+ * 한 위험 스테이지에 **생성**되는 위험 개수.
+ * 기(1~2): 1개 / 승(3~5): 2개 / 전·결(6~10): 3개
  */
-export function dangerCountForStage(stage: number): number {
-	// 반드시 결정적이어야 한다 — 이 함수는 (1) 위험을 생성할 때와 (2) 스테이지 클리어
-	// 조건을 판정할 때 각각 따로 호출된다. 무작위였던 6~8막에서는 두 호출이 서로 다른
-	// 값을 뽑아, 실제 마주한 위험 수와 클리어에 필요한 수가 절반 확률로 어긋났다
-	// (클리어 배너의 "N개 해결"도 실제와 달랐음).
+export function dangerSpawnCountForStage(stage: number): number {
+	// 반드시 결정적이어야 한다 — 생성과 판정이 각각 호출되므로 무작위면 어긋난다.
 	if (stage <= 2) return 1;
 	if (stage <= 5) return 2;
 	return 3;
+}
+
+/**
+ * 한 막을 넘기는 데 **필요한** 해결 크레딧.
+ *
+ * 생성 개수와 분리한 이유: 예전에는 한 함수가 양쪽에 쓰여, 요구를 올리면 생성도
+ * 같이 올라 통화 발행량이 늘었다. 그래서 "요구 개수"가 유일한 손잡이인데도
+ * 사실상 상한에 걸려 있었다(올려도 상쇄됨).
+ *
+ * 이 게임은 위험 등장 자체가 진행 통화라(해결이든 만료든 크레딧이 쌓인다)
+ * 압박을 늘리는 조작이 진행도 함께 가속해 손잡이의 부호가 상쇄돼 왔다.
+ * 지급량(생성)을 고정한 채 요구만 올리면, 진행 가속을 동반하지 않는 순수한
+ * 난이도 손잡이가 된다. 10막 완주 총 요구: 23 → 31.
+ * (5로 더 올려봤지만 클리어율이 36.5%→37.5%로 오히려 올랐다. 보드가 자가 치유되어
+ *  판이 길어져도 어려워지지 않기 때문 — 그래서 아래 래칫이 필요하다.)
+ */
+export function dangerRequirementForStage(stage: number): number {
+	if (stage <= 2) return 1;
+	if (stage <= 5) return 3;
+	return 4;
 }
 
 /**
@@ -67,7 +78,7 @@ function countdownScaleFor(type: DangerType): number {
  * 결 (9~10): 2
  */
 export function lockedSlotsForStage(stage: number): number {
-	// dangerCountForStage와 같은 이유로 결정적이어야 한다(생성/판정 이중 호출).
+	// dangerSpawnCountForStage와 같은 이유로 결정적이어야 한다(생성/판정 이중 호출).
 	if (stage <= 2) return 0;
 	if (stage <= 5) return 1;
 	return 2;
@@ -162,7 +173,7 @@ function dangerStaggerInterval(stageNumber: number): number {
 }
 
 export function generateDangerStage(stageNumber: number, grid: BoardGrid): DangerStage {
-	const dangerCount = dangerCountForStage(stageNumber);
+	const dangerCount = dangerSpawnCountForStage(stageNumber);
 	const dangers: Danger[] = [];
 	const usedRows = new Set<number>();
 	const usedCols = new Set<number>();
@@ -617,10 +628,19 @@ export function isDangerResolved(danger: Danger, grid: BoardGrid, cellMeta?: Cel
 		// quest는 cells가 빈 배열 — 패턴 달성 시 명시적으로 d.resolved=true 처리됨
 		return false;
 	}
+	// === 해결 조건의 "모양" ===
+	// doom/hazard-zone은 원래 "영역의 **모든** 셀이 빈 칸"이어야 해결됐다. 이건
+	// 라인 모양의 조건이고, 라인을 만드는 능력은 clear-row/col 둘뿐이다. 폭탄으로
+	// 3×3을 지워도 8칸짜리 doom 줄은 절대 완성되지 않으므로, 쿨다운을 아무리
+	// 조정해도 그 두 장의 독점은 형태 때문에 깨지지 않았다(격차 3.7배의 근본 원인).
+	// 잔여 허용치를 두면 폭탄·같은색지우기 등도 실제로 기여하고 마무리까지 할 수 있다.
+	let filled = 0;
 	for (const [r, c] of danger.cells) {
-		if (grid[r][c] !== 0) return false;
+		if (grid[r][c] !== 0) filled++;
 	}
-	return true;
+	if (danger.type === 'doom-row' || danger.type === 'doom-col') return filled <= 2;
+	if (danger.type === 'hazard-zone') return filled <= 1;
+	return filled === 0;
 }
 
 /** 위험 종류별 사용자 친화적 표시명 */

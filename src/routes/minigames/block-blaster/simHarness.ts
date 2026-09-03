@@ -381,6 +381,13 @@ export interface RunResult {
 	dangersResolved: Record<string, number>;
 	/** 등장한 위험 중 카운트 만료로 끝난 횟수 (크레딧 없음 = 실패) */
 	dangersExpired: Record<string, number>;
+	/**
+	 * 매 턴 "놓을 수 있는 자리 수"의 중앙값 / 보드 점유율 최댓값.
+	 * AI 실력과 무관한 순수 상태 지표라 난이도 프록시로 가장 신뢰할 만하다
+	 * (클리어율은 AI 실력에 크게 의존한다).
+	 */
+	medianLegalMoves: number;
+	maxOccupancy: number;
 }
 
 /**
@@ -413,6 +420,8 @@ export async function runGame(opts: RunOptions = {}): Promise<RunResult> {
 	let idle = 0;
 	const stageTurn: number[] = [];
 	let lastStages = 0;
+	const legalMoveCounts: number[] = [];
+	let maxOccupancy = 0;
 	const dangersSeen: Record<string, number> = {};
 	const dangersResolved: Record<string, number> = {};
 	const dangersExpired: Record<string, number> = {};
@@ -466,6 +475,22 @@ export async function runGame(opts: RunOptions = {}): Promise<RunResult> {
 		// 위험이 임박하면 능력을 먼저 쓸지 판단
 		if (tryUseAbility(game, false)) { idle++; if (idle > IDLE_LIMIT) break; continue; }
 
+		// 상태 지표 수집 — 이 턴에 놓을 수 있었던 자리 수와 보드 점유율
+		{
+			let legal = 0;
+			const g = game.grid as BoardGrid;
+			for (let bi = 0; bi < game.currentBlocks.length; bi++) {
+				const b = game.currentBlocks[bi];
+				if (!b || game.isSlotLocked(bi)) continue;
+				for (let r = 0; r < GRID_SIZE; r++)
+					for (let c = 0; c < GRID_SIZE; c++)
+						if (canPlaceBlock(g, b as BlockShape, r, c)) legal++;
+			}
+			legalMoveCounts.push(legal);
+			const occ = (GRID_SIZE * GRID_SIZE - countEmpty(g)) / (GRID_SIZE * GRID_SIZE);
+			if (occ > maxOccupancy) maxOccupancy = occ;
+		}
+
 		game.selectBlock(mv.blockIndex);
 		const before = game.score;
 		game.placeBlockAt(mv.row, mv.col);
@@ -498,7 +523,11 @@ export async function runGame(opts: RunOptions = {}): Promise<RunResult> {
 		dangersAtDeath,
 		dangersSeen,
 		dangersResolved,
-		dangersExpired
+		dangersExpired,
+		medianLegalMoves: legalMoveCounts.length
+			? [...legalMoveCounts].sort((a, b) => a - b)[Math.floor(legalMoveCounts.length / 2)]
+			: 0,
+		maxOccupancy
 	};
 	game.stopTimer();
 	return res;

@@ -13,7 +13,7 @@ import {
 	generateDangerStage,
 	isDangerResolved,
 	doomHasRemainingCells,
-	dangerCountForStage
+	dangerRequirementForStage
 } from '$lib/games/block-blaster/danger';
 import {
 	ABILITY_POOL,
@@ -1443,7 +1443,12 @@ export function createBlockBlasterGame() {
 				if (d.type !== 'reinforced' && d.type !== 'spreading' && d.countdown > 1) score += 100;
 				// 신속 해결 토큰 — 카운트가 초기값의 절반 이상 남은 시점에 해결했을 때만.
 				// (카운트를 쓰지 않는 점거형은 해결 자체가 어려우므로 항상 지급)
-				const fast = d.type === 'reinforced' || d.type === 'spreading'
+				// jam은 제외 — 그냥 놓기만 해도 해결되므로 토큰이 사실상 무상 지급된다.
+				// (전체 스폰의 약 12%에 해결률 80%라 판당 2~3토큰 ≈ 보너스 드래프트 1회가
+				//  공짜로 나왔다. 클리어율이 헐거워진 숨은 원인.)
+				const fast = d.type === 'jam'
+					? false
+					: d.type === 'reinforced' || d.type === 'spreading'
 					? true
 					: d.countdown * 2 >= d.initialCountdown;
 				if (fast) {
@@ -2010,11 +2015,17 @@ export function createBlockBlasterGame() {
 	function checkStageClearByCount() {
 		while (stagesCleared < MAX_STAGE) {
 			const nextStage = stagesCleared + 1;
-			const need = dangerCountForStage(nextStage);
+			const need = dangerRequirementForStage(nextStage);
 			if (resolvedDangerCount < need) break;
 			// 스테이지 nextStage 클리어
 			resolvedDangerCount -= need;
 			stagesCleared = nextStage;
+
+			// 래칫(스테이지 클리어마다 검은 돌 영구 적립)은 시도했다가 되돌렸다.
+			// 난이도는 2pp 내려갔지만(36.5%→34.5%) 능력 격차가 2.0배→3.3배로 다시
+			// 벌어졌다. 검은 돌은 능력으로 못 지우고 라인 완성으로만 사라지는데,
+			// 보드 통제력이 약한 비-clear 빌드가 훨씬 크게 처벌받기 때문이다
+			// (no-clear 클리어율 18.0%→10.5%). 난이도 2pp보다 빌드 다양성이 크다.
 
 			// 9~10 스테이지 보너스 드래프트
 			if (nextStage >= 9) bonusDraftsRemaining += 1;
