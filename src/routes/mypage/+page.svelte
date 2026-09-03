@@ -63,25 +63,11 @@
 
 
 
-    let selectedYear: string = 'all';
-    let selectedMonth: string = 'all';
-
-    // Extract available years from history
-    $: availableYears = data.history 
-        ? [...new Set(data.history.map((h: any) => new Date(h.end_time).getFullYear().toString()))].sort((a: any, b: any) => b.localeCompare(a))
-        : [];
-
-    // Filter history
-    $: filteredHistory = (data.history || []).filter((game: any) => {
-        const date = new Date(game.end_time);
-        const yearMatch = selectedYear === 'all' || date.getFullYear().toString() === selectedYear;
-        const monthMatch = selectedMonth === 'all' || (date.getMonth() + 1).toString() === selectedMonth;
-        const gameMatch = !gameFilter || game.game_name === gameFilter;
-        return yearMatch && monthMatch && gameMatch;
-    });
-    // Dynamic Stats Analysis
-    $: filteredTotalGames = filteredHistory.length;
-    $: filteredTotalWins = filteredHistory.filter((g: any) => g.is_winner).length;
+    // 활동 기록 탭(연/월 필터, 수정)은 장식장의 "전체 기록" 보기로 대체되어 제거됐다.
+    // 대시보드 통계(총 전적, 자주 만난 사람, 자주 한 게임)는 계속 이 데이터를 쓴다.
+    $: history = data.history || [];
+    $: filteredTotalGames = history.length;
+    $: filteredTotalWins = history.filter((g: any) => g.is_winner).length;
 
     // Season Pass Logic
     $: hasSeasonPass = data.user.season_pass_expires_at && new Date(data.user.season_pass_expires_at) > new Date();
@@ -110,11 +96,11 @@
     // (판 수로 세면 긴 게임 한 판보다 짧은 게임 여러 판 한 상대가 과대평가됨)
     $: topOpponents = (() => {
         const daysByName: Record<string, Set<string>> = {};
-        for (const game of filteredHistory) {
+        for (const game of history) {
             if (!game.opponents || !game.end_time) continue;
             const date = new Date(game.end_time);
             if (Number.isNaN(date.getTime())) continue;
-            // 로컬 기준 날짜 키 — 위 연/월 필터도 로컬 시간으로 판단하므로 기준을 맞춘다
+            // 같은 사람과 하루에 여러 판을 해도 "함께한 날짜 수"로는 1회
             const dayKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
             for (const opp of game.opponents) {
                 (daysByName[opp.name] ??= new Set<string>()).add(dayKey);
@@ -129,17 +115,14 @@
     // Top Games
     $: topGames = (() => {
         const counts: Record<string, number> = {};
-        for (const game of filteredHistory) {
+        for (const game of history) {
             counts[game.game_name] = (counts[game.game_name] || 0) + 1;
         }
         return Object.entries(counts)
             .sort((a, b) => b[1] - a[1])
             .slice(0, 3);
     })();
-    
-    // ... toggle functions ...
-    let isYearOpen = false;
-    let isMonthOpen = false;
+
     let showGuideModal = false;
 
     // Title Management
@@ -195,48 +178,15 @@
         }
     }
 
-    // Load titles on mount
-    
-    function toggleYear() {
-        isYearOpen = !isYearOpen;
-        isMonthOpen = false;
-    }
-
-    function toggleMonth() {
-        isMonthOpen = !isMonthOpen;
-        isYearOpen = false;
-    }
-
-    function selectYear(year: any) {
-        selectedYear = year;
-        isYearOpen = false;
-        visibleCount = 10; // Reset pagination
-    }
-
-    function selectMonth(month: any) {
-        selectedMonth = month;
-        isMonthOpen = false;
-        visibleCount = 10; // Reset pagination
-    }
-
     import { enhance } from '$app/forms';
 
     function closeDropdowns() {
-        isYearOpen = false;
-        isMonthOpen = false;
         partyGameDropdownOpen = false;
-    }
-    
-    // Pagination
-    let visibleCount = 10;
-    
-    function loadMore() {
-        visibleCount += 10;
     }
 
     // Tab State
-    type Tab = 'dashboard' | 'titles' | 'history' | 'parties';
-    const validTabs: Tab[] = ['dashboard', 'titles', 'history', 'parties'];
+    type Tab = 'dashboard' | 'titles' | 'parties';
+    const validTabs: Tab[] = ['dashboard', 'titles', 'parties'];
     let activeTab: Tab = 'dashboard';
 
     $: {
@@ -246,8 +196,6 @@
         }
     }
 
-    // 장식장에서 게임 카드를 클릭하면 그 게임만 걸러서 보여준다 (?game= 쿼리)
-    $: gameFilter = $page.url.searchParams.get('game') || '';
     // 파괴적 액션(기기/팟 삭제) 확인을 하나의 커스텀 모달로 통일 — 네이티브 confirm()은 안 씀
     let confirmVisible = false;
     let confirmMessage = '';
@@ -336,18 +284,6 @@
     let partyModalError = '';
     let partyLeaveError = '';
 
-    // 게임 종료 시 승자/점수를 잘못 입력했을 때 고칠 수 있게 한다.
-    // 일주일이 지나면 수정 버튼 자체를 숨긴다 — 서버에서도 같은 기준으로 막는다.
-    let editingHistory: any = null;
-    let historyEditError = '';
-    const HISTORY_EDIT_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
-    function canEditHistory(game: any) {
-        return Date.now() - new Date(game.end_time).getTime() <= HISTORY_EDIT_WINDOW_MS;
-    }
-    function openHistoryEdit(game: any) {
-        historyEditError = '';
-        editingHistory = game;
-    }
     let partySubmitting = false;
     let showPartyAdvanced = false;
     let partyMemberSearch = '';
@@ -512,10 +448,6 @@
             <button class="tab-item" class:active={activeTab === 'titles'} on:click={() => activeTab = 'titles'}>
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="7"></circle><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"></polyline></svg>
                 칭호
-            </button>
-            <button class="tab-item" class:active={activeTab === 'history'} on:click={() => activeTab = 'history'}>
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
-                활동 기록
             </button>
             <button class="tab-item" class:active={activeTab === 'parties'} on:click={() => activeTab = 'parties'}>
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
@@ -844,121 +776,6 @@
             </div>
         {/if}
 
-        {#if activeTab === 'history'}
-            <div class="tab-content">
-                <div class="history-section">
-                    <div class="section-header">
-                        <h2>
-                            활동 기록
-                            {#if gameFilter}
-                                <a href="/mypage?tab=history" class="game-filter-chip">{gameFilter} <span class="chip-close">✕</span></a>
-                            {/if}
-                        </h2>
-                        <div class="filters">
-                            <!-- Year Dropdown -->
-                            <div class="custom-select" on:click|stopPropagation={toggleYear} role="button" tabindex="0" on:keydown={(e) => e.key === 'Enter' && toggleYear()}>
-                                <div class="select-trigger">
-                                    {selectedYear === 'all' ? '전체 년도' : `${selectedYear}년`}
-                                    <span class="chevron">▼</span>
-                                </div>
-                                {#if isYearOpen}
-                                    <div class="options">
-                                        <div class="option-item" 
-                                            class:selected={selectedYear === 'all'}
-                                            role="button" tabindex="0" on:keydown={(e) => e.key === 'Enter' && selectYear('all')}
-                                            on:click|stopPropagation={() => selectYear('all')}>
-                                            전체 년도
-                                        </div>
-                                        {#each availableYears as year}
-                                            <div class="option-item" 
-                                                class:selected={selectedYear === year}
-                                                role="button" tabindex="0" on:keydown={(e) => e.key === 'Enter' && selectYear(year)}
-                                                on:click|stopPropagation={() => selectYear(year)}>
-                                                {year}년
-                                            </div>
-                                        {/each}
-                                    </div>
-                                {/if}
-                            </div>
-
-                            <!-- Month Dropdown -->
-                            <div class="custom-select" on:click|stopPropagation={toggleMonth} role="button" tabindex="0" on:keydown={(e) => e.key === 'Enter' && toggleMonth()}>
-                                <div class="select-trigger">
-                                    {selectedMonth === 'all' ? '전체 월' : `${selectedMonth}월`}
-                                    <span class="chevron">▼</span>
-                                </div>
-                                {#if isMonthOpen}
-                                    <div class="options">
-                                        <div class="option-item" 
-                                            class:selected={selectedMonth === 'all'}
-                                            role="button" tabindex="0" on:keydown={(e) => e.key === 'Enter' && selectMonth('all')}
-                                            on:click|stopPropagation={() => selectMonth('all')}>
-                                            전체 월
-                                        </div>
-                                        {#each Array(12) as _, i}
-                                            <div class="option-item" 
-                                                class:selected={selectedMonth === (i + 1).toString()}
-                                                role="button" tabindex="0" on:keydown={(e) => e.key === 'Enter' && selectMonth((i + 1).toString())}
-                                                on:click|stopPropagation={() => selectMonth((i + 1).toString())}>
-                                                {i + 1}월
-                                            </div>
-                                        {/each}
-                                    </div>
-                                {/if}
-                            </div>
-                        </div>
-                    </div>
-                
-                    <div class="history-list">
-                        {#if filteredHistory.length > 0}
-                            {#each filteredHistory.slice(0, visibleCount) as game}
-                            <div class="history-card" class:winner={game.is_winner}>
-                                <div class="history-header">
-                                    <div class="game-info">
-                                        <span class="game-name" title={game.game_name}>{game.game_name}</span>
-                                        <div class="my-result">
-                                            {#if game.is_winner}
-                                                <span class="result-badge win">승리</span>
-                                            {/if}
-                                            {#if game.my_score && game.my_score !== 0}
-                                                <span class="score">{game.my_score}점</span>
-                                            {/if}
-                                        </div>
-                                    </div>
-                                    <span class="game-date">{new Date(game.end_time).toLocaleDateString()}</span>
-                                </div>
-                                {#if game.opponents && game.opponents.length > 0}
-                                    <div class="history-body">
-                                        <div class="opponents">
-                                            함께:
-                                            {#each game.opponents as opp, i}
-                                                <span class="opp-name">
-                                                    {opp.name}
-                                                    {#if opp.score}({opp.score}){/if}
-                                                    {i < game.opponents.length - 1 ? ', ' : ''}
-                                                </span>
-                                            {/each}
-                                        </div>
-                                    </div>
-                                {/if}
-                                {#if canEditHistory(game)}
-                                    <button type="button" class="btn-edit-history" on:click={() => openHistoryEdit(game)}>기록 수정</button>
-                                {/if}
-                            </div>
-                        {/each}
-
-                        {#if filteredHistory.length > visibleCount}
-                            <button class="btn-load-more" on:click={loadMore}>더보기 ({filteredHistory.length - visibleCount}개 남음)</button>
-                        {/if}
-                    {:else}
-                        <div class="empty-state">
-                            <p>아직 플레이 기록이 없습니다.</p>
-                        </div>
-                    {/if}
-                </div>
-            </div>
-        </div>
-        {/if}
     {/if}
 </div>
 
@@ -1063,58 +880,6 @@
                 <button class="btn-cancel" on:click={() => handleConfirm(false)}>취소</button>
                 <button class="btn-danger" on:click={() => handleConfirm(true)}>삭제</button>
             </div>
-        </div>
-    </div>
-{/if}
-
-{#if editingHistory}
-    <div
-        class="modal-backdrop"
-        on:click|self={() => editingHistory = null}
-        transition:fade
-        role="presentation"
-    >
-        <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="edit-history-title" tabindex="-1" use:trapFocus={{ onEscape: () => editingHistory = null }}>
-            <h3 id="edit-history-title">기록 수정</h3>
-            <p><strong>{editingHistory.game_name}</strong> 기록을 수정합니다.</p>
-            {#if historyEditError}
-                <p class="inline-error">{historyEditError}</p>
-            {/if}
-            <form method="POST" action="?/editHistory" use:enhance={() => {
-                historyEditError = '';
-                return async ({ result, update }) => {
-                    if (result.type === 'success') {
-                        editingHistory = null;
-                        await update();
-                    } else if (result.type === 'failure') {
-                        historyEditError = (result.data as any)?.error || '기록 수정에 실패했습니다.';
-                    }
-                };
-            }}>
-                <input type="hidden" name="sessionId" value={editingHistory.id} />
-                <div class="player-select">
-                    <div class="player-score-row">
-                        <label class="checkbox-label">
-                            <input type="checkbox" name="winnerIds" value={data.user.id} checked={editingHistory.is_winner}>
-                            <span class="p-name">{data.user.name} (나)</span>
-                        </label>
-                        <input type="number" name="score_{data.user.id}" placeholder="점수" class="score-input" value={editingHistory.my_score ?? ''}>
-                    </div>
-                    {#each editingHistory.opponents || [] as opp}
-                        <div class="player-score-row">
-                            <label class="checkbox-label">
-                                <input type="checkbox" name="winnerIds" value={opp.attendee_id} checked={opp.is_winner}>
-                                <span class="p-name">{opp.name}</span>
-                            </label>
-                            <input type="number" name="score_{opp.attendee_id}" placeholder="점수" class="score-input" value={opp.score ?? ''}>
-                        </div>
-                    {/each}
-                </div>
-                <div class="modal-actions">
-                    <button type="button" class="btn-cancel" on:click={() => editingHistory = null}>취소</button>
-                    <button type="submit" class="btn-primary">저장</button>
-                </div>
-            </form>
         </div>
     </div>
 {/if}
@@ -1259,29 +1024,6 @@
 <style>
     /* ... existing styles ... */
     
-    .btn-load-more {
-        width: 100%;
-        padding: 0.9rem;
-        background: var(--bg-primary);
-        border: 1px solid var(--border-default);
-        border-radius: 12px;
-        color: var(--text-darker);
-        font-weight: 600;
-        cursor: pointer;
-        margin-top: 0.5rem;
-        transition: all 0.2s;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 0.5rem;
-    }
-    
-    .btn-load-more:hover {
-        background: var(--bg-secondary);
-        color: var(--text-primary);
-        border-color: var(--border-medium);
-    }
-
     .mypage-container {
         max-width: 600px;
         margin: 0 auto;
@@ -1608,22 +1350,6 @@
         justify-content: space-between;
         align-items: center;
     }
-    .game-filter-chip {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.3rem;
-        font-size: 0.75rem;
-        font-weight: 600;
-        color: var(--color-blue);
-        background: var(--bg-secondary);
-        border: 1px solid var(--border-default);
-        padding: 0.25rem 0.6rem;
-        border-radius: 100px;
-        text-decoration: none;
-    }
-    .chip-close {
-        opacity: 0.6;
-    }
     .header-actions {
         display: flex;
         align-items: center;
@@ -1643,204 +1369,6 @@
     .btn-register:hover {
         background: var(--color-blue);
     }
-    .filters {
-        display: flex;
-        gap: 0.5rem;
-    }
-
-
-    /* History List */
-    .history-list {
-        display: flex;
-        flex-direction: column;
-        gap: 1rem;
-    }
-    .history-card {
-        background: var(--bg-primary);
-        padding: 1.2rem;
-        border-radius: 12px;
-        box-shadow: 0 2px 8px var(--shadow-sm);
-        border: 1px solid var(--bg-elevated);
-    }
-    .history-card.winner {
-        border-left: 4px solid var(--color-amber);
-        background: linear-gradient(to right, var(--color-warning-bg) 0%, var(--bg-primary) 20%);
-    }
-    .history-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: flex-start;
-        margin-bottom: 0.8rem;
-        gap: 0.5rem;
-    }
-    .game-info {
-        display: flex;
-        flex-direction: row;
-        align-items: center;
-        gap: 0.5rem;
-        min-width: 0; /* game-name의 ellipsis가 실제로 부딪힐 때만 걸리게 함 */
-        flex: 1 1 auto;
-    }
-    .game-name {
-        font-weight: 700;
-        font-size: 1.1rem;
-        color: var(--text-primary);
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-        min-width: 0;
-    }
-    .game-date {
-        font-size: 0.8rem;
-        color: var(--text-tertiary);
-        white-space: nowrap;
-        flex-shrink: 0;
-    }
-    .history-body {
-        display: flex;
-        flex-direction: column;
-        gap: 0.5rem;
-    }
-    .my-result {
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-        flex-shrink: 0;
-    }
-    .result-badge {
-        font-size: 0.8rem;
-        padding: 0.15rem 0.5rem;
-        border-radius: 4px;
-        font-weight: bold;
-    }
-    .result-badge.win {
-        background: var(--color-amber-darker);
-        color: var(--text-primary); 
-    }
-    .score {
-        font-weight: bold;
-        color: var(--text-primary);
-    }
-    .opponents {
-        font-size: 0.85rem;
-        color: var(--text-secondary);
-    }
-    .opp-name {
-        display: inline-block;
-    }
-    .btn-edit-history {
-        margin-top: 0.6rem;
-        background: none;
-        border: 1px solid var(--border-default);
-        color: var(--text-secondary);
-        font-size: 0.8rem;
-        padding: 0.3rem 0.7rem;
-        border-radius: 6px;
-        cursor: pointer;
-        transition: all 0.15s;
-    }
-    .btn-edit-history:hover {
-        background: var(--bg-hover);
-        color: var(--text-primary);
-    }
-    /* 홈 화면 "게임 종료" 모달과 같은 승자/점수 입력 UI를 재사용한다 */
-    .player-select {
-        max-height: 300px;
-        overflow-y: auto;
-        border: 1px solid var(--border-light);
-        border-radius: 8px;
-        padding: 0.5rem;
-        margin-bottom: 1.5rem;
-    }
-    .player-score-row {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 0.5rem;
-        border-bottom: 1px solid var(--bg-secondary);
-        gap: 0.5rem;
-    }
-    .player-score-row:last-child {
-        border-bottom: none;
-    }
-    .checkbox-label {
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-        cursor: pointer;
-        flex: 1;
-        min-width: 0;
-    }
-    .p-name {
-        display: inline-flex;
-        align-items: center;
-        gap: 2px;
-    }
-    .score-input {
-        width: 70px;
-        padding: 0.4rem;
-        border: 1px solid var(--border-default);
-        border-radius: 6px;
-        font-size: 0.9rem;
-        text-align: center;
-    }
-    .empty-state {
-        text-align: center;
-        padding: 3rem;
-        color: var(--text-tertiary);
-    }
-    
-    /* Custom Select Styles */
-    .custom-select {
-        position: relative;
-        font-size: 0.85rem;
-        min-width: 90px;
-    }
-    .select-trigger {
-        background: var(--bg-primary);
-        border: 1px solid var(--border-default);
-        border-radius: 8px;
-        padding: 0.4rem 0.6rem;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 0.5rem;
-        cursor: pointer;
-        color: var(--text-darker);
-    }
-    .select-trigger .chevron {
-        font-size: 0.6rem;
-        color: var(--text-muted);
-    }
-    .options {
-        position: absolute;
-        top: 100%;
-        right: 0; /* Align right */
-        margin-top: 4px;
-        background: var(--bg-primary);
-        border: 1px solid var(--border-light);
-        border-radius: 8px;
-        box-shadow: 0 4px 12px var(--shadow-md);
-        max-height: 200px;
-        overflow-y: auto;
-        z-index: 100;
-        min-width: 100px;
-    }
-    .option-item {
-        padding: 0.5rem 0.8rem;
-        cursor: pointer;
-        color: var(--text-darker);
-        white-space: nowrap;
-    }
-    .option-item:hover {
-        background: var(--bg-secondary);
-    }
-    .option-item.selected {
-        background: var(--color-info-bg);
-        color: var(--text-primary);
-        font-weight: bold;
-    }
-
     /* Devices Section */
     .devices-section {
         margin-bottom: 2rem;

@@ -4,7 +4,6 @@ import { verifyAttendeeSession } from '$lib/server/auth';
 import { removeFromIrkCache } from '$lib/server/ble';
 import { PartyService } from '$lib/server/services/partyService';
 import { NotificationService } from '$lib/server/services/notificationService';
-import { editGameResult, GameHistoryEditError } from '$lib/server/services/gameHistoryService';
 import type { PageServerLoad, Actions } from './$types';
 import { redirect, fail } from '@sveltejs/kit';
 
@@ -235,29 +234,6 @@ export const actions: Actions = {
             return { success: true };
         } catch (e: any) {
             return fail(400, { error: e.message || '고정팟 나가기에 실패했습니다.' });
-        }
-    },
-
-    // 게임 종료 시 입력한 승자/점수를 잘못 기록했을 때 고치는 액션.
-    // 홈 화면의 endGame과 같은 권한(참여자 아무나) + 필드로 동작하되,
-    // end_time/status는 건드리지 않는다 — endGame을 재사용하면 end_time이
-    // 수정 시각으로 갱신되어 7일 제한을 계속 미룰 수 있는 구멍이 생긴다.
-    editHistory: async ({ request, cookies }) => {
-        const userSessionToken = cookies.get('user_session');
-        if (!userSessionToken) return fail(401, { error: '로그인이 필요합니다.' });
-        const user = await verifyAttendeeSession(userSessionToken);
-        if (!user) return fail(401, { error: '로그인이 필요합니다.' });
-
-        const data = await request.formData();
-        const sessionId = data.get('sessionId')?.toString();
-        if (!sessionId) return fail(400, { error: '잘못된 요청입니다.' });
-
-        try {
-            await editGameResult(sessionId, user.id, data);
-            return { success: true };
-        } catch (e) {
-            if (e instanceof GameHistoryEditError) return fail(e.status, { error: e.message });
-            return fail(500, { error: '기록 수정에 실패했습니다.' });
         }
     },
 
