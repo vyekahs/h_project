@@ -76,7 +76,8 @@
         const date = new Date(game.end_time);
         const yearMatch = selectedYear === 'all' || date.getFullYear().toString() === selectedYear;
         const monthMatch = selectedMonth === 'all' || (date.getMonth() + 1).toString() === selectedMonth;
-        return yearMatch && monthMatch;
+        const gameMatch = !gameFilter || game.game_name === gameFilter;
+        return yearMatch && monthMatch && gameMatch;
     });
     // Dynamic Stats Analysis
     $: filteredTotalGames = filteredHistory.length;
@@ -244,6 +245,9 @@
             activeTab = tabParam as Tab;
         }
     }
+
+    // 장식장에서 게임 카드를 클릭하면 그 게임만 걸러서 보여준다 (?game= 쿼리)
+    $: gameFilter = $page.url.searchParams.get('game') || '';
     // 파괴적 액션(기기/팟 삭제) 확인을 하나의 커스텀 모달로 통일 — 네이티브 confirm()은 안 씀
     let confirmVisible = false;
     let confirmMessage = '';
@@ -846,6 +850,9 @@
                     <div class="section-header">
                         <h2>
                             활동 기록
+                            {#if gameFilter}
+                                <a href="/mypage?tab=history" class="game-filter-chip">{gameFilter} <span class="chip-close">✕</span></a>
+                            {/if}
                         </h2>
                         <div class="filters">
                             <!-- Year Dropdown -->
@@ -1600,6 +1607,22 @@
         display: flex;
         justify-content: space-between;
         align-items: center;
+    }
+    .game-filter-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: var(--color-blue);
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-default);
+        padding: 0.25rem 0.6rem;
+        border-radius: 100px;
+        text-decoration: none;
+    }
+    .chip-close {
+        opacity: 0.6;
     }
     .header-actions {
         display: flex;
