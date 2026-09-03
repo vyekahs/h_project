@@ -335,6 +335,8 @@
     // Scheduled Game Modal State
     let showScheduledGameModal = false;
     let scheduledGameName = '';
+    // 등록된 게임을 고른 경우에만 채워진다. 이름을 직접 고치면 null로 비운다.
+    let scheduledGameId: number | null = null;
     let scheduledAt = '';
     let minPlayers = 2;
     let maxPlayers = 4;
@@ -342,6 +344,7 @@
     function openScheduledGameModal() {
         showScheduledGameModal = true;
         scheduledGameName = '';
+        scheduledGameId = null;
         guestCount = 0;
         dropdownOpen = false;
         
@@ -364,6 +367,7 @@
 
     function selectScheduledGame(game: any) {
         scheduledGameName = game.name;
+        scheduledGameId = game.id ?? null;
         minPlayers = game.min_players;
         maxPlayers = game.max_players;
         dropdownOpen = false;
@@ -1417,18 +1421,22 @@
                     await update();
                 };
             }} class="game-form">
-                
+                {#if scheduledGameId !== null}
+                    <input type="hidden" name="gameId" value={scheduledGameId} />
+                {/if}
+
                 <div class="input-group custom-dropdown">
                     <label for="scheduledGameName">게임 이름</label>
-                    <input 
-                        type="text" 
+                    <input
+                        type="text"
                         id="scheduledGameName"
-                        name="gameName" 
-                        placeholder="게임 이름 (직접 입력 또는 선택)" 
-                        bind:value={scheduledGameName} 
+                        name="gameName"
+                        placeholder="게임 이름 (직접 입력 또는 선택)"
+                        bind:value={scheduledGameName}
                         bind:this={searchInput}
                         onclick={handleInputClick}
                         onfocus={handleInputClick}
+                        oninput={() => (scheduledGameId = null)}
                         onkeydown={(e) => comboKeydown(e, filteredScheduledGames, selectScheduledGame)}
                         role="combobox"
                         aria-expanded={dropdownOpen && filteredScheduledGames.length > 0}

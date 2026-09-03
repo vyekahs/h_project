@@ -8,6 +8,7 @@ import { emitLiveEvent } from '$lib/server/liveEvents';
 import { getSharedData } from '$lib/server/dataCache';
 import { NotificationService } from '$lib/server/services/notificationService';
 import { WantToPlayService } from '$lib/server/services/wantToPlayService';
+import { resolveGameId } from '$lib/server/games';
 
 async function canModifyGame(request: Request, gameId: string | number): Promise<boolean> {
     const sessionToken = request.headers.get('cookie')?.match(/admin_session=([^;]+)/)?.[1];
@@ -220,6 +221,7 @@ export const actions: Actions = {
     createScheduledGame: async ({ request, cookies }) => {
         const data = await request.formData();
         const gameName = data.get('gameName')?.toString();
+        const rawGameId = data.get('gameId')?.toString();
         const scheduledAt = data.get('scheduledAt')?.toString();
         const minPlayers = parseInt(data.get('minPlayers')?.toString() || '2');
         const maxPlayers = parseInt(data.get('maxPlayers')?.toString() || '4');
@@ -248,12 +250,17 @@ export const actions: Actions = {
         const finalShowOnMain = isAdmin ? showOnMain : false;
         const finalIsRecurring = isAdmin ? isRecurring : false;
 
+        // 등록된 게임을 고른 경우에만 game_id를 남긴다.
+        // 클라이언트가 이름을 직접 수정하면 gameId를 비워 보내지만, 여기서도 이름이
+        // 실제로 일치하는지 확인해서 game_id와 game_name이 어긋나는 일이 없게 한다.
+        const finalGameId = await resolveGameId(rawGameId, gameName);
+
         // 2. Create scheduled session
         try {
             await db.transaction(async (tx) => {
                 const sessionResult = await tx.execute(sql`
-                    INSERT INTO game_sessions (game_name, status, scheduled_at, min_players, max_players, created_by, party_id, show_on_main)
-                    VALUES (${gameName}, 'scheduled', ${scheduledAt}, ${minPlayers}, ${maxPlayers}, ${creatorId}, ${partyId}, ${finalShowOnMain})
+                    INSERT INTO game_sessions (game_name, game_id, status, scheduled_at, min_players, max_players, created_by, party_id, show_on_main)
+                    VALUES (${gameName}, ${finalGameId}, 'scheduled', ${scheduledAt}, ${minPlayers}, ${maxPlayers}, ${creatorId}, ${partyId}, ${finalShowOnMain})
                     RETURNING id
                 `);
                 const newSessionId = (sessionResult[0] as any).id;

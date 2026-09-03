@@ -192,6 +192,9 @@
 
     let showScheduledGameModal = $state(false);
     let scheduledGameName = $state('');
+    // 등록된 게임을 고른 경우에만 채워진다. 이름을 직접 고치면 null로 비워서
+    // 잘못된 게임에 연결되는 걸 막는다(예: "글룸헤이븐"을 고른 뒤 "확장판"으로 수정).
+    let scheduledGameId = $state<number | null>(null);
     let scheduledAt = $state('');
     let minPlayers = $state(2);
     let maxPlayers = $state(4);
@@ -366,6 +369,7 @@
             scheduledPartyMembers = wtpParticipants.map(p => ({ id: p.id, name: p.name }));
             scheduledSelectedPartyId = null;
             scheduledGameName = post.game_name;
+            scheduledGameId = post.game_id ?? null;
             if (post.min_players) minPlayers = post.min_players;
             const floorMax = Math.max(post.max_players || 0, wtpParticipants.length, minPlayers);
             if (floorMax > 0) maxPlayers = floorMax;
@@ -618,6 +622,8 @@
     function applyPartyToScheduledModal(party: Party) {
         if (!scheduledGameName.trim()) {
             scheduledGameName = party.game_name || party.resolved_game_name || '';
+            // 이름을 팟에서 가져온 경우에만 팟의 game_id도 함께 가져온다
+            scheduledGameId = party.game_id ?? null;
         }
         guestCount = party.guest_count || 0;
         showScheduledGuestInput = guestCount > 0;
@@ -655,6 +661,7 @@
     function openScheduledGameModal() {
         showScheduledGameModal = true;
         scheduledGameName = '';
+        scheduledGameId = null;
         dropdownOpen = false;
         guestCount = 0;
         showScheduledGuestInput = false;
@@ -701,6 +708,7 @@
 
     function selectScheduledGame(game: any) {
         scheduledGameName = game.name;
+        scheduledGameId = game.id ?? null;
         minPlayers = game.min_players;
         maxPlayers = game.max_players;
         dropdownOpen = false;
@@ -1834,20 +1842,24 @@
                 {#if scheduledSelectedPartyId}
                     <input type="hidden" name="partyId" value={scheduledSelectedPartyId} />
                 {/if}
+                {#if scheduledGameId !== null}
+                    <input type="hidden" name="gameId" value={scheduledGameId} />
+                {/if}
 
                 <div class="input-group custom-dropdown">
                     <label for="scheduledGameName">게임 이름</label>
-                    <input 
-                        type="text" 
+                    <input
+                        type="text"
                         id="scheduledGameName"
-                        name="gameName" 
-                        placeholder="게임 이름 (직접 입력 또는 선택)" 
-                        bind:value={scheduledGameName} 
+                        name="gameName"
+                        placeholder="게임 이름 (직접 입력 또는 선택)"
+                        bind:value={scheduledGameName}
                         bind:this={searchInput}
                         onclick={handleInputClick}
                         onfocus={handleInputClick}
-                        required 
-                        autocomplete="off" 
+                        oninput={() => (scheduledGameId = null)}
+                        required
+                        autocomplete="off"
                     />
                     
                     {#if dropdownOpen && filteredScheduledGames.length > 0}
