@@ -6,6 +6,7 @@ import { verifyAdminSession, verifyAttendeeSession } from '$lib/server/auth';
 import { updateSettingsCache, markAllLeft } from '$lib/server/ble';
 import { emitLiveEvent } from '$lib/server/liveEvents';
 import { recordUndo, takeUndo } from '$lib/server/adminUndo';
+import { resolveGameId } from '$lib/server/games';
 
 async function canModifyGame(request: Request, gameId: string | number): Promise<boolean> {
     const sessionToken = request.headers.get('cookie')?.match(/admin_session=([^;]+)/)?.[1];
@@ -921,6 +922,7 @@ export const actions: Actions = {
     createScheduledGame: async ({ request }) => {
         const data = await request.formData();
         const gameName = data.get('gameName')?.toString();
+        const rawGameId = data.get('gameId')?.toString();
         const scheduledAt = data.get('scheduledAt')?.toString();
         const minPlayers = parseInt(data.get('minPlayers')?.toString() || '2');
         const maxPlayers = parseInt(data.get('maxPlayers')?.toString() || '4');
@@ -931,11 +933,14 @@ export const actions: Actions = {
         if (!scheduledAt) return fail(400, { error: '시작 예정 시간을 입력해주세요.' });
         if (guestCount > maxPlayers) return fail(400, { error: `게스트 수가 최대 인원(${maxPlayers}명)을 초과할 수 없습니다.` });
 
+        // 등록된 게임을 고른 경우에만 game_id를 남긴다 (이름이 일치할 때만 유효)
+        const finalGameId = await resolveGameId(rawGameId, gameName);
+
         try {
             await db.transaction(async (tx) => {
                 const sessionResult = await tx.execute(sql`
-                    INSERT INTO game_sessions (game_name, status, scheduled_at, min_players, max_players, show_on_main)
-                    VALUES (${gameName}, 'scheduled', ${scheduledAt}, ${minPlayers}, ${maxPlayers}, ${showOnMain})
+                    INSERT INTO game_sessions (game_name, game_id, status, scheduled_at, min_players, max_players, show_on_main)
+                    VALUES (${gameName}, ${finalGameId}, 'scheduled', ${scheduledAt}, ${minPlayers}, ${maxPlayers}, ${showOnMain})
                     RETURNING id
                 `);
                 const newSessionId = (sessionResult[0] as any).id;
