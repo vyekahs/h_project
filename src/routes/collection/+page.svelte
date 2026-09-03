@@ -261,6 +261,8 @@
                 <span class="save-flash">✓ 저장됨</span>
             {:else if canEditPlay(play)}
                 <button type="button" class="btn-edit-play" onclick={() => openPlayEdit(play)}>수정</button>
+            {:else}
+                <span class="edit-window-closed" title="플레이 후 7일이 지나면 기록을 수정할 수 없어요">수정 기간 지남</span>
             {/if}
         </div>
     {/if}
@@ -365,15 +367,11 @@
                             {/if}
                             {#if owned}
                                 <span class="owned-badge" title="내 소장 게임" aria-hidden="true">
-                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 21 12 17.77 5.82 21 7 14.14l-5-4.87 6.91-1.01L12 2z"/></svg>
                                 </span>
                             {/if}
                             {#if played}
                                 <span class="play-badge" title="{formatDate(played[played.length - 1].endTime)}에 처음 플레이">×{played.length}</span>
-                            {:else}
-                                <span class="lock-badge" aria-hidden="true">
-                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-                                </span>
                             {/if}
                         </div>
                         <span class="shelf-label">{game.name}</span>
@@ -393,6 +391,7 @@
         </button>
         {#if showAllFilters}
             <div class="play-filters">
+                <span class="filter-group-label">언제</span>
                 <div class="play-filters-dates">
                     <select class="play-date-select" bind:value={allYearFilter} aria-label="연도 필터">
                         <option value="all">전체 연도</option>
@@ -413,6 +412,7 @@
                         {/each}
                     </select>
                 </div>
+                <span class="filter-group-label">무엇을 · 누구와</span>
                 <input type="text" class="play-game-input" placeholder="게임 이름 검색..." bind:value={allGameQuery} aria-label="게임 이름 검색" />
                 <div class="play-filters-row">
                     <input
@@ -519,6 +519,7 @@
                 </button>
                 {#if showModalFilters}
                     <div class="play-filters">
+                        <span class="filter-group-label">언제</span>
                         <div class="play-filters-dates">
                             <select class="play-date-select" bind:value={playYearFilter} aria-label="연도 필터">
                                 <option value="all">전체 연도</option>
@@ -539,6 +540,7 @@
                                 {/each}
                             </select>
                         </div>
+                        <span class="filter-group-label">누구와</span>
                         <div class="play-filters-row">
                             <input
                                 type="text"
@@ -776,13 +778,10 @@
         border-radius: 100px;
         line-height: 1.4;
     }
-    .lock-badge {
-        position: absolute;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        color: var(--text-tertiary);
-        opacity: 0.7;
+    /* --color-blue는 다크 모드에서 밝은 하늘색(#4dabf7)이 되어 흰 글자와 2.51:1로
+       WCAG AA(4.5:1) 미달 — 다크 모드에서만 어두운 배경색을 글자색으로 써서 6.9:1 확보 */
+    :global([data-theme='dark']) .play-badge {
+        color: var(--bg-primary);
     }
     .owned-badge {
         position: absolute;
@@ -886,6 +885,9 @@
         background: var(--color-blue);
         border-color: var(--color-blue);
         color: #fff;
+    }
+    :global([data-theme='dark']) .view-toggle button.active {
+        color: var(--bg-primary);
     }
 
     .all-plays-list {
@@ -1048,6 +1050,16 @@
         gap: 0.4rem;
         margin-bottom: 0.75rem;
     }
+    .filter-group-label {
+        display: block;
+        font-size: 0.68rem;
+        font-weight: 600;
+        color: var(--text-tertiary);
+        margin-top: 0.3rem;
+    }
+    .filter-group-label:first-child {
+        margin-top: 0;
+    }
     .play-filters-dates {
         display: flex;
         gap: 0.4rem;
@@ -1168,6 +1180,12 @@
     .btn-edit-play:hover {
         background: var(--bg-hover);
         color: var(--text-primary);
+    }
+    .edit-window-closed {
+        flex-shrink: 0;
+        font-size: 0.75rem;
+        color: var(--text-tertiary);
+        cursor: default;
     }
 
     /* 인라인 수정 폼 — 홈 화면 "게임 종료" 모달과 같은 승자/점수 입력 UI */
