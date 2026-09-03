@@ -327,7 +327,8 @@
         /* 흰 배경에서 AA를 통과하는 주황 텍스트.
            --color-orange-dark(#e67700)는 3.00:1이라 텍스트로 쓸 수 없다. */
         --color-orange-text: #c2410c;
-        --color-error-bg-strong: #ffecec; /* 오류 틴트의 hover */
+        --color-error-bg-strong: #ffecec;   /* 오류 틴트의 hover */
+        --color-warning-bg-strong: #ffeccc; /* 경고 틴트의 hover */
         --color-orange: #ff9800;
         --color-orange-dark: #e67700;
 

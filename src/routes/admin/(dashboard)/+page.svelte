@@ -1,6 +1,6 @@
 <script lang="ts">
     import type { PageData } from './$types';
-    import { enhance } from '$app/forms';
+    import { enhance, deserialize } from '$app/forms';
     import { invalidateAll } from '$app/navigation';
     import { onMount, onDestroy } from 'svelte';
     import { trapFocus } from '$lib/actions/modal';
@@ -224,6 +224,35 @@
     let penaltyReason = $state('no_show');
 
     /** 페널티 결과를 운영자에게 되돌려준다. 임계에 도달한 순간만 모달로 멈춰 세운다. */
+    /**
+     * 되돌릴 수 있는 결과를 알린다.
+     *
+     * 되돌리기는 결과를 알리는 그 자리에 둔다 — 토스트를 읽고 "아차" 하는
+     * 순간과 무를 수 있는 곳이 같아야 실제로 눌린다. 서버에는 불투명한 id만
+     * 보내고, 무엇을 어떻게 되돌릴지는 서버가 남겨둔 원상태에서 읽는다.
+     */
+    function toastUndoable(message: string, undo: { id: number; label: string } | undefined) {
+        if (!undo) {
+            showToast(message);
+            return;
+        }
+        showToast(message, {
+            label: '되돌리기',
+            run: async () => {
+                const body = new FormData();
+                body.set('undoId', String(undo.id));
+                try {
+                    const res = await fetch('?/undoAdminAction', { method: 'POST', body });
+                    const result: any = deserialize(await res.text());
+                    if (!reportResult(result)) showToast(`되돌렸습니다 · ${undo.label}`);
+                } catch {
+                    showAlert('되돌리지 못했습니다. 네트워크를 확인해주세요.');
+                }
+                await invalidateAll();
+            }
+        });
+    }
+
     function announcePenalty(d: any) {
         const p = d?.penalty;
         if (!p) {
@@ -231,8 +260,10 @@
             return;
         }
         const line = `${p.name} 페널티 ${p.points > 0 ? `+1 · ${p.reason}` : '−1 · 취소'} → ${p.total}/${p.threshold}점`;
+        // 임계에 닿은 경우는 멈춰 세워 읽혀야 하므로 모달로 간다. 되돌리기는
+        // 그 뒤 토스트가 받는다 — 예약 제한까지 걸린 조치일수록 무를 수 있어야 한다.
         if (p.blocked && p.points > 0) showAlert(`${line} — 누적 ${p.total}점이 되어 이제 예약이 제한됩니다.`, 'info');
-        else showToast(line);
+        toastUndoable(line, d?.undo);
     }
 
     // Remove Confirm Modal State
@@ -508,7 +539,12 @@
         return Array.from(bySession.values());
     })());
 
-    const queueTotal = $derived(queueGroups.reduce((n, g) => n + g.rows.length, 0));
+    // 큐 제목의 숫자는 "당신을 기다리는 것"이어야 한다. 이미 확정돼 아무 조치도
+    // 필요 없는 행까지 세면 첫날 들어온 매니저에게 잘못된 멘탈 모델을 가르친다.
+    const isQueueActionable = (r: any) =>
+        r.status === 'pending_approval' || r.status === 'waitlisted' || r.overdue;
+    const queueActionable = $derived(queueGroups.reduce((n, g) => n + g.rows.filter(isQueueActionable).length, 0));
+    const queueSettled = $derived(queueGroups.reduce((n, g) => n + g.rows.filter((r: any) => !isQueueActionable(r)).length, 0));
     const approvalCount = $derived(queueGroups.reduce((n, g) => n + g.rows.filter((r: any) => r.status === 'pending_approval').length, 0));
     const overdueCount = $derived(queueGroups.reduce((n, g) => n + g.rows.filter((r: any) => r.overdue).length, 0));
     // 노쇼 후보는 큐 상단으로 — 개입이 필요한 것부터 본다
@@ -529,7 +565,6 @@
         : null);
 
     // 방 현황 요약 스트립
-    const playingCount = $derived((games || []).length);
     const attendeeCount = $derived((attendees || []).length);
     // 종료 임박 순 정렬 — "진행 중인 게임" 목록에서 끝나가는 게임을 위로
     const playingSorted = $derived([...(games || [])].sort(
@@ -538,6 +573,9 @@
     // playingSorted[0]이 곧 가장 먼저 끝나는 게임이다.
     // "첫 종료까지 임박"은 어느 게임인지 말해주지 않으면 운영자가 목록을 다시 훑어야 했다.
     const nextEndingGame = $derived(playingSorted[0] ?? null);
+    // 시간이 지났는데도 playing으로 남은 게임 — 마감 전까지 아무도 닫아주지 않는다
+    const expiredGames = $derived(playingSorted.filter((g) => new Date(g.end_time).getTime() <= now));
+    const liveGames = $derived(playingSorted.filter((g) => new Date(g.end_time).getTime() > now));
     const nextGameEndTs = $derived(nextEndingGame ? new Date(nextEndingGame.end_time).getTime() : null);
     const nextEndMins = $derived(nextGameEndTs !== null ? Math.round((nextGameEndTs - now) / 60000) : null);
 
@@ -606,19 +644,40 @@
     </div>
     <div class="rs-stat">
         <span class="rs-label">진행 중인 게임</span>
-        <span class="rs-value">{playingCount}<span class="rs-unit">판</span></span>
+        <!-- 끝난 게임은 여기서 빠진다. 세 번째 칸이 정리 대기를 따로 센다. -->
+        <span class="rs-value">{liveGames.length}<span class="rs-unit">판</span></span>
     </div>
-    <div class="rs-stat">
-        <span class="rs-label">
-            첫 종료까지{#if nextEndingGame}<span class="rs-label-name" title={nextEndingGame.game_name}>· {nextEndingGame.game_name}</span>{/if}
-        </span>
-        {#if nextEndMins === null}
-            <span class="rs-value rs-value-none">없음</span>
-        {:else if nextEndMins <= 0}
-            <!-- 시간이 지난 게임은 "임박"이 아니라 이미 끝난 것이다. 목록의 행에서 닫을 수 있다. -->
-            <span class="rs-value rs-value-done">종료됨</span>
+    <!--
+        시간이 지난 게임은 "임박"이 아니라 처리 대기다. 스트립이 그걸 이미 아는데
+        운영자가 목록까지 스크롤해 찾아야 했다. 여기서 바로 닫는다.
+        버튼은 항상 자기가 닫을 게임의 이름을 달고 있으므로, 여러 판이 밀려 있어도
+        누를 때마다 무엇이 끝나는지가 분명하다.
+    -->
+    <div class="rs-stat" class:rs-stat-pending={expiredGames.length > 0}>
+        {#if expiredGames.length > 0}
+            <span class="rs-label">정리 대기</span>
+            <span class="rs-value rs-value-pending">{expiredGames.length}<span class="rs-unit">판</span></span>
+            <form method="POST" action="?/endGame" class="rs-action-form" use:enhance={() => {
+                return async ({ result, update }: { result: any, update: (options?: { reset?: boolean }) => Promise<void> }) => {
+                    if (!reportResult(result)) {
+                        const d = (result?.data as any) ?? {};
+                        toastUndoable(`${d.endedName ?? '게임'} 종료됨 · 승자는 기록하지 않았습니다`, d.undo);
+                    }
+                    await update();
+                };
+            }}>
+                <input type="hidden" name="id" value={expiredGames[0].id} />
+                <button type="submit" class="rs-action">{expiredGames[0].game_name} 종료</button>
+            </form>
         {:else}
-            <span class="rs-value" class:urgent={nextEndMins <= 5}>{nextEndMins}<span class="rs-unit">분</span></span>
+            <span class="rs-label">
+                첫 종료까지{#if nextEndingGame}<span class="rs-label-name" title={nextEndingGame.game_name}>· {nextEndingGame.game_name}</span>{/if}
+            </span>
+            {#if nextEndMins === null}
+                <span class="rs-value rs-value-none">없음</span>
+            {:else}
+                <span class="rs-value" class:urgent={nextEndMins <= 5}>{nextEndMins}<span class="rs-unit">분</span></span>
+            {/if}
         {/if}
     </div>
 </section>
@@ -627,7 +686,8 @@
 <section class="section-primary queue-section" aria-label="대기 및 승인 큐">
     <div class="section-header">
         <h2>
-            대기 · 승인 큐 ({queueTotal})
+            대기 · 승인 큐 ({queueActionable})
+            {#if queueSettled > 0}<span class="count-aside">확정 {queueSettled}</span>{/if}
             {#if approvalCount > 0}<span class="queue-flag approval">승인 대기 {approvalCount}</span>{/if}
             {#if overdueCount > 0}<span class="queue-flag overdue">노쇼 판정 초과 {overdueCount}</span>{/if}
         </h2>
@@ -749,7 +809,12 @@
 
 <section class="section-primary" aria-labelledby="sec-playing">
     <div class="section-header">
-        <h2 id="sec-playing">진행 중인 게임 ({(games || []).length})</h2>
+        <h2 id="sec-playing">
+            게임
+            <span class="count-split">
+                진행 중 {liveGames.length}{#if expiredGames.length > 0}<span class="count-pending">&nbsp;· 정리 대기 {expiredGames.length}</span>{/if}
+            </span>
+        </h2>
         <button class="btn-primary" onclick={() => {
             showModal = true;
             selectedGameName = '';
@@ -779,7 +844,7 @@
                     <span class="list-name">{game.game_name}</span>
                     <span class="list-meta">{game.players.length}명</span>
                     <span class="list-meta time-remaining">{getTimeRemaining(game.end_time, now)}</span>
-                    {#if !expired}<span class="list-arrow" aria-hidden="true">›</span>{/if}
+                    <span class="list-arrow" aria-hidden="true">›</span>
                 </button>
                 {#if expired}
                     <!--
@@ -790,7 +855,8 @@
                     <form method="POST" action="?/endGame" class="row-end-form" use:enhance={() => {
                         return async ({ result, update }: { result: any, update: (options?: { reset?: boolean }) => Promise<void> }) => {
                             if (!reportResult(result)) {
-                                showToast(`${(result?.data as any)?.endedName ?? game.game_name} 종료됨 · 승자는 기록하지 않았습니다`);
+                                const d = (result?.data as any) ?? {};
+                                toastUndoable(`${d.endedName ?? game.game_name} 종료됨 · 승자는 기록하지 않았습니다`, d.undo);
                             }
                             await update();
                         };
@@ -1690,9 +1756,56 @@
     .rs-value-none {
         color: var(--text-secondary);
     }
-    .rs-value-done {
-        font-size: var(--text-2xl);
+    .rs-value-pending {
+        color: var(--color-orange-text);
+    }
+    .rs-stat-pending .rs-unit {
+        color: var(--color-orange-text);
+    }
+    .rs-action-form {
+        margin-top: var(--space-2);
+    }
+    .rs-action {
+        min-height: 36px;
+        max-width: 100%;
+        padding: 0 var(--space-3);
+        border: 1px solid var(--color-orange-text);
+        border-radius: var(--radius-control);
+        background: var(--bg-primary);
+        color: var(--color-orange-text);
+        font-size: var(--text-sm);
+        font-weight: var(--weight-medium);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        cursor: pointer;
+    }
+    .rs-action:hover {
+        background: var(--color-warning-bg);
+    }
+    /* 3열 안에서는 버튼이 「스플렌더…」로 잘려 무엇을 끝내는지 말하지 못한다.
+       이름을 잃으면 여러 판이 밀렸을 때 누를 때마다 무엇이 끝나는지 알 수 없다.
+       좁은 화면에서는 이 칸만 한 줄을 차지한다. */
+    @media (max-width: 560px) {
+        .rs-stat-pending {
+            grid-column: 1 / -1;
+        }
+    }
+    /* 제목 옆 숫자 분해. 제목만큼 크면 제목이 아니게 된다. */
+    .count-split {
+        font-size: var(--text-sm);
+        font-weight: var(--weight-medium);
         color: var(--text-secondary);
+        margin-left: var(--space-2);
+    }
+    .count-pending {
+        color: var(--color-orange-text);
+    }
+    .count-aside {
+        font-size: var(--text-xs);
+        font-weight: var(--weight-regular, 400);
+        color: var(--text-secondary);
+        margin-left: var(--space-2);
     }
     /* 3열 스트립에 게임 이름까지 넣으면 좁은 화면에서 레이블이 두 줄로 깨진다.
        바로 아래 「진행 중인 게임」 목록이 같은 이름을 이미 보여준다. */
@@ -2901,6 +3014,10 @@
     .game-list-item:hover {
         background: var(--bg-surface);
     }
+    /* 만료 행은 자기 배경이 이미 틴트라 기본 hover가 아무 변화도 주지 못했다 */
+    .game-row.is-expired .game-list-item:hover {
+        background: transparent;
+    }
     .game-list-item:last-child {
         border-bottom: none;
     }
@@ -2932,13 +3049,19 @@
         width: auto;
         min-width: 0;
     }
+    /* 만료는 "비활성"이 아니라 "처리 대기"다. 회색으로 죽이면 조명이 나쁜 방에서
+       폰으로 볼 때 가장 안 보이는 상태가 되는데, 실은 지금 손이 가야 할 유일한 행이다.
+       이름은 본문색을 지키고, 상태는 색이 아니라 왼쪽 레일과 배경 틴트로 말한다. */
     .game-row.is-expired {
-        background: var(--bg-surface);
+        background: var(--color-warning-bg);
         padding-right: var(--space-2);
     }
-    .game-list-item.expired .list-name,
     .game-list-item.expired .time-remaining {
-        color: var(--text-secondary);
+        color: var(--color-orange-text);
+        font-weight: 700;
+    }
+    .game-row.is-expired:hover {
+        background: var(--color-warning-bg-strong);
     }
     .row-end-form {
         flex-shrink: 0;

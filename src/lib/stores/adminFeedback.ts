@@ -9,17 +9,41 @@ import { writable } from 'svelte/store';
 
 export type AlertKind = 'error' | 'success' | 'info';
 
+export type ToastAction = { label: string; run: () => void };
+
 export const toastMessage = writable('');
+/** 토스트에 실리는 단일 행동(주로 되돌리기). 없으면 null. */
+export const toastAction = writable<ToastAction | null>(null);
 export const alertMessage = writable('');
 export const alertKind = writable<AlertKind>('error');
 
 let toastTimer: ReturnType<typeof setTimeout> | null = null;
 
-/** 지나가도 되는 결과 */
-export function showToast(message: string) {
+const PLAIN_MS = 4500;
+/** 되돌리기가 달린 토스트는 더 오래 남는다 — 읽고 판단할 시간이 필요하다. */
+const ACTION_MS = 9000;
+
+/**
+ * 지나가도 되는 결과.
+ *
+ * action을 주면 토스트가 그 행동을 함께 싣는다. 되돌릴 수 있는 조치를
+ * 알릴 때 쓴다 — 결과를 알리는 자리와 무르는 자리가 같아야 실제로 눌린다.
+ */
+export function showToast(message: string, action: ToastAction | null = null) {
 	toastMessage.set(message);
+	toastAction.set(action);
 	if (toastTimer) clearTimeout(toastTimer);
-	toastTimer = setTimeout(() => toastMessage.set(''), 4500);
+	toastTimer = setTimeout(() => {
+		toastMessage.set('');
+		toastAction.set(null);
+	}, action ? ACTION_MS : PLAIN_MS);
+}
+
+/** 되돌리기를 누른 뒤처럼, 토스트를 즉시 거둬야 할 때 */
+export function dismissToast() {
+	if (toastTimer) clearTimeout(toastTimer);
+	toastMessage.set('');
+	toastAction.set(null);
 }
 
 /**

@@ -5,6 +5,7 @@ import type { Actions, PageServerLoad } from './$types';
 import { verifyAdminSession, verifyAttendeeSession } from '$lib/server/auth';
 import { updateSettingsCache, markAllLeft } from '$lib/server/ble';
 import { emitLiveEvent } from '$lib/server/liveEvents';
+import { recordUndo, takeUndo } from '$lib/server/adminUndo';
 
 async function canModifyGame(request: Request, gameId: string | number): Promise<boolean> {
     const sessionToken = request.headers.get('cookie')?.match(/admin_session=([^;]+)/)?.[1];
@@ -319,8 +320,9 @@ export const actions: Actions = {
             }
         }
 
-        const nameRows = await db.execute(sql`SELECT game_name FROM game_sessions WHERE id = ${id} AND status = 'playing'`);
-        const gameName = (nameRows as any[])[0]?.game_name as string | undefined;
+        const nameRows = await db.execute(sql`SELECT game_name, end_time FROM game_sessions WHERE id = ${id} AND status = 'playing'`);
+        const prev = (nameRows as any[])[0];
+        const gameName = prev?.game_name as string | undefined;
         if (!gameName) return fail(404, { error: '이미 종료되었거나 없는 게임입니다.' });
 
         try {
@@ -353,9 +355,17 @@ export const actions: Actions = {
             return fail(500, { error: '게임 종료에 실패했습니다.' });
         }
 
+        // 종료는 스트립과 목록 양쪽에서 확인창 없이 한 번에 실행된다.
+        // 되돌릴 수 있어야 그 한 번이 안전해진다.
+        const undo = await recordUndo(
+            'end_game',
+            { sessionId: Number(id), prevEndTime: prev.end_time },
+            `${gameName} 종료`
+        );
+
         // 승자 기록은 선택이다. 화면이 "기록되었습니다"라고 말할지 여기서 결정한다 —
         // 이전에는 승자가 없어도 무조건 기록됐다고 알렸다.
-        return { success: true, endedName: gameName, hadWinners: winnerIds.length > 0 };
+        return { success: true, endedName: gameName, hadWinners: winnerIds.length > 0, undo };
     },
     extendGame: async ({ request }) => {
         const data = await request.formData();
@@ -503,6 +513,98 @@ export const actions: Actions = {
      * 노쇼 처리 — 예약 취소 + 페널티 1점 + 대기열 승계를 한 번에 한다.
      * 운영자가 큐에서 발견한 것을 큐에서 끝내게 하려는 것이 목적이다.
      */
+    /**
+     * 방금 한 조치를 되돌린다.
+     *
+     * 클라이언트는 불투명한 id만 보낸다. 무엇을 어떻게 되돌릴지는 전부 서버에
+     * 남겨둔 원상태에서 읽는다 — 그러지 않으면 되돌리기가 "아무 페널티나 지우고
+     * 아무나 참가시키는" 임의 변경 수단이 된다. takeUndo가 소비 표시까지
+     * 한 번에 하므로 연타해도 반전이 두 번 적용되지 않는다.
+     */
+    undoAdminAction: async ({ request }) => {
+        const sessionToken = request.headers.get('cookie')?.match(/admin_session=([^;]+)/)?.[1];
+        if (!sessionToken || !(await verifyAdminSession(sessionToken))) return fail(403, { error: '권한이 없습니다.' });
+
+        const data = await request.formData();
+        const undoId = Number(data.get('undoId'));
+        if (!undoId) return fail(400, { error: '잘못된 요청입니다.' });
+
+        const taken = await takeUndo(undoId);
+        if (!taken.ok) {
+            const message =
+                taken.reason === 'already_undone'
+                    ? '이미 되돌린 조치입니다.'
+                    : taken.reason === 'expired'
+                      ? '되돌릴 수 있는 시간이 지났습니다.'
+                      : '되돌릴 기록을 찾지 못했습니다.';
+            return fail(410, { error: message });
+        }
+        const entry = taken;
+
+        const { applyPenalty } = await import('$lib/server/reservations');
+
+        try {
+            if (entry.kind === 'end_game') {
+                const { sessionId, prevEndTime } = entry.payload;
+                await db.transaction(async (tx) => {
+                    await tx.execute(sql`
+                        UPDATE game_sessions SET status = 'playing', end_time = ${prevEndTime}
+                        WHERE id = ${sessionId}
+                    `);
+                    await tx.execute(sql`
+                        UPDATE session_participants SET is_winner = false, score = NULL
+                        WHERE session_id = ${sessionId}
+                    `);
+                });
+            } else if (entry.kind === 'no_show') {
+                const { sessionId, attendeeId, status, createdAt, hadParticipant, penaltyLogId, promoted } = entry.payload;
+                await db.transaction(async (tx) => {
+                    // 1. 승계부터 되돌린다. 자리를 비워야 원래 사람이 돌아올 수 있다.
+                    if (promoted?.mode === 'joined') {
+                        await tx.execute(sql`
+                            DELETE FROM session_participants
+                            WHERE session_id = ${sessionId} AND attendee_id = ${promoted.attendeeId}
+                        `);
+                        await tx.execute(sql`
+                            INSERT INTO reservations (session_id, attendee_id, status, created_at)
+                            VALUES (${sessionId}, ${promoted.attendeeId}, 'waitlisted', ${promoted.createdAt})
+                        `);
+                    } else if (promoted?.mode === 'confirmed') {
+                        await tx.execute(sql`
+                            UPDATE reservations SET status = 'waitlisted' WHERE id = ${promoted.reservationId}
+                        `);
+                    }
+
+                    // 2. 예약을 원래 상태로 되돌린다. 신청 시각까지 살려야 대기 순서가 유지된다.
+                    await tx.execute(sql`
+                        INSERT INTO reservations (session_id, attendee_id, status, created_at)
+                        VALUES (${sessionId}, ${attendeeId}, ${status}, ${createdAt})
+                    `);
+                    if (hadParticipant) {
+                        await tx.execute(sql`
+                            INSERT INTO session_participants (session_id, attendee_id)
+                            VALUES (${sessionId}, ${attendeeId})
+                        `);
+                    }
+
+                    // 3. 페널티와 그 기록을 함께 지운다. 기록만 남으면 이력이 거짓이 된다.
+                    if (penaltyLogId) {
+                        await tx.execute(sql`DELETE FROM penalty_logs WHERE id = ${penaltyLogId}`);
+                    }
+                });
+                await applyPenalty(Number(attendeeId), -1);
+            } else {
+                return fail(400, { error: '되돌릴 수 없는 조치입니다.' });
+            }
+        } catch (error) {
+            console.error('undoAdminAction failed:', error);
+            return fail(500, { error: '되돌리지 못했습니다. 화면을 새로고침해 상태를 확인해주세요.' });
+        }
+
+        emitLiveEvent('games');
+        return { success: true, undoneLabel: entry.label };
+    },
+
     markNoShow: async ({ request }) => {
         const sessionToken = request.headers.get('cookie')?.match(/admin_session=([^;]+)/)?.[1];
         if (!sessionToken || !(await verifyAdminSession(sessionToken))) return fail(403, { error: '권한이 없습니다.' });
@@ -512,7 +614,7 @@ export const actions: Actions = {
         if (!reservationId) return fail(400, { error: '잘못된 요청입니다.' });
 
         const info = await db.execute(sql`
-            SELECT r.session_id, r.attendee_id, r.status, a.name AS attendee_name, gs.game_name
+            SELECT r.session_id, r.attendee_id, r.status, r.created_at, a.name AS attendee_name, gs.game_name
             FROM reservations r
             JOIN attendees a ON a.id = r.attendee_id
             JOIN game_sessions gs ON gs.id = r.session_id
@@ -523,6 +625,12 @@ export const actions: Actions = {
 
         const { applyPenalty, promoteWaitlist } = await import('$lib/server/reservations');
 
+        // 참가자 행이 원래 있었는지 알아야 되돌릴 때 없던 것을 만들지 않는다
+        const hadParticipant = (await db.execute(sql`
+            SELECT 1 FROM session_participants
+            WHERE session_id = ${row.session_id} AND attendee_id = ${row.attendee_id}
+        `)).length > 0;
+
         await db.transaction(async (tx) => {
             await tx.execute(sql`DELETE FROM reservations WHERE id = ${reservationId}`);
             await tx.execute(sql`
@@ -532,11 +640,26 @@ export const actions: Actions = {
         });
 
         const total = await applyPenalty(Number(row.attendee_id), 1);
-        await db.execute(sql`
+        const penaltyLogRows = await db.execute(sql`
             INSERT INTO penalty_logs (attendee_id, points, reason, total_after)
             VALUES (${row.attendee_id}, 1, 'no_show', ${total})
+            RETURNING id
         `);
-        await promoteWaitlist(row.session_id);
+        const promoted = await promoteWaitlist(row.session_id);
+
+        const undo = await recordUndo(
+            'no_show',
+            {
+                sessionId: Number(row.session_id),
+                attendeeId: Number(row.attendee_id),
+                status: row.status,
+                createdAt: row.created_at,
+                hadParticipant,
+                penaltyLogId: Number((penaltyLogRows as any[])[0]?.id),
+                promoted
+            },
+            `${row.attendee_name}님의 노쇼 처리`
+        );
 
         const thresholdRow = await db.execute(sql`SELECT value FROM system_settings WHERE key = 'penalty_threshold'`);
         const threshold = parseInt((thresholdRow as any[])[0]?.value ?? '3');
@@ -544,6 +667,7 @@ export const actions: Actions = {
         emitLiveEvent('games');
         return {
             success: true,
+            undo,
             penalty: {
                 name: row.attendee_name as string,
                 points: 1,

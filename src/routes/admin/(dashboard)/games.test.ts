@@ -2,6 +2,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { actions } from './+page.server';
 import { db } from '$lib/server/db/index';
+import { takeUndo } from '$lib/server/adminUndo';
 
 /**
  * db.transaction(cb) 는 tx를 받아 콜백을 실행한다.
@@ -22,6 +23,16 @@ vi.mock('$lib/server/auth', () => ({
     verifyAttendeeSession: vi.fn(async () => null)
 }));
 vi.mock('$lib/server/liveEvents', () => ({ emitLiveEvent: vi.fn() }));
+// 종료·노쇼는 되돌릴 수 있어야 하므로 원상태를 서버에 남긴다.
+// 그 기록 자체는 여기서 검증 대상이 아니라 손잡이만 확인한다.
+vi.mock('$lib/server/adminUndo', () => ({
+    recordUndo: vi.fn(async (_kind: string, _payload: unknown, label: string) => ({ id: 1, label })),
+    takeUndo: vi.fn()
+}));
+vi.mock('$lib/server/reservations', () => ({
+    applyPenalty: vi.fn(async () => 0),
+    promoteWaitlist: vi.fn(async () => null)
+}));
 vi.mock('$lib/server/ble', () => ({ updateSettingsCache: vi.fn(), markAllLeft: vi.fn() }));
 
 /** 관리자 쿠키를 가진 요청. canModifyGame이 headers.get('cookie')를 읽는다. */
@@ -106,7 +117,12 @@ describe('Game Management', () => {
                 request: makeRequest({ id: '100', winnerIds: ['1'], score_1: '10' })
             } as any);
 
-            expect(result).toEqual({ success: true, endedName: '스플렌더', hadWinners: true });
+            expect(result).toEqual({
+                success: true,
+                endedName: '스플렌더',
+                hadWinners: true,
+                undo: { id: 1, label: '스플렌더 종료' }
+            });
         });
 
         it('승자를 고르지 않아도 게임은 닫히고 hadWinners는 false다', async () => {
@@ -118,7 +134,48 @@ describe('Game Management', () => {
 
             const result = await actions.endGame({ request: makeRequest({ id: '100' }) } as any);
 
-            expect(result).toEqual({ success: true, endedName: '아그리콜라', hadWinners: false });
+            expect(result).toEqual({
+                success: true,
+                endedName: '아그리콜라',
+                hadWinners: false,
+                undo: { id: 1, label: '아그리콜라 종료' }
+            });
+        });
+    });
+
+    describe('undoAdminAction', () => {
+        it('되돌릴 수 없는 기록이면 왜인지 구분해 알린다', async () => {
+            (takeUndo as any).mockResolvedValueOnce({ ok: false, reason: 'already_undone' });
+            const already = await actions.undoAdminAction({ request: makeRequest({ undoId: '7' }) } as any);
+            expect(already).toEqual({ status: 410, data: { error: '이미 되돌린 조치입니다.' } });
+
+            (takeUndo as any).mockResolvedValueOnce({ ok: false, reason: 'expired' });
+            const expired = await actions.undoAdminAction({ request: makeRequest({ undoId: '7' }) } as any);
+            expect(expired).toEqual({ status: 410, data: { error: '되돌릴 수 있는 시간이 지났습니다.' } });
+        });
+
+        it('무엇을 되돌릴지는 클라이언트가 아니라 서버 기록에서 읽는다', async () => {
+            // 클라이언트는 불투명한 id만 보낸다. payload를 실어 보내도 무시돼야
+            // 되돌리기가 임의 변경 수단이 되지 않는다.
+            (takeUndo as any).mockResolvedValueOnce({
+                ok: true,
+                kind: 'end_game',
+                label: '스플렌더 종료',
+                payload: { sessionId: 42, prevEndTime: '2026-09-03T00:00:00Z' }
+            });
+            (db.execute as any).mockResolvedValue([]);
+
+            const result = await actions.undoAdminAction({
+                request: makeRequest({ undoId: '7', sessionId: '999', payload: '{"sessionId":999}' })
+            } as any);
+
+            expect(result).toEqual({ success: true, undoneLabel: '스플렌더 종료' });
+            expect(takeUndo).toHaveBeenCalledWith(7);
+            // 서버 기록의 42가 쓰이고 클라이언트가 보낸 999는 어디에도 닿지 않는다
+            const touched = (db.execute as any).mock.calls
+                .map(([q]: any[]) => JSON.stringify(q?.queryChunks ?? []))
+                .join(' ');
+            expect(touched).not.toContain('999');
         });
     });
 });
