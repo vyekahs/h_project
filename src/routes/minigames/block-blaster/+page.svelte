@@ -372,6 +372,7 @@
 			<div class="center-group">
 			{#if game.isSpecialMode}
 				<AbilityInventory
+				sealedSlots={game.sealedSlots}
 					inventory={game.inventory}
 					pendingSlot={game.pendingAbilitySlot}
 					onSlotClick={(i: number) => {

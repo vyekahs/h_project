@@ -77,7 +77,10 @@ export function countdownForStage(stage: number): number {
  * 만료와 해결을 분리한 지금은 그 조정의 전제가 사라졌으므로 1.0으로 되돌린다.
  */
 function countdownScaleFor(type: DangerType): number {
-	void type;
+	// seal은 보드를 점거하지 않는 대신 해제에 "다른 능력 사용"이 필요하다.
+	// 능력 쿨다운이 7~13턴이라 일반 카운트(4~7턴)로는 물리적으로 해제가 불가능했다
+	// (해결률 1.6%). 시간을 넉넉히 준다.
+	if (type === 'seal') return 2;
 	return 1;
 }
 
@@ -140,14 +143,23 @@ const DANGER_WEIGHTS: Record<DangerType, number> = {
 	// 난이도는 만료 크레딧 쪽에서 조인다.
 	jam: 22,
 
+	// --- 세 번째 압박 축: 능력 ---
+	// 보드 축과 트레이 축은 결국 둘 다 "놓을 자리"로 수렴한다. clear 지배를
+	// 구조적으로 공격하는 유일한 방법은 능력 자체를 공격하는 것이다.
+	// 봉인은 가장 자주 쓴 능력을 우선 노리므로 clear 몰빵 빌드가 자동으로 처벌받고,
+	// 5슬롯을 예비 카드로 채울 이유가 생긴다.
+	seal: 18,
+
 	// --- 풀에서 제외(0) ---
 	// 만료와 해결을 분리한 뒤 실제 플레이어 해결률을 재보니 아래 3종은 대응이
 	// 사실상 불가능했다. 부분 크레딧으로 완화됐을 뿐 "대응하는 위험"이 아니라
 	// "페널티 타이머"로만 동작한다. 코드는 남겨두어 언제든 되살릴 수 있게 한다.
 	portal: 0,           // 14.5% — 블록을 놓으면 짝꿍 자리에 셀이 **추가**되어
 	                     //         대응할수록 불리해지는 역방향 기믹
-	rust: 0,             // 34.4% — 만료(수명 종료)가 오히려 셀을 지워주는 이득이라
-	                     //         "위험"이라는 의미가 성립하지 않음
+	// rust 재활성 — 제외했던 이유는 강도가 아니라 **의미론**이었다. 만료 시 부식 셀이
+	// 그냥 사라져서 방치가 이득이었다. 만료 시 석화로 남기도록 고쳐 "방치하면 보드가
+	// 굳는다"로 의미를 바로잡았다. 해결률 34.4%로 강도 자체는 적절했다.
+	rust: 20,
 	quest: 0             // 6.8%  — 콤보≥3/십자/같은색줄을 의도적으로 노리기 어려움.
 	                     //         위험 슬롯이 아니라 별도 보너스 목표에 어울림
 };
@@ -216,6 +228,7 @@ export function generateDangerStage(stageNumber: number, grid: BoardGrid): Dange
 			case 'portal':
 			case 'rust':
 			case 'jam':
+			case 'seal':
 			case 'quest': return 1;
 			case 'hazard-zone':
 			case 'storm':
@@ -430,6 +443,19 @@ function createDanger(
 				delayTurns: 0
 			};
 		}
+		case 'seal': {
+			// 봉인 — 보드를 점거하지 않는다. 활성화 시 인벤토리 슬롯 하나를 잠그고,
+			// 다른 능력을 일정 횟수 사용하면 풀린다. gameLogic에서 상태를 관리한다.
+			return {
+				id: generateId('seal'),
+				type: 'seal',
+				cells: [],
+				countdown: cd,
+				initialCountdown: cd,
+				resolved: false,
+				delayTurns: 0
+			};
+		}
 		case 'jam': {
 			// 고장 — 보드를 점거하지 않는다(cells 빈 배열). 활성화 시점에 트레이 한 칸을
 			// 놓기 어려운 불량 블록으로 채우고, 그 블록이 트레이에서 사라지면 해결.
@@ -633,6 +659,10 @@ export function isDangerResolved(danger: Danger, grid: BoardGrid, cellMeta?: Cel
 		}
 		return true;
 	}
+	if (danger.type === 'seal') {
+		// seal은 인벤토리 상태로 판정 — gameLogic에서 명시적으로 resolved 처리
+		return false;
+	}
 	if (danger.type === 'jam') {
 		// jam은 보드가 아니라 트레이 상태로 판정 — gameLogic에서 명시적으로 resolved 처리
 		return false;
@@ -667,6 +697,8 @@ export function dangerLabel(type: DangerType): string {
 			return '위험 구역';
 		case 'jam':
 			return '고장 블록';
+		case 'seal':
+			return '스킬 봉인';
 		case 'reinforced':
 			return '강화 블록';
 		case 'spreading':
@@ -707,6 +739,8 @@ export function dangerDescription(type: DangerType): string {
 			return '카운트 종료 전에 영역의 셀을 모두 비우세요. 남은 셀은 스킬이 통하지 않는 블록으로 변환됩니다.';
 		case 'jam':
 			return '트레이에 불량 블록이 들어옵니다. 보드에 놓거나 블록 교체·변형 스킬로 없애세요.';
+		case 'seal':
+			return '스킬 슬롯 하나가 봉인됩니다. 다른 스킬을 사용해 풀어내세요.';
 		case 'reinforced':
 			return '회색 강화 블록은 HP 0이 되면 사라집니다.';
 		case 'spreading':

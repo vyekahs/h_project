@@ -162,10 +162,12 @@ export function chooseMove(game: Game): Move | null {
 function tryUseAbility(game: Game, stuck: boolean): boolean {
 	const inv = game.inventory;
 	const usable: number[] = [];
+	const sealedIdx = new Set<number>((game.sealedSlots ?? []).map((x: { slotIndex: number }) => x.slotIndex));
 	for (let i = 0; i < inv.length; i++) {
 		const o = inv[i];
 		if (isPassive(o.ability)) continue;
 		if (o.cooldownRemaining > 0) continue;
+		if (sealedIdx.has(i)) continue; // 봉인된 슬롯은 쓸 수 없다
 		usable.push(i);
 	}
 	if (usable.length === 0) return false;
@@ -183,13 +185,16 @@ function tryUseAbility(game: Game, stuck: boolean): boolean {
 
 	const dCells = dangerCellSet(game);
 
+	// 봉인 해제 — 봉인이 걸려 있으면 아무 능력이나 쓰는 것 자체가 해제 진행이 된다.
+	// (사용 가능한 능력이 있으면 아래 일반 분기가 처리하므로 별도 조치는 불필요)
+
 	// JAM(고장) 대응 — 트레이의 불량 블록은 보드 능력으로는 손댈 수 없고
 	// swap-block / rotate-block 같은 조작 계열만 해소할 수 있다.
 	const jamIdx = game.currentBlocks.findIndex((b, i) => !!b?.jamId && !game.isSlotLocked(i));
 	if (jamIdx >= 0) {
 		for (const si of usable) {
 			const id = inv[si].ability.id;
-			if (id !== 'swap-block' && id !== 'rotate-block') continue;
+			if (id !== 'swap-block' && id !== 'rotate-block' && id !== 'shrink') continue;
 			const cdBefore = inv[si].cooldownRemaining;
 			game.useAbility(si);
 			if (game.pendingAbilitySlot !== si && inv[si].cooldownRemaining === cdBefore) continue;
@@ -228,6 +233,41 @@ function tryUseAbility(game: Game, stuck: boolean): boolean {
 			game.useAbility(si);
 			game.applyAbilityToTarget({ kind: 'cell', row: 0, col: [...dCols][0] });
 			return true;
+		}
+	}
+
+	// chisel — 석화/강화가 몰린 곳을 부순다 (라인 완성 없이 검은 돌을 없앨 유일한 수단)
+	for (const si of usable) {
+		if (inv[si].ability.id !== 'chisel') continue;
+		const meta = game.cellMeta as Record<string, { petrified?: boolean; hp?: number }>;
+		let bestR = -1, bestC = -1, bestN = 0;
+		for (let r = 0; r < GRID_SIZE; r++) {
+			for (let c = 0; c < GRID_SIZE; c++) {
+				let n = 0;
+				for (let dr = -1; dr <= 1; dr++) {
+					for (let dc = -1; dc <= 1; dc++) {
+						const m = meta[`${r + dr},${c + dc}`];
+						if (m?.petrified || m?.hp != null) n++;
+					}
+				}
+				if (n > bestN) { bestN = n; bestR = r; bestC = c; }
+			}
+		}
+		if (bestN === 0) continue; // 부술 게 없으면 다른 능력으로
+		const cdBefore = inv[si].cooldownRemaining;
+		game.useAbility(si);
+		if (game.pendingAbilitySlot !== si && inv[si].cooldownRemaining === cdBefore) continue;
+		game.applyAbilityToTarget({ kind: 'cell', row: bestR, col: bestC });
+		return true;
+	}
+
+	// freeze — doom 카운트가 임박했을 때만
+	if (imminent) {
+		for (const si of usable) {
+			if (inv[si].ability.id !== 'freeze') continue;
+			const cdBefore = inv[si].cooldownRemaining;
+			game.useAbility(si);
+			if (inv[si].cooldownRemaining !== cdBefore) return true;
 		}
 	}
 

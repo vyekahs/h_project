@@ -119,7 +119,38 @@ export const ABILITY_POOL: Ability[] = [
 		targetType: 'block'
 	},
 
-	// === Defense — 액티브 (1종) ===
+	// === Clear — 석화/강화 전용 (1종) ===
+	{
+		id: 'chisel',
+		name: '정 (끌)',
+		description: '석화·강화된 셀을 직접 부숩니다.',
+		category: 'clear',
+		rarity: 'rare',
+		icon: '⛏️',
+		targetType: 'cell'
+	},
+
+	// === Manipulate — 추가 (1종) ===
+	{
+		id: 'shrink',
+		name: '블록 축소',
+		description: '선택한 트레이 블록의 크기를 줄입니다.',
+		category: 'manipulate',
+		rarity: 'common',
+		icon: '🗜️',
+		targetType: 'block'
+	},
+
+	// === Defense — 액티브 (2종) ===
+	{
+		id: 'freeze',
+		name: '시간 정지',
+		description: '모든 위험의 카운트다운을 늦춥니다.',
+		category: 'defense',
+		rarity: 'rare',
+		icon: '⏳',
+		targetType: 'instant'
+	},
 	{
 		id: 'undo',
 		name: '되돌리기',
@@ -191,6 +222,18 @@ export function getLevelEffect(id: string, level: number): string {
 			if (level === 1) return '선택한 블록을 90도 회전한 모양으로 변경합니다.';
 			if (level === 2) return '선택한 블록을 90/180/270도 회전 중 원하는 모양으로 변경합니다.';
 			return '선택한 블록을 90/180/270도 회전, 좌우 반전, 상하 반전 중 원하는 모양으로 변경합니다.';
+		case 'chisel':
+			if (level === 1) return '선택한 셀 1칸의 석화·강화를 부숩니다. 라인 완성 없이 검은 돌을 없앨 수 있는 유일한 수단입니다.';
+			if (level === 2) return '선택한 셀과 인접한 상하좌우까지 최대 5칸의 석화·강화를 부숩니다.';
+			return '선택한 셀 중심 3×3(최대 9칸)의 석화·강화를 부숩니다.';
+		case 'shrink':
+			if (level === 1) return '선택한 트레이 블록에서 셀 1개를 덜어냅니다.';
+			if (level === 2) return '선택한 트레이 블록에서 셀 2개를 덜어냅니다.';
+			return '선택한 트레이 블록을 1×1 단일 블록으로 만듭니다.';
+		case 'freeze':
+			if (level === 1) return '모든 활성 위험의 카운트다운을 2턴 되돌립니다.';
+			if (level === 2) return '모든 활성 위험의 카운트다운을 3턴 되돌립니다.';
+			return '모든 활성 위험의 카운트다운을 4턴 되돌립니다.';
 		case 'undo':
 			if (level === 1) return '마지막에 배치한 블록 1개를 되돌립니다. 보드와 트레이가 직전 상태로 돌아갑니다.';
 			if (level === 2) return '최근에 배치한 블록 2개까지 되돌릴 수 있습니다.';
@@ -234,6 +277,12 @@ export function baseCooldown(ability: Ability): number {
 		case 'swap-block':
 		case 'rotate-block':
 			return 7; // 8 → 불운 보정은 자주 쓰여야 의미가 있음
+		case 'chisel':
+			return 11; // 검은 돌 제거는 clear 계열이 못 하는 일 — 엔드리스 구간의 핵심 대응 수단
+		case 'shrink':
+			return 7; // 트레이 압박(jam) 대응 + 위기 탈출
+		case 'freeze':
+			return 12; // 모든 위험을 동시에 늦추므로 강력
 		case 'undo':
 			return 9; // 12 → 리스크 헷지가 한 게임에 몇 번은 돌아오게
 		default:

@@ -25,7 +25,7 @@ export type BoardGrid = CellColor[][];
 // ===========================================================================
 
 /** 위험 종류 */
-export type DangerType = 'doom-row' | 'doom-col' | 'hazard-zone' | 'reinforced' | 'spreading' | 'storm' | 'portal' | 'rust' | 'chaser' | 'quest' | 'jam';
+export type DangerType = 'doom-row' | 'doom-col' | 'hazard-zone' | 'reinforced' | 'spreading' | 'storm' | 'portal' | 'rust' | 'chaser' | 'quest' | 'jam' | 'seal';
 
 /** QUEST 패턴 종류 — 사용자가 카운트 동안 한 번 달성하면 위험 해결 */
 export type QuestPatternType = 'combo' | 'same-color-line' | 'cross';

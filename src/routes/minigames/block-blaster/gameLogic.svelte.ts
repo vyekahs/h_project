@@ -339,6 +339,12 @@ export function createBlockBlasterGame() {
 	 * 클래식이 오래 버티는 게임이라면, 플러스는 빠르게 처리하는 게임이라는 축 분리.
 	 */
 	let swiftStreak = $state(0);
+	/**
+	 * 봉인된 능력 슬롯 — { dangerId, slotIndex, usesLeft }.
+	 * 봉인 중에는 그 슬롯을 쓸 수 없고 쿨다운도 흐르지 않는다.
+	 * 다른 능력을 usesLeft회 사용하면 풀린다.
+	 */
+	let sealedSlots = $state<{ dangerId: string; slotIndex: number; usesLeft: number }[]>([]);
 	const TOKENS_PER_DRAFT = 3;
 	/** 이번 드래프트에서 남은 리롤 횟수 (드래프트가 열릴 때마다 1로 리셋) */
 	let rerollsRemaining = $state(0);
@@ -555,7 +561,10 @@ export function createBlockBlasterGame() {
 	}
 
 	function tickCooldowns() {
-		for (const o of inventory) {
+		for (let i = 0; i < inventory.length; i++) {
+			// 봉인된 슬롯은 쿨다운이 흐르지 않는다 — 봉인의 실질 비용
+			if (sealedSlots.some(x => x.slotIndex === i)) continue;
+			const o = inventory[i];
 			if (o.cooldownRemaining > 0) o.cooldownRemaining--;
 		}
 	}
@@ -619,6 +628,7 @@ export function createBlockBlasterGame() {
 				bonusDraftsRemaining,
 				draftTokens,
 				hasCompletedRun,
+				sealedSlots,
 				cellMeta,
 				lastSnapshots,
 				nextBlocksQueue,
@@ -685,6 +695,7 @@ export function createBlockBlasterGame() {
 			bonusDraftsRemaining = data.bonusDraftsRemaining || 0;
 			draftTokens = data.draftTokens || 0;
 			hasCompletedRun = data.hasCompletedRun || false;
+			sealedSlots = data.sealedSlots || [];
 			cellMeta = data.cellMeta || {};
 			lastSnapshots = data.lastSnapshots || [];
 			nextBlocksQueue = data.nextBlocksQueue || [];
@@ -763,6 +774,7 @@ export function createBlockBlasterGame() {
 		rerollsRemaining = 0;
 		hasCompletedRun = false;
 		swiftStreak = 0;
+		sealedSlots = [];
 		cellMeta = {};
 		pendingDangerClear = null;
 		gameOverReason = null;
@@ -1353,6 +1365,30 @@ export function createBlockBlasterGame() {
 			injectJamBlock(d, stageNumber);
 			return;
 		}
+		if (d.type === 'seal') {
+			// 쿨다운이 가장 짧은(=가장 자주 쓰는) 액티브 슬롯을 노린다.
+			// clear 몰빵 빌드가 자동으로 처벌받고, 예비 카드를 들 이유가 생긴다.
+			let bestIdx = -1;
+			let bestCd = Infinity;
+			for (let i = 0; i < inventory.length; i++) {
+				const o = inventory[i];
+				if (isPassive(o.ability)) continue;
+				if (sealedSlots.some(x => x.slotIndex === i)) continue;
+				const cd2 = computeCooldown(o.ability, o.level);
+				if (cd2 < bestCd) { bestCd = cd2; bestIdx = i; }
+			}
+			if (bestIdx < 0) {
+				// 봉인할 액티브가 없으면 즉시 해결 처리 (빈 위험으로 남기지 않음)
+				d.resolved = true;
+				return;
+			}
+			// 해제에 필요한 "다른 능력 사용" 횟수.
+			// 처음엔 2~3회였는데 해결률이 1.6%로 사실상 불가능이었다. 봉인은 가장 자주
+			// 쓰는(=쿨다운이 짧은) 능력을 노리는데, 능력 쿨다운이 7~13턴이라 짧은 카운트
+			// 안에 다른 능력을 2~3회 쓰는 것은 성립하지 않았다.
+			sealedSlots = [...sealedSlots, { dangerId: d.id, slotIndex: bestIdx, usesLeft: stageNumber <= 5 ? 1 : 2 }];
+			return;
+		}
 		if (
 			d.type !== 'reinforced' &&
 			d.type !== 'spreading' &&
@@ -1631,14 +1667,21 @@ export function createBlockBlasterGame() {
 					rustSpreadOnce(d);
 				}
 				if (d.countdown === 0) {
-					// 카운트 만료 — 부식 가족 셀 모두 제거 + 자연 종료 (보너스 X)
+					// 카운트 만료 — 부식이 굳어 석화로 남는다.
+					//
+					// 원래는 부식 셀이 그냥 사라졌다. 그래서 만료가 오히려 이득이라
+					// "위험"이라는 의미가 성립하지 않았고(방치가 최적), 결국 풀에서
+					// 제외했었다. 강도(해결률 34.4%)가 아니라 의미론이 문제였으므로
+					// 만료 결과를 뒤집어 되살린다 — 방치하면 보드가 굳는다.
 					const next = cloneGrid(grid);
 					const nextMeta = { ...cellMeta };
 					for (const [r, c] of d.cells) {
-						if (nextMeta[cellKey(r, c)]?.rustDangerId === d.id) {
-							next[r][c] = 0;
-							delete nextMeta[cellKey(r, c)];
-						}
+						const k = cellKey(r, c);
+						if (nextMeta[k]?.rustDangerId !== d.id) continue;
+						const { rustMark: _rm, rustDangerId: _rd, ...rest } = nextMeta[k];
+						void _rm; void _rd;
+						if (next[r][c] === 0) next[r][c] = 5 as CellColor;
+						nextMeta[k] = { ...rest, petrified: true };
 					}
 					grid = next;
 					cellMeta = nextMeta;
@@ -1664,6 +1707,24 @@ export function createBlockBlasterGame() {
 					if (isMatchedToLock(d, ds)) {
 						ds.lockedSlotDangerIds = ds.lockedSlotDangerIds.filter(id => id !== d.id);
 					}
+				}
+			}
+			if (d.type === 'seal' && d.countdown === 0) {
+				// 만료 — 봉인은 풀리되 그 능력의 레벨이 1 내려간다(빌드에 영구 손상).
+				const sealed = sealedSlots.find(x => x.dangerId === d.id);
+				if (sealed) {
+					const o = inventory[sealed.slotIndex];
+					if (o && o.level > 1) {
+						o.level = (o.level - 1) as 1 | 2 | 3;
+						if (o.ability.id === 'extra-slot') syncTraySizeToInventory();
+					}
+					sealedSlots = sealedSlots.filter(x => x.dangerId !== d.id);
+				}
+				d.resolved = true;
+				d.expired = true;
+				applyExpiryCredit();
+				if (isMatchedToLock(d, ds)) {
+					ds.lockedSlotDangerIds = ds.lockedSlotDangerIds.filter(id => id !== d.id);
 				}
 			}
 			if (d.type === 'jam' && d.countdown === 0) {
@@ -2023,6 +2084,41 @@ export function createBlockBlasterGame() {
 	 */
 	const EXPIRY_CREDIT = 0.25;
 
+	/**
+	 * 능력을 실제로 사용했을 때 호출 — 봉인 해제 카운트를 진행한다.
+	 * 봉인된 슬롯 자신은 쓸 수 없으므로, "다른 능력"이라는 조건은 자동으로 만족된다.
+	 */
+	function progressSeals() {
+		if (sealedSlots.length === 0) return;
+		const ds = currentDangerStage;
+		const next: typeof sealedSlots = [];
+		for (const sealed of sealedSlots) {
+			const remaining = sealed.usesLeft - 1;
+			if (remaining > 0) {
+				next.push({ ...sealed, usesLeft: remaining });
+				continue;
+			}
+			// 해제 — 해당 위험을 해결 처리
+			const d = ds?.dangers.find(x => x.id === sealed.dangerId);
+			if (d && !d.resolved) {
+				d.resolved = true;
+				score += 200;
+				swiftStreak++;
+				draftTokens++;
+				if (draftTokens >= TOKENS_PER_DRAFT) {
+					draftTokens -= TOKENS_PER_DRAFT;
+					bonusDraftsRemaining++;
+				}
+				resolvedDangerCount++;
+				checkStageClearByCount();
+				if (ds && isMatchedToLock(d, ds)) {
+					ds.lockedSlotDangerIds = ds.lockedSlotDangerIds.filter(id => id !== d.id);
+				}
+			}
+		}
+		sealedSlots = next;
+	}
+
 	/** 만료(실패) 공통 처리 — 부분 크레딧 지급 + 신속 스택 리셋 */
 	function applyExpiryCredit() {
 		swiftStreak = 0; // 하나라도 놓치면 연속이 끊긴다
@@ -2292,6 +2388,11 @@ export function createBlockBlasterGame() {
 		const slot = inventory[slotIndex];
 		if (!slot) return;
 		if (isPassive(slot.ability)) return;
+		if (sealedSlots.some(x => x.slotIndex === slotIndex)) {
+			const remain = sealedSlots.find(x => x.slotIndex === slotIndex)?.usesLeft ?? 0;
+			showAlert(`봉인됨 — 다른 스킬 ${remain}회 사용 시 해제`);
+			return;
+		}
 		if (slot.cooldownRemaining > 0) {
 			showAlert(`쿨다운 ${slot.cooldownRemaining}턴 남음`);
 			return;
@@ -2333,6 +2434,7 @@ export function createBlockBlasterGame() {
 			const ok = executeAbility(slot.ability, slot.level, null);
 			if (!ok) return; // 발동 실패 시 쿨다운도 적용 X
 			slot.cooldownRemaining = computeCooldown(slot.ability, slot.level);
+			progressSeals();
 			handleSpecialTurnEnd({ tickCountdowns: false });
 			saveGame();
 			// 능력 사용 후 게임오버 가능성 체크
@@ -2365,6 +2467,7 @@ export function createBlockBlasterGame() {
 		selectedBlockIndex = null;
 
 		inventory[slotIndex].cooldownRemaining = computeCooldown(slot.ability, slot.level);
+		progressSeals();
 		pendingTransform = null;
 		handleSpecialTurnEnd({ tickCountdowns: false });
 		saveGame();
@@ -2392,6 +2495,7 @@ export function createBlockBlasterGame() {
 		selectedBlockIndex = null;
 
 		inventory[slotIndex].cooldownRemaining = computeCooldown(slot.ability, slot.level);
+		progressSeals();
 		pendingSwap = null;
 		handleSpecialTurnEnd({ tickCountdowns: false });
 		saveGame();
@@ -2414,6 +2518,7 @@ export function createBlockBlasterGame() {
 		}
 		addBlockToTray({ cells, color });
 		inventory[slotIndex].cooldownRemaining = computeCooldown(slot.ability, slot.level);
+		progressSeals();
 		pendingDraw = null;
 		selectedBlockIndex = null;
 		handleSpecialTurnEnd({ tickCountdowns: false });
@@ -2460,6 +2565,7 @@ export function createBlockBlasterGame() {
 		cellMeta = nextMeta;
 
 		inventory[slotIndex].cooldownRemaining = computeCooldown(slot.ability, slot.level);
+		progressSeals();
 		pendingColorChoose = null;
 		selectedBlockIndex = null;
 		handleSpecialTurnEnd({ tickCountdowns: false });
@@ -2555,6 +2661,7 @@ export function createBlockBlasterGame() {
 		}
 
 		inventory[slotIndex].cooldownRemaining = computeCooldown(ability, level);
+		progressSeals();
 		pendingAbilitySlot = null;
 		selectedBlockIndex = null;
 		handleSpecialTurnEnd({ tickCountdowns: false });
@@ -2700,6 +2807,81 @@ export function createBlockBlasterGame() {
 				selectedBlockIndex = null;
 				return true;
 			}
+			case 'chisel': {
+				// 석화·강화 셀을 직접 부순다. 검은 돌은 라인 완성으로만 사라지므로
+				// (능력 경로에서는 면역) 엔드리스 래칫에 대응할 유일한 수단이다.
+				if (!target || target.kind !== 'cell') return false;
+				const { row, col } = target;
+				const area: [number, number][] = [];
+				if (level === 1) area.push([row, col]);
+				else if (level === 2) {
+					area.push([row, col], [row - 1, col], [row + 1, col], [row, col - 1], [row, col + 1]);
+				} else {
+					for (let dr = -1; dr <= 1; dr++)
+						for (let dc = -1; dc <= 1; dc++) area.push([row + dr, col + dc]);
+				}
+				const nextGrid = cloneGrid(grid);
+				const nextMeta = { ...cellMeta };
+				let broke = 0;
+				for (const [r, c] of area) {
+					if (r < 0 || r >= GRID_SIZE || c < 0 || c >= GRID_SIZE) continue;
+					const meta = nextMeta[cellKey(r, c)];
+					if (!meta?.petrified && meta?.hp == null) continue;
+					nextGrid[r][c] = 0;
+					delete nextMeta[cellKey(r, c)];
+					broke++;
+				}
+				if (broke === 0) {
+					showAlert('부술 석화·강화 셀이 없습니다.');
+					return false;
+				}
+				grid = nextGrid;
+				cellMeta = nextMeta;
+				triggerAbilityFx('bomb', area.filter(([r, c]) => r >= 0 && r < GRID_SIZE && c >= 0 && c < GRID_SIZE), [row, col]);
+				return true;
+			}
+			case 'shrink': {
+				// 트레이 블록에서 셀을 덜어낸다 — jam 대응 및 위기 탈출용.
+				if (!target || target.kind !== 'block') return false;
+				const block = currentBlocks[target.index];
+				if (!block) return false;
+				const removeCount = level >= 3 ? block.cells.length - 1 : level;
+				if (block.cells.length - removeCount < 1) {
+					showAlert('더 줄일 수 없는 블록입니다.');
+					return false;
+				}
+				// 뒤쪽 셀부터 덜어내되, 남은 셀이 연결을 유지하도록 정규화만 다시 한다.
+				const kept = block.cells.slice(0, block.cells.length - removeCount);
+				let minR = Infinity, minC = Infinity;
+				for (const [r, c] of kept) { if (r < minR) minR = r; if (c < minC) minC = c; }
+				const normalized = kept.map(([r, c]) => [r - minR, c - minC] as [number, number]);
+				const next = [...currentBlocks];
+				// jamId는 유지 — 축소해도 그 위험을 처리한 것으로 인정하려면 아래 해결 판정이 필요
+				next[target.index] = { ...block, cells: normalized };
+				currentBlocks = next;
+				return true;
+			}
+			case 'freeze': {
+				// 모든 활성 위험의 카운트다운을 되돌린다 — 시간 압박 축에 대한 유일한 대응.
+				if (!currentDangerStage) {
+					showAlert('활성 위험이 없습니다.');
+					return false;
+				}
+				const gain = level + 1; // Lv1: 2턴, Lv2: 3턴, Lv3: 4턴
+				let affected = 0;
+				for (const d of currentDangerStage.dangers) {
+					if (d.resolved || d.delayTurns > 0) continue;
+					if (d.type === 'reinforced') continue; // 카운트다운을 쓰지 않음
+					d.countdown += gain;
+					if (d.countdown > d.initialCountdown) d.countdown = d.initialCountdown;
+					affected++;
+				}
+				if (affected === 0) {
+					showAlert('되돌릴 위험이 없습니다.');
+					return false;
+				}
+				return true;
+			}
 			case 'single-cell': {
 				// Lv1: 1×1 블록 즉시 추가 (빈 슬롯 없으면 트레이 확장)
 				// Lv2/Lv3: 모달에서 사용자가 모양 그리기 — useAbility에서 처리하므로 여기 도달 X
@@ -2800,6 +2982,7 @@ export function createBlockBlasterGame() {
 		get peekBlocks() { return getPeekBlocks(); },
 		get isCleared() { return hasCompletedRun; },
 		get swiftStreak() { return swiftStreak; },
+		get sealedSlots() { return sealedSlots; },
 		get maxStage() { return MAX_STAGE; },
 		get stagesCleared() { return stagesCleared; },
 		get currentDangerStage() { return currentDangerStage; },
