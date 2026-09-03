@@ -687,18 +687,21 @@
         return Array.from(bySession.values());
     })());
 
-    // 큐 제목의 숫자는 "당신을 기다리는 것"이어야 한다. 이미 확정돼 아무 조치도
-    // 필요 없는 행까지 세면 첫날 들어온 매니저에게 잘못된 멘탈 모델을 가르친다.
+    /*
+        예약은 자기 세션 행 아래에 선다 — 별도의 큐 섹션이 아니라.
+        모든 예약 행은 진행 중 게임 아니면 예정 게임에 속하는데, 그 둘은 이미
+        각자 섹션을 갖고 있었다. 큐는 같은 세션을 세 번째로 보여주면서,
+        정작 "이 판에 누가 앉아 있나"에는 어디서도 답하지 않게 만들고 있었다.
+
+        확정된 예약은 붙이지 않는다. 이미 그 행의 「n명」·「n/max」에 세어져 있어
+        다시 나열하면 같은 사람이 한 화면에 두 번 선다. 손이 필요한 것만 남는다.
+    */
     const isQueueActionable = (r: any) =>
         r.status === 'pending_approval' || r.status === 'waitlisted' || r.overdue;
-    const queueActionable = $derived(queueGroups.reduce((n, g) => n + g.rows.filter(isQueueActionable).length, 0));
-    const queueSettled = $derived(queueGroups.reduce((n, g) => n + g.rows.filter((r: any) => !isQueueActionable(r)).length, 0));
-    const approvalCount = $derived(queueGroups.reduce((n, g) => n + g.rows.filter((r: any) => r.status === 'pending_approval').length, 0));
-    const overdueCount = $derived(queueGroups.reduce((n, g) => n + g.rows.filter((r: any) => r.overdue).length, 0));
-    // 노쇼 후보는 큐 상단으로 — 개입이 필요한 것부터 본다
-    const queueGroupsSorted = $derived([...queueGroups].sort(
-        (a, b) => Number(b.rows.some((r: any) => r.overdue)) - Number(a.rows.some((r: any) => r.overdue))
+    const pendingBySession = $derived(new Map<number, any[]>(
+        queueGroups.map((g) => [g.sessionId, g.rows.filter(isQueueActionable)])
     ));
+    const pendingFor = (sessionId: number): any[] => pendingBySession.get(sessionId) ?? [];
 
     const QUEUE_STATUS: Record<string, string> = {
         pending_approval: '승인 대기',
@@ -733,6 +736,14 @@
     // 시간이 지났는데도 playing으로 남은 게임 — 마감 전까지 아무도 닫아주지 않는다
     const expiredGames = $derived(playingSorted.filter((g) => new Date(g.end_time).getTime() <= now));
     const liveGames = $derived(playingSorted.filter((g) => new Date(g.end_time).getTime() > now));
+    /*
+        대기 건수는 이제 섹션마다 자기 것만 든다. 스트립이 총계 하나를 들고
+        그 총계가 가리키는 곳이 화면 어딘가에 따로 있던 구조가, 숫자와 대상
+        사이에 계단을 만들고 있었다.
+    */
+    const playingPendingCount = $derived(playingSorted.reduce((n, g) => n + pendingFor(g.id).length, 0));
+    const scheduledPendingCount = $derived((scheduledGames || []).reduce((n, g) => n + pendingFor(g.id).length, 0));
+    const overdueCount = $derived(queueGroups.reduce((n, g) => n + g.rows.filter((r: any) => r.overdue).length, 0));
     const nextGameEndTs = $derived(nextEndingGame ? new Date(nextEndingGame.end_time).getTime() : null);
     const nextEndMins = $derived(nextGameEndTs !== null ? Math.round((nextGameEndTs - now) / 60000) : null);
 
@@ -808,7 +819,15 @@
     {/if}
 </div>
 
-<!-- 방 현황 — 제품의 존재 이유가 시인성이므로 이 세 숫자가 화면에서 가장 크다 -->
+<!--
+    방 현황 — 이 콘솔이 답하는 네 질문에 한 칸씩. 지금 누가 있나 / 지금 무슨
+    판이 도나 / 곧 무슨 판이 있나 / 오늘 누가 오나. 앞의 둘이 "지금", 뒤의 둘이
+    "앞으로"이고, 그 순서가 아래 두 열의 순서와 같다.
+
+    전에는 네 칸 중 둘이 같은 질문(사람)에 쓰이고 한 칸은 어느 질문에도 없는
+    큐 총계였다. 그래서 「곧 무슨 판」과 「오늘 누가」는 헤드라인이 아예 없었고,
+    두 섹션 다 접힌 선 아래 전폭 밴드였다.
+-->
 <section class="room-summary" aria-label="방 현황 요약">
     <div class="rs-stat">
         <span class="rs-label">
@@ -817,11 +836,6 @@
             지금 방에
         </span>
         <span class="rs-value">{attendeeCount}<span class="rs-unit">명</span></span>
-    </div>
-    <div class="rs-stat">
-        <!-- 판을 짤 수 있는 사람. 모달을 열기 전에 알아야 하는 숫자다. -->
-        <span class="rs-label">대기 중</span>
-        <span class="rs-value" class:rs-value-none={freeAttendees.length === 0}>{freeAttendees.length}<span class="rs-unit">명</span></span>
     </div>
     <!--
         시간이 지난 게임은 "임박"이 아니라 처리 대기다. 여기는 그 건수를 말하는
@@ -846,17 +860,23 @@
             {/if}
         {/if}
     </div>
-    <!--
-        큐의 헤드라인 숫자. 예전에는 큐가 접힌 선 204px 아래에 있어서 이 숫자가
-        거기로 데려가는 앵커였는데, 이제 큐가 왼쪽 열 게임 아래로 올라와 같은
-        화면에 보인다. 보이는 것을 가리키는 링크는 계단을 하나 더 만들 뿐이다.
-    -->
+    <!-- 곧 무슨 판이 있나 — 왼쪽 열 「시작 예정 게임」의 헤드라인. -->
     <div class="rs-stat">
-        <span class="rs-label">처리 대기</span>
-        {#if queueActionable === 0}
+        <span class="rs-label">시작 예정</span>
+        {#if (scheduledGames || []).length === 0}
             <span class="rs-value rs-value-none">없음</span>
         {:else}
-            <span class="rs-value">{queueActionable}<span class="rs-unit">건</span></span>
+            <span class="rs-value">{(scheduledGames || []).length}<span class="rs-unit">판</span></span>
+        {/if}
+    </div>
+    <!-- 오늘 누가 오나 — 왼쪽 열 「오늘 갈 예정」의 헤드라인. 방에 이미 온 사람은
+         빠져 있으므로 「지금 방에」와 더해지지 않는다. -->
+    <div class="rs-stat">
+        <span class="rs-label">오늘 갈 예정</span>
+        {#if mergedVisitPlans.length === 0}
+            <span class="rs-value rs-value-none">없음</span>
+        {:else}
+            <span class="rs-value">{mergedVisitPlans.length}<span class="rs-unit">명</span></span>
         {/if}
     </div>
 </section>
@@ -907,6 +927,109 @@
     한 명도 접힌 선 위에 남지 않는다. 세 섹션 모두 랜드마크라 보조기술은
     순서와 무관하게 건너뛴다.
 -->
+<!--
+    손이 필요한 예약 한 묶음. 진행 중 게임 행과 예정 게임 행이 같은 걸 쓴다 —
+    예약은 언제나 둘 중 하나에 속하므로 표현도 한 벌이면 된다.
+-->
+{#snippet pendingRows(rows: any[], gameName: string)}
+    <ul class="session-queue">
+        {#each rows as r (r.id)}
+            <li class="sq-row" class:is-overdue={r.overdue}>
+                <div class="sq-who">
+                    <a href="/admin/attendees/{r.attendee_id}" class="attendee-link">{r.attendee_name}</a>
+                    <span class="sq-status sq-{r.status}">
+                        {QUEUE_STATUS[r.status] ?? r.status}{#if r.status === 'waitlisted' && r.waitlist_position}&nbsp;{r.waitlist_position}번{/if}
+                    </span>
+                    <!-- 차단된 행은 아래 사유 문장이 같은 숫자를 이미 말한다. 배지까지 달면
+                         30px 안에서 「페널티 3/3」이 두 번 나온다. -->
+                    {#if r.penalty_points > 0 && r.penalty_points < penaltyThreshold}
+                        <span class="badge penalty">페널티 {r.penalty_points}/{penaltyThreshold}</span>
+                    {/if}
+                </div>
+                <!--
+                    차단 사유는 비활성 「승인」의 설명이기도 하다. 예전에는 사유가 title
+                    속성에만 있어, 보조기술이 「승인, 비활성」까지만 읽고 왜인지는 말하지
+                    못했다. id는 사유 문장에만 건다 — 감싸는 칸에 걸면 옆의 조정 버튼
+                    글자까지 함께 읽혀 사유가 흐려진다.
+                -->
+                <div class="sq-note">
+                    {#if r.overdue}
+                        <strong class="overdue-text">시작 후 {noShowLimitMinutes}분 경과 · 방에 없음 — 노쇼 판단 필요</strong>
+                    {:else if r.is_blacklisted}
+                        <strong class="overdue-text" id="queue-note-{r.id}">블랙리스트 — 확정 불가</strong>
+                        <button type="button" class="btn-queue-unblock" onclick={() => openManageFromQueue(r)}>
+                            블랙리스트 조정<span class="sr-only"> — {r.attendee_name}</span>
+                        </button>
+                    {:else if r.penalty_points >= penaltyThreshold}
+                        <strong class="overdue-text" id="queue-note-{r.id}">페널티 {r.penalty_points}/{penaltyThreshold}점 — 확정 불가</strong>
+                        <button type="button" class="btn-queue-unblock" onclick={() => openManageFromQueue(r)}>
+                            페널티 조정<span class="sr-only"> — {r.attendee_name}</span>
+                        </button>
+                    {:else}
+                        {formatTime(r.created_at)} 신청
+                    {/if}
+                </div>
+                <div class="sq-actions">
+                    {#if r.overdue}
+                        <form
+                            method="POST"
+                            action="?/markNoShow"
+                            use:enhance={confirmSubmit({
+                                title: '노쇼 처리',
+                                message: () =>
+                                    `${r.attendee_name}님을 ${gameName} 노쇼로 처리합니다. 예약이 취소되고 페널티 1점이 부여됩니다(누적 ${r.penalty_points + 1}/${penaltyThreshold}점).${rows.some((x: any) => x.status === 'waitlisted') ? ' 대기 1번이 자동 승계됩니다.' : ''}`,
+                                confirmLabel: '노쇼 처리',
+                                severity: 'destructive',
+                                handle: async (res: any) => {
+                                    if (!reportResult(res.result)) announcePenalty(res.result?.data);
+                                    await res.update();
+                                }
+                            })}
+                        >
+                            <input type="hidden" name="reservationId" value={r.id} />
+                            <button type="submit" class="btn-queue-noshow">노쇼 처리</button>
+                        </form>
+                    {/if}
+                    {#if r.status !== 'confirmed'}
+                        <form method="POST" action="?/confirmReservation" use:enhance={pending(undefined, `${r.attendee_name}님을 ${gameName}에 확정했습니다.`)}>
+                            <input type="hidden" name="reservationId" value={r.id} />
+                            <button
+                                type="submit"
+                                class="btn-queue-confirm"
+                                disabled={r.is_blacklisted || r.penalty_points >= penaltyThreshold}
+                                aria-describedby={r.is_blacklisted || r.penalty_points >= penaltyThreshold
+                                    ? `queue-note-${r.id}`
+                                    : undefined}
+                            >
+                                {r.status === 'pending_approval' ? '승인' : '확정'}
+                            </button>
+                        </form>
+                    {/if}
+                    <form
+                        method="POST"
+                        action="?/cancelReservationAdmin"
+                        use:enhance={confirmSubmit({
+                            title: r.status === 'pending_approval' ? '참여 요청 거절' : '예약 취소',
+                            message: () =>
+                                r.status === 'pending_approval'
+                                    ? `${r.attendee_name}님의 ${gameName} 참여 요청을 거절합니다.`
+                                    : `${r.attendee_name}님의 ${gameName} 예약을 취소합니다.${rows.some((x: any) => x.status === 'waitlisted') ? ' 대기 1번이 자동으로 승계됩니다.' : ''}`,
+                            confirmLabel: r.status === 'pending_approval' ? '요청 거절' : '예약 삭제',
+                            severity: 'destructive',
+                            success: `${r.attendee_name}님의 ${gameName} 예약을 처리했습니다.`
+                        })}
+                    >
+                        <input type="hidden" name="reservationId" value={r.id} />
+                        <button type="submit" class="btn-queue-cancel">
+                            {r.status === 'pending_approval' ? '거절' : '취소'}
+                        </button>
+                    </form>
+                </div>
+            </li>
+        {/each}
+    </ul>
+{/snippet}
+
 <div class="room-columns">
 <section class="section-primary room-col-games" aria-labelledby="sec-playing">
     <div class="section-header">
@@ -915,6 +1038,8 @@
         <h2 id="sec-playing">
             게임
             <span class="count-split">진행 중 {liveGames.length}</span>
+            {#if overdueCount > 0}<span class="queue-flag overdue">노쇼 판정 {overdueCount}</span>{/if}
+            {#if playingPendingCount - overdueCount > 0}<span class="queue-flag approval">대기 {playingPendingCount - overdueCount}</span>{/if}
         </h2>
         <button class="btn-primary" onclick={() => {
             showModal = true;
@@ -933,7 +1058,8 @@
             {@const msLeft = new Date(game.end_time).getTime() - now}
             {@const expired = msLeft <= 0}
             {@const endingSoon = !expired && msLeft < 5 * 60000}
-            <li class="game-row" class:is-expired={expired}>
+            {@const waiting = pendingFor(game.id)}
+            <li class="game-row" class:is-expired={expired} class:has-pending={waiting.length > 0}>
                 <button type="button" class="game-list-item" class:ending-soon={endingSoon} class:expired onclick={() => { selectedPlayingGame = game; resetParticipantSearch(); }}>
                     {#if game.image_url}
                         <img src={game.image_url} alt={game.game_name} width="32" height="32" class="list-thumb" />
@@ -965,6 +1091,9 @@
                         <input type="hidden" name="id" value={game.id} />
                         <button type="submit" class="btn-row-end">게임 종료</button>
                     </form>
+                {/if}
+                {#if waiting.length > 0}
+                    {@render pendingRows(waiting, game.game_name)}
                 {/if}
             </li>
         {/each}
@@ -1086,163 +1215,27 @@
 </section>
 
 <!--
-    대기 · 승인 큐.
-    한때 이 섹션이 방보다 위에 있어서 1280x900의 접힌 선 위에 게임 한 판도
-    사람 한 명도 없었다. 그래서 방 아래로 내렸더니 이번에는 큐가 접힌 선
-    204px 아래로 밀려났다 — 명단이 801px인데 그 옆 왼쪽 열은 525px이 빈 땅인
-    채로. 두 카드를 나란히 짝지은 게 문제였지 큐의 자리가 문제가 아니었다.
-    이제 큐는 그 빈 땅, 즉 왼쪽 열 게임 아래로 들어간다.
+    시작 예정 게임과 오늘 갈 예정이 왼쪽 열로 올라온다.
+    이 콘솔이 답하는 질문은 넷이다 — 지금 누가 있나 / 지금 무슨 판이 도나 /
+    곧 무슨 판이 있나 / 오늘 누가 오나. 그런데 뒤의 둘은 접힌 선 아래 전폭
+    밴드였고, 넷 중 어디에도 없던 대기·승인 큐가 왼쪽 열 608px을 쓰고 있었다.
+    큐를 자기 세션 행으로 접고 나니 그 자리가 비었고, 원래 답이 있어야 할
+    둘이 들어온다. 왼쪽 열은 시간 축(지금 → 곧 → 오늘), 오른쪽 열은 지금 방.
 -->
-<section id="sec-queue" class="section-primary queue-section room-col-queue" aria-label="대기 및 승인 큐">
-    <div class="section-header">
-        <!-- 총 건수도 스트립의 「처리 대기」가 든다. 제목은 자기 섹션이 무엇으로
-             나뉘어 있는지(승인 대기 · 노쇼 판정 초과 · 확정)만 말한다. -->
-        <h2>
-            대기 · 승인 큐
-            {#if queueSettled > 0}<span class="count-aside">확정 {queueSettled}</span>{/if}
-            {#if approvalCount > 0}<span class="queue-flag approval">승인 대기 {approvalCount}</span>{/if}
-            {#if overdueCount > 0}<span class="queue-flag overdue">노쇼 판정 초과 {overdueCount}</span>{/if}
-        </h2>
-    </div>
-
-    {#if queueGroups.length === 0}
-        <p class="empty-state queue-empty">
-            지금 처리할 예약이 없습니다. 회원이 예약하거나 진행 중인 게임에 참여를 신청하면 여기에 뜹니다.
-        </p>
-    {:else}
-        {#each queueGroupsSorted as g (g.sessionId)}
-            <div class="queue-group">
-                <div class="queue-group-head">
-                    <strong>{g.gameName}</strong>
-                    <span class="queue-meta">
-                        {g.sessionStatus === 'playing'
-                            ? g.startTime
-                                ? `${formatTime(g.startTime)} 시작`
-                                : '진행 중'
-                            : g.scheduledAt
-                              ? `${formatTime(g.scheduledAt)} 예정`
-                              : '예정'}
-                        · 참여 {g.currentPlayers}/{g.maxPlayers || '-'}
-                    </span>
-                </div>
-                <ul class="queue-list">
-                    {#each g.rows as r (r.id)}
-                        <li class="queue-row" class:is-overdue={r.overdue}>
-                            <div class="queue-who">
-                                <a href="/admin/attendees/{r.attendee_id}" class="attendee-link">{r.attendee_name}</a>
-                                <span class="queue-status queue-{r.status}">
-                                    {QUEUE_STATUS[r.status] ?? r.status}{#if r.status === 'waitlisted' && r.waitlist_position}&nbsp;{r.waitlist_position}번{/if}
-                                </span>
-                                {#if r.penalty_points >= penaltyThreshold}
-                                    <span class="badge penalty blocked">페널티 {r.penalty_points}/{penaltyThreshold}</span>
-                                {:else if r.penalty_points > 0}
-                                    <span class="badge penalty">페널티 {r.penalty_points}/{penaltyThreshold}</span>
-                                {/if}
-                                {#if r.is_blacklisted}<span class="badge blacklist">블랙</span>{/if}
-                            </div>
-                            <!--
-                                차단 사유는 비활성 「승인」의 설명이기도 하다. 예전에는
-                                사유가 title 속성에만 있어, 보조기술이 「승인, 비활성」
-                                까지만 읽고 왜인지는 말하지 못했다. id는 사유 문장에만
-                                건다 — 감싸는 칸에 걸면 옆의 조정 버튼 글자까지 함께
-                                읽혀 사유가 흐려진다.
-                            -->
-                            <div class="queue-note">
-                                {#if r.overdue}
-                                    <strong class="overdue-text">시작 후 {noShowLimitMinutes}분 경과 · 방에 없음 — 노쇼 판단 필요</strong>
-                                {:else if r.is_blacklisted}
-                                    <strong class="overdue-text" id="queue-note-{r.id}">블랙리스트 — 확정 불가</strong>
-                                    <button type="button" class="btn-queue-unblock" onclick={() => openManageFromQueue(r)}>
-                                        블랙리스트 조정<span class="sr-only"> — {r.attendee_name}</span>
-                                    </button>
-                                {:else if r.penalty_points >= penaltyThreshold}
-                                    <strong class="overdue-text" id="queue-note-{r.id}">페널티 {r.penalty_points}/{penaltyThreshold}점 — 확정 불가</strong>
-                                    <button type="button" class="btn-queue-unblock" onclick={() => openManageFromQueue(r)}>
-                                        페널티 조정<span class="sr-only"> — {r.attendee_name}</span>
-                                    </button>
-                                {:else}
-                                    {formatTime(r.created_at)} 신청
-                                {/if}
-                            </div>
-                            <div class="queue-actions">
-                                {#if r.overdue}
-                                    <form
-                                        method="POST"
-                                        action="?/markNoShow"
-                                        use:enhance={confirmSubmit({
-                                            title: '노쇼 처리',
-                                            message: () =>
-                                                `${r.attendee_name}님을 ${g.gameName} 노쇼로 처리합니다. 예약이 취소되고 페널티 1점이 부여됩니다(누적 ${r.penalty_points + 1}/${penaltyThreshold}점).${g.rows.some((x: any) => x.status === 'waitlisted') ? ' 대기 1번이 자동 승계됩니다.' : ''}`,
-                                            confirmLabel: '노쇼 처리',
-                                            severity: 'destructive',
-                                            handle: async (res: any) => {
-                                                if (!reportResult(res.result)) announcePenalty(res.result?.data);
-                                                await res.update();
-                                            }
-                                        })}
-                                    >
-                                        <input type="hidden" name="reservationId" value={r.id} />
-                                        <button type="submit" class="btn-queue-noshow">노쇼 처리</button>
-                                    </form>
-                                {/if}
-                                {#if r.status !== 'confirmed'}
-                                    <form method="POST" action="?/confirmReservation" use:enhance={pending(undefined, `${r.attendee_name}님을 ${g.gameName}에 확정했습니다.`)}>
-                                        <input type="hidden" name="reservationId" value={r.id} />
-                                        <button
-                                            type="submit"
-                                            class="btn-queue-confirm"
-                                            disabled={r.is_blacklisted || r.penalty_points >= penaltyThreshold}
-                                            aria-describedby={r.is_blacklisted || r.penalty_points >= penaltyThreshold
-                                                ? `queue-note-${r.id}`
-                                                : undefined}
-                                        >
-                                            {r.status === 'pending_approval' ? '승인' : '확정'}
-                                        </button>
-                                    </form>
-                                {/if}
-                                <form
-                                    method="POST"
-                                    action="?/cancelReservationAdmin"
-                                    use:enhance={confirmSubmit({
-                                        title: r.status === 'pending_approval' ? '참여 요청 거절' : '예약 취소',
-                                        message: () =>
-                                            r.status === 'pending_approval'
-                                                ? `${r.attendee_name}님의 ${g.gameName} 참여 요청을 거절합니다.`
-                                                : `${r.attendee_name}님의 ${g.gameName} 예약을 취소합니다.${g.rows.some((x) => x.status === 'waitlisted') ? ' 대기 1번이 자동으로 승계됩니다.' : ''}`,
-                                        // 「취소」와 「예약 취소」가 나란히 서면 한 단어를 공유하며
-                                        // 반대를 뜻한다. 무엇이 사라지는지로 이름을 바꾼다.
-                                        confirmLabel: r.status === 'pending_approval' ? '요청 거절' : '예약 삭제',
-                                        severity: 'destructive',
-                                        success: `${r.attendee_name}님의 ${g.gameName} 예약을 처리했습니다.`
-                                    })}
-                                >
-                                    <input type="hidden" name="reservationId" value={r.id} />
-                                    <button type="submit" class="btn-queue-cancel">
-                                        {r.status === 'pending_approval' ? '거절' : '취소'}
-                                    </button>
-                                </form>
-                            </div>
-                        </li>
-                    {/each}
-                </ul>
-            </div>
-        {/each}
-    {/if}
-</section>
-</div>
-
-<section class="scheduled-section" aria-labelledby="sec-scheduled">
+<section class="scheduled-section room-col-scheduled" aria-labelledby="sec-scheduled">
     <div class="section-header">
         <h2 id="sec-scheduled">
             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
             시작 예정 게임 ({(scheduledGames || []).length})
+            {#if scheduledPendingCount > 0}<span class="queue-flag approval">승인 대기 {scheduledPendingCount}</span>{/if}
         </h2>
         <button class="btn-primary" onclick={openScheduledGameModal}>+ 게임 일정 등록</button>
     </div>
     <ul class="game-list">
         {#each (showAllScheduled ? (scheduledGames || []) : (scheduledGames || []).slice(0, 5)) as game (game.id)}
             {@const g = game as GameSession}
-            <li>
+            {@const waiting = pendingFor(g.id)}
+            <li class="game-row" class:has-pending={waiting.length > 0}>
                 <button type="button" class="game-list-item" onclick={() => { selectedScheduledGame = g; resetParticipantSearch(); }}>
                     {#if g.image_url}
                         <img src={g.image_url} alt={g.game_name} width="32" height="32" class="list-thumb" />
@@ -1256,6 +1249,9 @@
                     <span class="list-meta">{(g.participants || []).length}/{g.max_players}</span>
                     <span class="list-arrow" aria-hidden="true">›</span>
                 </button>
+                {#if waiting.length > 0}
+                    {@render pendingRows(waiting, g.game_name)}
+                {/if}
             </li>
         {/each}
         {#if (scheduledGames || []).length === 0}
@@ -1269,12 +1265,19 @@
     {/if}
 </section>
 
-{#if mergedVisitPlans.length > 0}
-<section class="visit-plan-section" aria-labelledby="sec-visitplan">
+<section class="visit-plan-section room-col-visit" aria-labelledby="sec-visitplan">
     <h2 id="sec-visitplan">
         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
         오늘 갈 예정 ({mergedVisitPlans.length})
     </h2>
+    <!--
+        비어 있어도 남는다. 이 섹션의 일은 "오늘 누가 오나"에 답하는 것이고,
+        "아직 아무도 없다"는 답이지 없음이 아니다. 조건부로 숨기면 운영자는
+        답을 못 본 것인지 답이 없는 것인지 구별할 수 없다.
+    -->
+    {#if mergedVisitPlans.length === 0}
+        <p class="empty-state">아직 온다고 한 사람이 없습니다. 회원이 「나도 갈래요」를 누르거나 예정 게임에 예약하면 여기에 뜹니다.</p>
+    {:else}
     <div class="visit-plan-grid">
         {#each mergedVisitPlans as plan}
             <div class="visit-plan-chip">
@@ -1292,8 +1295,9 @@
             </div>
         {/each}
     </div>
+    {/if}
 </section>
-{/if}
+</div>
 
 
 {#if showModal}
@@ -2161,8 +2165,7 @@
         예정 게임 섹션은 2열 밖에 있어 이 선언이 없었고, 그래서 375px에서
         긴 이름이 형제 메타(시각·정원)에 폭을 뺏겨 홀로 잘렸다.
     */
-    .room-columns > section,
-    .scheduled-section {
+    .room-columns > section {
         container: room-card / inline-size;
     }
     .room-columns {
@@ -2177,30 +2180,37 @@
     @media (min-width: 1100px), (min-width: 820px) and (max-height: 560px) {
         .room-columns {
             /*
-                223px짜리 게임 카드와 801px짜리 명단을 1:1로 짝지었더니 왼쪽 열
-                아래에 525px이 빈 땅으로 남았고, 그 사이 큐는 접힌 선 204px
-                아래에 있었다. 큐(188px)는 그 공백에 두 번 들어간다.
-                왼쪽 열은 게임 → 큐 두 칸, 오른쪽 열은 명단 한 칸이 그 둘의
-                높이를 함께 쓴다. 명단이 이름·배지·메타를 한 줄에 담아야 하므로
-                오른쪽에 1.1을 준다.
+                게임 카드 하나와 801px짜리 명단을 1:1로 짝지으면 왼쪽 열 아래가
+                빈 땅으로 남는다. 왼쪽에 세 칸(게임 · 시작 예정 · 오늘 갈 예정)을
+                쌓고 오른쪽 명단이 그 높이를 함께 쓴다. 명단이 이름·배지·메타를
+                한 줄에 담아야 하므로 오른쪽에 1.1을 준다.
             */
             grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
             /* 행을 명시해야 아래 grid-row의 -1이 가리킬 줄이 생긴다.
                암묵 행만 있으면 -1이 첫 줄로 접혀 span이 사라진다. */
-            grid-template-rows: auto auto;
+            grid-template-rows: auto auto auto;
             align-items: start;
         }
         .room-columns > section {
             margin-bottom: 0;
         }
-        /* DOM 순서(게임 → 명단 → 큐)와 열 배치가 다르므로 셋 다 명시한다 */
+        /*
+            DOM 순서는 게임 → 명단 → 시작 예정 → 오늘 갈 예정이다. 폰에서 한 열로
+            쌓일 때 방에 서 있는 운영자가 먼저 봐야 하는 것이 그 순서이기 때문이다.
+            넓은 화면의 열 배치는 그것과 다르므로 넷 다 명시한다 — 왼쪽은 시간 축
+            (지금 도는 판 → 곧 시작할 판 → 오늘 올 사람), 오른쪽은 지금 방.
+        */
         .room-col-games {
             grid-column: 1;
             grid-row: 1;
         }
-        .room-col-queue {
+        .room-col-scheduled {
             grid-column: 1;
             grid-row: 2;
+        }
+        .room-col-visit {
+            grid-column: 1;
+            grid-row: 3;
         }
         .room-col-roster {
             grid-column: 2;
@@ -2315,12 +2325,6 @@
     .count-split {
         font-size: var(--text-sm);
         font-weight: var(--weight-medium);
-        color: var(--text-secondary);
-        margin-left: var(--space-2);
-    }
-    .count-aside {
-        font-size: var(--text-xs);
-        font-weight: var(--weight-regular, 400);
         color: var(--text-secondary);
         margin-left: var(--space-2);
     }
@@ -2462,7 +2466,7 @@
         text-decoration: underline;
     }
     .time-remaining,
-    .queue-note {
+    .sq-note {
         font-variant-numeric: var(--numeric);
     }
     /* 명단 그룹 — 「대기 중」이 먼저 오고, 그게 판을 짤 수 있는 사람이다 */
@@ -3130,9 +3134,9 @@
         align-items: center;
     }
     /* 대기 · 승인 큐 */
-    .queue-section .section-header h2 {
-        display: flex;
-        align-items: center;
+    /* 대기 배지가 붙으면 제목이 두 줄이 될 수 있다 */
+    .room-col-games .section-header h2,
+    .room-col-scheduled .section-header h2 {
         flex-wrap: wrap;
         gap: var(--space-2);
     }
@@ -3153,35 +3157,18 @@
         color: var(--color-red-dark);
         border-color: var(--color-red-dark);
     }
-    .queue-empty {
+    /*
+        세션 행에 매달린 대기 예약. 자기 게임 행 아래에 들여 붙어서, 이 사람들이
+        어느 판을 기다리는지가 위치로 말해진다 — 예전에는 게임 이름을 다시 적는
+        그룹 헤더가 그 일을 했다.
+    */
+    .session-queue {
+        list-style: none;
         margin: var(--space-2) 0 0;
-    }
-    .queue-group + .queue-group {
-        margin-top: var(--space-4);
-        padding-top: var(--space-4);
+        padding: var(--space-2) 0 0 var(--space-5);
         border-top: 1px solid var(--border-light);
     }
-    .queue-group-head {
-        display: flex;
-        align-items: baseline;
-        flex-wrap: wrap;
-        gap: var(--space-2);
-        margin-bottom: 0.4rem;
-    }
-    .queue-group-head strong {
-        font-size: var(--text-sm);
-        color: var(--text-primary);
-    }
-    .queue-meta {
-        font-size: var(--text-xs);
-        color: var(--text-secondary);
-    }
-    .queue-list {
-        list-style: none;
-        margin: 0;
-        padding: 0;
-    }
-    .queue-row {
+    .sq-row {
         display: grid;
         grid-template-columns: minmax(0, 1fr) auto;
         grid-template-areas: 'who actions' 'note actions';
@@ -3190,13 +3177,13 @@
         padding: var(--space-2) 0.6rem;
         border-radius: var(--radius-control);
     }
-    .queue-row + .queue-row {
+    .sq-row + .sq-row {
         margin-top: var(--space-1);
     }
-    .queue-row.is-overdue {
+    .sq-row.is-overdue {
         background: var(--color-error-bg);
     }
-    .queue-who {
+    .sq-who {
         grid-area: who;
         display: flex;
         align-items: center;
@@ -3205,7 +3192,7 @@
         min-width: 0;
     }
     /* 차단 사유와 그것을 푸는 버튼이 한 줄에 선다 */
-    .queue-note {
+    .sq-note {
         grid-area: note;
         display: flex;
         align-items: center;
@@ -3241,12 +3228,12 @@
     .overdue-hint {
         color: var(--text-secondary);
     }
-    .queue-actions {
+    .sq-actions {
         grid-area: actions;
         display: flex;
         gap: 0.4rem;
     }
-    .queue-status {
+    .sq-status {
         font-size: var(--text-xs);
         font-weight: 700;
         padding: 0.1rem 0.45rem;
@@ -3255,11 +3242,11 @@
         color: var(--text-dark);
         white-space: nowrap;
     }
-    .queue-status.queue-pending_approval {
+    .sq-status.sq-pending_approval {
         background: var(--color-warning-bg);
         color: var(--text-darker);
     }
-    .queue-status.queue-confirmed {
+    .sq-status.sq-confirmed {
         background: var(--color-success-bg);
         color: var(--color-green-dark);
     }
@@ -3315,7 +3302,7 @@
     .list-name {
         padding-block: var(--space-1);
     }
-    .queue-who .attendee-link {
+    .sq-who .attendee-link {
         padding-block: var(--space-1);
     }
 
@@ -3838,6 +3825,20 @@
         gap: var(--space-2);
         border-bottom: 1px solid var(--border-light);
     }
+    /*
+        대기 예약이 붙으면 행이 두 줄이 된다. flex-wrap으로 열면 줄바꿈이
+        「게임 종료」에도 열려서, 이름이 긴 만료 행에서는 종료 버튼이 먼저
+        떨어졌다. 그리드는 어느 칸이 내려갈지를 지정할 수 있다 — 내려가는 것은
+        대기 목록 하나뿐이고, 게임 이름과 종료 버튼은 첫 줄에 남는다.
+    */
+    .game-row.has-pending {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
+    }
+    .session-queue {
+        grid-column: 1 / -1;
+    }
     .game-row:last-child {
         border-bottom: none;
     }
@@ -3953,6 +3954,21 @@
         }
         .game-list-item .list-thumb {
             display: none;
+        }
+        /*
+            좁은 카드에서는 들여쓰기와 버튼 두 개가 이름 칸을 6px까지 짓눌러
+            「Ww」가 한 글자로 잘렸다. 조치를 아래 줄로 내리고 들여쓰기를 줄여
+            이름에 온전한 한 줄을 준다 — 누구인지가 먼저다.
+        */
+        .session-queue {
+            padding-left: var(--space-3);
+        }
+        .sq-row {
+            grid-template-columns: minmax(0, 1fr);
+            grid-template-areas: 'who' 'note' 'actions';
+        }
+        .sq-actions {
+            justify-content: flex-end;
         }
     }
 
