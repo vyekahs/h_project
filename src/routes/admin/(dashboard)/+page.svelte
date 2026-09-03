@@ -322,6 +322,38 @@
         manageTarget = a;
     }
 
+    /**
+     * 차단된 큐 행에서 그 사람의 관리 시트를 연다.
+     *
+     * 행은 「페널티 조정 후 처리하세요」라고 지시하면서 그 도구를 주지 않았다.
+     * 도구는 800px 위 명단에 있었고, 행의 이름 링크를 누르면 대시보드를 떠났다.
+     * 남은 활성 컨트롤은 「거절」뿐이라, 막힌 사람을 푸는 길보다 자르는 길이
+     * 가까웠다. manageView가 attendees에서 라이브로 다시 찾으므로, 시트 안에서
+     * 페널티를 내리면 이 행의 「승인」이 그 자리에서 풀린다.
+     *
+     * 방에 없는 사람도 예약은 남는다. 명단에 없다는 것이 조치할 수 없다는
+     * 뜻은 아니므로, 그때는 큐 행이 들고 있는 값으로 시트를 채운다.
+     */
+    function openManageFromQueue(r: any) {
+        const inRoom = (attendees || []).find((a: Attendee) => a.id === r.attendee_id);
+        openManage(
+            inRoom ??
+                ({
+                    id: r.attendee_id,
+                    name: r.attendee_name,
+                    arrival_time: '',
+                    status: r.attendee_status,
+                    penalty_points: r.penalty_points,
+                    is_blacklisted: r.is_blacklisted,
+                    game_id: null,
+                    game_name: null,
+                    game_end_time: null,
+                    is_playing: false,
+                    can_manage_games: r.can_manage_games
+                } as Attendee)
+        );
+    }
+
     // 게임 참여 중인 참여자 퇴장 — 게임 처리 방식을 묻는 전용 모달을 연다
     function handleRemove(attendee: Attendee) {
         removeTarget = attendee;
@@ -1108,15 +1140,26 @@
                                 {/if}
                                 {#if r.is_blacklisted}<span class="badge blacklist">블랙</span>{/if}
                             </div>
+                            <!--
+                                차단 사유는 비활성 「승인」의 설명이기도 하다. 예전에는
+                                사유가 title 속성에만 있어, 보조기술이 「승인, 비활성」
+                                까지만 읽고 왜인지는 말하지 못했다. id는 사유 문장에만
+                                건다 — 감싸는 칸에 걸면 옆의 조정 버튼 글자까지 함께
+                                읽혀 사유가 흐려진다.
+                            -->
                             <div class="queue-note">
                                 {#if r.overdue}
                                     <strong class="overdue-text">시작 후 {noShowLimitMinutes}분 경과 · 방에 없음 — 노쇼 판단 필요</strong>
                                 {:else if r.is_blacklisted}
-                                    <strong class="overdue-text">블랙리스트 — 확정 불가. 해제 후 처리하세요.</strong>
+                                    <strong class="overdue-text" id="queue-note-{r.id}">블랙리스트 — 확정 불가</strong>
+                                    <button type="button" class="btn-queue-unblock" onclick={() => openManageFromQueue(r)}>
+                                        블랙리스트 조정<span class="sr-only"> — {r.attendee_name}</span>
+                                    </button>
                                 {:else if r.penalty_points >= penaltyThreshold}
-                                    <strong class="overdue-text">
-                                        페널티 {r.penalty_points}/{penaltyThreshold}점 — 확정 불가. 페널티 조정 후 처리하세요.
-                                    </strong>
+                                    <strong class="overdue-text" id="queue-note-{r.id}">페널티 {r.penalty_points}/{penaltyThreshold}점 — 확정 불가</strong>
+                                    <button type="button" class="btn-queue-unblock" onclick={() => openManageFromQueue(r)}>
+                                        페널티 조정<span class="sr-only"> — {r.attendee_name}</span>
+                                    </button>
                                 {:else}
                                     {formatTime(r.created_at)} 신청
                                 {/if}
@@ -1149,11 +1192,9 @@
                                             type="submit"
                                             class="btn-queue-confirm"
                                             disabled={r.is_blacklisted || r.penalty_points >= penaltyThreshold}
-                                            title={r.is_blacklisted
-                                                ? '블랙리스트라 확정할 수 없습니다'
-                                                : r.penalty_points >= penaltyThreshold
-                                                  ? `페널티 ${r.penalty_points}/${penaltyThreshold}점이라 확정할 수 없습니다`
-                                                  : undefined}
+                                            aria-describedby={r.is_blacklisted || r.penalty_points >= penaltyThreshold
+                                                ? `queue-note-${r.id}`
+                                                : undefined}
                                         >
                                             {r.status === 'pending_approval' ? '승인' : '확정'}
                                         </button>
@@ -1661,9 +1702,15 @@
                 <div class="manage-label">
                     <span>입장 상태</span>
                     <!-- 하드코딩이라 게임 중인 사람도 「방에 있음」이라 말했고,
-                         그래서 퇴장 처리가 예고 없이 다른 시트로 분기했다. -->
-                    <span class="manage-sub">
-                        {m.is_playing && m.game_name ? `${m.game_name} 진행 중 — 퇴장 시 게임에서도 빠집니다` : '방에 있음'}
+                         그래서 퇴장 처리가 예고 없이 다른 시트로 분기했다.
+                         큐에서 열면 방에 없는 사람의 시트일 수도 있다 — 그때
+                         「방에 있음」은 거짓이고 퇴장 처리는 할 일이 없다. -->
+                    <span class="manage-sub" id="manage-presence">
+                        {m.status !== 'present'
+                            ? '방에 없음 — 예약만 남아 있습니다'
+                            : m.is_playing && m.game_name
+                              ? `${m.game_name} 진행 중 — 퇴장 시 게임에서도 빠집니다`
+                              : '방에 있음'}
                     </span>
                 </div>
             <form method="POST" action="?/removeAttendee" use:enhance={(arg) => {
@@ -1685,7 +1732,13 @@
                 })(arg);
             }}>
                 <input type="hidden" name="id" value={m.id} />
-                <button type="submit" class="btn-role is-danger-outline">퇴장 처리</button>
+                <!-- 조건부로 숨기면 "왜 없지"를 알 수 없다. 못 쓰는 이유를 달고 남긴다. -->
+                <button
+                    type="submit"
+                    class="btn-role is-danger-outline"
+                    disabled={m.status !== 'present'}
+                    aria-describedby={m.status !== 'present' ? 'manage-presence' : undefined}
+                >퇴장 처리</button>
             </form>
             </div>
 
@@ -3151,14 +3204,39 @@
         gap: 0.35rem;
         min-width: 0;
     }
+    /* 차단 사유와 그것을 푸는 버튼이 한 줄에 선다 */
     .queue-note {
         grid-area: note;
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: var(--space-2);
         font-size: var(--text-xs);
         color: var(--text-secondary);
     }
     .overdue-text {
         color: var(--color-red-dark);
         display: block;
+    }
+    /*
+        막힌 행에서 나가는 문. 이 행에서 유일하게 살아 있던 컨트롤이
+        「거절」뿐이라, 사람을 푸는 길보다 자르는 길이 가까웠다.
+        무게는 「거절」보다 가볍다 — 이 버튼 자체는 아무것도 바꾸지 않고
+        도구(관리 시트)를 열 뿐이다. 높이는 공용 44px 규칙을 그대로 받는다.
+    */
+    .btn-queue-unblock {
+        padding: 0 var(--space-3);
+        border: 1px solid var(--border-control);
+        border-radius: var(--radius-control);
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        font-size: var(--text-xs);
+        font-weight: var(--weight-medium);
+        white-space: nowrap;
+        cursor: pointer;
+    }
+    .btn-queue-unblock:hover {
+        background: var(--bg-hover);
     }
     .overdue-hint {
         color: var(--text-secondary);

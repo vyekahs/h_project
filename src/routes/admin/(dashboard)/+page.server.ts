@@ -91,6 +91,10 @@ export const load: PageServerLoad = async () => {
             SELECT r.id, r.status, r.created_at, r.attendee_id,
                    a.name AS attendee_name, a.penalty_points, a.is_blacklisted,
                    a.status AS attendee_status,
+                   -- 차단된 큐 행에서 그 사람의 관리 시트를 바로 연다. 방에 없는
+                   -- 사람은 attendees(status='present')에 없으므로 시트를 채울
+                   -- 값을 이 행이 들고 있어야 한다.
+                   a.can_manage_games,
                    gs.id AS session_id, gs.game_name,
                    gs.status AS session_status, gs.scheduled_at, gs.start_time, gs.max_players,
                    (SELECT COUNT(*) FROM session_participants sp WHERE sp.session_id = gs.id) AS current_players,
