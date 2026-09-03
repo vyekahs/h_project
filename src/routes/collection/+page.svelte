@@ -29,6 +29,34 @@
         return new Date(iso).toLocaleDateString('ko-KR', { year: 'numeric', month: 'long', day: 'numeric' });
     }
 
+    // 최애 게임 3순위 — 이미 플레이 횟수순으로 정렬된 sortedGames에서
+    // 플레이한 것만 앞에서 3개 뽑으면 된다(별도 집계 불필요).
+    const topGames3 = $derived(
+        sortedGames.filter((g) => (data.playedByGameId[g.id]?.length ?? 0) > 0).slice(0, 3)
+    );
+
+    // 자주 만난 친구 3순위 — 판 수가 아니라 "함께한 날짜 수"로 센다.
+    // 하루에 같은 사람과 여러 판 해도 1회로 — 짧은 게임 여러 판이 긴 게임 한 판을
+    // 과대평가하지 않게 하기 위함이다.
+    const topFriends3 = $derived(
+        (() => {
+            const daysByName: Record<string, Set<string>> = {};
+            for (const play of data.allPlays) {
+                if (!play.opponents || !play.endTime) continue;
+                const date = new Date(play.endTime);
+                if (Number.isNaN(date.getTime())) continue;
+                const dayKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+                for (const opp of play.opponents) {
+                    (daysByName[opp.name] ??= new Set<string>()).add(dayKey);
+                }
+            }
+            return Object.entries(daysByName)
+                .map(([name, days]) => [name, days.size] as [string, number])
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 3);
+        })()
+    );
+
     // 카드를 누르면 페이지 이동 대신 모달로 바로 보여준다 — 장식장을
     // 훑어보다가 매번 마이페이지로 튕기면 훑어보는 흐름이 끊긴다.
     // id만 들고 있다가 game/plays를 매번 data에서 파생시켜야, 모달 안에서
@@ -218,6 +246,37 @@
             </div>
         {/if}
     </header>
+
+    {#if playedCount > 0}
+        <section class="summary-row">
+            <div class="summary-card">
+                <h2>자주 만난 친구</h2>
+                <ul>
+                    {#each topFriends3 as [name, count]}
+                        <li>
+                            <span class="summary-name">{name}</span>
+                            <span class="summary-count">{count}회</span>
+                        </li>
+                    {:else}
+                        <li class="summary-empty">-</li>
+                    {/each}
+                </ul>
+            </div>
+            <div class="summary-card">
+                <h2>최애 게임</h2>
+                <ul>
+                    {#each topGames3 as game}
+                        <li>
+                            <span class="summary-name">{game.name}</span>
+                            <span class="summary-count">{data.playedByGameId[game.id].length}회</span>
+                        </li>
+                    {:else}
+                        <li class="summary-empty">-</li>
+                    {/each}
+                </ul>
+            </div>
+        </section>
+    {/if}
 
     {#if viewMode === 'byGame'}
         {#if totalCount === 0}
@@ -438,6 +497,59 @@
         margin: 0;
         letter-spacing: -0.02em;
     }
+    .summary-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0.75rem;
+        margin-bottom: 1.5rem;
+    }
+    .summary-card {
+        background: var(--bg-primary);
+        border-radius: 12px;
+        padding: 0.9rem;
+        box-shadow: 0 2px 8px var(--shadow-sm);
+    }
+    .summary-card h2 {
+        margin: 0 0 0.6rem 0;
+        font-size: 0.82rem;
+        color: var(--text-secondary);
+        border-bottom: 1px solid var(--border-light);
+        padding-bottom: 0.45rem;
+    }
+    .summary-card ul {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+    }
+    .summary-card li {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 0.4rem;
+        margin-bottom: 0.35rem;
+        font-size: 0.85rem;
+    }
+    .summary-card li:last-child {
+        margin-bottom: 0;
+    }
+    .summary-name {
+        color: var(--text-primary);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        min-width: 0;
+    }
+    .summary-count {
+        flex-shrink: 0;
+        font-weight: bold;
+        color: var(--text-tertiary);
+        font-size: 0.75rem;
+    }
+    .summary-empty {
+        color: var(--border-medium);
+        text-align: center;
+        justify-content: center;
+    }
     .btn-catalog {
         flex-shrink: 0;
         font-size: 0.8rem;
@@ -517,7 +629,7 @@
     .cover {
         position: relative;
         width: 100%;
-        aspect-ratio: 3 / 4;
+        aspect-ratio: 1 / 1;
         border-radius: 10px;
         overflow: hidden;
         background: var(--bg-primary);
@@ -729,8 +841,8 @@
     }
     .modal-cover {
         flex-shrink: 0;
-        width: 56px;
-        height: 74px;
+        width: 64px;
+        height: 64px;
         border-radius: 8px;
         overflow: hidden;
         background: var(--bg-secondary);
