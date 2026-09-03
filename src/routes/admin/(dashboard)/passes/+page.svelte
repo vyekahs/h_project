@@ -244,7 +244,7 @@
             <p class="modal-desc">{confirmState.message}</p>
             <div class="modal-actions">
                 <button type="button" class="btn-secondary" data-autofocus onclick={closeConfirm}>돌아가기</button>
-                <button type="button" class="btn-danger" onclick={runConfirm}>{confirmState.confirmLabel}</button>
+                <button type="button" class="btn-destructive" onclick={runConfirm}>{confirmState.confirmLabel}</button>
             </div>
         </div>
     </div>
@@ -329,15 +329,21 @@
     .btn-extend:hover { background: var(--tint-blue-bg-hover); }
     /* 대시보드의 .btn-cancel은 "다이얼로그 닫기"라 같은 이름을 쓰지 않는다 */
     .modal-backdrop.confirm-layer { z-index: 1100; }
-    .btn-danger {
-        background: var(--color-red-dark, var(--color-red-dark));
-        color: var(--bg-primary);
-        border: none;
+    /* 해지는 파괴적이지만 재발급으로 되돌린다 — 2단(테두리 빨강)이다.
+       채움 빨강이었을 때는 이 버튼을 부른 .btn-revoke(연한 빨강 테두리)보다
+       무거워 보여, 두 번째 화면이 첫 번째보다 심각하다고 말했다. */
+    .btn-destructive {
+        background: var(--danger-outline-bg);
+        color: var(--danger-outline-fg);
+        border: 1px solid var(--danger-outline-fg);
         padding: 0.6rem var(--space-4);
         min-height: 44px;
         border-radius: var(--radius-control);
         font-weight: 600;
         cursor: pointer;
+    }
+    .btn-destructive:hover {
+        background: var(--danger-outline-bg-hover);
     }
     .btn-revoke { background: var(--tint-red-bg); color: var(--color-red-darker); border: 1px solid var(--color-red-darker); }
     .btn-revoke:hover { background: var(--tint-red-bg-hover); }

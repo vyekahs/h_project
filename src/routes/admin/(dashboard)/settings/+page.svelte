@@ -217,7 +217,7 @@
                                         {sch.is_active ? '중지' : '활성화'}
                                     </button>
                                 </form>
-                                <button type="button" class="btn-role is-destructive" onclick={() => (confirmDelete = { id: sch.id, name: sch.game_name })}>
+                                <button type="button" class="btn-role is-danger-outline" onclick={() => (confirmDelete = { id: sch.id, name: sch.game_name })}>
                                     삭제
                                 </button>
                             </div>
@@ -266,7 +266,7 @@
                     await update();
                 }}>
                     <input type="hidden" name="scheduleId" value={confirmDelete.id} />
-                    <button type="submit" class="btn-role is-destructive">삭제</button>
+                    <button type="submit" class="btn-role is-danger-outline">삭제</button>
                 </form>
             </div>
         </div>
@@ -426,9 +426,15 @@
         color: var(--text-primary);
         border-color: var(--border-medium);
     }
-    .btn-role.is-destructive {
-        background: var(--color-red-dark);
-        color: var(--bg-primary);
+    /* 반복 일정 삭제는 이미 만들어진 예정 게임을 건드리지 않고 다시 등록할 수
+       있다 — 2단(테두리 빨강). 채움 빨강은 되돌릴 수 없는 것에만 남긴다. */
+    .btn-role.is-danger-outline {
+        background: var(--danger-outline-bg);
+        color: var(--danger-outline-fg);
+        border-color: var(--danger-outline-fg);
+    }
+    .btn-role.is-danger-outline:hover {
+        background: var(--danger-outline-bg-hover);
     }
     .btn-role.is-quiet {
         background: none;

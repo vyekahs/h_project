@@ -107,6 +107,25 @@
     --tint-red-bg-hover: #fbd0de;
     --color-blue-darker: #0a4bad;   /* 파랑 버튼의 hover */
 
+    /* ── 파괴적 동작의 3단 사다리 ──
+       채움 빨강이 한때 「하루를 닫음 · 회원 영구 배제 · 예정 게임 취소 ·
+       되돌릴 수 있는 1점」을 동시에 뜻했다. 넷이 같은 색이면 그 색은 아무것도
+       말하지 않고, 유일하게 되돌릴 수 없는 것(블랙 등록)이 나머지 셋에 묻힌다.
+
+       1단 --danger-solid-*  채움 빨강 = 되돌릴 수 없는 것.
+                             이 콘솔에서 여기 해당하는 것은 블랙리스트 등록뿐이다.
+                             새로 쓰기 전에 정말 되돌릴 수 없는지 먼저 물을 것.
+       2단 --danger-outline-* 흰 바탕 + 빨간 테두리 = 파괴적이지만 되돌릴 수 있는 것.
+                             게임 취소·퇴장·삭제·노쇼 처리, 그리고 확인창의 파괴 버튼.
+       3단                   상태 전이일 뿐인 것(마감 하기 등)은 빨강을 쓰지 않는다.
+                             --border-control 테두리 버튼이 그 자리다. */
+    --danger-solid-bg: var(--color-red-dark);
+    --danger-solid-bg-hover: var(--color-red-darker);
+    --danger-solid-fg: var(--bg-primary);
+    --danger-outline-fg: var(--color-red-dark);
+    --danger-outline-bg: var(--bg-primary);
+    --danger-outline-bg-hover: var(--color-error-bg);
+
     /* 순위 메달. 동메달은 흰 글자에서 3.14:1이던 #cd7f32를 내렸다. */
     --medal-gold: #ffd700;
     --medal-silver: #c0c0c0;

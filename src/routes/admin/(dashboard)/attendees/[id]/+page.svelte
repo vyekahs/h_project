@@ -435,13 +435,16 @@
 </div>
 
 <style>
+    /* 누적 페널티 점수. 대시보드의 페널티 배지와 같은 경고 틴트를 쓴다 —
+       채움 빨강이면 되돌릴 수 있는 1점이 블랙 등록과 같은 색이 된다. */
     .tab-count {
         display: inline-block;
         margin-left: 0.3rem;
         padding: 0 0.35rem;
         border-radius: var(--radius-pill, 999px);
-        background: var(--color-red-dark, var(--color-red-dark));
-        color: var(--bg-primary);
+        background: var(--color-warning-bg);
+        color: var(--color-orange-text);
+        border: 1px solid var(--border-warning);
         font-size: var(--text-xs, 0.75rem);
         font-weight: 700;
     }
@@ -560,20 +563,21 @@
         background: var(--color-green-dark);
     }
 
+    /* 정기권 취소는 재발급으로 되돌린다 — 2단(테두리 빨강). */
     .btn-cancel-pass {
         padding: var(--space-4) var(--space-6);
         font-size: var(--text-lg);
         font-weight: bold;
-        color: white;
-        background: var(--color-red-dark);
-        border: none;
+        color: var(--danger-outline-fg);
+        background: var(--danger-outline-bg);
+        border: 1px solid var(--danger-outline-fg);
         border-radius: var(--radius-control);
         cursor: pointer;
         flex: 1; /* Equal width */
         transition: background 0.2s;
     }
     .btn-cancel-pass:hover {
-        background: var(--color-red-dark);
+        background: var(--danger-outline-bg-hover);
     }
 
     .adjust-row {

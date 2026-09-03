@@ -146,9 +146,17 @@
         }
     }
 
-    // 파괴적 액션 공통 확인 모달
+    /**
+     * 파괴적 액션 공통 확인 모달.
+     *
+     * severity는 확인 버튼이 입을 단을 고른다. 예전에는 danger 하나로
+     * 「되돌릴 수 없음」과 「되돌릴 수 있음」이 같은 채움 빨강을 입었고,
+     * 그래서 시트에서 테두리 빨강이던 「퇴장 처리」를 누르면 그 60px 위에
+     * 더 무거워 보이는 채움 빨강 확인 버튼이 떠 위계가 뒤집혔다.
+     */
+    type ConfirmSeverity = 'irreversible' | 'destructive' | 'neutral';
     let confirmState:
-        | { title: string; message: string; confirmLabel: string; danger: boolean; handle?: (opts: any) => Promise<void> }
+        | { title: string; message: string; confirmLabel: string; severity: ConfirmSeverity; handle?: (opts: any) => Promise<void> }
         | null = $state(null);
     let pendingForm: HTMLFormElement | null = null;
 
@@ -161,7 +169,7 @@
         title: string;
         message: string | (() => string);
         confirmLabel?: string;
-        danger?: boolean;
+        severity?: ConfirmSeverity;
         handle?: (opts: any) => Promise<void>;
         success?: string | ((data: any) => string);
     }) {
@@ -195,7 +203,7 @@
                 // 문구는 "지금" 계산한다 — 액션 생성 시점의 값은 오래됐을 수 있다
                 message: typeof opts.message === 'function' ? opts.message() : opts.message,
                 confirmLabel: opts.confirmLabel ?? '확인',
-                danger: opts.danger ?? false,
+                severity: opts.severity ?? 'neutral',
                 handle: opts.handle
             };
             return undefined;
@@ -1036,7 +1044,7 @@
                                             message: () =>
                                                 `${r.attendee_name}님을 ${g.gameName} 노쇼로 처리합니다. 예약이 취소되고 페널티 1점이 부여됩니다(누적 ${r.penalty_points + 1}/${penaltyThreshold}점).${g.rows.some((x: any) => x.status === 'waitlisted') ? ' 대기 1번이 자동 승계됩니다.' : ''}`,
                                             confirmLabel: '노쇼 처리',
-                                            danger: true,
+                                            severity: 'destructive',
                                             handle: async (res: any) => {
                                                 if (!reportResult(res.result)) announcePenalty(res.result?.data);
                                                 await res.update();
@@ -1076,7 +1084,7 @@
                                         // 「취소」와 「예약 취소」가 나란히 서면 한 단어를 공유하며
                                         // 반대를 뜻한다. 무엇이 사라지는지로 이름을 바꾼다.
                                         confirmLabel: r.status === 'pending_approval' ? '요청 거절' : '예약 삭제',
-                                        danger: true,
+                                        severity: 'destructive',
                                         success: `${r.attendee_name}님의 ${g.gameName} 예약을 처리했습니다.`
                                     })}
                                 >
@@ -1413,7 +1421,7 @@
             <p>{confirmState.message}</p>
             <div class="modal-actions">
                 <button class="btn-cancel" data-autofocus onclick={closeConfirm}>취소</button>
-                <button class="btn-confirm-action" class:danger={confirmState.danger} onclick={runConfirm}>{confirmState.confirmLabel}</button>
+                <button class="btn-confirm-action is-{confirmState.severity}" onclick={runConfirm}>{confirmState.confirmLabel}</button>
             </div>
         </div>
     </div>
@@ -1456,7 +1464,7 @@
                                         : `${penaltyThreshold}점부터 예약이 제한됩니다.`
                                 }`,
                             confirmLabel: '페널티 부여',
-                            danger: true,
+                            severity: 'destructive',
                             handle: async (res: any) => {
                                 if (!reportResult(res.result)) announcePenalty(res.result?.data);
                                 await res.update();
@@ -1495,15 +1503,16 @@
                     <span>블랙리스트</span>
                     <span class="manage-sub">{m.is_blacklisted ? '등록됨 — 입장·참여 제한' : '미등록'}</span>
                 </div>
-                <form method="POST" action="?/toggleBlacklist" use:enhance={m.is_blacklisted ? pending(undefined, `${m.name}님을 블랙리스트에서 해제했습니다.`) : confirmSubmit({ title: '블랙리스트 등록', message: `${m.name}님을 블랙리스트에 등록합니다. 이후 입장·게임 참여가 제한되고, 진행 중이거나 예정된 참여도 막힙니다.`, confirmLabel: '블랙 등록', danger: true, success: `${m.name}님을 블랙리스트에 등록했습니다.` })} style="display:inline;">
+                <form method="POST" action="?/toggleBlacklist" use:enhance={m.is_blacklisted ? pending(undefined, `${m.name}님을 블랙리스트에서 해제했습니다.`) : confirmSubmit({ title: '블랙리스트 등록', message: `${m.name}님을 블랙리스트에 등록합니다. 이후 입장·게임 참여가 제한되고, 진행 중이거나 예정된 참여도 막힙니다.`, confirmLabel: '블랙 등록', severity: 'irreversible', success: `${m.name}님을 블랙리스트에 등록했습니다.` })} style="display:inline;">
                     <input type="hidden" name="attendeeId" value={m.id} />
                     <!--
-                        3단 체계: 채움 빨강은 「되돌릴 수 없거나 제3자에게 파급되는 것」
-                        에만 쓴다. 이 시트에서 그건 블랙 등록 하나뿐이다.
-                        지난 라운드에 테두리로 내렸더니 페널티 부여·퇴장 처리와
-                        구별되지 않아, 영구 배제와 사소한 퇴장이 같아 보였다.
+                        3단 사다리의 1단. 채움 빨강은 「되돌릴 수 없는 것」에만 쓰고,
+                        이 콘솔에서 그건 블랙 등록 하나뿐이다. 이 약속이 시트 안에서만
+                        지켜지던 동안 마감 하기·게임 폭파·되돌릴 수 있는 1점이 전부
+                        같은 빨강이었고, 그래서 그 빨강이 아무것도 말하지 않았다.
+                        해제는 파괴적이지 않으므로 2단도 아닌 보조 버튼이다.
                     -->
-                    <button type="submit" class="btn-role {m.is_blacklisted ? 'is-secondary' : 'is-destructive'}">
+                    <button type="submit" class="btn-role {m.is_blacklisted ? 'is-secondary' : 'is-irreversible'}">
                         {m.is_blacklisted ? '블랙 해제' : '블랙 등록'}
                     </button>
                 </form>
@@ -1524,7 +1533,7 @@
                         title: '매니저 지정',
                         message: `${m.name}님에게 매니저 권한을 줍니다. 매니저는 게임을 만들고 자기가 만든 게임의 인원과 시간을 관리할 수 있습니다.`,
                         confirmLabel: '매니저 지정',
-                        danger: false,
+                        severity: 'neutral',
                         success: `${m.name}님을 매니저로 지정했습니다.`
                     })} style="display:inline;">
                     <input type="hidden" name="attendeeId" value={m.id} />
@@ -1559,7 +1568,7 @@
                     title: '퇴장 처리',
                     message: `${m.name}님을 퇴장 처리합니다. 방에 없음으로 바뀌고, 대기·승인 큐의 확정 예약은 노쇼 후보로 표시됩니다.`,
                     confirmLabel: '퇴장',
-                    danger: true,
+                    severity: 'destructive',
                     handle: async ({ result, update }) => {
                         if (!reportResult(result)) manageTarget = null;
                         await update();
@@ -1796,7 +1805,7 @@
                     title: '게임 폭파',
                     message: `"${g.game_name}" 예약 게임을 폭파합니다. 참여자 예약이 모두 취소됩니다.`,
                     confirmLabel: '폭파',
-                    danger: true,
+                    severity: 'destructive',
                     handle: async ({ result, update }) => {
                         if (!reportResult(result)) {
                             selectedScheduledGame = null;
@@ -2153,17 +2162,32 @@
     .btn-confirm-action {
         background: var(--color-blue-bright);
         color: white;
-        border: none;
+        border: 1px solid transparent;
         padding: var(--space-2) 1.25rem;
         border-radius: var(--radius-control);
         cursor: pointer;
         font-weight: 700;
     }
-    .btn-confirm-action.danger {
-        background: var(--color-red-dark);
+    /*
+        확인 버튼은 자기를 부른 버튼보다 무거워 보이면 안 된다. 시트의 테두리
+        빨강 「퇴장 처리」를 누르면 60px 위에 채움 빨강 확인 버튼이 떴고,
+        그러면 두 번째 화면이 첫 번째보다 심각하다고 말하는 셈이었다.
+        되돌릴 수 없는 것(블랙 등록)만 채움 빨강을 입는다.
+    */
+    .btn-confirm-action.is-irreversible {
+        background: var(--danger-solid-bg);
+        color: var(--danger-solid-fg);
     }
-    .btn-confirm-action.danger:hover {
-        background: var(--color-red-darker);
+    .btn-confirm-action.is-irreversible:hover {
+        background: var(--danger-solid-bg-hover);
+    }
+    .btn-confirm-action.is-destructive {
+        background: var(--danger-outline-bg);
+        color: var(--danger-outline-fg);
+        border-color: var(--danger-outline-fg);
+    }
+    .btn-confirm-action.is-destructive:hover {
+        background: var(--danger-outline-bg-hover);
     }
 
     .attendee-list {
@@ -2416,13 +2440,18 @@
         background: var(--color-slate-dark);
         color: var(--bg-primary);
     }
+    /* 예약 게임 폭파·게임 종료 및 퇴장. 파괴적이지만 되돌릴 수 있다 —
+       게임은 다시 만들고 사람은 다시 입장시킨다. 2단(테두리 빨강)이다. */
     .btn-delete {
-        background: var(--color-red-dark);
-        color: white;
-        border: none;
+        background: var(--danger-outline-bg);
+        color: var(--danger-outline-fg);
+        border: 1px solid var(--danger-outline-fg);
         padding: var(--space-1) var(--space-2);
         border-radius: var(--radius-control);
         cursor: pointer;
+    }
+    .btn-delete:hover {
+        background: var(--danger-outline-bg-hover);
     }
     /* 파괴적이지 않은 세션 종료 — 빨강과 구분 */
     /*
@@ -2848,10 +2877,13 @@
         background: var(--tint-blue-bg);
         color: var(--color-blue-bright);
     }
+    /* 채움 빨강이 뜻하는 하나 — 블랙리스트 — 를 배지도 그대로 입는다.
+       버튼(.btn-role.is-irreversible)과 같은 색이라 「이 색이 뜻하는 것」이
+       사람 옆의 상태와 그 상태를 만드는 동작에서 한 번에 읽힌다. */
     .badge.blacklist {
-        background: var(--color-red-dark);
-        color: var(--bg-primary);
-        border: 1px solid var(--color-red-dark);
+        background: var(--danger-solid-bg);
+        color: var(--danger-solid-fg);
+        border: 1px solid var(--danger-solid-bg);
     }
     .badge.penalty {
         background: var(--color-warning-bg);
@@ -2997,6 +3029,8 @@
         color: var(--color-red-dark);
         border: 1px solid var(--color-red-dark);
     }
+    /* 노쇼 처리는 예약 취소 + 페널티 1점이고, 둘 다 관리 시트에서 되돌린다.
+       2단(테두리 빨강). */
     .btn-queue-noshow {
         min-height: 44px;
         padding: 0 0.8rem;
@@ -3005,9 +3039,12 @@
         font-weight: 600;
         cursor: pointer;
         white-space: nowrap;
-        background: var(--color-red-dark);
-        color: white;
-        border: 1px solid transparent;
+        background: var(--danger-outline-bg);
+        color: var(--danger-outline-fg);
+        border: 1px solid var(--danger-outline-fg);
+    }
+    .btn-queue-noshow:hover {
+        background: var(--danger-outline-bg-hover);
     }
     .btn-queue-confirm:disabled,
     .btn-penalty.remove:disabled {
@@ -3132,17 +3169,14 @@
         font-size: var(--text-sm);
         font-weight: 600;
     }
-    /* 「페널티 부여」는 바로 옆의 「1점 취소」로 되돌릴 수 있다. 같은 시트 안의
-       블랙리스트 등록·삭제(.btn-role.is-destructive)와 똑같은 채움 빨강을 쓰면
-       되돌릴 수 있는 것과 없는 것이 같아 보인다. 부정적 동작이라는 신호는
-       테두리로 유지하고, 채움 빨강은 되돌릴 수 없는 것에만 남긴다. */
+    /* 「페널티 부여」는 바로 옆의 「1점 취소」로 되돌릴 수 있다. 2단이다. */
     .btn-penalty.add {
-        background: var(--bg-primary);
-        color: var(--color-red-dark);
-        border-color: var(--color-red-dark);
+        background: var(--danger-outline-bg);
+        color: var(--danger-outline-fg);
+        border-color: var(--danger-outline-fg);
     }
     .btn-penalty.add:hover {
-        background: var(--color-error-bg);
+        background: var(--danger-outline-bg-hover);
     }
     /* 시트에서 유일한 채움 버튼이라 관대한 쪽이 주 CTA로 읽혔다. 1단(중립)이다. */
     .btn-penalty.remove {
@@ -3178,19 +3212,24 @@
         cursor: pointer;
         line-height: 1.2;
     }
-    .btn-role.is-destructive {
-        background: var(--color-red-dark);
-        color: var(--bg-primary);
+    /* 1단. 이 콘솔에서 채움 빨강을 입는 유일한 버튼 — 블랙리스트 등록.
+       되돌릴 수 없고 제3자에게 파급된다. 해제는 파괴적이지 않으므로
+       is-secondary로 내린다. */
+    .btn-role.is-irreversible {
+        background: var(--danger-solid-bg);
+        color: var(--danger-solid-fg);
     }
-    /* 부정적이지만 되돌릴 수 있는 조치. 채움 빨강(is-destructive)은
-       되돌릴 수 없는 것에만 남긴다. */
+    .btn-role.is-irreversible:hover {
+        background: var(--danger-solid-bg-hover);
+    }
+    /* 2단. 부정적이지만 되돌릴 수 있는 조치. */
     .btn-role.is-danger-outline {
-        background: var(--bg-primary);
-        color: var(--color-red-dark);
-        border-color: var(--color-red-dark);
+        background: var(--danger-outline-bg);
+        color: var(--danger-outline-fg);
+        border-color: var(--danger-outline-fg);
     }
     .btn-role.is-danger-outline:hover {
-        background: var(--color-error-bg);
+        background: var(--danger-outline-bg-hover);
     }
     .btn-role.is-secondary {
         background: var(--bg-primary);

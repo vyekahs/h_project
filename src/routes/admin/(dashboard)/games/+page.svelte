@@ -513,7 +513,7 @@
                     }}
                 >
                     <input type="hidden" name="id" value={confirmAction.game.id} />
-                    <button type="submit" class={confirmAction.kind === 'delete' ? 'btn-danger' : 'btn-primary'} onclick={runConfirm}>
+                    <button type="submit" class={confirmAction.kind === 'delete' ? 'btn-destructive' : 'btn-primary'} onclick={runConfirm}>
                         {confirmAction.kind === 'delete' ? '완전 삭제' : '비활성화'}
                     </button>
                 </form>
@@ -1030,25 +1030,31 @@
         cursor: pointer;
     }
     .btn-danger-quiet {
-        background: none;
-        border: 1px solid var(--color-red-dark);
+        background: var(--danger-outline-bg);
+        border: 1px solid var(--danger-outline-fg);
         border-radius: var(--radius-control);
-        color: var(--color-red-dark);
+        color: var(--danger-outline-fg);
         padding: 0 var(--space-2);
         min-height: 44px;
         font-size: var(--text-sm);
         cursor: pointer;
     }
-    .btn-danger {
-        background: var(--color-red-dark);
-        color: var(--bg-primary);
-        border: none;
+    /* 도감에서 지워도 기록은 남고 다시 등록할 수 있다 — 2단(테두리 빨강).
+       목록의 「완전 삭제」(.btn-danger-quiet)와 같은 옷을 입어야 확인창이
+       자기를 부른 버튼보다 무겁게 읽히지 않는다. */
+    .btn-destructive {
+        background: var(--danger-outline-bg);
+        color: var(--danger-outline-fg);
+        border: 1px solid var(--danger-outline-fg);
         border-radius: var(--radius-control);
         padding: 0 var(--space-4);
         min-height: 44px;
         font-size: var(--text-sm);
         font-weight: var(--weight-medium);
         cursor: pointer;
+    }
+    .btn-destructive:hover {
+        background: var(--danger-outline-bg-hover);
     }
     .modal-backdrop.confirm-layer { z-index: 1100; }
     .confirm-modal, .diff-modal { max-width: 30rem; }

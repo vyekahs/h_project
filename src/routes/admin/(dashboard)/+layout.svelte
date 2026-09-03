@@ -115,7 +115,7 @@
                         오픈 하기
                     </button>
                 {:else}
-                    <button class="btn-danger" onclick={() => closeDayModalVisible = true}>
+                    <button class="btn-close-day" onclick={() => closeDayModalVisible = true}>
                         <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:6px;"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
                         마감 하기
                     </button>
@@ -200,7 +200,7 @@
                         await update();
                     };
                 }}>
-                    <button type="submit" class="btn-danger">마감 확정</button>
+                    <button type="submit" class="btn-close-day">마감 확정</button>
                 </form>
             </div>
         </div>
@@ -552,18 +552,24 @@
         cursor: pointer;
         font-weight: bold;
     }
-    .btn-danger {
-        background: #d32f2f;
-        color: white;
-        border: none;
+    /*
+        마감은 파괴가 아니라 하루의 상태 전이다 — 바로 옆 「오픈 하기」와
+        짝을 이루고, 다시 열 수 있다. 채움 빨강이었을 때는 회원 영구 배제와
+        같은 색이었고, 매일 누르는 버튼이 그 색을 소모해 정작 되돌릴 수 없는
+        것에서 빨강이 아무 경고도 되지 못했다. 중립 테두리 버튼으로 내린다.
+    */
+    .btn-close-day {
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        border: 1px solid var(--border-control);
         padding: var(--space-3) var(--space-5);
         border-radius: var(--radius-control);
         cursor: pointer;
         font-weight: bold;
-            font-size: var(--text-sm);
+        font-size: var(--text-sm);
     }
-    .btn-danger:hover {
-        background: #b71c1c;
+    .btn-close-day:hover {
+        background: var(--bg-hover);
     }
     .closing-info {
         margin: var(--space-2) 0 0 0;
