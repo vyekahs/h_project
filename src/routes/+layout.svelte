@@ -14,15 +14,11 @@
     import { user } from '$lib/stores/user';
     import { initNotificationsSSE } from '$lib/stores/notifications.svelte';
     import { initNetworkHealthCheck } from '$lib/stores/networkHealth.svelte';
+    import { isInGame } from '$lib/games/isInGame';
 
 	let { children } = $props();
 
-    const GAME_PATHS = ['/minigames/tichu', '/minigames/sudoku', '/minigames/killer-sudoku', '/minigames/unblock-me', '/minigames/energy', '/minigames/water-sort'];
     let versionCheckTimer: ReturnType<typeof setInterval> | null = null;
-
-    function isInGame(pathname: string): boolean {
-        return GAME_PATHS.some(p => pathname.startsWith(p));
-    }
 
     // 하단 네비게이션 물방울 인디케이터
     const navActiveIndex = $derived.by(() => {
