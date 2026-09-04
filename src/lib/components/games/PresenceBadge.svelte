@@ -1,24 +1,20 @@
 <script lang="ts">
     import { onMount } from 'svelte';
 
-    // 오락실 안에서 "지금 카페 상황"을 보여주는 헤더 배지.
+    // 오락실 안에서 "지금 혼놀에 누가 있는지"를 보여주는 헤더 배지.
     // 오락실의 목적이 "밖에서 게임하다가 오늘 누구 있나 보고 가볼까"로 이어지는 것이라,
     // 게임 화면에서 홈(현황판)으로 나가는 다리 역할을 한다.
     //
-    // 카페(오프라인)와 앱 접속(온라인)을 나눠 보여준다. 숫자 하나만 띄우면
-    // "지금 같이 게임하는 사람 수"로 읽히기 때문이다. 서버에서 서로 겹치지 않게
-    // 집계하므로 두 숫자를 더하면 실제 인원이 된다.
-    //
-    // 0을 그대로 노출하면 오히려 방문을 막는 신호가 되므로 0인 쪽은 생략한다.
-    //   카페·온라인 둘 다 0이고 예정만 있음 → "N명 예정"
-    //   전부 0                              → 배지 숨김
+    // 0을 그대로 노출하면 오히려 방문을 막는 신호가 되므로 표시하지 않는다.
+    //   혼놀에 있음        → 혼놀 N
+    //   없지만 올 예정 있음 → N명 예정
+    //   둘 다 없음          → 배지 숨김
 
     type Presence = {
         isOpen: boolean;
         present: number;
         presentNames: string[];
         planned: number;
-        online: number;
     };
 
     let data = $state<Presence | null>(null);
@@ -41,60 +37,37 @@
         return () => document.removeEventListener('visibilitychange', onVisible);
     });
 
-    const hasLive = $derived(!!data && (data.present > 0 || data.online > 0));
-    const showPlanned = $derived(!!data && !hasLive && data.planned > 0);
-    const visible = $derived(hasLive || showPlanned);
+    const showPresent = $derived(!!data && data.present > 0);
+    const showPlanned = $derived(!!data && !showPresent && data.planned > 0);
 
     const aria = $derived.by(() => {
         if (!data) return '';
-        if (!hasLive) return `오늘 ${data.planned}명이 올 예정입니다. 현황 보러 가기`;
-        const parts: string[] = [];
-        if (data.present > 0) {
+        if (showPresent) {
             const names = data.presentNames.join(', ');
             const more = data.present > data.presentNames.length ? ' 외' : '';
-            parts.push(`혼놀에 ${data.present}명${names ? ` (${names}${more})` : ''}`);
+            return `혼놀에 ${data.present}명 있습니다${names ? ` (${names}${more})` : ''}. 현황 보러 가기`;
         }
-        if (data.online > 0) parts.push(`앱에 ${data.online}명 접속 중`);
-        return `${parts.join(', ')}. 현황 보러 가기`;
+        return `오늘 ${data.planned}명이 올 예정입니다. 현황 보러 가기`;
     });
 </script>
 
-{#if visible && data}
+{#if data && (showPresent || showPlanned)}
     <a href="/" class="presence-badge" aria-label={aria} title={aria}>
-        {#if hasLive}
-            {#if data.present > 0}
-                <span class="seg">
-                    <span class="dot cafe" aria-hidden="true"></span>
-                    <span class="txt">혼놀 {data.present}</span>
-                </span>
-            {/if}
-            {#if data.online > 0}
-                <span class="seg">
-                    <span class="dot app" aria-hidden="true"></span>
-                    <span class="txt">온라인 {data.online}</span>
-                </span>
-            {/if}
-        {:else}
-            <span class="seg">
-                <span class="dot planned" aria-hidden="true"></span>
-                <span class="txt">{data.planned}명 예정</span>
-            </span>
-        {/if}
+        <span class="dot" class:planned={showPlanned} aria-hidden="true"></span>
+        <span class="txt">
+            {#if showPresent}혼놀 {data.present}{:else}{data.planned}명 예정{/if}
+        </span>
     </a>
 {/if}
 
 <style>
     /* 헤더의 .glass-btn과 같은 유리 표면을 쓰되, 숫자가 들어가므로 알약 형태로 넓힌다. */
     .presence-badge {
-        /* 헤더 폭이 좁아(390px 화면에서 제목 160px + 좌우 대칭) 가로로 나열하면
-           배지가 제목을 덮는다. 두 줄로 쌓아 폭을 절반으로 줄인다. */
         display: inline-flex;
-        flex-direction: column;
-        align-items: flex-start;
-        justify-content: center;
-        gap: 0.1rem;
-        height: 36px;
-        padding: 0 0.5rem;
+        align-items: center;
+        gap: 0.35rem;
+        height: 34px;
+        padding: 0 0.65rem;
         border-radius: 999px;
         background: var(--glass-surface-faint);
         backdrop-filter: blur(8px);
@@ -111,39 +84,25 @@
         background: var(--glass-surface-strong);
     }
 
-    .seg {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.25rem;
-    }
-
     .dot {
-        width: 6px;
-        height: 6px;
+        width: 7px;
+        height: 7px;
         border-radius: 50%;
         flex-shrink: 0;
-    }
-
-    /* 카페에 실제로 있는 사람 — 유일하게 움직이는 요소로 시선을 끈다. */
-    .dot.cafe {
         background: var(--color-green);
         animation: pulse 2s ease-out infinite;
     }
 
-    .dot.app {
-        background: var(--color-blue);
-    }
-
-    /* 예정은 "지금 있음"과 헷갈리면 안 되므로 색을 죽인다. */
+    /* 예정은 "지금 있음"과 헷갈리면 안 되므로 색과 움직임을 모두 죽인다. */
     .dot.planned {
         background: var(--color-slate);
+        animation: none;
     }
 
     .txt {
-        font-size: 0.62rem;
+        font-size: 0.72rem;
         font-weight: 700;
         letter-spacing: -0.3px;
-        line-height: 1.25;
     }
 
     @keyframes pulse {
@@ -152,7 +111,26 @@
         100% { box-shadow: 0 0 0 0 transparent; }
     }
 
+    /* 좁은 화면에서는 헤더에 게임 제목과 나란히 들어가야 해서 배지를 줄인다.
+       (280~300px에서 'N명 예정' 같은 긴 문구가 제목을 덮는 문제) */
+    @media (max-width: 360px) {
+        .presence-badge {
+            height: 30px;
+            padding: 0 0.5rem;
+            gap: 0.28rem;
+        }
+
+        .txt {
+            font-size: 0.62rem;
+        }
+
+        .dot {
+            width: 6px;
+            height: 6px;
+        }
+    }
+
     @media (prefers-reduced-motion: reduce) {
-        .dot.cafe { animation: none; }
+        .dot { animation: none; }
     }
 </style>
