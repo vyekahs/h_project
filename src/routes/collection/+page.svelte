@@ -283,7 +283,7 @@
                 {/if}
             </div>
             {#if justSavedSessionId === play.sessionId}
-                <span class="save-flash">✓ 저장됨</span>
+                <span class="save-flash" aria-live="polite">✓ 저장됨</span>
             {:else if canEditPlay(play)}
                 <button type="button" class="btn-edit-play" onclick={() => openPlayEdit(play)}>수정</button>
             {:else}
@@ -1021,14 +1021,18 @@
     }
     .modal-close-btn-icon {
         position: absolute;
-        top: 0.9rem;
-        right: 0.9rem;
+        top: 0.4rem;
+        right: 0.4rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 44px;
+        min-height: 44px;
         background: none;
         border: none;
         color: var(--text-secondary);
         font-size: 1rem;
         cursor: pointer;
-        padding: 0.3rem;
         line-height: 1;
     }
     .modal-game-header {
