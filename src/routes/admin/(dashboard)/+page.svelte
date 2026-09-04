@@ -1163,11 +1163,11 @@
 
     {#if (data.savedMembers || []).length > 0}
         <div class="quick-add">
-            <button type="button" class="toggle-header" aria-expanded={savedMembersOpen} onclick={() => savedMembersOpen = !savedMembersOpen}>
+            <button type="button" class="toggle-header" aria-expanded={savedMembersOpen} aria-controls="saved-members-list" onclick={() => savedMembersOpen = !savedMembersOpen}>
                 저장된 멤버 ({(savedMembers || []).length})
             </button>
             {#if savedMembersOpen}
-            <div class="member-chips">
+            <div class="member-chips" id="saved-members-list">
                 {#each (savedMembers || []) as member (member.id)}
                     <div class="chip-container {member.is_blacklisted ? 'blacklisted' : ''}">
                         <a href="/admin/attendees/{member.id}" class="chip-link">
@@ -1178,7 +1178,9 @@
                         </a>
                         <form method="POST" action="?/addAttendee" use:enhance={pending(undefined, `${member.name}님을 입장 처리했습니다.`)} style="display:inline;">
                             <input type="hidden" name="name" value={member.name} />
-                            <button type="submit" class="chip-add" title="입장" disabled={member.is_blacklisted}>+</button>
+                            <!-- 「+」의 이름이 title에서만 왔다. 비활성일 때는 왜인지도 말하지 않았다. -->
+                            <button type="submit" class="chip-add" disabled={member.is_blacklisted}
+                                aria-label={member.is_blacklisted ? `${member.name} 입장 — 블랙리스트라 불가` : `${member.name} 입장`}>+</button>
                         </form>
                     </div>
                 {/each}
@@ -1397,7 +1399,8 @@
                         onkeydown={(e) => comboKeydown(e, filteredGames, selectGame)}
                         role="combobox"
                         aria-expanded={dropdownOpen && filteredGames.length > 0}
-                        aria-controls="newGameOptions"
+                        {...(dropdownOpen && filteredGames.length > 0 ? { 'aria-controls': 'newGameOptions' } : {})}
+                        aria-activedescendant={dropdownOpen && gameOptionIndex >= 0 ? `newGameOption-${gameOptionIndex}` : undefined}
                         aria-autocomplete="list"
                         required 
                         autocomplete="off" 
@@ -1412,7 +1415,7 @@
                         <ul class="dropdown-menu" id="newGameOptions" role="listbox" aria-label="게임 후보">
                             {#each filteredGames as game, gi}
                                 <li role="presentation">
-                                    <button type="button" role="option" aria-selected={gi === gameOptionIndex} class:active={gi === gameOptionIndex} onclick={() => selectGame(game)}>
+                                    <button type="button" id="newGameOption-{gi}" role="option" aria-selected={gi === gameOptionIndex} class:active={gi === gameOptionIndex} onclick={() => selectGame(game)}>
                                         {#if game.image_url}
                                             <img src={game.image_url} alt="" class="mini-thumb" />
                                         {/if}
@@ -1505,7 +1508,7 @@
                     <div class="pp-list">
                         {#each pickerResults as a (a.id)}
                             {@const checked = selectedPlayerIds.includes(a.id)}
-                            <button type="button" class="pp-option" class:checked={checked} disabled={a.is_playing && !isSettling(a)}
+                            <button type="button" class="pp-option" class:checked={checked} aria-pressed={checked} disabled={a.is_playing && !isSettling(a)}
                                 onclick={() => selectedPlayerIds = checked ? selectedPlayerIds.filter((x) => x !== a.id) : [...selectedPlayerIds, a.id]}>
                                 <span class="pp-check" aria-hidden="true">{checked ? '✓' : ''}</span>
                                 <span class="pp-name">{a.name}</span>
@@ -1911,7 +1914,8 @@
                         onkeydown={(e) => comboKeydown(e, filteredScheduledGames, selectScheduledGame)}
                         role="combobox"
                         aria-expanded={dropdownOpen && filteredScheduledGames.length > 0}
-                        aria-controls="scheduledGameOptions"
+                        {...(dropdownOpen && filteredGames.length > 0 ? { 'aria-controls': 'scheduledGameOptions' } : {})}
+                        aria-activedescendant={dropdownOpen && gameOptionIndex >= 0 ? `scheduledGameOption-${gameOptionIndex}` : undefined}
                         aria-autocomplete="list"
                         required 
                         autocomplete="off" 
@@ -1921,7 +1925,7 @@
                         <ul class="dropdown-menu" id="scheduledGameOptions" role="listbox" aria-label="게임 후보">
                             {#each filteredScheduledGames as game, gi}
                                 <li role="presentation">
-                                    <button type="button" role="option" aria-selected={gi === gameOptionIndex} class:active={gi === gameOptionIndex} onclick={() => selectScheduledGame(game)}>
+                                    <button type="button" id="scheduledGameOption-{gi}" role="option" aria-selected={gi === gameOptionIndex} class:active={gi === gameOptionIndex} onclick={() => selectScheduledGame(game)}>
                                         {#if game.image_url}
                                             <img src={game.image_url} alt="" class="mini-thumb" />
                                         {/if}
@@ -2356,8 +2360,15 @@
         margin-left: 0.15em;
         color: var(--text-secondary);
     }
+    /*
+        토큰 파일은 가장 큰 단계를 숫자 전용으로 선언한다. 「없음」은 숫자가
+        아닌데 40px로 렌더돼, 두 칸이 동시에 비면 큰 회색 글자 둘이 진짜 숫자
+        둘과 경쟁했다. 값이 없다는 것은 조용히 말해야 한다.
+    */
     .rs-value-none {
         color: var(--text-secondary);
+        font-size: var(--text-xl);
+        font-weight: var(--weight-medium);
     }
     .rs-value-pending {
         color: var(--color-orange-text);
@@ -2463,7 +2474,7 @@
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
-        font-weight: var(--weight-regular, 400);
+        font-weight: var(--weight-normal);
     }
     .rs-dot {
         width: 8px;
@@ -2566,7 +2577,7 @@
     .attendee-link {
         text-decoration: none;
         color: var(--text-primary);
-        font-weight: 500;
+        font-weight: var(--weight-medium);
         display: block;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -3067,6 +3078,9 @@
     .btn-cancel {
         background: var(--border-medium);
         color: var(--text-primary);
+        /* 블랙 등록 확인창에서 취소 48px vs 등록 94px이었다. 탈출구가 가장
+           작은 표적이면, 엄지 경로에는 확인창이 없는 것과 같다. */
+        min-width: 5.5rem;
     }
     /* 모달 계층 — 시트 위에 확인, 확인 위에 결과 알림.
        같은 z-index면 DOM 순서가 이기기 때문에 확인 모달이 관리 시트 밑에 깔린다. */
@@ -3182,7 +3196,7 @@
     }
     .winner-option .player-name {
         flex: 1;
-        font-weight: 500;
+        font-weight: var(--weight-medium);
     }
     .winner-option .medal {
         opacity: 0;
@@ -3413,8 +3427,19 @@
     .list-name {
         padding-block: var(--space-1);
     }
-    .sq-who .attendee-link {
+    /*
+        이름 링크가 대시보드를 떠나는 유일한 컨트롤인데, 폭이 이름을 따라가
+        두 글자짜리는 13px 표적이었다. 세로만 벌던 padding에 가로를 더하고
+        최소 폭을 준다 — 옆의 「관리」는 떠나지 않는 버튼이라 오조작 비용이 크다.
+    */
+    .sq-who .attendee-link,
+    .name-row .attendee-link {
         padding-block: var(--space-1);
+        padding-inline: var(--space-2);
+        margin-inline: calc(-1 * var(--space-2));
+        min-width: 2.75rem;
+        display: inline-block;
+        text-align: left;
     }
 
     /* 결과 토스트 — 흐름을 막지 않는 확인. 실패는 모달이 맡는다 */
@@ -3680,7 +3705,7 @@
         flex-direction: column;
     }
     .game-option-info .name {
-        font-weight: 500;
+        font-weight: var(--weight-medium);
         color: var(--text-primary);
     }
     .game-option-info .meta {
@@ -3706,14 +3731,24 @@
         border-radius: var(--radius-control);
     }
 
+    /*
+        시트마다 채움 파랑이 둘이었다 — 「추가」(참여자 한 명)와 「게임 시작」이
+        같은 무게라, 시트의 실제 1순위가 가장 큰 목소리가 아니었다. 「추가」는
+        보조 동작이므로 틴트로 내린다. 파랑을 유지하는 것은 여전히 진행형
+        동작이기 때문이고, 채움을 놓는 것은 그 시트에 답이 따로 있기 때문이다.
+    */
     .btn-mini {
         padding: 0.4rem 0.8rem;
-        background: var(--color-blue-bright);
-        color: white;
-        border: none;
+        background: var(--tint-blue-bg);
+        color: var(--color-blue-bright);
+        border: 1px solid transparent;
         border-radius: var(--radius-control);
         cursor: pointer;
         font-size: var(--text-sm);
+        font-weight: var(--weight-medium);
+    }
+    .btn-mini:hover {
+        background: var(--tint-blue-bg-hover);
     }
     /* --text-dark는 글자색 토큰이다. 배경으로 쓰면 시스템이 어긋난다. */
     .btn-guest {
@@ -3872,7 +3907,7 @@
     .vp-time {
         font-size: var(--text-xs);
         color: var(--color-orange-text);
-        font-weight: 500;
+        font-weight: var(--weight-medium);
     }
 
     /* 게임 리스트 */

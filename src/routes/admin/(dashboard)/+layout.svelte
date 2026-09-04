@@ -97,9 +97,14 @@
 <AdminFeedback />
 
 <div class="admin-layout">
-    <aside class="sidebar">
+    <!--
+        브랜드 줄은 제목이 아니라 이름표다. h2로 두었더니 문서가 h2로 열리고
+        그 다음에 h1이 왔다 — 보조기술이 읽는 개요가 거꾸로 시작했다.
+        랜드마크 이름은 aside가 직접 든다.
+    -->
+    <aside class="sidebar" aria-label="관리자 콘솔">
         <div class="sidebar-header">
-            <h2>관리자 콘솔</h2>
+            <p class="sidebar-brand">관리자 콘솔</p>
         </div>
         <nav class="sidebar-nav" aria-label="관리자 메뉴">
             <a href="/admin" class="nav-item" class:active={$page.url.pathname === '/admin'} aria-current={$page.url.pathname === '/admin' ? "page" : undefined}>
@@ -365,7 +370,7 @@
         margin-bottom: var(--space-6);
         text-align: center;
     }
-    .sidebar-header h2 {
+    .sidebar-header .sidebar-brand {
         margin: 0;
         font-size: var(--text-xl);
         color: #ecf0f1;
@@ -523,7 +528,7 @@
             margin-bottom: 0;
             text-align: center;
         }
-        .sidebar-header h2 {
+        .sidebar-header .sidebar-brand {
             font-size: var(--text-lg);
         }
         

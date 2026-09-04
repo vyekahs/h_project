@@ -79,7 +79,13 @@
 
     onMount(() => {
         themeStore.init();
-        user.refresh();
+        /*
+            어드민 콘솔은 회원 세션이 아니라 admin_session으로 인증한다.
+            그런데도 이 호출이 나가서 모든 어드민 로드마다 401이 콘솔에 빨간
+            에러로 찍혔다 — 네트워크 계층이 내는 것이라 코드로 삼킬 수 없다.
+            어드민 화면은 이 스토어를 읽는 곳이 하나도 없다.
+        */
+        if (!$page.url.pathname.startsWith('/admin')) user.refresh();
         initNetworkHealthCheck();
 
         // /_app/version.json은 프로덕션 빌드에만 생성됨 (vite dev에선 없어서 항상 404) — dev 모드에선 폴링 생략
@@ -344,6 +350,15 @@
         touch-action: manipulation;
         transition: background-color 0.2s, color 0.2s;
 	}
+    /*
+        어드민의 킬 스위치는 `.force-light *` — 후손만 잡는다. 이 transition은
+        body, 즉 그 조상에 있어서 유일하게 설정을 빠져나갔다. 선언한 자리에서 끈다.
+    */
+    @media (prefers-reduced-motion: reduce) {
+        :global(body) {
+            transition: none;
+        }
+    }
     :global(input), :global(textarea), :global(select) {
         background-color: var(--bg-primary);
         color: var(--text-primary);
