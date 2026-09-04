@@ -261,7 +261,7 @@
                     </span>
                     <span class="play-result">
                         {#if play.isWinner}<span class="result-badge">승리</span>{/if}
-                        {#if play.myScore}<span class="play-score">{play.myScore}점</span>{/if}
+                        {#if play.myScore !== null && play.myScore !== undefined}<span class="play-score">{play.myScore}점</span>{/if}
                     </span>
                 </div>
                 {#if play.opponents && play.opponents.length > 0}
@@ -370,6 +370,10 @@
                 {/if}
             </div>
         {:else}
+            <p class="shelf-legend">
+                <span class="legend-item"><span class="legend-swatch owned" aria-hidden="true"></span>내 소장</span>
+                <span class="legend-item"><span class="legend-swatch unplayed" aria-hidden="true"></span>아직 플레이 안 함</span>
+            </p>
             <section class="shelf-grid">
                 {#each filteredGames as game}
                     {@const played = data.playedByGameId[game.id]}
@@ -711,6 +715,33 @@
         border-radius: 100px;
         transform-origin: left;
         transition: transform 0.3s ease;
+    }
+
+    .shelf-legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.9rem;
+        margin: 0 0 0.9rem;
+        font-size: 0.75rem;
+        color: var(--text-secondary);
+    }
+    .legend-item {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+    }
+    .legend-swatch {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        flex-shrink: 0;
+    }
+    .legend-swatch.owned {
+        background: var(--color-amber);
+    }
+    .legend-swatch.unplayed {
+        background: var(--text-tertiary);
+        opacity: 0.5;
     }
 
     .shelf-grid {
@@ -1177,10 +1208,12 @@
         font-weight: bold;
         padding: 0.1rem 0.45rem;
         border-radius: 4px;
-        /* --color-warning-bg/--color-achievement-text 조합은 다크 모드에서 1.29:1로
-           .btn-ownership-toggle.active에도 있는 기존 토큰 버그라 재사용하지 않는다.
-           --color-amber(#fbbf24)는 라이트/다크 값이 동일해 검증도 한 번으로 끝나고,
-           .owned-badge와 같은 패턴이라 8.4:1로 두 테마 모두 WCAG AA를 넉넉히 통과한다. */
+        /* --color-warning-bg/--color-achievement-text 조합(.btn-ownership-toggle.active와
+           동일)은 처음엔 다크 모드에서 1.29:1이라 판단해 피했으나, 이는 rgba()의 알파
+           채널을 무시하고 측정한 검증 스크립트 쪽 버그였다 — 실제로 --bg-primary 위에
+           알파 합성하면 약 6.2:1로 통과한다(3차 크리틱에서 정정). 그래도 --color-amber
+           (#fbbf24)는 라이트/다크 값이 동일해 알파 합성을 따질 필요 자체가 없고,
+           .owned-badge와 같은 패턴이라 8.4:1로 더 단순하고 확실하게 통과하므로 유지한다. */
         background: var(--color-amber);
         color: #451a03;
     }
@@ -1196,6 +1229,9 @@
     }
     .btn-edit-play {
         flex-shrink: 0;
+        display: inline-flex;
+        align-items: center;
+        min-height: 44px;
         background: none;
         border: 1px solid var(--border-default);
         color: var(--text-secondary);
@@ -1276,10 +1312,13 @@
     .edit-play-actions {
         display: flex;
         justify-content: flex-end;
-        gap: 0.5rem;
+        gap: 0.75rem;
         margin-top: 0.6rem;
     }
     .btn-cancel-inline {
+        display: inline-flex;
+        align-items: center;
+        min-height: 44px;
         background: none;
         border: 1px solid var(--border-default);
         color: var(--text-secondary);
@@ -1289,6 +1328,9 @@
         cursor: pointer;
     }
     .btn-save-inline {
+        display: inline-flex;
+        align-items: center;
+        min-height: 44px;
         background: var(--color-blue);
         border: none;
         color: #fff;
@@ -1297,5 +1339,10 @@
         padding: 0.35rem 0.8rem;
         border-radius: 6px;
         cursor: pointer;
+    }
+    /* .play-badge/.view-toggle button.active와 같은 버그: --color-blue가 다크
+       모드에서 밝아져(#4dabf7) 흰 글자와 2.47:1로 미달 — 같은 패턴으로 수정 */
+    :global([data-theme='dark']) .btn-save-inline {
+        color: var(--bg-primary);
     }
 </style>
