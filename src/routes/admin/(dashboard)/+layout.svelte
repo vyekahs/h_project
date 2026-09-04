@@ -160,7 +160,7 @@
                 {/if}
             </div>
             <div class="header-actions">
-                <a href="/" class="btn-secondary">
+                <a href="/" class="btn-nav-out">
                     <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:6px;"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
                     메인으로
                 </a>
@@ -466,9 +466,61 @@
     }
     .header-actions {
         display: flex;
+        align-items: center;
         gap: var(--space-4);
     }
+    /*
+        「메인으로」와 「마감 하기」가 픽셀 단위로 같은 버튼이었고 16px 떨어져
+        있었다 — 하나는 공개 사이트로 가고, 하나는 방에 있는 전원을 퇴장시키고
+        도는 판을 모두 닫는다. 시끄러운 방에서 한 손으로 힐끗 보고 누르는
+        상황에서, 확인창이 오탭과 저녁 전체 사이의 유일한 방어선이었다.
+
+        마감을 빨강으로 되돌리지는 않는다 — 사다리가 옳다. 대신 실루엣으로
+        가른다: 나가는 링크는 테두리를 버리고, 상태를 바꾸는 버튼만 테두리를
+        유지한다. 결과가 반대인 두 개의 같은 모양은 일관성이 아니다.
+    */
+    .btn-nav-out {
+        display: flex;
+        align-items: center;
+        padding: var(--space-3) var(--space-3);
+        border: 1px solid transparent;
+        border-radius: var(--radius-control);
+        background: none;
+        color: var(--text-secondary);
+        text-decoration: none;
+        font-weight: var(--weight-medium);
+        font-size: var(--text-sm);
+    }
+    .btn-nav-out {
+        /* 테두리를 버려도 표적은 버리지 않는다 */
+        min-height: 44px;
+    }
+    .btn-nav-out:hover {
+        background: var(--bg-hover);
+        color: var(--text-primary);
+    }
     
+    /*
+        가로로 든 폰(390px 높이)에서는 헤더 88 + 스트립 69 + 카드 여백만으로
+        쓸 수 있는 높이를 다 썼고, 게임 행도 사람 행도 하나도 보이지 않았다.
+        폰을 옆으로 드는 이유는 더 보려는 것인데 더 적게 보였다.
+        세로가 희소한 곳에서만 여백을 깎는다 — 폭이 아니라 높이로 건다.
+    */
+    @media (max-height: 560px) {
+        .header {
+            margin-bottom: var(--space-2);
+        }
+        .closing-info {
+            margin-top: 0;
+        }
+        .main-content :global(section) {
+            padding: var(--space-3);
+            margin-bottom: var(--space-3);
+        }
+        .main-content :global(.room-summary) {
+            padding: var(--space-2) var(--space-3);
+        }
+    }
     .mobile-bottom-nav {
         display: none;
     }
