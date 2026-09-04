@@ -435,9 +435,28 @@
         align-items: center;
         margin-bottom: var(--space-6);
     }
-    @media (max-width: 768px) {
+    /* 세로 폰과 가로 폰이 같은 조건을 쓴다 — 390px 높이에서 헤더가 126px이면
+       그것만으로 화면의 3분의 1이다. */
+    @media (max-width: 768px), (max-height: 560px) and (max-width: 1024px) {
         .header {
             margin-bottom: var(--space-4);
+        }
+        /*
+            폰에서는 사이드바가 숨겨져 h1이 유일한 제목인데, 그 문자열은 하단
+            탭 바의 활성 항목이 이미 「대시보드」로 말하고 있다. 문서 구조는
+            남기고 자리만 돌려준다 — 이 34px은 방에 서 있는 사람이 화면에서
+            가장 아쉬워하는 세로다.
+        */
+        .header h1 {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0 0 0 0);
+            white-space: nowrap;
+            border: 0;
         }
     }
     .header-actions {
@@ -463,8 +482,16 @@
         }
     }
 
-    /* Mobile Responsive Styles */
-    @media (max-width: 768px) {
+    /*
+        Mobile Responsive Styles
+
+        높이 조건이 함께 필요하다. 사이드바 숨김은 폭만 봤고(≤768) 2열 전환은
+        높이만 봤기 때문에(≥820w & ≤560h), 아이폰 가로(844x390)에서 둘 다
+        참이 되어 250px 네이비 사이드바가 남은 채로 열이 갈렸다 — 실측 241px과
+        265px. 어느 쪽에도 게임 하나 사람 하나가 겨우 들어간다.
+        짧은 데스크톱 창까지 모바일로 접지 않도록 폭 상한을 함께 건다.
+    */
+    @media (max-width: 768px), (max-height: 560px) and (max-width: 1024px) {
         /* :global(.force-light)로 쓰면 안 된다. 기본값 0px은 admin-tokens.css의
            .force-light(특이도 0,1,0)에서 오는데, :global()도 같은 0,1,0이라
            순서에 기대게 된다. 스코프된 .force-light는 .force-light.s-xxx(0,2,0)로
