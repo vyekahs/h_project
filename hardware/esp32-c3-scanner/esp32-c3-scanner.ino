@@ -95,6 +95,32 @@ void setup() {
   delay(2000);
   Serial.println("\n\n=== BLE SCANNER ===");
 
+  // --- 안테나 선택 (무선을 켜기 전에 해야 WiFi/BLE 모두 외장 안테나를 탄다) ---
+  // Seeed XIAO ESP32C6는 온보드 세라믹 안테나와 외장 u.FL을 RF 스위치로 전환하는데
+  // 기본값이 온보드다. 이 설정을 빼먹으면 u.FL에 안테나를 꽂아도 전파가 그쪽으로
+  // 가지 않는다 — 실측에서 안테나를 뽑아도, 손으로 감싸 쥐어도 RSSI가 1~2dB밖에
+  // 안 움직였던 게 그 증거였다(살아 있었다면 5~20dB는 떨어진다).
+  //
+  // 핀 번호는 Seeed 공식 문서 기준. 보드를 "XIAO_ESP32C6"로 고르면 variant가 매크로를
+  // 정의해 주지만, 범용 "ESP32C6 Dev Module"로 빌드해도 되도록 폴백을 둔다.
+  // C3 등 다른 타깃에선 같은 GPIO가 다른 용도라 C6에서만 적용한다.
+#if defined(CONFIG_IDF_TARGET_ESP32C6)
+  #ifndef WIFI_ENABLE
+    #define WIFI_ENABLE 3
+  #endif
+  #ifndef WIFI_ANT_CONFIG
+    #define WIFI_ANT_CONFIG 14
+  #endif
+  pinMode(WIFI_ENABLE, OUTPUT);
+  digitalWrite(WIFI_ENABLE, LOW);          // RF 스위치 활성화
+  delay(100);
+  pinMode(WIFI_ANT_CONFIG, OUTPUT);
+  digitalWrite(WIFI_ANT_CONFIG, HIGH);     // HIGH = 외장 u.FL, LOW = 온보드
+  Serial.println("Antenna: EXTERNAL (u.FL) [XIAO ESP32C6]");
+#else
+  Serial.println("Antenna: on-board (no RF switch on this target)");
+#endif
+
   // WiFi Connect
   Serial.print("Connecting to WiFi: ");
   Serial.println(WIFI_SSID);
@@ -122,9 +148,6 @@ void setup() {
   // BLE Init
   Serial.println("Initializing BLE...");
   BLEDevice::init(SCANNER_ID);
-
-  // ESP32-C6-WROOM-1U: 외장 안테나 전용 모듈 (GPIO 제어 불필요)
-  Serial.println("ESP32-C6-WROOM-1U detected (external antenna only)");
 
   // 송신 전력(esp_ble_tx_power_set)은 의도적으로 설정하지 않는다.
   // 이 장치는 패시브 스캔만 하므로 BLE 전파를 아예 송신하지 않는다
