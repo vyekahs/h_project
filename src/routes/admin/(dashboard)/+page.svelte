@@ -5,7 +5,16 @@
     import { onMount, onDestroy } from 'svelte';
     import { trapFocus } from '$lib/actions/modal';
     // 결과 알림은 레이아웃의 <AdminFeedback />가 렌더한다 — 화면마다 다시 만들지 않는다
-    import { showToast, showAlert, reportResult } from '$lib/stores/adminFeedback';
+    import {
+        showToast,
+        showAlert,
+        reportResult,
+        rememberAction,
+        forgetAction,
+        pruneActions,
+        recentActions,
+        UNDO_WINDOW_MS
+    } from '$lib/stores/adminFeedback';
 
     let { data }: { data: PageData } = $props();
 
@@ -146,9 +155,17 @@
         }
     }
 
-    // 파괴적 액션 공통 확인 모달
+    /**
+     * 파괴적 액션 공통 확인 모달.
+     *
+     * severity는 확인 버튼이 입을 단을 고른다. 예전에는 danger 하나로
+     * 「되돌릴 수 없음」과 「되돌릴 수 있음」이 같은 채움 빨강을 입었고,
+     * 그래서 시트에서 테두리 빨강이던 「퇴장 처리」를 누르면 그 60px 위에
+     * 더 무거워 보이는 채움 빨강 확인 버튼이 떠 위계가 뒤집혔다.
+     */
+    type ConfirmSeverity = 'irreversible' | 'destructive' | 'neutral';
     let confirmState:
-        | { title: string; message: string; confirmLabel: string; danger: boolean; handle?: (opts: any) => Promise<void> }
+        | { title: string; message: string; confirmLabel: string; severity: ConfirmSeverity; handle?: (opts: any) => Promise<void> }
         | null = $state(null);
     let pendingForm: HTMLFormElement | null = null;
 
@@ -161,7 +178,7 @@
         title: string;
         message: string | (() => string);
         confirmLabel?: string;
-        danger?: boolean;
+        severity?: ConfirmSeverity;
         handle?: (opts: any) => Promise<void>;
         success?: string | ((data: any) => string);
     }) {
@@ -195,7 +212,7 @@
                 // 문구는 "지금" 계산한다 — 액션 생성 시점의 값은 오래됐을 수 있다
                 message: typeof opts.message === 'function' ? opts.message() : opts.message,
                 confirmLabel: opts.confirmLabel ?? '확인',
-                danger: opts.danger ?? false,
+                severity: opts.severity ?? 'neutral',
                 handle: opts.handle
             };
             return undefined;
@@ -243,21 +260,47 @@
             showToast(message);
             return;
         }
-        showToast(message, {
-            label: '되돌리기',
-            run: async () => {
-                const body = new FormData();
-                body.set('undoId', String(undo.id));
-                try {
-                    const res = await fetch('?/undoAdminAction', { method: 'POST', body });
-                    const result: any = deserialize(await res.text());
-                    if (!reportResult(result)) showToast(`되돌렸습니다 · ${undo.label}`);
-                } catch {
-                    showAlert('되돌리지 못했습니다. 네트워크를 확인해주세요.');
-                }
-                await invalidateAll();
+        // 되돌리기 버튼은 두 곳에 선다: 30초짜리 토스트와, 서버 창이 끝날 때까지
+        // 남는 「최근 조치」. 같은 실행을 둘이 나눠 갖고, 한쪽이 쓰면 둘 다 거둔다.
+        let recentId = 0;
+        const run = async () => {
+            forgetAction(recentId);
+            const body = new FormData();
+            body.set('undoId', String(undo.id));
+            try {
+                const res = await fetch('?/undoAdminAction', { method: 'POST', body });
+                const result: any = deserialize(await res.text());
+                if (!reportResult(result)) showToast(`되돌렸습니다 · ${undo.label}`);
+            } catch {
+                showAlert('되돌리지 못했습니다. 네트워크를 확인해주세요.');
             }
-        });
+            await invalidateAll();
+        };
+        recentId = rememberAction({ label: undo.label, run });
+        showToast(message, { label: '되돌리기', run });
+    }
+
+    // 「최근 조치」 접기 패널
+    let recentOpen = $state(false);
+    // 서버 창이 지난 항목은 눌러도 거절당한다. 시계가 틱할 때마다 같이 걷어낸다.
+    $effect(() => {
+        void now;
+        pruneActions(now);
+    });
+    /* 시계는 30초마다 틱하므로 now가 조치 시각보다 앞설 수 있다. 그대로 빼면
+       10분 창을 「11분 남음」이라 말한다 — 화면이 못 지킬 약속을 하게 된다. */
+    function undoMinsLeft(at: number) {
+        return Math.max(1, Math.ceil((at + UNDO_WINDOW_MS - Math.max(now, at)) / 60000));
+    }
+
+    /* datetime-local은 로컬 시각 문자열을 요구한다. ISO를 그대로 넣으면 비거나
+       UTC로 표시돼, 고치려던 시각이 다른 시각으로 저장된다. */
+    function toDateTimeLocal(ts: string | null | undefined): string {
+        if (!ts) return '';
+        const d = new Date(ts);
+        if (Number.isNaN(d.getTime())) return '';
+        const pad = (n: number) => String(n).padStart(2, '0');
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
     }
 
     function announcePenalty(d: any) {
@@ -287,6 +330,38 @@
     function openManage(a: Attendee) {
         penaltyReason = 'no_show';
         manageTarget = a;
+    }
+
+    /**
+     * 차단된 큐 행에서 그 사람의 관리 시트를 연다.
+     *
+     * 행은 「페널티 조정 후 처리하세요」라고 지시하면서 그 도구를 주지 않았다.
+     * 도구는 800px 위 명단에 있었고, 행의 이름 링크를 누르면 대시보드를 떠났다.
+     * 남은 활성 컨트롤은 「거절」뿐이라, 막힌 사람을 푸는 길보다 자르는 길이
+     * 가까웠다. manageView가 attendees에서 라이브로 다시 찾으므로, 시트 안에서
+     * 페널티를 내리면 이 행의 「승인」이 그 자리에서 풀린다.
+     *
+     * 방에 없는 사람도 예약은 남는다. 명단에 없다는 것이 조치할 수 없다는
+     * 뜻은 아니므로, 그때는 큐 행이 들고 있는 값으로 시트를 채운다.
+     */
+    function openManageFromQueue(r: any) {
+        const inRoom = (attendees || []).find((a: Attendee) => a.id === r.attendee_id);
+        openManage(
+            inRoom ??
+                ({
+                    id: r.attendee_id,
+                    name: r.attendee_name,
+                    arrival_time: '',
+                    status: r.attendee_status,
+                    penalty_points: r.penalty_points,
+                    is_blacklisted: r.is_blacklisted,
+                    game_id: null,
+                    game_name: null,
+                    game_end_time: null,
+                    is_playing: false,
+                    can_manage_games: r.can_manage_games
+                } as Attendee)
+        );
     }
 
     // 게임 참여 중인 참여자 퇴장 — 게임 처리 방식을 묻는 전용 모달을 연다
@@ -367,6 +442,25 @@
         document.body.style.overflow = 'hidden';
         return () => { document.body.style.overflow = prev; };
     });
+
+    /*
+        단축키가 하나도 없었다. 가장 자주 하는 두 가지 — 판을 열고, 끝난 판을
+        치우는 것 — 는 각각 탭 29번과 스크롤 한 화면 뒤에 있었다.
+
+        e.key가 아니라 e.code로 본다. 한글 입력 상태에서 e.key는 자모라
+        「ㅜ」와 「ㅐ」가 되고, 방에 서 있는 운영자의 키보드는 대개 한글 상태다.
+        accesskey는 쓰지 않는다 — 보조기술의 자기 단축키와 충돌한다.
+    */
+    let newGameButton: HTMLButtonElement | null = $state(null);
+    let bulkEndButton: HTMLButtonElement | null = $state(null);
+    function handleShortcut(e: KeyboardEvent) {
+        if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
+        if (anyModalOpen) return;
+        const t = e.target as HTMLElement | null;
+        if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+        if (e.code === 'KeyN') { e.preventDefault(); newGameButton?.click(); }
+        else if (e.code === 'KeyE') { e.preventDefault(); bulkEndButton?.click(); }
+    }
     let scheduledGameName = $state('');
     let scheduledAt = $state('');
     let minPlayers = $state(2);
@@ -430,12 +524,13 @@
     }
 
     /**
-     * 폼 모달의 백드롭 처리.
+     * 폼 모달을 닫으려는 시도를 가로챈다.
      *
      * 375px에서 화면 아래 64px은 엄지가 놓이는 자리이고, 거기 한 번 닿으면
      * 채워 넣은 새 게임 폼이 경고 없이 사라졌다. 시끄러운 방에서 한 손으로
-     * 쓰는 장면 그대로다. 입력이 있으면 백드롭으로는 닫지 않는다 —
-     * 「취소」 버튼과 Escape는 의도된 행동이라 그대로 둔다.
+     * 쓰는 장면 그대로다. Escape도 같은 사고다 — 콤보박스를 닫으려고 누른
+     * 키가 폼 전체를 가져갔다. 백드롭과 Escape 양쪽에 같은 가드를 건다.
+     * 「취소」 버튼만이 "버리겠다"는 분명한 선언이라 그대로 둔다.
      */
     function dismissFormModal(close: () => void, dirty: boolean) {
         if (dirty) {
@@ -444,6 +539,31 @@
         }
         close();
     }
+
+    /*
+     * 새 게임 폼의 검증 실패.
+     *
+     * 「필수 입력 항목을 모두 채워주세요」를 막는 모달로 띄우고 있었다.
+     * 모달은 상태를 잃는 실패 — 저장이 실패했다, 권한이 없다 — 를 위한 것이고,
+     * 빈 칸은 그 자리에서 채우면 되는 실패다. 모달을 닫고 폼으로 돌아와
+     * 어디가 비었는지 다시 찾게 하는 대신, 비어 있는 칸 옆에서 말한다.
+     */
+    let newGameMissing: string[] = $state([]);
+    const MISSING_LABEL: Record<string, string> = {
+        gameName: '게임 이름을 입력하거나 목록에서 고르세요.',
+        duration: '예상 플레이 시간을 1분 이상으로 입력하세요.',
+        players: '참여자를 한 명 이상 고르거나 게스트 수를 입력하세요.'
+    };
+    // 채우는 즉시 사라진다 — 이미 고친 것을 계속 지적하지 않는다
+    $effect(() => {
+        if (newGameMissing.length === 0) return;
+        const fixed = new Set<string>();
+        if (selectedGameName.trim() !== '') fixed.add('gameName');
+        if (Number(selectedDuration) > 0) fixed.add('duration');
+        if (selectedPlayerIds.length > 0 || guestCount > 0) fixed.add('players');
+        const next = newGameMissing.filter((k) => !fixed.has(k));
+        if (next.length !== newGameMissing.length) newGameMissing = next;
+    });
 
     const newGameDirty = $derived(
         selectedGameName.trim() !== '' || selectedPlayerIds.length > 0 || guestCount > 0
@@ -600,18 +720,21 @@
         return Array.from(bySession.values());
     })());
 
-    // 큐 제목의 숫자는 "당신을 기다리는 것"이어야 한다. 이미 확정돼 아무 조치도
-    // 필요 없는 행까지 세면 첫날 들어온 매니저에게 잘못된 멘탈 모델을 가르친다.
+    /*
+        예약은 자기 세션 행 아래에 선다 — 별도의 큐 섹션이 아니라.
+        모든 예약 행은 진행 중 게임 아니면 예정 게임에 속하는데, 그 둘은 이미
+        각자 섹션을 갖고 있었다. 큐는 같은 세션을 세 번째로 보여주면서,
+        정작 "이 판에 누가 앉아 있나"에는 어디서도 답하지 않게 만들고 있었다.
+
+        확정된 예약은 붙이지 않는다. 이미 그 행의 「n명」·「n/max」에 세어져 있어
+        다시 나열하면 같은 사람이 한 화면에 두 번 선다. 손이 필요한 것만 남는다.
+    */
     const isQueueActionable = (r: any) =>
         r.status === 'pending_approval' || r.status === 'waitlisted' || r.overdue;
-    const queueActionable = $derived(queueGroups.reduce((n, g) => n + g.rows.filter(isQueueActionable).length, 0));
-    const queueSettled = $derived(queueGroups.reduce((n, g) => n + g.rows.filter((r: any) => !isQueueActionable(r)).length, 0));
-    const approvalCount = $derived(queueGroups.reduce((n, g) => n + g.rows.filter((r: any) => r.status === 'pending_approval').length, 0));
-    const overdueCount = $derived(queueGroups.reduce((n, g) => n + g.rows.filter((r: any) => r.overdue).length, 0));
-    // 노쇼 후보는 큐 상단으로 — 개입이 필요한 것부터 본다
-    const queueGroupsSorted = $derived([...queueGroups].sort(
-        (a, b) => Number(b.rows.some((r: any) => r.overdue)) - Number(a.rows.some((r: any) => r.overdue))
+    const pendingBySession = $derived(new Map<number, any[]>(
+        queueGroups.map((g) => [g.sessionId, g.rows.filter(isQueueActionable)])
     ));
+    const pendingFor = (sessionId: number): any[] => pendingBySession.get(sessionId) ?? [];
 
     const QUEUE_STATUS: Record<string, string> = {
         pending_approval: '승인 대기',
@@ -633,8 +756,23 @@
      * 있으면서 새 게임 피커에서 행을 비활성화하는 데만 쓰이고 있었다.
      * 콘솔이 알면서 말하지 않던 것을 말하게 한다.
      */
+    /*
+        「게임 중」이 두 상태를 하나로 접고 있었다. is_playing은 누가 세션을
+        닫아줄 때까지 참으로 남으므로, 시간이 지난 판의 사람은 상자를 정리하고
+        서 있는데 화면은 그를 게임 중이라 불렀다. 그래서 「대기 중 n」— 운영자가
+        가장 자주 묻는 "지금 앉힐 수 있나"의 답 — 이 그 인원만큼 틀렸고,
+        새 게임 피커는 그들을 비활성으로 만들어 앉히지 못하게 막았다.
+
+        정리 대기는 세 번째 상태다. 그리고 그 그룹이 곧 "이 테이블들을 치워라"
+        작업 목록이라, 스트립의 「정리 대기 n판」이 판이 아니라 사람과 묶인다.
+    */
+    const isSettling = (a: Attendee) =>
+        a.is_playing && !!a.game_end_time && new Date(a.game_end_time).getTime() <= now;
     const freeAttendees = $derived((attendees || []).filter((a: Attendee) => !a.is_playing));
-    const busyAttendees = $derived((attendees || []).filter((a: Attendee) => a.is_playing));
+    const settlingAttendees = $derived((attendees || []).filter((a: Attendee) => isSettling(a)));
+    const busyAttendees = $derived((attendees || []).filter((a: Attendee) => a.is_playing && !isSettling(a)));
+    /* 판을 짤 수 있는 사람 = 대기 중 + 정리 대기. 후자는 손에 카드가 없다. */
+    const seatableAttendees = $derived((attendees || []).filter((a: Attendee) => !a.is_playing || isSettling(a)));
 
     // 종료 임박 순 정렬 — "진행 중인 게임" 목록에서 끝나가는 게임을 위로
     const playingSorted = $derived([...(games || [])].sort(
@@ -646,13 +784,21 @@
     // 시간이 지났는데도 playing으로 남은 게임 — 마감 전까지 아무도 닫아주지 않는다
     const expiredGames = $derived(playingSorted.filter((g) => new Date(g.end_time).getTime() <= now));
     const liveGames = $derived(playingSorted.filter((g) => new Date(g.end_time).getTime() > now));
+    /*
+        대기 건수는 이제 섹션마다 자기 것만 든다. 스트립이 총계 하나를 들고
+        그 총계가 가리키는 곳이 화면 어딘가에 따로 있던 구조가, 숫자와 대상
+        사이에 계단을 만들고 있었다.
+    */
+    const playingPendingCount = $derived(playingSorted.reduce((n, g) => n + pendingFor(g.id).length, 0));
+    const scheduledPendingCount = $derived((scheduledGames || []).reduce((n, g) => n + pendingFor(g.id).length, 0));
+    const overdueCount = $derived(queueGroups.reduce((n, g) => n + g.rows.filter((r: any) => r.overdue).length, 0));
     const nextGameEndTs = $derived(nextEndingGame ? new Date(nextEndingGame.end_time).getTime() : null);
     const nextEndMins = $derived(nextGameEndTs !== null ? Math.round((nextGameEndTs - now) / 60000) : null);
 
     // 새 게임 참여자 피커
-    const availableAttendees = $derived((attendees || []).filter((a: Attendee) => !a.is_playing));
+    const availableAttendees = $derived(seatableAttendees);
     const pickerResults = $derived((attendees || []).filter((a: Attendee) => {
-        if (!showPlayingInPicker && a.is_playing) return false;
+        if (!showPlayingInPicker && a.is_playing && !isSettling(a)) return false;
         if (playerSearch && !a.name.toLowerCase().includes(playerSearch.toLowerCase())) return false;
         return true;
     }));
@@ -707,6 +853,8 @@
     제목이 없으면 SvelteKit의 aria-live 안내 영역이 이동할 때마다
     "untitled page"를 읽는다. 방 상태를 제목에 실어 탭만 봐도 알게 한다.
 -->
+<svelte:window onkeydown={handleShortcut} />
+
 <svelte:head>
     <title>관리자 대시보드 · 방에 {attendeeCount}명{expiredGames.length > 0 ? ` · 정리 대기 ${expiredGames.length}` : ''} — 혼놀 라운지</title>
 </svelte:head>
@@ -721,7 +869,15 @@
     {/if}
 </div>
 
-<!-- 방 현황 — 제품의 존재 이유가 시인성이므로 이 세 숫자가 화면에서 가장 크다 -->
+<!--
+    방 현황 — 이 콘솔이 답하는 네 질문에 한 칸씩. 지금 누가 있나 / 지금 무슨
+    판이 도나 / 곧 무슨 판이 있나 / 오늘 누가 오나. 앞의 둘이 "지금", 뒤의 둘이
+    "앞으로"이고, 그 순서가 아래 두 열의 순서와 같다.
+
+    전에는 네 칸 중 둘이 같은 질문(사람)에 쓰이고 한 칸은 어느 질문에도 없는
+    큐 총계였다. 그래서 「곧 무슨 판」과 「오늘 누가」는 헤드라인이 아예 없었고,
+    두 섹션 다 접힌 선 아래 전폭 밴드였다.
+-->
 <section class="room-summary" aria-label="방 현황 요약">
     <div class="rs-stat">
         <span class="rs-label">
@@ -731,33 +887,18 @@
         </span>
         <span class="rs-value">{attendeeCount}<span class="rs-unit">명</span></span>
     </div>
-    <div class="rs-stat">
-        <!-- 판을 짤 수 있는 사람. 모달을 열기 전에 알아야 하는 숫자다. -->
-        <span class="rs-label">대기 중</span>
-        <span class="rs-value" class:rs-value-none={freeAttendees.length === 0}>{freeAttendees.length}<span class="rs-unit">명</span></span>
-    </div>
     <!--
-        시간이 지난 게임은 "임박"이 아니라 처리 대기다. 스트립이 그걸 이미 아는데
-        운영자가 목록까지 스크롤해 찾아야 했다. 여기서 바로 닫는다.
-        버튼은 항상 자기가 닫을 게임의 이름을 달고 있으므로, 여러 판이 밀려 있어도
-        누를 때마다 무엇이 끝나는지가 분명하다.
+        시간이 지난 게임은 "임박"이 아니라 처리 대기다. 여기는 그 건수를 말하는
+        자리이지 처리하는 자리가 아니다 — 종료 버튼을 이 칸에 두었더니 만료가
+        0→1이 되는 순간 스트립이 90px 자라 읽던 페이지를 밀어냈고, 좁은 칸에서
+        「글룸헤이븐 죽음의 아…」로 잘린 이름 옆이라 무엇이 끝나는지도 흐렸다.
+        게임 섹션이 스트립 바로 아래 왼쪽 열에 있고 만료 행마다 자기 이름을
+        단 「게임 종료」를 이미 갖고 있다.
     -->
     <div class="rs-stat" class:rs-stat-pending={expiredGames.length > 0}>
         {#if expiredGames.length > 0}
             <span class="rs-label">정리 대기</span>
             <span class="rs-value rs-value-pending">{expiredGames.length}<span class="rs-unit">판</span></span>
-            <form method="POST" action="?/endGame" class="rs-action-form" use:enhance={() => {
-                return async ({ result, update }: { result: any, update: (options?: { reset?: boolean }) => Promise<void> }) => {
-                    if (!reportResult(result)) {
-                        const d = (result?.data as any) ?? {};
-                        toastUndoable(`${d.endedName ?? '게임'} 종료됨 · 승자는 기록하지 않았습니다`, d.undo);
-                    }
-                    await update();
-                };
-            }}>
-                <input type="hidden" name="id" value={expiredGames[0].id} />
-                <button type="submit" class="rs-action">{expiredGames[0].game_name} 종료</button>
-            </form>
         {:else}
             <span class="rs-label">
                 첫 종료까지{#if nextEndingGame}<span class="rs-label-name" title={nextEndingGame.game_name}>· {nextEndingGame.game_name}</span>{/if}
@@ -769,100 +910,190 @@
             {/if}
         {/if}
     </div>
-    <!--
-        큐가 방 아래로 내려갔으므로 급한 건수는 여기가 들고 있어야 한다.
-        누르면 그 자리로 데려간다.
-    -->
+    <!-- 곧 무슨 판이 있나 — 왼쪽 열 「시작 예정 게임」의 헤드라인. -->
     <div class="rs-stat">
-        <span class="rs-label">처리 대기</span>
-        {#if queueActionable === 0}
+        <span class="rs-label">시작 예정</span>
+        {#if (scheduledGames || []).length === 0}
             <span class="rs-value rs-value-none">없음</span>
         {:else}
-            <a class="rs-value rs-value-link" href="#sec-queue">{queueActionable}<span class="rs-unit">건</span></a>
+            <span class="rs-value">{(scheduledGames || []).length}<span class="rs-unit">판</span></span>
+        {/if}
+    </div>
+    <!-- 오늘 누가 오나 — 왼쪽 열 「오늘 갈 예정」의 헤드라인. 방에 이미 온 사람은
+         빠져 있으므로 「지금 방에」와 더해지지 않는다. -->
+    <div class="rs-stat">
+        <span class="rs-label">오늘 갈 예정</span>
+        {#if mergedVisitPlans.length === 0}
+            <span class="rs-value rs-value-none">없음</span>
+        {:else}
+            <span class="rs-value">{mergedVisitPlans.length}<span class="rs-unit">명</span></span>
         {/if}
     </div>
 </section>
 
-<!-- 넓은 화면에서 게임과 사람이 같은 화면에 들어오도록 2열로 묶는다 -->
-<div class="room-columns">
-<section class="section-primary" aria-labelledby="sec-playing">
-    <div class="section-header">
-        <h2 id="sec-playing">
-            게임
-            <span class="count-split">
-                진행 중 {liveGames.length}{#if expiredGames.length > 0}<span class="count-pending">&nbsp;· 정리 대기 {expiredGames.length}</span>{/if}
-            </span>
-        </h2>
-        <button class="btn-primary" onclick={() => {
-            showModal = true;
-            selectedGameName = '';
-            selectedDuration = '60';
-            selectedGameId = '';
-            guestCount = 0;
-            dropdownOpen = false;
-            selectedPlayerIds = [];
-            playerSearch = '';
-            showPlayingInPicker = false;
-        }}>+ 새 게임 시작</button>
+<!--
+    되돌리기의 나머지 9분 반.
+
+    서버의 되돌리기 창은 10분인데 그것을 담은 표면이 30초짜리 토스트뿐이었다.
+    실수를 알아차리는 데는 보통 그 자리를 떠난 뒤가 걸리는데, 그때는 토스트가
+    이미 사라져 서버가 아직 받아주는 취소권이 화면에서만 없어져 있었다.
+    조치가 있을 때만 나타나고, 접힌 상태가 기본이다 — 평소에는 세지 않는다.
+-->
+{#if $recentActions.length > 0}
+    <div class="recent-actions">
+        <button
+            type="button"
+            class="recent-toggle"
+            aria-expanded={recentOpen}
+            aria-controls="recent-actions-list"
+            onclick={() => (recentOpen = !recentOpen)}
+        >
+            <span class="recent-caret" aria-hidden="true">{recentOpen ? '▾' : '▸'}</span>
+            되돌릴 수 있는 조치 {$recentActions.length}
+        </button>
+        {#if recentOpen}
+            <ul class="recent-list" id="recent-actions-list">
+                {#each $recentActions as a (a.id)}
+                    <li>
+                        <span class="recent-label">{a.label}</span>
+                        <span class="recent-left">{undoMinsLeft(a.at)}분 남음</span>
+                        <button type="button" class="btn-role is-secondary recent-undo" onclick={() => a.run()}>
+                            되돌리기<span class="sr-only"> — {a.label}</span>
+                        </button>
+                    </li>
+                {/each}
+            </ul>
+        {/if}
     </div>
-    <ul class="game-list">
-        {#each (showAllPlaying ? playingSorted : playingSorted.slice(0, 5)) as game (game.id)}
-            {@const msLeft = new Date(game.end_time).getTime() - now}
-            {@const expired = msLeft <= 0}
-            {@const endingSoon = !expired && msLeft < 5 * 60000}
-            <li class="game-row" class:is-expired={expired}>
-                <button type="button" class="game-list-item" class:ending-soon={endingSoon} class:expired onclick={() => { selectedPlayingGame = game; resetParticipantSearch(); }}>
-                    {#if game.image_url}
-                        <img src={game.image_url} alt={game.game_name} width="32" height="32" class="list-thumb" />
-                    {:else}
-                        <div class="list-thumb placeholder" aria-hidden="true">
-                            <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1"/><circle cx="15.5" cy="15.5" r="1"/><circle cx="15.5" cy="8.5" r="1"/><circle cx="8.5" cy="15.5" r="1"/></svg>
-                        </div>
+{/if}
+
+<!--
+    넓은 화면에서 게임·큐·사람이 같은 화면에 들어오도록 2열로 묶는다.
+    왼쪽 열에 게임과 큐가 쌓이고 오른쪽 열은 명단이 통째로 쓴다.
+
+    DOM 순서는 게임 → 명단 → 큐다. 데스크톱에서 보이는 순서(왼쪽 위→아래,
+    오른쪽)와 어긋나지만, 이 순서가 접히는 폰에서는 명단이 큐보다 먼저 와야
+    한다 — 게임 → 큐 → 명단으로 쌓으면 큐가 591px이라 375x812에서 사람이
+    한 명도 접힌 선 위에 남지 않는다. 세 섹션 모두 랜드마크라 보조기술은
+    순서와 무관하게 건너뛴다.
+-->
+<!--
+    손이 필요한 예약 한 묶음. 진행 중 게임 행과 예정 게임 행이 같은 걸 쓴다 —
+    예약은 언제나 둘 중 하나에 속하므로 표현도 한 벌이면 된다.
+-->
+{#snippet pendingRows(rows: any[], gameName: string)}
+    <ul class="session-queue">
+        {#each rows as r (r.id)}
+            <li class="sq-row" class:is-overdue={r.overdue}>
+                <div class="sq-who">
+                    <a href="/admin/attendees/{r.attendee_id}" class="attendee-link">{r.attendee_name}</a>
+                    <span class="sq-status sq-{r.status}">
+                        {QUEUE_STATUS[r.status] ?? r.status}{#if r.status === 'waitlisted' && r.waitlist_position}&nbsp;{r.waitlist_position}번{/if}
+                    </span>
+                    <!-- 차단된 행은 아래 사유 문장이 같은 숫자를 이미 말한다. 배지까지 달면
+                         30px 안에서 「페널티 3/3」이 두 번 나온다. -->
+                    {#if r.penalty_points > 0 && r.penalty_points < penaltyThreshold}
+                        <span class="badge penalty">페널티 {r.penalty_points}/{penaltyThreshold}</span>
                     {/if}
-                    <span class="list-name">{game.game_name}</span>
-                    <span class="list-meta">{game.players.length}명</span>
-                    <span class="list-meta time-remaining">{getTimeRemaining(game.end_time, now)}</span>
-                    <span class="list-arrow" aria-hidden="true">›</span>
-                </button>
-                {#if expired}
-                    <!--
-                        시간이 지나도 게임은 playing으로 남는다 — autoClose는 마감 때만 닫는다.
-                        승자 기록은 선택이므로 여기서 한 번에 닫을 수 있어야 한다.
-                        승자를 남기려면 행을 눌러 종료 모달로 간다.
-                    -->
-                    <form method="POST" action="?/endGame" class="row-end-form" use:enhance={() => {
-                        return async ({ result, update }: { result: any, update: (options?: { reset?: boolean }) => Promise<void> }) => {
-                            if (!reportResult(result)) {
-                                const d = (result?.data as any) ?? {};
-                                toastUndoable(`${d.endedName ?? game.game_name} 종료됨 · 승자는 기록하지 않았습니다`, d.undo);
+                </div>
+                <!--
+                    차단 사유는 비활성 「승인」의 설명이기도 하다. 예전에는 사유가 title
+                    속성에만 있어, 보조기술이 「승인, 비활성」까지만 읽고 왜인지는 말하지
+                    못했다. id는 사유 문장에만 건다 — 감싸는 칸에 걸면 옆의 조정 버튼
+                    글자까지 함께 읽혀 사유가 흐려진다.
+                -->
+                <div class="sq-note">
+                    {#if r.overdue}
+                        <strong class="overdue-text">시작 후 {noShowLimitMinutes}분 경과 · 방에 없음 — 노쇼 판단 필요</strong>
+                    {:else if r.is_blacklisted}
+                        <strong class="overdue-text" id="queue-note-{r.id}">블랙리스트 — 확정 불가</strong>
+                        <button type="button" class="btn-queue-unblock" onclick={() => openManageFromQueue(r)}>
+                            블랙리스트 조정<span class="sr-only"> — {r.attendee_name}</span>
+                        </button>
+                    {:else if r.penalty_points >= penaltyThreshold}
+                        <strong class="overdue-text" id="queue-note-{r.id}">페널티 {r.penalty_points}/{penaltyThreshold}점 — 확정 불가</strong>
+                        <button type="button" class="btn-queue-unblock" onclick={() => openManageFromQueue(r)}>
+                            페널티 조정<span class="sr-only"> — {r.attendee_name}</span>
+                        </button>
+                    {:else}
+                        {formatTime(r.created_at)} 신청
+                    {/if}
+                </div>
+                <div class="sq-actions">
+                    {#if r.overdue}
+                        <form
+                            method="POST"
+                            action="?/markNoShow"
+                            use:enhance={confirmSubmit({
+                                title: '노쇼 처리',
+                                message: () =>
+                                    `${r.attendee_name}님을 ${gameName} 노쇼로 처리합니다. 예약이 취소되고 페널티 1점이 부여됩니다(누적 ${r.penalty_points + 1}/${penaltyThreshold}점).${rows.some((x: any) => x.status === 'waitlisted') ? ' 대기 1번이 자동 승계됩니다.' : ''}`,
+                                confirmLabel: '노쇼 처리',
+                                severity: 'destructive',
+                                handle: async (res: any) => {
+                                    if (!reportResult(res.result)) announcePenalty(res.result?.data);
+                                    await res.update();
+                                }
+                            })}
+                        >
+                            <input type="hidden" name="reservationId" value={r.id} />
+                            <button type="submit" class="btn-queue-noshow">노쇼 처리</button>
+                        </form>
+                    {/if}
+                    {#if r.status !== 'confirmed'}
+                        <form method="POST" action="?/confirmReservation" use:enhance={pending(undefined, `${r.attendee_name}님을 ${gameName}에 확정했습니다.`)}>
+                            <input type="hidden" name="reservationId" value={r.id} />
+                            <button
+                                type="submit"
+                                class="btn-queue-confirm"
+                                disabled={r.is_blacklisted || r.penalty_points >= penaltyThreshold}
+                                aria-describedby={r.is_blacklisted || r.penalty_points >= penaltyThreshold
+                                    ? `queue-note-${r.id}`
+                                    : undefined}
+                            >
+                                {r.status === 'pending_approval' ? '승인' : '확정'}
+                            </button>
+                        </form>
+                    {/if}
+                    <form
+                        method="POST"
+                        action="?/cancelReservationAdmin"
+                        use:enhance={confirmSubmit({
+                            title: r.status === 'pending_approval' ? '참여 요청 거절' : '예약 취소',
+                            message: () =>
+                                r.status === 'pending_approval'
+                                    ? `${r.attendee_name}님의 ${gameName} 참여 요청을 거절합니다.`
+                                    : `${r.attendee_name}님의 ${gameName} 예약을 취소합니다.${rows.some((x: any) => x.status === 'waitlisted') ? ' 대기 1번이 자동으로 승계됩니다.' : ''}`,
+                            confirmLabel: r.status === 'pending_approval' ? '요청 거절' : '예약 삭제',
+                            severity: 'destructive',
+                            handle: async ({ result, update }: any) => {
+                                if (!reportResult(result)) {
+                                    const d = (result?.data as any) ?? {};
+                                    toastUndoable(
+                                        `${r.attendee_name}님의 ${gameName} 예약을 ${r.status === 'pending_approval' ? '거절' : '취소'}했습니다`,
+                                        d.undo
+                                    );
+                                }
+                                await update();
                             }
-                            await update();
-                        };
-                    }}>
-                        <input type="hidden" name="id" value={game.id} />
-                        <button type="submit" class="btn-row-end">게임 종료</button>
+                        })}
+                    >
+                        <input type="hidden" name="reservationId" value={r.id} />
+                        <button type="submit" class="btn-queue-cancel">
+                            {r.status === 'pending_approval' ? '거절' : '취소'}
+                        </button>
                     </form>
-                {/if}
+                </div>
             </li>
         {/each}
-        {#if (games || []).length === 0}
-            <p class="empty-state">진행 중인 게임이 없습니다. 「+ 새 게임 시작」으로 시작할 수 있습니다.</p>
-        {/if}
     </ul>
-    {#if (games || []).length > 5}
-        <button class="show-more-btn" onclick={() => showAllPlaying = !showAllPlaying}>
-            {showAllPlaying ? '접기' : `+${(games || []).length - 5}개 더보기`}
-        </button>
-    {/if}
-</section>
+{/snippet}
 
-<section class="section-primary" aria-labelledby="sec-attendees">
-    <h2 id="sec-attendees">
-        현재 참여 인원
-        <span class="count-split">
-            대기 중 {freeAttendees.length}{#if busyAttendees.length > 0}<span class="count-busy">&nbsp;· 게임 중 {busyAttendees.length}</span>{/if}
-        </span>
-    </h2>
+<div class="room-columns">
+<section class="section-primary room-col-roster" aria-labelledby="sec-attendees">
+    <!-- 「대기 중 n」은 스트립이 헤드라인으로 들고, 이 섹션 안에서는 바로 아래
+         그룹 라벨이 같은 말을 한다. 제목에서까지 세면 한 화면에 세 번이 된다. -->
+    <h2 id="sec-attendees">현재 참여 인원</h2>
     {#snippet attendeeRow(a: Attendee)}
             <li>
                 <div class="attendee-info">
@@ -895,7 +1126,7 @@
                         <span class="arrival-time">{formatTime(a.arrival_time)} 입장</span>
                         {#if a.is_playing && a.game_name}
                             <span class="seat-game" title={a.game_name}>· {a.game_name}</span>
-                            {#if a.game_end_time}<span class="seat-time">{getTimeRemaining(a.game_end_time, now)}</span>{/if}
+                            {#if a.game_end_time}<span class="seat-time" class:is-over={isSettling(a)}>{getTimeRemaining(a.game_end_time, now)}</span>{/if}
                         {/if}
                     </span>
                 </div>
@@ -915,9 +1146,26 @@
         <ul class="attendee-list">
             {#each freeAttendees as a (a.id)}{@render attendeeRow(a as Attendee)}{/each}
             {#if freeAttendees.length === 0}
-                <li class="roster-empty">방에 있는 {attendeeCount}명이 모두 게임 중입니다.</li>
+                <!-- 정리 대기가 따로 서게 된 뒤로 「모두 게임 중」은 참이 아닐 수 있다.
+                     그 사람들은 앉힐 수 있으므로, 빈 상태가 그 사실을 가리켜야 한다. -->
+                {#if settlingAttendees.length > 0}
+                    <li class="roster-empty">대기 중인 사람이 없습니다. 아래 정리 대기 {settlingAttendees.length}명은 바로 앉힐 수 있습니다.</li>
+                {:else}
+                    <li class="roster-empty">방에 있는 {attendeeCount}명이 모두 게임 중입니다.</li>
+                {/if}
             {/if}
         </ul>
+        <!--
+            정리 대기는 대기 중과 게임 중 사이다. 판은 아직 열려 있지만 사람은
+            비어 있다 — 스트립의 「정리 대기 n판」이 가리키는 테이블에 앉아 있던
+            바로 그 사람들이고, 새 게임에도 앉힐 수 있다.
+        -->
+        {#if settlingAttendees.length > 0}
+            <p class="roster-group-label">정리 대기 {settlingAttendees.length}</p>
+            <ul class="attendee-list">
+                {#each settlingAttendees as a (a.id)}{@render attendeeRow(a as Attendee)}{/each}
+            </ul>
+        {/if}
         {#if busyAttendees.length > 0}
             <p class="roster-group-label">게임 중 {busyAttendees.length}</p>
             <ul class="attendee-list">
@@ -940,11 +1188,11 @@
 
     {#if (data.savedMembers || []).length > 0}
         <div class="quick-add">
-            <button type="button" class="toggle-header" aria-expanded={savedMembersOpen} onclick={() => savedMembersOpen = !savedMembersOpen}>
+            <button type="button" class="toggle-header" aria-expanded={savedMembersOpen} aria-controls="saved-members-list" onclick={() => savedMembersOpen = !savedMembersOpen}>
                 저장된 멤버 ({(savedMembers || []).length})
             </button>
             {#if savedMembersOpen}
-            <div class="member-chips">
+            <div class="member-chips" id="saved-members-list">
                 {#each (savedMembers || []) as member (member.id)}
                     <div class="chip-container {member.is_blacklisted ? 'blacklisted' : ''}">
                         <a href="/admin/attendees/{member.id}" class="chip-link">
@@ -955,7 +1203,9 @@
                         </a>
                         <form method="POST" action="?/addAttendee" use:enhance={pending(undefined, `${member.name}님을 입장 처리했습니다.`)} style="display:inline;">
                             <input type="hidden" name="name" value={member.name} />
-                            <button type="submit" class="chip-add" title="입장" disabled={member.is_blacklisted}>+</button>
+                            <!-- 「+」의 이름이 title에서만 왔다. 비활성일 때는 왜인지도 말하지 않았다. -->
+                            <button type="submit" class="chip-add" disabled={member.is_blacklisted}
+                                aria-label={member.is_blacklisted ? `${member.name} 입장 — 블랙리스트라 불가` : `${member.name} 입장`}>+</button>
                         </form>
                     </div>
                 {/each}
@@ -964,153 +1214,149 @@
         </div>
     {/if}
 </section>
-</div>
 
-<!--
-    대기 · 승인 큐.
-    예전에는 이 섹션이 방보다 위에 있었다. 그래서 1280x900에서 접힌 선 위에
-    게임 한 판도 사람 한 명도 없었다 — 시인성이 존재 이유인 콘솔에서.
-    큐는 서류 네 줄이고 방은 사람 일곱과 테이블 셋이다. 급한 건수는 위
-    스트립이 들고 있으므로, 여기는 방 아래로 온다.
--->
-<section id="sec-queue" class="section-primary queue-section" aria-label="대기 및 승인 큐">
+<section class="section-primary room-col-games" aria-labelledby="sec-playing">
     <div class="section-header">
-        <h2>
-            대기 · 승인 큐 ({queueActionable})
-            {#if queueSettled > 0}<span class="count-aside">확정 {queueSettled}</span>{/if}
-            {#if approvalCount > 0}<span class="queue-flag approval">승인 대기 {approvalCount}</span>{/if}
-            {#if overdueCount > 0}<span class="queue-flag overdue">노쇼 판정 초과 {overdueCount}</span>{/if}
+        <!-- 「정리 대기 n」은 스트립이 헤드라인으로 든다. 여기서 또 세면 같은 숫자가
+             500px 안에 세 번 나오고, 만료 행은 이미 자기 틴트와 「n분 초과」로 말한다. -->
+        <!--
+            헤더는 자기가 렌더하는 목록을 센다. 「진행 중 {n}」만 들었더니 판이
+            전부 시간을 넘긴 밤의 끝 — 이 페이지가 가장 세게 쓰이는 시점 — 에
+            「진행 중 0」이 게임 행 두 개 위에 섰고, 그 문자열은 aria-labelledby로
+            섹션 전체의 접근 이름이기도 했다. 0을 단언하는 대신, 도는 판이 있을
+            때만 그 숫자를 덧붙인다. 「정리 대기」는 스트립이 든다.
+        -->
+        <h2 id="sec-playing">
+            게임
+            <span class="count-split">{playingSorted.length}{#if liveGames.length > 0}&nbsp;· 진행 중 {liveGames.length}{/if}</span>
+            {#if overdueCount > 0}<span class="queue-flag overdue">노쇼 판정 {overdueCount}</span>{/if}
+            {#if playingPendingCount - overdueCount > 0}<span class="queue-flag approval">대기 {playingPendingCount - overdueCount}</span>{/if}
         </h2>
+        <!--
+            「정리 대기 n판」은 코드에서 작업 목록으로 모델링돼 있는데 정작
+            운영자는 한 판씩 닫아야 했다. 집합을 고르는 화면이 집합을 처리한다.
+        -->
+        {#if expiredGames.length > 1}
+            <form method="POST" action="?/endExpiredGames" class="bulk-end-form" use:enhance={confirmSubmit({
+                title: '정리 대기 일괄 종료',
+                message: () =>
+                    `시간이 지난 ${expiredGames.length}판을 한 번에 종료합니다 — ${expiredGames.map((g) => g.game_name).join(', ')}. 승자는 기록되지 않으며, 되돌리기 한 번으로 전부 되살릴 수 있습니다.`,
+                confirmLabel: `${expiredGames.length}판 종료`,
+                severity: 'destructive',
+                handle: async ({ result, update }: any) => {
+                    if (!reportResult(result)) {
+                        const d = (result?.data as any) ?? {};
+                        toastUndoable(`${d.endedCount ?? expiredGames.length}판 정리됨 · 승자는 기록하지 않았습니다`, d.undo);
+                    }
+                    await update();
+                }
+            })}>
+                <button type="submit" class="btn-bulk-end" bind:this={bulkEndButton}
+                    title="단축키 E" aria-keyshortcuts="E">정리 대기 {expiredGames.length}판 모두 종료</button>
+            </form>
+        {/if}
+        <button class="btn-primary" bind:this={newGameButton} title="단축키 N" aria-keyshortcuts="N" onclick={() => {
+            showModal = true;
+            selectedGameName = '';
+            selectedDuration = '60';
+            selectedGameId = '';
+            guestCount = 0;
+            dropdownOpen = false;
+            selectedPlayerIds = [];
+            playerSearch = '';
+            showPlayingInPicker = false;
+        }}>+ 새 게임 시작</button>
     </div>
-
-    {#if queueGroups.length === 0}
-        <p class="empty-state queue-empty">
-            지금 처리할 예약이 없습니다. 회원이 예약하거나 진행 중인 게임에 참여를 신청하면 여기에 뜹니다.
-        </p>
-    {:else}
-        {#each queueGroupsSorted as g (g.sessionId)}
-            <div class="queue-group">
-                <div class="queue-group-head">
-                    <strong>{g.gameName}</strong>
-                    <span class="queue-meta">
-                        {g.sessionStatus === 'playing'
-                            ? g.startTime
-                                ? `${formatTime(g.startTime)} 시작`
-                                : '진행 중'
-                            : g.scheduledAt
-                              ? `${formatTime(g.scheduledAt)} 예정`
-                              : '예정'}
-                        · 참여 {g.currentPlayers}/{g.maxPlayers || '-'}
-                    </span>
-                </div>
-                <ul class="queue-list">
-                    {#each g.rows as r (r.id)}
-                        <li class="queue-row" class:is-overdue={r.overdue}>
-                            <div class="queue-who">
-                                <a href="/admin/attendees/{r.attendee_id}" class="attendee-link">{r.attendee_name}</a>
-                                <span class="queue-status queue-{r.status}">
-                                    {QUEUE_STATUS[r.status] ?? r.status}{#if r.status === 'waitlisted' && r.waitlist_position}&nbsp;{r.waitlist_position}번{/if}
-                                </span>
-                                {#if r.penalty_points >= penaltyThreshold}
-                                    <span class="badge penalty blocked">페널티 {r.penalty_points}/{penaltyThreshold}</span>
-                                {:else if r.penalty_points > 0}
-                                    <span class="badge penalty">페널티 {r.penalty_points}/{penaltyThreshold}</span>
-                                {/if}
-                                {#if r.is_blacklisted}<span class="badge blacklist">블랙</span>{/if}
-                            </div>
-                            <div class="queue-note">
-                                {#if r.overdue}
-                                    <strong class="overdue-text">시작 후 {noShowLimitMinutes}분 경과 · 방에 없음 — 노쇼 판단 필요</strong>
-                                {:else if r.is_blacklisted}
-                                    <strong class="overdue-text">블랙리스트 — 확정 불가. 해제 후 처리하세요.</strong>
-                                {:else if r.penalty_points >= penaltyThreshold}
-                                    <strong class="overdue-text">
-                                        페널티 {r.penalty_points}/{penaltyThreshold}점 — 확정 불가. 페널티 조정 후 처리하세요.
-                                    </strong>
-                                {:else}
-                                    {formatTime(r.created_at)} 신청
-                                {/if}
-                            </div>
-                            <div class="queue-actions">
-                                {#if r.overdue}
-                                    <form
-                                        method="POST"
-                                        action="?/markNoShow"
-                                        use:enhance={confirmSubmit({
-                                            title: '노쇼 처리',
-                                            message: () =>
-                                                `${r.attendee_name}님을 ${g.gameName} 노쇼로 처리합니다. 예약이 취소되고 페널티 1점이 부여됩니다(누적 ${r.penalty_points + 1}/${penaltyThreshold}점).${g.rows.some((x: any) => x.status === 'waitlisted') ? ' 대기 1번이 자동 승계됩니다.' : ''}`,
-                                            confirmLabel: '노쇼 처리',
-                                            danger: true,
-                                            handle: async (res: any) => {
-                                                if (!reportResult(res.result)) announcePenalty(res.result?.data);
-                                                await res.update();
-                                            }
-                                        })}
-                                    >
-                                        <input type="hidden" name="reservationId" value={r.id} />
-                                        <button type="submit" class="btn-queue-noshow">노쇼 처리</button>
-                                    </form>
-                                {/if}
-                                {#if r.status !== 'confirmed'}
-                                    <form method="POST" action="?/confirmReservation" use:enhance={pending(undefined, `${r.attendee_name}님을 ${g.gameName}에 확정했습니다.`)}>
-                                        <input type="hidden" name="reservationId" value={r.id} />
-                                        <button
-                                            type="submit"
-                                            class="btn-queue-confirm"
-                                            disabled={r.is_blacklisted || r.penalty_points >= penaltyThreshold}
-                                            title={r.is_blacklisted
-                                                ? '블랙리스트라 확정할 수 없습니다'
-                                                : r.penalty_points >= penaltyThreshold
-                                                  ? `페널티 ${r.penalty_points}/${penaltyThreshold}점이라 확정할 수 없습니다`
-                                                  : undefined}
-                                        >
-                                            {r.status === 'pending_approval' ? '승인' : '확정'}
-                                        </button>
-                                    </form>
-                                {/if}
-                                <form
-                                    method="POST"
-                                    action="?/cancelReservationAdmin"
-                                    use:enhance={confirmSubmit({
-                                        title: r.status === 'pending_approval' ? '참여 요청 거절' : '예약 취소',
-                                        message: () =>
-                                            r.status === 'pending_approval'
-                                                ? `${r.attendee_name}님의 ${g.gameName} 참여 요청을 거절합니다.`
-                                                : `${r.attendee_name}님의 ${g.gameName} 예약을 취소합니다.${g.rows.some((x) => x.status === 'waitlisted') ? ' 대기 1번이 자동으로 승계됩니다.' : ''}`,
-                                        // 「취소」와 「예약 취소」가 나란히 서면 한 단어를 공유하며
-                                        // 반대를 뜻한다. 무엇이 사라지는지로 이름을 바꾼다.
-                                        confirmLabel: r.status === 'pending_approval' ? '요청 거절' : '예약 삭제',
-                                        danger: true,
-                                        success: `${r.attendee_name}님의 ${g.gameName} 예약을 처리했습니다.`
-                                    })}
-                                >
-                                    <input type="hidden" name="reservationId" value={r.id} />
-                                    <button type="submit" class="btn-queue-cancel">
-                                        {r.status === 'pending_approval' ? '거절' : '취소'}
-                                    </button>
-                                </form>
-                            </div>
-                        </li>
-                    {/each}
-                </ul>
-            </div>
+    <ul class="game-list">
+        {#each (showAllPlaying ? playingSorted : playingSorted.slice(0, 5)) as game (game.id)}
+            {@const msLeft = new Date(game.end_time).getTime() - now}
+            {@const expired = msLeft <= 0}
+            {@const endingSoon = !expired && msLeft < 5 * 60000}
+            {@const waiting = pendingFor(game.id)}
+            <li class="game-row" class:is-expired={expired} class:has-pending={waiting.length > 0}>
+                <button type="button" class="game-list-item" class:ending-soon={endingSoon} class:expired onclick={() => { selectedPlayingGame = game; resetParticipantSearch(); }}>
+                    {#if game.image_url}
+                        <img src={game.image_url} alt={game.game_name} width="32" height="32" class="list-thumb" />
+                    {:else}
+                        <div class="list-thumb placeholder" aria-hidden="true">
+                            <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1"/><circle cx="15.5" cy="15.5" r="1"/><circle cx="15.5" cy="8.5" r="1"/><circle cx="8.5" cy="15.5" r="1"/></svg>
+                        </div>
+                    {/if}
+                    <span class="list-name">{game.game_name}</span>
+                    <span class="list-meta">{game.players.length}명</span>
+                    <span class="list-meta time-remaining">{getTimeRemaining(game.end_time, now)}</span>
+                    <span class="list-arrow" aria-hidden="true">›</span>
+                </button>
+                {#if expired}
+                    <!--
+                        시간이 지나도 게임은 playing으로 남는다 — autoClose는 마감 때만 닫는다.
+                        승자 기록은 선택이므로 여기서 한 번에 닫을 수 있어야 한다.
+                        승자를 남기려면 행을 눌러 종료 모달로 간다.
+                    -->
+                    <!--
+                        이 행에서 유일하게 확인창 없이 서버를 바꾸던 버튼이다.
+                        그리고 같은 행의 나머지 90%는 상세 시트를 여는 탭 타깃이라,
+                        시끄러운 방에서 한 손으로 누르면 열려던 것이 끝나 있었다.
+                        되돌리기가 있지만 그건 마지막 방어선이고, 이 콘솔의 다른
+                        파괴적 동작은 전부 확인을 거친다.
+                        잦은 경우(여러 판이 한꺼번에 만료)는 위의 일괄 종료가 받는다.
+                    -->
+                    <form method="POST" action="?/endGame" class="row-end-form" use:enhance={confirmSubmit({
+                        title: '게임 종료',
+                        message: () =>
+                            `${game.game_name}을(를) 종료합니다. 참여자 ${game.players.length}명의 세션이 닫히고 승자는 기록되지 않습니다.`,
+                        confirmLabel: '종료',
+                        severity: 'destructive',
+                        handle: async ({ result, update }: any) => {
+                            if (!reportResult(result)) {
+                                const d = (result?.data as any) ?? {};
+                                toastUndoable(`${d.endedName ?? game.game_name} 종료됨 · 승자는 기록하지 않았습니다`, d.undo);
+                            }
+                            await update();
+                        }
+                    })}>
+                        <input type="hidden" name="id" value={game.id} />
+                        <button type="submit" class="btn-row-end">게임 종료</button>
+                    </form>
+                {/if}
+                {#if waiting.length > 0}
+                    {@render pendingRows(waiting, game.game_name)}
+                {/if}
+            </li>
         {/each}
+        {#if (games || []).length === 0}
+            <p class="empty-state">진행 중인 게임이 없습니다. 「+ 새 게임 시작」으로 시작할 수 있습니다.</p>
+        {/if}
+    </ul>
+    {#if (games || []).length > 5}
+        <button class="show-more-btn" onclick={() => showAllPlaying = !showAllPlaying}>
+            {showAllPlaying ? '접기' : `+${(games || []).length - 5}개 더보기`}
+        </button>
     {/if}
 </section>
 
-<section aria-labelledby="sec-scheduled">
+<!--
+    시작 예정 게임과 오늘 갈 예정이 왼쪽 열로 올라온다.
+    이 콘솔이 답하는 질문은 넷이다 — 지금 누가 있나 / 지금 무슨 판이 도나 /
+    곧 무슨 판이 있나 / 오늘 누가 오나. 그런데 뒤의 둘은 접힌 선 아래 전폭
+    밴드였고, 넷 중 어디에도 없던 대기·승인 큐가 왼쪽 열 608px을 쓰고 있었다.
+    큐를 자기 세션 행으로 접고 나니 그 자리가 비었고, 원래 답이 있어야 할
+    둘이 들어온다. 왼쪽 열은 시간 축(지금 → 곧 → 오늘), 오른쪽 열은 지금 방.
+-->
+<section class="scheduled-section room-col-scheduled" aria-labelledby="sec-scheduled">
     <div class="section-header">
         <h2 id="sec-scheduled">
             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
             시작 예정 게임 ({(scheduledGames || []).length})
+            {#if scheduledPendingCount > 0}<span class="queue-flag approval">승인 대기 {scheduledPendingCount}</span>{/if}
         </h2>
         <button class="btn-primary" onclick={openScheduledGameModal}>+ 게임 일정 등록</button>
     </div>
     <ul class="game-list">
         {#each (showAllScheduled ? (scheduledGames || []) : (scheduledGames || []).slice(0, 5)) as game (game.id)}
             {@const g = game as GameSession}
-            <li>
+            {@const waiting = pendingFor(g.id)}
+            <li class="game-row" class:has-pending={waiting.length > 0}>
                 <button type="button" class="game-list-item" onclick={() => { selectedScheduledGame = g; resetParticipantSearch(); }}>
                     {#if g.image_url}
                         <img src={g.image_url} alt={g.game_name} width="32" height="32" class="list-thumb" />
@@ -1124,6 +1370,9 @@
                     <span class="list-meta">{(g.participants || []).length}/{g.max_players}</span>
                     <span class="list-arrow" aria-hidden="true">›</span>
                 </button>
+                {#if waiting.length > 0}
+                    {@render pendingRows(waiting, g.game_name)}
+                {/if}
             </li>
         {/each}
         {#if (scheduledGames || []).length === 0}
@@ -1137,12 +1386,19 @@
     {/if}
 </section>
 
-{#if mergedVisitPlans.length > 0}
-<section class="visit-plan-section" aria-labelledby="sec-visitplan">
+<section class="visit-plan-section room-col-visit" aria-labelledby="sec-visitplan">
     <h2 id="sec-visitplan">
         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
         오늘 갈 예정 ({mergedVisitPlans.length})
     </h2>
+    <!--
+        비어 있어도 남는다. 이 섹션의 일은 "오늘 누가 오나"에 답하는 것이고,
+        "아직 아무도 없다"는 답이지 없음이 아니다. 조건부로 숨기면 운영자는
+        답을 못 본 것인지 답이 없는 것인지 구별할 수 없다.
+    -->
+    {#if mergedVisitPlans.length === 0}
+        <p class="empty-state">아직 온다고 한 사람이 없습니다. 회원이 「나도 갈래요」를 누르거나 예정 게임에 예약하면 여기에 뜹니다.</p>
+    {:else}
     <div class="visit-plan-grid">
         {#each mergedVisitPlans as plan}
             <div class="visit-plan-chip">
@@ -1160,8 +1416,9 @@
             </div>
         {/each}
     </div>
+    {/if}
 </section>
-{/if}
+</div>
 
 
 {#if showModal}
@@ -1174,12 +1431,14 @@
         tabindex="-1"
         aria-label="Close modal"
     >
-        <div class="modal-content" use:trapFocus={() => showModal = false} onclick={handleModalClick} onkeydown={() => {}} role="dialog" aria-labelledby="dlg-new-game" aria-modal="true" tabindex="-1">
+        <div class="modal-content" use:trapFocus={() => dismissFormModal(() => showModal = false, newGameDirty)} onclick={handleModalClick} onkeydown={() => {}} role="dialog" aria-labelledby="dlg-new-game" aria-modal="true" tabindex="-1">
             <h2 id="dlg-new-game">새 게임 시작</h2>
             <form method="POST" action="?/createGame" use:enhance={() => {
+                newGameMissing = [];
                 return async ({ result, update }: { result: any, update: (options?: { reset?: boolean }) => Promise<void> }) => {
-                    if (result.type === 'failure' && (result.data as any)?.missing) {
-                        showAlert('필수 입력 항목을 모두 채워주세요.', 'error');
+                    const missing = (result?.data as any)?.missing;
+                    if (result.type === 'failure' && Array.isArray(missing)) {
+                        newGameMissing = missing;
                     } else if (!reportResult(result)) {
                         showModal = false;
                     }
@@ -1201,17 +1460,23 @@
                         onkeydown={(e) => comboKeydown(e, filteredGames, selectGame)}
                         role="combobox"
                         aria-expanded={dropdownOpen && filteredGames.length > 0}
-                        aria-controls="newGameOptions"
+                        {...(dropdownOpen && filteredGames.length > 0 ? { 'aria-controls': 'newGameOptions' } : {})}
+                        aria-activedescendant={dropdownOpen && gameOptionIndex >= 0 ? `newGameOption-${gameOptionIndex}` : undefined}
                         aria-autocomplete="list"
                         required 
                         autocomplete="off" 
+                        aria-invalid={newGameMissing.includes('gameName') || undefined}
+                        aria-describedby={newGameMissing.includes('gameName') ? 'err-gameName' : undefined}
                     />
+                    {#if newGameMissing.includes('gameName')}
+                        <p class="field-error" id="err-gameName">{MISSING_LABEL.gameName}</p>
+                    {/if}
                     
                     {#if dropdownOpen && filteredGames.length > 0}
                         <ul class="dropdown-menu" id="newGameOptions" role="listbox" aria-label="게임 후보">
                             {#each filteredGames as game, gi}
                                 <li role="presentation">
-                                    <button type="button" role="option" aria-selected={gi === gameOptionIndex} class:active={gi === gameOptionIndex} onclick={() => selectGame(game)}>
+                                    <button type="button" id="newGameOption-{gi}" role="option" aria-selected={gi === gameOptionIndex} class:active={gi === gameOptionIndex} onclick={() => selectGame(game)}>
                                         {#if game.image_url}
                                             <img src={game.image_url} alt="" class="mini-thumb" />
                                         {/if}
@@ -1242,7 +1507,12 @@
                         required 
                         min="1" 
                         class="duration-input"
+                        aria-invalid={newGameMissing.includes('duration') || undefined}
+                        aria-describedby={newGameMissing.includes('duration') ? 'err-duration' : undefined}
                     />
+                    {#if newGameMissing.includes('duration')}
+                        <p class="field-error" id="err-duration">{MISSING_LABEL.duration}</p>
+                    {/if}
                 </div>
 
                 <div class="player-picker">
@@ -1256,7 +1526,7 @@
                                 disabled={availableAttendees.length === 0}
                                 title={availableAttendees.length === 0 ? '방에 있는 인원이 모두 게임 중입니다' : undefined}
                                 onclick={() => selectedPlayerIds = availableAttendees.map((a) => a.id)}
-                            >참석자 전원</button>
+                            >앉힐 수 있는 전원</button>
                             {#if selectedPlayerIds.length > 0}
                                 <button type="button" class="btn-ghost" onclick={() => selectedPlayerIds = []}>비우기</button>
                             {/if}
@@ -1287,7 +1557,7 @@
                         <div class="pp-scope" role="group" aria-label="참여자 범위">
                             <button type="button" class="pp-scope-btn" class:active={!showPlayingInPicker}
                                 aria-pressed={!showPlayingInPicker}
-                                onclick={() => showPlayingInPicker = false}>대기 중 {availableAttendees.length}</button>
+                                onclick={() => showPlayingInPicker = false}>앉힐 수 있음 {availableAttendees.length}</button>
                             <button type="button" class="pp-scope-btn" class:active={showPlayingInPicker}
                                 aria-pressed={showPlayingInPicker}
                                 onclick={() => showPlayingInPicker = true}>전체 {(attendees || []).length}</button>
@@ -1299,11 +1569,14 @@
                     <div class="pp-list">
                         {#each pickerResults as a (a.id)}
                             {@const checked = selectedPlayerIds.includes(a.id)}
-                            <button type="button" class="pp-option" class:checked={checked} disabled={a.is_playing}
+                            <button type="button" class="pp-option" class:checked={checked} aria-pressed={checked} disabled={a.is_playing && !isSettling(a)}
                                 onclick={() => selectedPlayerIds = checked ? selectedPlayerIds.filter((x) => x !== a.id) : [...selectedPlayerIds, a.id]}>
                                 <span class="pp-check" aria-hidden="true">{checked ? '✓' : ''}</span>
                                 <span class="pp-name">{a.name}</span>
-                                {#if a.is_playing}<span class="status-text">게임 중</span>{/if}
+                                <!-- 정리 대기는 「게임 중」이 아니다. 그 사람은 앉힐 수 있고,
+                                     그래서 이 행은 비활성이 아니다 — 이유를 다르게 말해야 한다. -->
+                                {#if isSettling(a)}<span class="status-text">정리 대기</span>
+                                {:else if a.is_playing}<span class="status-text">게임 중</span>{/if}
                             </button>
                         {/each}
                         {#if pickerResults.length === 0}
@@ -1313,8 +1586,8 @@
                             -->
                             {#if playerSearch}
                                 <p class="hint">「{playerSearch}」와 일치하는 사람이 없습니다.</p>
-                            {:else if !showPlayingInPicker && (attendees || []).some((a) => a.is_playing)}
-                                <p class="hint">방에 있는 {(attendees || []).length}명이 모두 게임 중입니다. 「전체」로 바꾸면 함께 고를 수 있습니다.</p>
+                            {:else if !showPlayingInPicker && (attendees || []).some((a) => a.is_playing && !isSettling(a))}
+                                <p class="hint">앉힐 수 있는 사람이 없습니다 — 방에 있는 {(attendees || []).length}명이 모두 게임 중입니다. 「전체」로 바꾸면 함께 고를 수 있습니다.</p>
                             {:else}
                                 <p class="hint">방에 있는 인원이 없습니다. 아래 「게스트 수」로 시작할 수 있습니다.</p>
                             {/if}
@@ -1328,6 +1601,11 @@
                     <label for="guestCount">게스트 수</label>
                     <input type="number" id="guestCount" name="guestCount" bind:value={guestCount} min="0" max="20" class="number-input" />
                     <p class="hint">* 회원이 아닌 사람 수 (게스트1, 게스트2… 자동 생성)</p>
+                    <!-- 참여자와 게스트 중 하나만 있으면 되므로, 둘 중 뒤에 오는
+                         여기서 한 번만 말한다 -->
+                    {#if newGameMissing.includes('players')}
+                        <p class="field-error">{MISSING_LABEL.players}</p>
+                    {/if}
                 </div>
 
                 <div class="modal-actions">
@@ -1417,7 +1695,7 @@
             <p>{confirmState.message}</p>
             <div class="modal-actions">
                 <button class="btn-cancel" data-autofocus onclick={closeConfirm}>취소</button>
-                <button class="btn-confirm-action" class:danger={confirmState.danger} onclick={runConfirm}>{confirmState.confirmLabel}</button>
+                <button class="btn-confirm-action is-{confirmState.severity}" onclick={runConfirm}>{confirmState.confirmLabel}</button>
             </div>
         </div>
     </div>
@@ -1460,7 +1738,7 @@
                                         : `${penaltyThreshold}점부터 예약이 제한됩니다.`
                                 }`,
                             confirmLabel: '페널티 부여',
-                            danger: true,
+                            severity: 'destructive',
                             handle: async (res: any) => {
                                 if (!reportResult(res.result)) announcePenalty(res.result?.data);
                                 await res.update();
@@ -1499,15 +1777,21 @@
                     <span>블랙리스트</span>
                     <span class="manage-sub">{m.is_blacklisted ? '등록됨 — 입장·참여 제한' : '미등록'}</span>
                 </div>
-                <form method="POST" action="?/toggleBlacklist" use:enhance={m.is_blacklisted ? pending(undefined, `${m.name}님을 블랙리스트에서 해제했습니다.`) : confirmSubmit({ title: '블랙리스트 등록', message: `${m.name}님을 블랙리스트에 등록합니다. 이후 입장·게임 참여가 제한되고, 진행 중이거나 예정된 참여도 막힙니다.`, confirmLabel: '블랙 등록', danger: true, success: `${m.name}님을 블랙리스트에 등록했습니다.` })} style="display:inline;">
+                <form method="POST" action="?/toggleBlacklist" use:enhance={m.is_blacklisted ? pending(undefined, `${m.name}님을 블랙리스트에서 해제했습니다.`) : confirmSubmit({ title: '블랙리스트 등록', message: `${m.name}님을 블랙리스트에 등록합니다. 이후 입장·게임 참여가 제한되고, 진행 중이거나 예정된 참여도 막힙니다.`, confirmLabel: '블랙 등록', severity: 'irreversible', handle: async (res: any) => {
+                    // 확인창은 오조작을 막지만 오판은 막지 못한다 — 동명이인을
+                    // 고르거나 사정을 나중에 듣는 일은 확인창 뒤에서 일어난다.
+                    if (!reportResult(res.result)) toastUndoable(`${m.name}님을 블랙리스트에 등록했습니다.`, (res.result?.data as any)?.undo);
+                    await res.update();
+                } })} style="display:inline;">
                     <input type="hidden" name="attendeeId" value={m.id} />
                     <!--
-                        3단 체계: 채움 빨강은 「되돌릴 수 없거나 제3자에게 파급되는 것」
-                        에만 쓴다. 이 시트에서 그건 블랙 등록 하나뿐이다.
-                        지난 라운드에 테두리로 내렸더니 페널티 부여·퇴장 처리와
-                        구별되지 않아, 영구 배제와 사소한 퇴장이 같아 보였다.
+                        3단 사다리의 1단. 채움 빨강은 「되돌릴 수 없는 것」에만 쓰고,
+                        이 콘솔에서 그건 블랙 등록 하나뿐이다. 이 약속이 시트 안에서만
+                        지켜지던 동안 마감 하기·게임 폭파·되돌릴 수 있는 1점이 전부
+                        같은 빨강이었고, 그래서 그 빨강이 아무것도 말하지 않았다.
+                        해제는 파괴적이지 않으므로 2단도 아닌 보조 버튼이다.
                     -->
-                    <button type="submit" class="btn-role {m.is_blacklisted ? 'is-secondary' : 'is-destructive'}">
+                    <button type="submit" class="btn-role {m.is_blacklisted ? 'is-secondary' : 'is-irreversible'}">
                         {m.is_blacklisted ? '블랙 해제' : '블랙 등록'}
                     </button>
                 </form>
@@ -1528,7 +1812,7 @@
                         title: '매니저 지정',
                         message: `${m.name}님에게 매니저 권한을 줍니다. 매니저는 게임을 만들고 자기가 만든 게임의 인원과 시간을 관리할 수 있습니다.`,
                         confirmLabel: '매니저 지정',
-                        danger: false,
+                        severity: 'neutral',
                         success: `${m.name}님을 매니저로 지정했습니다.`
                     })} style="display:inline;">
                     <input type="hidden" name="attendeeId" value={m.id} />
@@ -1547,9 +1831,15 @@
                 <div class="manage-label">
                     <span>입장 상태</span>
                     <!-- 하드코딩이라 게임 중인 사람도 「방에 있음」이라 말했고,
-                         그래서 퇴장 처리가 예고 없이 다른 시트로 분기했다. -->
-                    <span class="manage-sub">
-                        {m.is_playing && m.game_name ? `${m.game_name} 진행 중 — 퇴장 시 게임에서도 빠집니다` : '방에 있음'}
+                         그래서 퇴장 처리가 예고 없이 다른 시트로 분기했다.
+                         큐에서 열면 방에 없는 사람의 시트일 수도 있다 — 그때
+                         「방에 있음」은 거짓이고 퇴장 처리는 할 일이 없다. -->
+                    <span class="manage-sub" id="manage-presence">
+                        {m.status !== 'present'
+                            ? '방에 없음 — 예약만 남아 있습니다'
+                            : m.is_playing && m.game_name
+                              ? `${m.game_name} 진행 중 — 퇴장 시 게임에서도 빠집니다`
+                              : '방에 있음'}
                     </span>
                 </div>
             <form method="POST" action="?/removeAttendee" use:enhance={(arg) => {
@@ -1563,15 +1853,25 @@
                     title: '퇴장 처리',
                     message: `${m.name}님을 퇴장 처리합니다. 방에 없음으로 바뀌고, 대기·승인 큐의 확정 예약은 노쇼 후보로 표시됩니다.`,
                     confirmLabel: '퇴장',
-                    danger: true,
+                    severity: 'destructive',
                     handle: async ({ result, update }) => {
-                        if (!reportResult(result)) manageTarget = null;
+                        if (!reportResult(result)) {
+                            manageTarget = null;
+                            const d = (result?.data as any) ?? {};
+                            toastUndoable(`${d.removedName ?? m.name}님 퇴장 처리`, d.undo);
+                        }
                         await update();
                     }
                 })(arg);
             }}>
                 <input type="hidden" name="id" value={m.id} />
-                <button type="submit" class="btn-role is-danger-outline">퇴장 처리</button>
+                <!-- 조건부로 숨기면 "왜 없지"를 알 수 없다. 못 쓰는 이유를 달고 남긴다. -->
+                <button
+                    type="submit"
+                    class="btn-role is-danger-outline"
+                    disabled={m.status !== 'present'}
+                    aria-describedby={m.status !== 'present' ? 'manage-presence' : undefined}
+                >퇴장 처리</button>
             </form>
             </div>
 
@@ -1601,7 +1901,11 @@
             <div class="modal-actions column-actions">
                 <form method="POST" action="?/removeAttendee" use:enhance={() => {
                     return async ({ result, update }) => {
-                        if (!reportResult(result)) removeModalVisible = false;
+                        if (!reportResult(result)) {
+                            removeModalVisible = false;
+                            const d = ((result as any)?.data as any) ?? {};
+                            toastUndoable(`${d.removedName ?? '참여자'}님 퇴장 · 게임 종료`, d.undo);
+                        }
                         await update();
                     };
                 }}>
@@ -1613,7 +1917,11 @@
 
                 <form method="POST" action="?/removeAttendee" use:enhance={() => {
                     return async ({ result, update }) => {
-                        if (!reportResult(result)) removeModalVisible = false;
+                        if (!reportResult(result)) {
+                            removeModalVisible = false;
+                            const d = ((result as any)?.data as any) ?? {};
+                            toastUndoable(`${d.removedName ?? '참여자'}님 퇴장 처리`, d.undo);
+                        }
                         await update();
                     };
                 }}>
@@ -1637,7 +1945,7 @@
         tabindex="-1"
         aria-label="Close modal"
     >
-        <div class="modal-content" use:trapFocus={() => showScheduledGameModal = false} onclick={handleModalClick} onkeydown={() => {}} role="dialog" aria-labelledby="dlg-schedule" aria-modal="true" tabindex="-1">
+        <div class="modal-content" use:trapFocus={() => dismissFormModal(() => showScheduledGameModal = false, scheduledGameDirty)} onclick={handleModalClick} onkeydown={() => {}} role="dialog" aria-labelledby="dlg-schedule" aria-modal="true" tabindex="-1">
 
             <h2 id="dlg-schedule">
                 <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
@@ -1671,7 +1979,8 @@
                         onkeydown={(e) => comboKeydown(e, filteredScheduledGames, selectScheduledGame)}
                         role="combobox"
                         aria-expanded={dropdownOpen && filteredScheduledGames.length > 0}
-                        aria-controls="scheduledGameOptions"
+                        {...(dropdownOpen && filteredGames.length > 0 ? { 'aria-controls': 'scheduledGameOptions' } : {})}
+                        aria-activedescendant={dropdownOpen && gameOptionIndex >= 0 ? `scheduledGameOption-${gameOptionIndex}` : undefined}
                         aria-autocomplete="list"
                         required 
                         autocomplete="off" 
@@ -1681,7 +1990,7 @@
                         <ul class="dropdown-menu" id="scheduledGameOptions" role="listbox" aria-label="게임 후보">
                             {#each filteredScheduledGames as game, gi}
                                 <li role="presentation">
-                                    <button type="button" role="option" aria-selected={gi === gameOptionIndex} class:active={gi === gameOptionIndex} onclick={() => selectScheduledGame(game)}>
+                                    <button type="button" id="scheduledGameOption-{gi}" role="option" aria-selected={gi === gameOptionIndex} class:active={gi === gameOptionIndex} onclick={() => selectScheduledGame(game)}>
                                         {#if game.image_url}
                                             <img src={game.image_url} alt="" class="mini-thumb" />
                                         {/if}
@@ -1762,6 +2071,39 @@
                 <strong>참여자 ({(g.participants || []).length})</strong>
                 <p class="detail-participants">{(g.participants || []).map((p: any) => p.is_guest ? `${p.name}(G)` : p.name).join(', ') || '없음'}</p>
             </div>
+            <!--
+                시각을 잘못 친 것을 고칠 방법이 「게임 폭파」뿐이었다. 그런데 폭파는
+                그 세션의 예약을 전부 취소해 회원들을 공정성 기계에 다시 떨어뜨린다.
+                운영자의 오타 비용을 회원이 내고 있었다.
+            -->
+            <form method="POST" action="?/updateScheduledGame" class="detail-section detail-edit" use:enhance={() => {
+                return async ({ result, update }) => {
+                    if (!reportResult(result)) {
+                        const d = (result as any)?.data ?? {};
+                        showToast(`${d.updatedName ?? g.game_name} 일정을 수정했습니다`);
+                    }
+                    await update();
+                    refreshSelectedScheduledGame();
+                };
+            }}>
+                <strong>일정 수정</strong>
+                <input type="hidden" name="sessionId" value={g.id} />
+                <div class="edit-grid">
+                    <div class="input-group">
+                        <label for="edit-when-{g.id}">시작 예정</label>
+                        <input id="edit-when-{g.id}" type="datetime-local" name="scheduledAt" value={toDateTimeLocal(g.scheduled_at)} required />
+                    </div>
+                    <div class="input-group">
+                        <label for="edit-min-{g.id}">최소 인원</label>
+                        <input id="edit-min-{g.id}" type="number" name="minPlayers" min="1" value={g.min_players} required class="number-input" />
+                    </div>
+                    <div class="input-group">
+                        <label for="edit-max-{g.id}">최대 인원</label>
+                        <input id="edit-max-{g.id}" type="number" name="maxPlayers" min="1" value={g.max_players} required class="number-input" />
+                    </div>
+                    <button type="submit" class="btn-mini edit-save">저장</button>
+                </div>
+            </form>
             <div class="detail-actions">
                 <form method="POST" action="?/joinGame" use:enhance={() => {
                     return async ({ result, update }) => {
@@ -1804,11 +2146,13 @@
                     title: '게임 폭파',
                     message: `"${g.game_name}" 예약 게임을 폭파합니다. 참여자 예약이 모두 취소됩니다.`,
                     confirmLabel: '폭파',
-                    danger: true,
+                    severity: 'destructive',
                     handle: async ({ result, update }) => {
                         if (!reportResult(result)) {
                             selectedScheduledGame = null;
-                            showAlert('게임이 폭파되었습니다.', 'success');
+                            // 성공을 막는 모달로 알리면 되돌리기가 실릴 자리가 없다.
+                            const d = (result?.data as any) ?? {};
+                            toastUndoable(`${d.dissolvedName ?? g.game_name} 폭파됨 · 예약이 모두 취소되었습니다`, d.undo);
                         }
                         await update();
                     }
@@ -1957,36 +2301,50 @@
         grid-template-columns: repeat(4, minmax(0, 1fr));
         gap: var(--space-4);
     }
-    @media (max-width: 720px) {
+    /*
+        폰에서 스트립이 238px — iPhone SE 접힌 선의 36% — 을 숫자 넷에 쓰고,
+        그 대가로 사람이 한 명도 접힌 선 위에 오지 못했다. 시인성이 존재
+        이유인 콘솔에서. 폰에서는 한 줄로 눕히고 값 위에 레이블을 둔다.
+    */
+    /* 가로로 든 폰은 폭이 844px이라 위 규칙에 안 걸리는데, 거기서 부족한 건
+       폭이 아니라 높이다(390px). 제약을 그대로 질의한다. */
+    @media (max-width: 720px), (max-height: 480px) {
         .room-summary {
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap: var(--space-3);
-            padding: var(--space-3) var(--space-4);
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: var(--space-2);
+            padding: var(--space-3);
         }
-        /* 40px 숫자 넷이 두 줄이면 스트립만으로 화면 절반을 먹는다.
-           방(게임·사람)이 접힌 선 위에 남는 것이 이 콘솔의 존재 이유다. */
+        .rs-stat {
+            gap: 0;
+        }
         .room-summary .rs-value {
-            font-size: var(--text-xl);
+            font-size: var(--text-lg);
+            line-height: 1.15;
         }
         .room-summary .rs-unit {
-            font-size: var(--text-base);
+            font-size: var(--text-sm);
         }
         .rs-value-done,
         .rs-value-pending {
-            font-size: var(--text-xl);
+            font-size: var(--text-lg);
         }
-    }
-    .rs-value-link {
-        color: var(--color-blue-bright);
-        text-decoration: none;
-    }
-    .rs-value-link:hover {
-        text-decoration: underline;
+        .rs-label {
+            font-size: var(--text-xs);
+        }
     }
     /*
         게임과 사람이 같은 화면에 들어오게 한다. 전에는 한 열로 쌓여 있어
         1280x900의 접힌 선 위에 둘 다 없었다.
     */
+    /*
+        게임 목록을 담은 카드는 자기 폭을 질의할 수 있어야 한다 — 아래
+        @container room-card 규칙이 좁을 때 이름에 온전한 한 줄을 내준다.
+        예정 게임 섹션은 2열 밖에 있어 이 선언이 없었고, 그래서 375px에서
+        긴 이름이 형제 메타(시각·정원)에 폭을 뺏겨 홀로 잘렸다.
+    */
+    .room-columns > section {
+        container: room-card / inline-size;
+    }
     .room-columns {
         display: grid;
         /* 그리드 아이템의 기본 min-width는 auto라, 열이 내용의 min-content까지
@@ -1994,13 +2352,49 @@
         grid-template-columns: minmax(0, 1fr);
         gap: var(--space-5);
     }
-    @media (min-width: 1100px) {
+    /* 두 번째 조건은 가로로 든 폰·짧은 창이다 — 거기서 희소한 자원은 세로이고,
+       나란히 놓아야 게임과 사람이 한 화면에 들어온다. */
+    @media (min-width: 1100px), (min-width: 820px) and (max-height: 560px) {
         .room-columns {
-            grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+            /*
+                게임 카드 하나와 801px짜리 명단을 1:1로 짝지으면 왼쪽 열 아래가
+                빈 땅으로 남는다. 왼쪽에 세 칸(게임 · 시작 예정 · 오늘 갈 예정)을
+                쌓고 오른쪽 명단이 그 높이를 함께 쓴다. 명단이 이름·배지·메타를
+                한 줄에 담아야 하므로 오른쪽에 1.1을 준다.
+            */
+            grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+            /* 행을 명시해야 아래 grid-row의 -1이 가리킬 줄이 생긴다.
+               암묵 행만 있으면 -1이 첫 줄로 접혀 span이 사라진다. */
+            grid-template-rows: auto auto auto;
             align-items: start;
         }
         .room-columns > section {
             margin-bottom: 0;
+        }
+        /*
+            DOM 순서는 명단 → 게임 → 시작 예정 → 오늘 갈 예정이다. 폰에서 한 열로
+            쌓일 때 방에 서 있는 운영자가 먼저 봐야 하는 것은 판이 아니라 사람이다 —
+            테이블은 눈으로 보이지만 페널티·블랙·대기 여부는 화면에만 있다.
+            그 전에는 게임 카드 539px가 첫 화면을 다 써서 접힌 선 위에 사람이
+            한 명도 없었다.
+            넓은 화면의 열 배치는 DOM과 다르므로 넷 다 명시한다 — 왼쪽은 시간 축
+            (지금 도는 판 → 곧 시작할 판 → 오늘 올 사람), 오른쪽은 지금 방.
+        */
+        .room-col-games {
+            grid-column: 1;
+            grid-row: 1;
+        }
+        .room-col-scheduled {
+            grid-column: 1;
+            grid-row: 2;
+        }
+        .room-col-visit {
+            grid-column: 1;
+            grid-row: 3;
+        }
+        .room-col-roster {
+            grid-column: 2;
+            grid-row: 1 / -1;
         }
     }
     .rs-stat {
@@ -2031,8 +2425,15 @@
         margin-left: 0.15em;
         color: var(--text-secondary);
     }
+    /*
+        토큰 파일은 가장 큰 단계를 숫자 전용으로 선언한다. 「없음」은 숫자가
+        아닌데 40px로 렌더돼, 두 칸이 동시에 비면 큰 회색 글자 둘이 진짜 숫자
+        둘과 경쟁했다. 값이 없다는 것은 조용히 말해야 한다.
+    */
     .rs-value-none {
         color: var(--text-secondary);
+        font-size: var(--text-xl);
+        font-weight: var(--weight-medium);
     }
     .rs-value-pending {
         color: var(--color-orange-text);
@@ -2040,48 +2441,77 @@
     .rs-stat-pending .rs-unit {
         color: var(--color-orange-text);
     }
-    .rs-action-form {
-        margin-top: var(--space-2);
-    }
-    .rs-action {
-        min-height: 36px;
-        max-width: 100%;
-        padding: 0 var(--space-3);
-        border: 1px solid var(--color-orange-text);
+    /*
+        「최근 조치」 패널. 스트립과 방 사이에 끼지만 접힌 상태의 높이는
+        한 줄(40px)이고, 되돌릴 것이 없으면 아예 렌더되지 않는다.
+    */
+    .recent-actions {
+        margin-bottom: var(--space-5);
+        border: 1px solid var(--border-light);
         border-radius: var(--radius-control);
-        background: var(--bg-primary);
-        color: var(--color-orange-text);
+        background: var(--bg-secondary);
+    }
+    .recent-toggle {
+        display: flex;
+        align-items: center;
+        gap: var(--space-2);
+        width: 100%;
+        padding: var(--space-2) var(--space-4);
+        border: none;
+        border-radius: var(--radius-control);
+        background: none;
+        color: var(--text-primary);
         font-size: var(--text-sm);
         font-weight: var(--weight-medium);
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
+        text-align: left;
         cursor: pointer;
     }
-    .rs-action:hover {
-        background: var(--color-warning-bg);
+    .recent-caret {
+        color: var(--text-secondary);
     }
-    /* 3열 안에서는 버튼이 「스플렌더…」로 잘려 무엇을 끝내는지 말하지 못한다.
-       이름을 잃으면 여러 판이 밀렸을 때 누를 때마다 무엇이 끝나는지 알 수 없다.
-       좁은 화면에서는 이 칸만 한 줄을 차지한다. */
-    @media (max-width: 560px) {
-        .rs-stat-pending {
-            grid-column: 1 / -1;
-        }
+    .recent-list {
+        list-style: none;
+        margin: 0;
+        padding: 0 var(--space-4) var(--space-3);
+    }
+    .recent-list li {
+        display: flex;
+        align-items: center;
+        gap: var(--space-3);
+        padding: var(--space-2) 0;
+        border-top: 1px solid var(--border-light);
+    }
+    .recent-label {
+        flex: 1;
+        min-width: 0;
+        font-size: var(--text-sm);
+        overflow-wrap: anywhere;
+    }
+    .recent-left {
+        flex-shrink: 0;
+        font-size: var(--text-xs);
+        color: var(--text-secondary);
+        font-variant-numeric: var(--numeric);
+    }
+    .recent-undo {
+        flex-shrink: 0;
+    }
+    /*
+        칸 옆에서 말하는 검증 실패. 막는 모달은 상태를 잃는 실패에만 남긴다.
+        아이콘 없이 색만으로 오류를 말하지 않도록 「⚠」를 앞에 둔다.
+    */
+    .field-error {
+        margin: var(--space-1) 0 0;
+        font-size: var(--text-sm);
+        color: var(--color-red-dark);
+    }
+    .field-error::before {
+        content: '⚠ ';
     }
     /* 제목 옆 숫자 분해. 제목만큼 크면 제목이 아니게 된다. */
     .count-split {
         font-size: var(--text-sm);
         font-weight: var(--weight-medium);
-        color: var(--text-secondary);
-        margin-left: var(--space-2);
-    }
-    .count-pending {
-        color: var(--color-orange-text);
-    }
-    .count-aside {
-        font-size: var(--text-xs);
-        font-weight: var(--weight-regular, 400);
         color: var(--text-secondary);
         margin-left: var(--space-2);
     }
@@ -2092,12 +2522,24 @@
             display: none;
         }
     }
+    /*
+        이름이 붙는 폭에서는 라벨을 한 줄로 못박는다.
+        「첫 종료까지」는 flex의 익명 아이템이라 이름이 자리를 요구하면 자기가
+        먼저 두 줄로 접혔다. 그래서 만료 게임이 0→1이 되어 라벨이 「정리 대기」로
+        바뀌는 순간 스트립이 16~32px 줄어들며(1280 94↔110, 820 94↔126) 읽던
+        페이지를 위로 당겼다. 넘치는 폭은 이름이 말줄임으로 흡수한다.
+    */
+    @media (min-width: 561px) {
+        .rs-label {
+            white-space: nowrap;
+        }
+    }
     .rs-label-name {
         min-width: 0;
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
-        font-weight: var(--weight-regular, 400);
+        font-weight: var(--weight-normal);
     }
     .rs-dot {
         width: 8px;
@@ -2140,17 +2582,32 @@
     .btn-confirm-action {
         background: var(--color-blue-bright);
         color: white;
-        border: none;
+        border: 1px solid transparent;
         padding: var(--space-2) 1.25rem;
         border-radius: var(--radius-control);
         cursor: pointer;
         font-weight: 700;
     }
-    .btn-confirm-action.danger {
-        background: var(--color-red-dark);
+    /*
+        확인 버튼은 자기를 부른 버튼보다 무거워 보이면 안 된다. 시트의 테두리
+        빨강 「퇴장 처리」를 누르면 60px 위에 채움 빨강 확인 버튼이 떴고,
+        그러면 두 번째 화면이 첫 번째보다 심각하다고 말하는 셈이었다.
+        되돌릴 수 없는 것(블랙 등록)만 채움 빨강을 입는다.
+    */
+    .btn-confirm-action.is-irreversible {
+        background: var(--danger-solid-bg);
+        color: var(--danger-solid-fg);
     }
-    .btn-confirm-action.danger:hover {
-        background: var(--color-red-darker);
+    .btn-confirm-action.is-irreversible:hover {
+        background: var(--danger-solid-bg-hover);
+    }
+    .btn-confirm-action.is-destructive {
+        background: var(--danger-outline-bg);
+        color: var(--danger-outline-fg);
+        border-color: var(--danger-outline-fg);
+    }
+    .btn-confirm-action.is-destructive:hover {
+        background: var(--danger-outline-bg-hover);
     }
 
     .attendee-list {
@@ -2185,7 +2642,7 @@
     .attendee-link {
         text-decoration: none;
         color: var(--text-primary);
-        font-weight: 500;
+        font-weight: var(--weight-medium);
         display: block;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -2196,7 +2653,7 @@
         text-decoration: underline;
     }
     .time-remaining,
-    .queue-note {
+    .sq-note {
         font-variant-numeric: var(--numeric);
     }
     /* 명단 그룹 — 「대기 중」이 먼저 오고, 그게 판을 짤 수 있는 사람이다 */
@@ -2225,6 +2682,12 @@
     }
     .seat-time {
         white-space: nowrap;
+    }
+    /* 같은 사실을 게임 목록은 주황 굵게, 명단은 회색 보통으로 말하고 있었다.
+       한 상태에는 한 인코딩. */
+    .seat-time.is-over {
+        color: var(--color-orange-text);
+        font-weight: var(--weight-medium);
     }
     .count-busy {
         color: var(--text-secondary);
@@ -2403,13 +2866,18 @@
         background: var(--color-slate-dark);
         color: var(--bg-primary);
     }
+    /* 예약 게임 폭파·게임 종료 및 퇴장. 파괴적이지만 되돌릴 수 있다 —
+       게임은 다시 만들고 사람은 다시 입장시킨다. 2단(테두리 빨강)이다. */
     .btn-delete {
-        background: var(--color-red-dark);
-        color: white;
-        border: none;
+        background: var(--danger-outline-bg);
+        color: var(--danger-outline-fg);
+        border: 1px solid var(--danger-outline-fg);
         padding: var(--space-1) var(--space-2);
         border-radius: var(--radius-control);
         cursor: pointer;
+    }
+    .btn-delete:hover {
+        background: var(--danger-outline-bg-hover);
     }
     /* 파괴적이지 않은 세션 종료 — 빨강과 구분 */
     /*
@@ -2681,6 +3149,9 @@
     .btn-cancel {
         background: var(--border-medium);
         color: var(--text-primary);
+        /* 블랙 등록 확인창에서 취소 48px vs 등록 94px이었다. 탈출구가 가장
+           작은 표적이면, 엄지 경로에는 확인창이 없는 것과 같다. */
+        min-width: 5.5rem;
     }
     /* 모달 계층 — 시트 위에 확인, 확인 위에 결과 알림.
        같은 z-index면 DOM 순서가 이기기 때문에 확인 모달이 관리 시트 밑에 깔린다. */
@@ -2699,11 +3170,17 @@
     }
     .modal-content {
         background: var(--bg-primary);
-        padding: var(--space-6);
+        /* 카드 안쪽 여백을 변수로 든다 — 아래 sticky 푸터가 카드 가장자리까지
+           번지려면 음수 마진이 이 값을 그대로 되돌려야 한다. */
+        --modal-pad: var(--space-6);
+        padding: var(--modal-pad);
         border-radius: var(--radius-card);
         width: 100%;
         max-width: 500px;
+        /* vh는 주소창이 보일 때도 큰 뷰포트를 가리켜 푸터(취소·시작)가
+           화면 밖으로 잘렸다. dvh는 지금 실제로 보이는 높이다. */
         max-height: 90vh;
+        max-height: 90dvh;
         overflow-y: auto;
         box-shadow: 0 4px 20px var(--shadow-lg);
     }
@@ -2721,6 +3198,20 @@
         justify-content: flex-end;
         gap: var(--space-4);
         margin-top: var(--space-5);
+    }
+    /*
+        새 게임·일정 등록 폼은 필드가 여섯이라 375x812에서 푸터가 접힌 선
+        아래로 잘렸고, 잘렸다는 표시가 없어 폼을 다 채우고도 「게임 시작」이
+        어디 있는지 알 수 없었다. 액션 줄을 스크롤 영역 바닥에 붙인다 —
+        위쪽 경계선이 "위에 아직 더 있다"까지 함께 말한다.
+    */
+    .game-form .modal-actions {
+        position: sticky;
+        bottom: 0;
+        margin: var(--space-5) calc(var(--modal-pad) * -1) calc(var(--modal-pad) * -1);
+        padding: var(--space-4) var(--modal-pad);
+        border-top: 1px solid var(--border-light);
+        background: var(--bg-primary);
     }
     .column-actions {
         flex-direction: column;
@@ -2776,7 +3267,7 @@
     }
     .winner-option .player-name {
         flex: 1;
-        font-weight: 500;
+        font-weight: var(--weight-medium);
     }
     .winner-option .medal {
         opacity: 0;
@@ -2815,10 +3306,13 @@
         background: var(--tint-blue-bg);
         color: var(--color-blue-bright);
     }
+    /* 채움 빨강이 뜻하는 하나 — 블랙리스트 — 를 배지도 그대로 입는다.
+       버튼(.btn-role.is-irreversible)과 같은 색이라 「이 색이 뜻하는 것」이
+       사람 옆의 상태와 그 상태를 만드는 동작에서 한 번에 읽힌다. */
     .badge.blacklist {
-        background: var(--color-red-dark);
-        color: var(--bg-primary);
-        border: 1px solid var(--color-red-dark);
+        background: var(--danger-solid-bg);
+        color: var(--danger-solid-fg);
+        border: 1px solid var(--danger-solid-bg);
     }
     .badge.penalty {
         background: var(--color-warning-bg);
@@ -2836,9 +3330,9 @@
         align-items: center;
     }
     /* 대기 · 승인 큐 */
-    .queue-section .section-header h2 {
-        display: flex;
-        align-items: center;
+    /* 대기 배지가 붙으면 제목이 두 줄이 될 수 있다 */
+    .room-col-games .section-header h2,
+    .room-col-scheduled .section-header h2 {
         flex-wrap: wrap;
         gap: var(--space-2);
     }
@@ -2859,35 +3353,18 @@
         color: var(--color-red-dark);
         border-color: var(--color-red-dark);
     }
-    .queue-empty {
+    /*
+        세션 행에 매달린 대기 예약. 자기 게임 행 아래에 들여 붙어서, 이 사람들이
+        어느 판을 기다리는지가 위치로 말해진다 — 예전에는 게임 이름을 다시 적는
+        그룹 헤더가 그 일을 했다.
+    */
+    .session-queue {
+        list-style: none;
         margin: var(--space-2) 0 0;
-    }
-    .queue-group + .queue-group {
-        margin-top: var(--space-4);
-        padding-top: var(--space-4);
+        padding: var(--space-2) 0 0 var(--space-5);
         border-top: 1px solid var(--border-light);
     }
-    .queue-group-head {
-        display: flex;
-        align-items: baseline;
-        flex-wrap: wrap;
-        gap: var(--space-2);
-        margin-bottom: 0.4rem;
-    }
-    .queue-group-head strong {
-        font-size: var(--text-sm);
-        color: var(--text-primary);
-    }
-    .queue-meta {
-        font-size: var(--text-xs);
-        color: var(--text-secondary);
-    }
-    .queue-list {
-        list-style: none;
-        margin: 0;
-        padding: 0;
-    }
-    .queue-row {
+    .sq-row {
         display: grid;
         grid-template-columns: minmax(0, 1fr) auto;
         grid-template-areas: 'who actions' 'note actions';
@@ -2896,13 +3373,13 @@
         padding: var(--space-2) 0.6rem;
         border-radius: var(--radius-control);
     }
-    .queue-row + .queue-row {
+    .sq-row + .sq-row {
         margin-top: var(--space-1);
     }
-    .queue-row.is-overdue {
+    .sq-row.is-overdue {
         background: var(--color-error-bg);
     }
-    .queue-who {
+    .sq-who {
         grid-area: who;
         display: flex;
         align-items: center;
@@ -2910,8 +3387,13 @@
         gap: 0.35rem;
         min-width: 0;
     }
-    .queue-note {
+    /* 차단 사유와 그것을 푸는 버튼이 한 줄에 선다 */
+    .sq-note {
         grid-area: note;
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: var(--space-2);
         font-size: var(--text-xs);
         color: var(--text-secondary);
     }
@@ -2919,15 +3401,35 @@
         color: var(--color-red-dark);
         display: block;
     }
+    /*
+        막힌 행에서 나가는 문. 이 행에서 유일하게 살아 있던 컨트롤이
+        「거절」뿐이라, 사람을 푸는 길보다 자르는 길이 가까웠다.
+        무게는 「거절」보다 가볍다 — 이 버튼 자체는 아무것도 바꾸지 않고
+        도구(관리 시트)를 열 뿐이다. 높이는 공용 44px 규칙을 그대로 받는다.
+    */
+    .btn-queue-unblock {
+        padding: 0 var(--space-3);
+        border: 1px solid var(--border-control);
+        border-radius: var(--radius-control);
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        font-size: var(--text-xs);
+        font-weight: var(--weight-medium);
+        white-space: nowrap;
+        cursor: pointer;
+    }
+    .btn-queue-unblock:hover {
+        background: var(--bg-hover);
+    }
     .overdue-hint {
         color: var(--text-secondary);
     }
-    .queue-actions {
+    .sq-actions {
         grid-area: actions;
         display: flex;
         gap: 0.4rem;
     }
-    .queue-status {
+    .sq-status {
         font-size: var(--text-xs);
         font-weight: 700;
         padding: 0.1rem 0.45rem;
@@ -2936,11 +3438,11 @@
         color: var(--text-dark);
         white-space: nowrap;
     }
-    .queue-status.queue-pending_approval {
+    .sq-status.sq-pending_approval {
         background: var(--color-warning-bg);
         color: var(--text-darker);
     }
-    .queue-status.queue-confirmed {
+    .sq-status.sq-confirmed {
         background: var(--color-success-bg);
         color: var(--color-green-dark);
     }
@@ -2964,6 +3466,8 @@
         color: var(--color-red-dark);
         border: 1px solid var(--color-red-dark);
     }
+    /* 노쇼 처리는 예약 취소 + 페널티 1점이고, 둘 다 관리 시트에서 되돌린다.
+       2단(테두리 빨강). */
     .btn-queue-noshow {
         min-height: 44px;
         padding: 0 0.8rem;
@@ -2972,9 +3476,12 @@
         font-weight: 600;
         cursor: pointer;
         white-space: nowrap;
-        background: var(--color-red-dark);
-        color: white;
-        border: 1px solid transparent;
+        background: var(--danger-outline-bg);
+        color: var(--danger-outline-fg);
+        border: 1px solid var(--danger-outline-fg);
+    }
+    .btn-queue-noshow:hover {
+        background: var(--danger-outline-bg-hover);
     }
     .btn-queue-confirm:disabled,
     .btn-penalty.remove:disabled {
@@ -2991,8 +3498,19 @@
     .list-name {
         padding-block: var(--space-1);
     }
-    .queue-who .attendee-link {
+    /*
+        이름 링크가 대시보드를 떠나는 유일한 컨트롤인데, 폭이 이름을 따라가
+        두 글자짜리는 13px 표적이었다. 세로만 벌던 padding에 가로를 더하고
+        최소 폭을 준다 — 옆의 「관리」는 떠나지 않는 버튼이라 오조작 비용이 크다.
+    */
+    .sq-who .attendee-link,
+    .name-row .attendee-link {
         padding-block: var(--space-1);
+        padding-inline: var(--space-2);
+        margin-inline: calc(-1 * var(--space-2));
+        min-width: 2.75rem;
+        display: inline-block;
+        text-align: left;
     }
 
     /* 결과 토스트 — 흐름을 막지 않는 확인. 실패는 모달이 맡는다 */
@@ -3099,17 +3617,14 @@
         font-size: var(--text-sm);
         font-weight: 600;
     }
-    /* 「페널티 부여」는 바로 옆의 「1점 취소」로 되돌릴 수 있다. 같은 시트 안의
-       블랙리스트 등록·삭제(.btn-role.is-destructive)와 똑같은 채움 빨강을 쓰면
-       되돌릴 수 있는 것과 없는 것이 같아 보인다. 부정적 동작이라는 신호는
-       테두리로 유지하고, 채움 빨강은 되돌릴 수 없는 것에만 남긴다. */
+    /* 「페널티 부여」는 바로 옆의 「1점 취소」로 되돌릴 수 있다. 2단이다. */
     .btn-penalty.add {
-        background: var(--bg-primary);
-        color: var(--color-red-dark);
-        border-color: var(--color-red-dark);
+        background: var(--danger-outline-bg);
+        color: var(--danger-outline-fg);
+        border-color: var(--danger-outline-fg);
     }
     .btn-penalty.add:hover {
-        background: var(--color-error-bg);
+        background: var(--danger-outline-bg-hover);
     }
     /* 시트에서 유일한 채움 버튼이라 관대한 쪽이 주 CTA로 읽혔다. 1단(중립)이다. */
     .btn-penalty.remove {
@@ -3145,19 +3660,24 @@
         cursor: pointer;
         line-height: 1.2;
     }
-    .btn-role.is-destructive {
-        background: var(--color-red-dark);
-        color: var(--bg-primary);
+    /* 1단. 이 콘솔에서 채움 빨강을 입는 유일한 버튼 — 블랙리스트 등록.
+       되돌릴 수 없고 제3자에게 파급된다. 해제는 파괴적이지 않으므로
+       is-secondary로 내린다. */
+    .btn-role.is-irreversible {
+        background: var(--danger-solid-bg);
+        color: var(--danger-solid-fg);
     }
-    /* 부정적이지만 되돌릴 수 있는 조치. 채움 빨강(is-destructive)은
-       되돌릴 수 없는 것에만 남긴다. */
+    .btn-role.is-irreversible:hover {
+        background: var(--danger-solid-bg-hover);
+    }
+    /* 2단. 부정적이지만 되돌릴 수 있는 조치. */
     .btn-role.is-danger-outline {
-        background: var(--bg-primary);
-        color: var(--color-red-dark);
-        border-color: var(--color-red-dark);
+        background: var(--danger-outline-bg);
+        color: var(--danger-outline-fg);
+        border-color: var(--danger-outline-fg);
     }
     .btn-role.is-danger-outline:hover {
-        background: var(--color-error-bg);
+        background: var(--danger-outline-bg-hover);
     }
     .btn-role.is-secondary {
         background: var(--bg-primary);
@@ -3256,7 +3776,7 @@
         flex-direction: column;
     }
     .game-option-info .name {
-        font-weight: 500;
+        font-weight: var(--weight-medium);
         color: var(--text-primary);
     }
     .game-option-info .meta {
@@ -3282,14 +3802,24 @@
         border-radius: var(--radius-control);
     }
 
+    /*
+        시트마다 채움 파랑이 둘이었다 — 「추가」(참여자 한 명)와 「게임 시작」이
+        같은 무게라, 시트의 실제 1순위가 가장 큰 목소리가 아니었다. 「추가」는
+        보조 동작이므로 틴트로 내린다. 파랑을 유지하는 것은 여전히 진행형
+        동작이기 때문이고, 채움을 놓는 것은 그 시트에 답이 따로 있기 때문이다.
+    */
     .btn-mini {
         padding: 0.4rem 0.8rem;
-        background: var(--color-blue-bright);
-        color: white;
-        border: none;
+        background: var(--tint-blue-bg);
+        color: var(--color-blue-bright);
+        border: 1px solid transparent;
         border-radius: var(--radius-control);
         cursor: pointer;
         font-size: var(--text-sm);
+        font-weight: var(--weight-medium);
+    }
+    .btn-mini:hover {
+        background: var(--tint-blue-bg-hover);
     }
     /* --text-dark는 글자색 토큰이다. 배경으로 쓰면 시스템이 어긋난다. */
     .btn-guest {
@@ -3448,14 +3978,23 @@
     .vp-time {
         font-size: var(--text-xs);
         color: var(--color-orange-text);
-        font-weight: 500;
+        font-weight: var(--weight-medium);
     }
 
     /* 게임 리스트 */
+    /*
+        만료 두 판이 나란히 서면 1px 구분선만으로 나뉜 하나의 앰버 덩어리가
+        됐다. 티츄가 어디서 끝나고 글룸헤이븐이 어디서 시작하는지, 어느
+        「게임 종료」가 어느 판의 것인지 한눈에 알 수 없었다 — 그리고 그 버튼은
+        누르면 판이 끝난다. 행마다 경계와 간격을 줘서 두 개가 두 개로 읽히게 한다.
+    */
     .game-list {
         list-style: none;
         padding: 0;
         margin: 0;
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-2);
     }
     .game-list li {
         list-style: none;
@@ -3476,12 +4015,20 @@
         cursor: pointer;
         transition: background 0.15s;
     }
-    .game-list-item:hover {
-        background: var(--bg-surface);
-    }
-    /* 만료 행은 자기 배경이 이미 틴트라 기본 hover가 아무 변화도 주지 못했다 */
-    .game-row.is-expired .game-list-item:hover {
-        background: transparent;
+    /*
+        터치 기기에서 :hover 는 탭한 뒤에도 남아 그 행이 선택된 것처럼 보인다.
+        포인터가 있는 기기에서만 켠다 — 폰이 이 콘솔의 주 사용 장면이다.
+    */
+    @media (hover: hover) {
+        .game-list-item:hover {
+            background: var(--bg-surface);
+        }
+        .game-row.is-expired:hover {
+            background: var(--color-warning-bg-strong);
+        }
+        .game-row.is-expired .game-list-item:hover {
+            background: transparent;
+        }
     }
     .game-list-item:last-child {
         border-bottom: none;
@@ -3502,11 +4049,25 @@
         display: flex;
         align-items: center;
         gap: var(--space-2);
-        border-bottom: 1px solid var(--border-light);
+        border: 1px solid var(--border-light);
+        border-radius: var(--radius-control);
+        overflow: hidden;
     }
-    .game-row:last-child {
-        border-bottom: none;
+    /*
+        대기 예약이 붙으면 행이 두 줄이 된다. flex-wrap으로 열면 줄바꿈이
+        「게임 종료」에도 열려서, 이름이 긴 만료 행에서는 종료 버튼이 먼저
+        떨어졌다. 그리드는 어느 칸이 내려갈지를 지정할 수 있다 — 내려가는 것은
+        대기 목록 하나뿐이고, 게임 이름과 종료 버튼은 첫 줄에 남는다.
+    */
+    .game-row.has-pending {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: center;
     }
+    .session-queue {
+        grid-column: 1 / -1;
+    }
+
     .game-row .game-list-item {
         border-bottom: none;
         /* width:100%인 flex 아이템은 기본 min-width:auto 때문에 좁은 폭에서 줄지 않는다 */
@@ -3519,14 +4080,26 @@
        이름은 본문색을 지키고, 상태는 색이 아니라 왼쪽 레일과 배경 틴트로 말한다. */
     .game-row.is-expired {
         background: var(--color-warning-bg);
+        border-color: var(--color-orange-text);
         padding-right: var(--space-2);
+    }
+    /*
+        중첩된 대기 예약은 게임의 상태 틴트를 물려받으면 안 된다. 앰버는
+        "이 판의 시간이 끝났다"는 뜻이고, 그 아래 사람들은 별개의 사실이다.
+        같은 색이면 하나가 다른 하나를 설명하는 것처럼 읽힌다.
+    */
+    .game-row.is-expired .session-queue {
+        background: var(--bg-primary);
+        margin-left: calc(-1 * var(--space-3));
+        margin-right: calc(-1 * var(--space-3));
+        margin-bottom: calc(-1 * var(--space-2));
+        padding-left: var(--space-5);
+        padding-right: var(--space-3);
+        padding-bottom: var(--space-2);
     }
     .game-list-item.expired .time-remaining {
         color: var(--color-orange-text);
         font-weight: 700;
-    }
-    .game-row.is-expired:hover {
-        background: var(--color-warning-bg-strong);
     }
     .row-end-form {
         flex-shrink: 0;
@@ -3581,6 +4154,85 @@
         font-size: var(--text-lg);
         font-weight: bold;
     }
+    /*
+        375~390px에서 이름이 「스플…」로 잘리는데 그 옆이 「게임 종료」다.
+        무엇을 끝내는지 못 읽고 누르게 된다. 좁은 화면에서는 한 줄을 포기하고
+        이름에 온전한 줄을 준다. 섬네일은 이름의 자리를 뺏으므로 여기서는 뺀다.
+    */
+    /*
+        뷰포트가 아니라 이 카드가 실제로 얼마나 넓은지가 기준이다. 2열 배치에서는
+        1280px 화면에서도 열이 471px이고, 만료 행은 「게임 종료」에 87px을 내주므로
+        이름에 남는 자리가 폰과 비슷해진다.
+    */
+    @container room-card (max-width: 560px) {
+        /*
+            가로로 든 폰은 폭이 844px이라 ≤768px 규칙에 안 걸리는데, 2열이라
+            열은 253px뿐이다. 데스크톱 헤더가 그대로 적용돼 「게임」이 「게 / 임」
+            으로, 버튼이 「+ 새 게 / 임 시작」으로 글자 단위로 쪼개졌다.
+            여기서도 뷰포트가 아니라 카드 폭을 기준으로 접는다.
+        */
+        .section-header {
+            flex-wrap: wrap;
+            row-gap: var(--space-2);
+        }
+        .section-header h2 {
+            flex: 1 1 auto;
+            min-width: 0;
+        }
+        /* 버튼은 자기 내용 폭을 지킨다 — 늘리면 전폭 파란 바가 된다 */
+        .section-header > button {
+            flex: 0 0 auto;
+        }
+        .game-list-item {
+            flex-wrap: wrap;
+            row-gap: 2px;
+        }
+        .game-list-item .list-name {
+            flex: 1 0 100%;
+            order: -1;
+            white-space: normal;
+            overflow: visible;
+        }
+        .game-list-item .list-thumb {
+            display: none;
+        }
+        /*
+            좁은 카드에서는 들여쓰기와 버튼 두 개가 이름 칸을 6px까지 짓눌러
+            「Ww」가 한 글자로 잘렸다. 조치를 아래 줄로 내리고 들여쓰기를 줄여
+            이름에 온전한 한 줄을 준다 — 누구인지가 먼저다.
+        */
+        .session-queue {
+            padding-left: var(--space-3);
+        }
+        .sq-row {
+            grid-template-columns: minmax(0, 1fr);
+            grid-template-areas: 'who' 'note' 'actions';
+        }
+        .sq-actions {
+            justify-content: flex-end;
+        }
+    }
+
+    /* 섹션의 주 버튼(+ 새 게임 시작)과 경쟁하지 않되, 경보와 같은 계열로
+       자기가 무엇을 치우는지 말한다. */
+    .btn-bulk-end {
+        min-height: 44px;
+        padding: 0 var(--space-3);
+        border: 1px solid var(--color-orange-text);
+        border-radius: var(--radius-control);
+        background: var(--bg-primary);
+        color: var(--color-orange-text);
+        font-size: var(--text-sm);
+        font-weight: var(--weight-medium);
+        white-space: nowrap;
+        cursor: pointer;
+    }
+    .btn-bulk-end:hover {
+        background: var(--color-warning-bg);
+    }
+    .bulk-end-form {
+        margin: 0;
+    }
     .show-more-btn {
         display: block;
         width: 100%;
@@ -3634,6 +4286,38 @@
     .detail-section strong {
         font-size: var(--text-sm);
         color: var(--text-darker);
+    }
+    /* 세 필드와 저장이 좁은 시트에서 한 줄로 눌리지 않게 접힌다 */
+    .detail-edit .edit-grid {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-end;
+        gap: var(--space-2);
+        margin-top: var(--space-2);
+    }
+    .detail-edit .input-group {
+        flex: 1 1 8rem;
+        min-width: 0;
+    }
+    .detail-edit .input-group label {
+        display: block;
+        font-size: var(--text-xs);
+        color: var(--text-secondary);
+        margin-bottom: var(--space-1);
+    }
+    .detail-edit input {
+        width: 100%;
+        min-height: 44px;
+        padding: 0 var(--space-2);
+        border: 1px solid var(--border-control);
+        border-radius: var(--radius-control);
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        font-size: var(--text-sm);
+    }
+    .detail-edit .edit-save {
+        flex: 0 0 auto;
+        min-height: 44px;
     }
     .detail-participants {
         margin: var(--space-1) 0 0;
@@ -3717,10 +4401,19 @@
             font-size: var(--text-base);
             gap: var(--space-2);
         }
+        /*
+            세로로 펴면 「+ 새 게임 시작」이 전폭 파란 바가 되어, 폰 스크롤에서
+            가장 큰 소리를 내는 것이 만들기 버튼 둘이 된다. 제목과 같은 줄에
+            두면 그 무게가 내용으로 돌아온다.
+        */
         .section-header {
-            flex-direction: column;
-            align-items: stretch;
+            flex-wrap: wrap;
+            align-items: center;
             gap: var(--space-2);
+        }
+        .section-header h2 {
+            flex: 1 1 auto;
+            min-width: 0;
         }
         /* 폰은 서서 한 손으로 쓰는 주 사용 장면 — 탭 타깃을 44px 아래로 줄이지 않는다 */
         button, .btn-primary, .btn-delete, .btn-mini {
@@ -3750,7 +4443,7 @@
         .chip-container { font-size: var(--text-xs); }
         .chip-link { font-size: var(--text-xs); }
         .chip-add { font-size: var(--text-xs); padding: 0.2rem 0.6rem; }
-        .modal-content { width: 95%; padding: 1.25rem; }
+        .modal-content { width: 95%; --modal-pad: var(--space-5); }
         .player-select { gap: var(--space-2); }
         .empty-state { font-size: var(--text-sm); }
         .visit-plan-chip { font-size: var(--text-xs); padding: 0.3rem 0.6rem; }

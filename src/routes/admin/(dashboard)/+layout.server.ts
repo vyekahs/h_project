@@ -35,8 +35,25 @@ export const load: LayoutServerLoad = async () => {
         closingDisplay = `오늘 ${closingTimeStr}`;
     }
 
+    /*
+        마감 확인창이 자기가 지울 것의 크기를 말할 수 있어야 한다. 「모든 참가자」
+        「진행 중인 게임」이라고만 하면 몇 명 몇 판인지는 운영자가 기억해서
+        채워야 한다 — 23시 29분에 한 손으로 누르는 버튼 앞에서.
+        마감 버튼은 대시보드가 아닌 하위 페이지에서도 눌리므로 레이아웃이 센다.
+    */
+    const summaryResult = await db.execute(sql`
+        SELECT
+            (SELECT COUNT(*) FROM attendees WHERE status = 'present') AS present,
+            (SELECT COUNT(*) FROM game_sessions WHERE status = 'playing') AS playing
+    `);
+    const summaryRow = (summaryResult as any[])[0] ?? {};
+
     return {
         settings,
-        closingDisplay
+        closingDisplay,
+        closeDaySummary: {
+            present: Number(summaryRow.present ?? 0),
+            playing: Number(summaryRow.playing ?? 0)
+        }
     };
 };

@@ -6,6 +6,9 @@
     import type { LayoutData } from './$types';
     import { trapFocus } from '$lib/actions/modal';
     import AdminFeedback from '$lib/components/admin/AdminFeedback.svelte';
+    import { showToast, showAlert as showToastAlert, rememberAction, forgetAction } from '$lib/stores/adminFeedback';
+    import { deserialize } from '$app/forms';
+    import { invalidateAll } from '$app/navigation';
 
     let { data, children }: { data: LayoutData; children: any } = $props();
 
@@ -29,6 +32,53 @@
         }
     });
 
+    /*
+        마감은 콘솔에서 가장 큰 상태 변화이고, 유일하게 되돌릴 수 없던 것이었다.
+        되돌리기는 실릴 자리가 있어야 눌린다 — 성공을 막는 모달로 알리면 그 자리가
+        없다. 따뜻한 마무리 문구는 모달이 아니라 말에 있으므로 토스트로 옮긴다.
+        대시보드에 있을 때는 「최근 조치」 패널이 나머지 10분을 마저 든다.
+    */
+    function closeDayUndoable(message: string, undo: { id: number; label: string } | undefined) {
+        if (!undo) {
+            showToast(message);
+            return;
+        }
+        let recentId = 0;
+        const run = async () => {
+            forgetAction(recentId);
+            const body = new FormData();
+            body.set('undoId', String(undo.id));
+            try {
+                const res = await fetch('/admin?/undoAdminAction', { method: 'POST', body });
+                const result: any = deserialize(await res.text());
+                if (result?.type === 'failure' || result?.type === 'error') {
+                    showToastAlert(result?.data?.error || result?.error?.message || '되돌리지 못했습니다.');
+                } else {
+                    showToast(`되돌렸습니다 · ${undo.label}`);
+                }
+            } catch {
+                showToastAlert('되돌리지 못했습니다. 네트워크를 확인해주세요.');
+            }
+            await invalidateAll();
+        };
+        recentId = rememberAction({ label: undo.label, run });
+        showToast(message, { label: '되돌리기', run });
+    }
+
+    /*
+        페이지가 소유한 모달들은 열릴 때 배경 스크롤을 잠근다. 레이아웃이
+        소유한 셋(마감·오픈·알림)은 그러지 않아서, 확인창이 떠 있는데 뒤가
+        스크롤됐다 — 무엇을 확인하는 중인지 화면이 흘러가 버린다.
+    */
+    $effect(() => {
+        if (!browser) return;
+        const open = closeDayModalVisible || openDayModalVisible || alertVisible;
+        if (!open) return;
+        const prev = document.body.style.overflow;
+        document.body.style.overflow = 'hidden';
+        return () => { document.body.style.overflow = prev; };
+    });
+
     function showAlert(msg: string) {
         alertMessage = msg;
         alertVisible = true;
@@ -47,9 +97,14 @@
 <AdminFeedback />
 
 <div class="admin-layout">
-    <aside class="sidebar">
+    <!--
+        브랜드 줄은 제목이 아니라 이름표다. h2로 두었더니 문서가 h2로 열리고
+        그 다음에 h1이 왔다 — 보조기술이 읽는 개요가 거꾸로 시작했다.
+        랜드마크 이름은 aside가 직접 든다.
+    -->
+    <aside class="sidebar" aria-label="관리자 콘솔">
         <div class="sidebar-header">
-            <h2>관리자 콘솔</h2>
+            <p class="sidebar-brand">관리자 콘솔</p>
         </div>
         <nav class="sidebar-nav" aria-label="관리자 메뉴">
             <a href="/admin" class="nav-item" class:active={$page.url.pathname === '/admin'} aria-current={$page.url.pathname === '/admin' ? "page" : undefined}>
@@ -105,7 +160,7 @@
                 {/if}
             </div>
             <div class="header-actions">
-                <a href="/" class="btn-secondary">
+                <a href="/" class="btn-nav-out">
                     <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:6px;"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
                     메인으로
                 </a>
@@ -115,7 +170,7 @@
                         오픈 하기
                     </button>
                 {:else}
-                    <button class="btn-danger" onclick={() => closeDayModalVisible = true}>
+                    <button class="btn-close-day" onclick={() => closeDayModalVisible = true}>
                         <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:6px;"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
                         마감 하기
                     </button>
@@ -179,15 +234,22 @@
         tabindex="-1"
         aria-label="Close modal"
     >
-        <div class="modal-content confirm-modal" use:trapFocus={() => closeDayModalVisible = false} onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="dialog" aria-modal="true" tabindex="-1">
-            <h3>
+        <div class="modal-content confirm-modal" use:trapFocus={() => closeDayModalVisible = false} onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="alertdialog" aria-modal="true" aria-labelledby="dlg-close-day" tabindex="-1">
+            <h3 id="dlg-close-day">
                 <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px; vertical-align:text-bottom;"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
                 마감 하기
             </h3>
-            <p>정말 마감하시겠습니까?</p>
-            <p class="warning-text">모든 참가자가 퇴장 처리되고, 진행 중인 게임이 종료됩니다.</p>
+            <!-- 페이지의 다른 확인창들처럼 결과를 계산해서 말한다. 이 숫자는
+                 레이아웃이 세므로 대시보드가 아닌 화면에서도 정확하다. -->
+            <p class="warning-text">
+                {#if data.closeDaySummary.present === 0 && data.closeDaySummary.playing === 0}
+                    지금 방에 아무도 없고 진행 중인 판도 없습니다. 하루를 닫습니다.
+                {:else}
+                    지금 방에 있는 {data.closeDaySummary.present}명이 퇴장 처리되고, 진행 중인 {data.closeDaySummary.playing}판이 종료됩니다.
+                {/if}
+            </p>
             <div class="modal-actions">
-                <button class="btn-secondary" data-autofocus onclick={() => closeDayModalVisible = false}>취소</button>
+                <button class="btn-quiet" data-autofocus onclick={() => closeDayModalVisible = false}>취소</button>
                 <form method="POST" action="/admin?/closeDay" use:enhance={() => {
                     return async ({ result, update }) => {
                         if (result.type === 'failure') {
@@ -195,12 +257,13 @@
                             showAlert(data?.error || '마감 실패');
                         } else {
                             closeDayModalVisible = false;
-                            showAlert('오늘 하루가 마감되었습니다. 수고하셨습니다!');
+                            const d = (result as any)?.data ?? {};
+                            closeDayUndoable('오늘 하루가 마감되었습니다. 수고하셨습니다!', d.undo);
                         }
                         await update();
                     };
                 }}>
-                    <button type="submit" class="btn-danger">마감 확정</button>
+                    <button type="submit" class="btn-close-day is-confirm">마감 확정</button>
                 </form>
             </div>
         </div>
@@ -266,154 +329,9 @@
 {/if}
 
 <style>
-    /*
-     * 어드민 팔레트 — 라이트 전용으로 확정된 값이다.
-     * 사이트 전역 토큰은 <html>의 data-theme='dark'로 뒤집히는데, 어드민은
-     * 이 블록에서 토큰을 다시 선언해 그 영향을 차단한다. 즉 이 재선언이
-     * "어드민은 다크모드를 따르지 않는다"를 실제로 강제하는 장치이므로 지우면 안 된다.
-     * 어드민 안에서 색이 필요하면 하드코딩하지 말고 여기의 토큰을 쓸 것.
-     */
-    .force-light {
-        /* Text */
-        --text-primary: #333;
-        --text-secondary: #666;
-        --text-tertiary: #888;
-        --text-muted: #999;
-        --text-hint: #adb5bd;
-        --text-dark: #495057;
-        --text-darker: #555;
-
-        /* Backgrounds */
-        --bg-primary: #ffffff;
-        --bg-secondary: #f8f9fa;
-        --bg-tertiary: #f1f3f5;
-        --bg-elevated: #f0f0f0;
-        --bg-hover: #e9ecef;
-        --bg-active: #dee2e6;
-        --bg-surface: #f5f5f5;
-        --bg-dark: #333;
-
-        /* Borders */
-        --border-default: #ddd;
-        --border-light: #eee;
-        --border-medium: #ccc;
-        /* 테두리가 유일한 경계인 컨트롤용. --border-default(#ddd)와
-           --border-medium(#ccc)는 흰 배경에서 1.36:1 / 1.61:1이라 글자는
-           읽히는데 상자 가장자리가 보이지 않았다(WCAG 1.4.11은 3:1 요구).
-           흰 배경 4.54 · #f5f5f5 4.17 · #e9ecef 3.83. */
-        --border-control: #767676;
-
-        /* Shadows */
-        --shadow-sm: rgba(0,0,0,0.03);
-        --shadow-md: rgba(0,0,0,0.1);
-        --shadow-lg: rgba(0,0,0,0.15);
-        --shadow-heavy: rgba(0,0,0,0.3);
-        --shadow-deep: rgba(0,0,0,0.6);
-
-        /* Overlays */
-        --overlay-light: rgba(0,0,0,0.05);
-        --overlay-medium: rgba(0,0,0,0.2);
-        --overlay-heavy: rgba(0,0,0,0.5);
-
-        /* Slate */
-        --color-slate: #94a3b8;
-        --color-slate-dark: #64748b;
-
-        /* Brand colors */
-        --color-blue: #339af0;
-        /* 흰 글자를 얹는 기본 파랑. #007bff는 3.98:1로 AA 미달이라 5.1:1인 값으로 내렸다.
-           밝은 파랑이 필요한 곳(배경/테두리)은 --color-blue를 쓸 것. */
-        --color-blue-bright: #0b5ed7;
-        /* 포커스 링은 브랜드 색과 달라야 한다. --color-blue-bright와 같은 값이면
-           파란 버튼 위에서 링과 버튼이 한 덩어리로 보여 포커스가 사라진다.
-           빨강(마감 하기)·초록 위에서도 통하도록 중립 먹색을 쓴다. */
-        --focus-ring: #111827;
-        --focus-ring-on-dark: #9ec5fe;
-        --color-amber: #fbbf24;
-        --color-amber-dark: #f59e0b;
-        --color-amber-darker: #d97706;
-        --color-green: #22c55e;
-        --color-green-dark: #1b6b2c;
-        --color-red: #ef4444;
-        --color-red-dark: #d32f2f;
-        --color-red-darker: #b71c1c;      /* 파괴적 동작의 hover */
-        --color-green-darker: #14532d;    /* 초록 버튼의 hover */
-        /* 흰 배경에서 AA를 통과하는 주황 텍스트.
-           --color-orange-dark(#e67700)는 3.00:1이라 텍스트로 쓸 수 없다. */
-        --color-orange-text: #c2410c;
-        --color-error-bg-strong: #ffecec;   /* 오류 틴트의 hover */
-        /* #ffeccc 는 --color-orange-text(#c2410c)가 4.469:1로 바로 아래 줄의
-           약속을 못 지켰다. 4.579:1까지만 진해진다. */
-        --color-warning-bg-strong: #ffefd6; /* 경고 틴트의 hover */
-        --color-orange: #ff9800;
-        --color-orange-dark: #e67700;
-
-        /* State backgrounds */
-        --color-success-bg: #e8f5e9;
-        --color-error-bg: #fff5f5;
-        --color-warning-bg: #fff3e0;
-        --color-info-bg: #e7f5ff;
-
-        /* Additional Colors */
-        --border-warning: #ffe0b2;
-        --color-purple-bg: #e8d5f5;
-
-        /* 연한 배경 + 진한 글자 톤 버튼. +/- 조정, 연장/해지처럼 짝을 이루는
-           동작에 쓴다. 세 화면에 같은 값이 흩어져 있던 것을 모았다.
-           hover 틴트는 글자가 4.5:1을 지키는 선까지만 진해진다
-           (예전 #bbdefb / #f8bbd0 은 4.16 / 4.07 로 미달이었다). */
-        --tint-blue-bg: #e3f2fd;
-        --tint-blue-bg-hover: #d4e6fc;
-        --tint-red-bg: #fce4ec;
-        --tint-red-bg-hover: #fbd0de;
-        --color-blue-darker: #0a4bad;   /* 파랑 버튼의 hover */
-
-        /* 순위 메달. 동메달은 흰 글자에서 3.14:1이던 #cd7f32를 내렸다. */
-        --medal-gold: #ffd700;
-        --medal-silver: #c0c0c0;
-        --medal-bronze: #9c6320;
-        --color-indigo: #364fc7;
-
-        color-scheme: light;
-        color: #333;
-
-        /* ── Type scale ──
-           6단계. 이전에는 0.65–1.2rem 사이 14개 값이 있었고 0.78/0.8/0.82rem처럼
-           0.3px 차이로 갈라진 것들이 있었다. 11px과 12px도 결국 한 결정이라 12px으로 합쳤다.
-           데이터가 자기 라벨보다 커야 하므로
-           가장 큰 단계(--text-stat)는 숫자 전용이다. */
-        --text-xs: 0.75rem;     /* 12px — 배지, 메타 */
-        --text-sm: 0.875rem;    /* 14px — 컨트롤, 목록 */
-        --text-base: 1rem;      /* 16px — 본문 */
-        --text-lg: 1.25rem;     /* 20px — 섹션 제목 */
-        --text-xl: 1.5rem;      /* 24px — 페이지 제목 */
-        --text-stat: 2.5rem;    /* 40px — 라이브 수치 전용 */
-
-        /* 굵기는 400 / 600 / 700 세 단계만 쓴다 */
-        --weight-normal: 400;
-        --weight-medium: 600;
-        --weight-bold: 700;
-
-        /* ── Spacing ── 0.25rem 스케일 6단 */
-        --space-1: 0.25rem;
-        --space-2: 0.5rem;
-        --space-3: 0.75rem;
-        --space-4: 1rem;
-        --space-5: 1.5rem;
-        --space-6: 2rem;
-
-        /* ── Radius ── 컨트롤과 카드 두 종류 + 알약 */
-        --radius-control: 6px;
-        --radius-card: 12px;
-        --radius-pill: 999px;
-
-        /* ── Font ── 한 벌만 쓴다 (이전에는 sans-serif / Arial / -apple-system 혼재) */
-        --font-sans: -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Malgun Gothic',
-            system-ui, 'Segoe UI', Roboto, sans-serif;
-
-        /* 표 형태 숫자 — 30초마다 갱신되는 카운트다운이 가로로 흔들리지 않게 */
-        --numeric: tabular-nums;
-    }
+    /* 어드민 팔레트·타이포·간격 토큰은 src/lib/styles/admin-tokens.css 한 곳에 있다.
+       /admin 전체를 감싸는 src/routes/admin/+layout.svelte 가 불러오므로
+       (dashboard) 밖의 /admin/login·/admin/qr 도 같은 토큰을 받는다. */
 
     /* 포커스 링 — 이전에는 UA 기본 링에 의존했고, 네이비 사이드바 위에서
        1.55:1까지 떨어져 키보드 사용자가 자기 위치를 볼 수 없었다. */
@@ -452,7 +370,7 @@
         margin-bottom: var(--space-6);
         text-align: center;
     }
-    .sidebar-header h2 {
+    .sidebar-header .sidebar-brand {
         margin: 0;
         font-size: var(--text-xl);
         color: #ecf0f1;
@@ -522,11 +440,87 @@
         align-items: center;
         margin-bottom: var(--space-6);
     }
+    /* 세로 폰과 가로 폰이 같은 조건을 쓴다 — 390px 높이에서 헤더가 126px이면
+       그것만으로 화면의 3분의 1이다. */
+    @media (max-width: 768px), (max-height: 560px) and (max-width: 1024px) {
+        .header {
+            margin-bottom: var(--space-4);
+        }
+        /*
+            폰에서는 사이드바가 숨겨져 h1이 유일한 제목인데, 그 문자열은 하단
+            탭 바의 활성 항목이 이미 「대시보드」로 말하고 있다. 문서 구조는
+            남기고 자리만 돌려준다 — 이 34px은 방에 서 있는 사람이 화면에서
+            가장 아쉬워하는 세로다.
+        */
+        .header h1 {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            padding: 0;
+            margin: -1px;
+            overflow: hidden;
+            clip: rect(0 0 0 0);
+            white-space: nowrap;
+            border: 0;
+        }
+    }
     .header-actions {
         display: flex;
+        align-items: center;
         gap: var(--space-4);
     }
+    /*
+        「메인으로」와 「마감 하기」가 픽셀 단위로 같은 버튼이었고 16px 떨어져
+        있었다 — 하나는 공개 사이트로 가고, 하나는 방에 있는 전원을 퇴장시키고
+        도는 판을 모두 닫는다. 시끄러운 방에서 한 손으로 힐끗 보고 누르는
+        상황에서, 확인창이 오탭과 저녁 전체 사이의 유일한 방어선이었다.
+
+        마감을 빨강으로 되돌리지는 않는다 — 사다리가 옳다. 대신 실루엣으로
+        가른다: 나가는 링크는 테두리를 버리고, 상태를 바꾸는 버튼만 테두리를
+        유지한다. 결과가 반대인 두 개의 같은 모양은 일관성이 아니다.
+    */
+    .btn-nav-out {
+        display: flex;
+        align-items: center;
+        padding: var(--space-3) var(--space-3);
+        border: 1px solid transparent;
+        border-radius: var(--radius-control);
+        background: none;
+        color: var(--text-secondary);
+        text-decoration: none;
+        font-weight: var(--weight-medium);
+        font-size: var(--text-sm);
+    }
+    .btn-nav-out {
+        /* 테두리를 버려도 표적은 버리지 않는다 */
+        min-height: 44px;
+    }
+    .btn-nav-out:hover {
+        background: var(--bg-hover);
+        color: var(--text-primary);
+    }
     
+    /*
+        가로로 든 폰(390px 높이)에서는 헤더 88 + 스트립 69 + 카드 여백만으로
+        쓸 수 있는 높이를 다 썼고, 게임 행도 사람 행도 하나도 보이지 않았다.
+        폰을 옆으로 드는 이유는 더 보려는 것인데 더 적게 보였다.
+        세로가 희소한 곳에서만 여백을 깎는다 — 폭이 아니라 높이로 건다.
+    */
+    @media (max-height: 560px) {
+        .header {
+            margin-bottom: var(--space-2);
+        }
+        .closing-info {
+            margin-top: 0;
+        }
+        .main-content :global(section) {
+            padding: var(--space-3);
+            margin-bottom: var(--space-3);
+        }
+        .main-content :global(.room-summary) {
+            padding: var(--space-2) var(--space-3);
+        }
+    }
     .mobile-bottom-nav {
         display: none;
     }
@@ -545,8 +539,26 @@
         }
     }
 
-    /* Mobile Responsive Styles */
-    @media (max-width: 768px) {
+    /*
+        Mobile Responsive Styles
+
+        높이 조건이 함께 필요하다. 사이드바 숨김은 폭만 봤고(≤768) 2열 전환은
+        높이만 봤기 때문에(≥820w & ≤560h), 아이폰 가로(844x390)에서 둘 다
+        참이 되어 250px 네이비 사이드바가 남은 채로 열이 갈렸다 — 실측 241px과
+        265px. 어느 쪽에도 게임 하나 사람 하나가 겨우 들어간다.
+        짧은 데스크톱 창까지 모바일로 접지 않도록 폭 상한을 함께 건다.
+    */
+    @media (max-width: 768px), (max-height: 560px) and (max-width: 1024px) {
+        /* :global(.force-light)로 쓰면 안 된다. 기본값 0px은 admin-tokens.css의
+           .force-light(특이도 0,1,0)에서 오는데, :global()도 같은 0,1,0이라
+           순서에 기대게 된다. 스코프된 .force-light는 .force-light.s-xxx(0,2,0)로
+           컴파일돼 확실히 이긴다. 이 규칙이 지면 폰에서 inset이 0px으로 남고
+           30초짜리 되돌리기 토스트가 탭 바를 덮는다.
+           (바깥 /admin/+layout.svelte의 .force-light는 이 컴포넌트 소유가 아니라
+            0px 그대로지만, 토스트는 안쪽 래퍼에 있으므로 상관없다.) */
+        .force-light {
+            --admin-bottom-inset: calc(var(--admin-nav-height) + env(safe-area-inset-bottom, 0px));
+        }
         .admin-layout {
             flex-direction: column;
             /* 데스크톱의 align-items:flex-start는 sticky 사이드바를 위한 것이다.
@@ -554,22 +566,21 @@
                max-content로 부풀고, 넓은 행 하나가 콘솔 전체를 가로로 밀어냈다. */
             align-items: stretch;
         }
+        /*
+            폰에서 이 사이드바는 nav 와 footer 가 숨겨져 브랜드 한 줄만 남는다.
+            57px 을 「관리자 콘솔」에 쓰고, 바로 아래 h1 이 「관리자 대시보드」로
+            같은 말을 반복한다. 이동은 하단 탭 바가 한다. 그 57px 이 있어야
+            iPhone SE(667) 접힌 선 위에 사람이 들어온다.
+            (부수: h1 보다 앞서던 h2 가 폰에서는 접근성 트리에서도 빠진다.)
+        */
         .sidebar {
-            position: static;
-            height: auto;
-            width: 100%;
-            padding: var(--space-4);
-            box-sizing: border-box;
-            flex-direction: row;
-            align-items: center;
-            justify-content: center;
-            background: #2c3e50;
+            display: none;
         }
         .sidebar-header {
             margin-bottom: 0;
             text-align: center;
         }
-        .sidebar-header h2 {
+        .sidebar-header .sidebar-brand {
             font-size: var(--text-lg);
         }
         
@@ -603,6 +614,10 @@
             bottom: 0;
             left: 0;
             width: 100%;
+            /* 토스트가 비켜서는 높이(--admin-nav-height)와 실제 바 높이가
+               어긋나면 30초 동안 내비가 가려진다. 같은 토큰으로 묶는다. */
+            min-height: var(--admin-nav-height);
+            box-sizing: border-box;
             background: white;
             border-top: 1px solid #ddd;
             padding: var(--space-2) 0;
@@ -679,28 +694,70 @@
         cursor: pointer;
         font-weight: bold;
     }
-    .btn-danger {
-        background: #d32f2f;
-        color: white;
-        border: none;
+    /*
+        마감은 파괴가 아니라 하루의 상태 전이다 — 바로 옆 「오픈 하기」와
+        짝을 이루고, 다시 열 수 있다. 채움 빨강이었을 때는 회원 영구 배제와
+        같은 색이었고, 매일 누르는 버튼이 그 색을 소모해 정작 되돌릴 수 없는
+        것에서 빨강이 아무 경고도 되지 못했다. 중립 테두리 버튼으로 내린다.
+    */
+    .btn-close-day {
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        border: 1px solid var(--border-control);
         padding: var(--space-3) var(--space-5);
         border-radius: var(--radius-control);
         cursor: pointer;
         font-weight: bold;
-            font-size: var(--text-sm);
+        font-size: var(--text-sm);
     }
-    .btn-danger:hover {
-        background: #b71c1c;
+    .btn-close-day:hover {
+        background: var(--bg-hover);
     }
     .closing-info {
         margin: var(--space-2) 0 0 0;
         color: #666;
         font-size: var(--text-sm);
     }
-    .warning-text {
+    /*
+        `.modal-content p`(0,2,0)가 `.warning-text`(0,1,0)를 이겨서, 마감이
+        무엇을 지우는지 말하는 유일한 문장이 본문 회색(#555)으로 렌더됐다.
+        경고로 보이지 않는 경고는 경고가 아니다.
+    */
+    .modal-content p.warning-text {
         color: #d32f2f;
         font-size: var(--text-sm);
         margin-top: var(--space-2);
+    }
+    /*
+        「취소」와 「마감 확정」이 픽셀 단위로 같았다 — .btn-secondary와
+        .btn-close-day의 선언이 font-size 하나만 빼고 동일했다. 되돌리기가
+        없던 유일한 파괴적 동작이, 중단 버튼과 구별되지 않는 확인 버튼을
+        갖고 있었던 셈이다. 3등급은 「취소와 같음」을 뜻하지 않는다.
+
+        마감은 파괴가 아니라 상태 전이이므로 빨강으로 되돌리지 않는다.
+        중립 채움으로 "이쪽이 답이다"만 말하고, 중단은 테두리를 버린다.
+    */
+    .btn-close-day.is-confirm {
+        background: var(--text-primary);
+        color: var(--bg-primary);
+        border-color: var(--text-primary);
+    }
+    .btn-close-day.is-confirm:hover {
+        background: var(--text-darker, #111);
+    }
+    .btn-quiet {
+        background: none;
+        border: 1px solid transparent;
+        color: var(--text-secondary);
+        padding: var(--space-3) var(--space-5);
+        border-radius: var(--radius-control);
+        font-weight: bold;
+        font-size: var(--text-sm);
+        cursor: pointer;
+    }
+    .btn-quiet:hover {
+        background: var(--bg-hover);
+        color: var(--text-primary);
     }
     .modal-backdrop {
         position: fixed;

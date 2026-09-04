@@ -4,8 +4,7 @@
 	 * showToast / showAlert 로 결과를 알릴 수 있다.
 	 */
 	import {
-		toastMessage,
-		toastAction,
+		toasts,
 		alertMessage,
 		alertKind,
 		dismissAlert,
@@ -16,23 +15,24 @@
 
 <!-- 라이브 리전은 항상 DOM에 있어야 스크린리더가 변화를 읽는다 -->
 <div class="toast-region" role="status" aria-live="polite">
-	{#if $toastMessage}
+	<!-- 최신이 아래에 오도록 쌓는다 — 새 결과가 늘 엄지 가까이에 있다 -->
+	{#each $toasts as toast (toast.id)}
 		<div class="toast">
-			<span class="toast-text">{$toastMessage}</span>
-			{#if $toastAction}
+			<span class="toast-text">{toast.message}</span>
+			{#if toast.action}
 				<!-- 되돌리기는 결과를 알리는 그 자리에 있어야 눌린다 -->
 				<button
 					type="button"
 					class="toast-action"
 					onclick={() => {
-						const act = $toastAction;
-						dismissToast();
+						const act = toast.action;
+						dismissToast(toast.id);
 						act?.run();
-					}}>{$toastAction.label}</button
+					}}>{toast.action.label}</button
 				>
 			{/if}
 		</div>
-	{/if}
+	{/each}
 </div>
 
 {#if $alertMessage}
@@ -64,13 +64,25 @@
 	.toast-region {
 		position: fixed;
 		left: 50%;
-		bottom: var(--space-5, 1.5rem);
+		/* 폰에는 고정 탭 바가 있고 되돌리기 토스트는 30초 산다. 그 위로 띄우지
+		   않으면 반 분 동안 이동이 막힌다. --admin-bottom-inset 은 어드민
+		   레이아웃이 채운다(데스크톱 0, 폰 탭 바 + 안전 영역). */
+		bottom: calc(var(--space-5, 1.5rem) + var(--admin-bottom-inset, 0px));
 		transform: translateX(-50%);
-		z-index: 900;
+		/*
+			모달 백드롭(1000)과 확인 모달(1100) 위에 선다. 900이었을 때는
+			페널티를 준 직후 — 관리 시트가 아직 열려 있는 상태 — 에 토스트가
+			백드롭 아래로 깔려, 되돌리기 버튼이 보이기는 하는데 눌리지 않았다.
+			이 콘솔에서 가장 자주 되돌리는 조치가 정확히 그 경로다.
+		*/
+		z-index: 1200;
 		pointer-events: none;
 		width: min(28rem, calc(100vw - 2rem));
+		/* 여러 개가 동시에 살아 있을 수 있으므로 세로로 쌓는다 */
 		display: flex;
-		justify-content: center;
+		flex-direction: column;
+		align-items: stretch;
+		gap: var(--space-2, 0.5rem);
 	}
 	.toast {
 		display: flex;
@@ -123,7 +135,9 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		z-index: 1200;
+		/* 토스트도 1200이 됐다. 같은 값이면 DOM 순서가 이기는데, 멈춰 세우는
+		   알림이 지나가는 토스트에 가리는 일은 순서에 맡길 문제가 아니다. */
+		z-index: 1300;
 		padding: var(--space-4, 1rem);
 	}
 	.alert-card {
