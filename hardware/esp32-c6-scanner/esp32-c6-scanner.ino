@@ -1,15 +1,15 @@
 // ============================================================================
-//  BLE 스캐너 — ESP32-C3 전용
+//  BLE 스캐너 — Seeed XIAO ESP32C6 전용
 //
 //  Arduino IDE 설정:
-//    Board            : ESP32C3 Dev Module
+//    Board            : XIAO_ESP32C6  (또는 ESP32C6 Dev Module)
 //    Partition Scheme : Huge APP (3MB No OTA/1MB SPIFFS)   ← 기본값으론 용량 초과
-//    Flash Size       : 4MB (32Mb)
+//    Flash Size       : 보드 실제 용량
 //    USB CDC On Boot  : Enabled
 //    Serial Monitor   : 115200
 //
 //  ⚠️ 보드를 바꾸면 Partition Scheme이 기본값으로 초기화된다. 매번 확인할 것.
-//  ⚠️ C6용 스케치(esp32-c6-scanner)와 코드가 거의 같다. 한쪽을 고치면 다른 쪽도
+//  ⚠️ C3용 스케치(esp32-c3-scanner)와 코드가 거의 같다. 한쪽을 고치면 다른 쪽도
 //     같이 봐야 한다 — 특히 sendBatch()와 addDevice().
 // ============================================================================
 #include <WiFi.h>
@@ -24,13 +24,23 @@
 #include <string.h>
 #include "secrets.h"  // WIFI_SSID, WIFI_PASS, SCANNER_API_KEY — secrets.h.example 참고
 
+// 안테나 전환 핀 (Seeed 공식 문서 기준).
+// 보드를 "XIAO_ESP32C6"로 고르면 variant가 정의해 주지만,
+// 범용 "ESP32C6 Dev Module"로 빌드해도 되도록 폴백을 둔다.
+#ifndef WIFI_ENABLE
+  #define WIFI_ENABLE 3
+#endif
+#ifndef WIFI_ANT_CONFIG
+  #define WIFI_ANT_CONFIG 14
+#endif
+
 // Server Config
 const char* API_SERVER = "https://damonpyo.mooo.com";
 const char* API_KEY = SCANNER_API_KEY;
 // 설치 위치에 맞게 지정한다. 서버가 아는 값: scanner_main_hall / scanner_sub_hall /
 // scanner_entrance / scanner_2f (목록에 없으면 서버 기본 설정으로 폴백).
 // 기기마다 달라야 scanners 테이블에서 어느 스캐너가 살아있는지 구분된다.
-const char* SCANNER_ID = "scanner_sub_hall";
+const char* SCANNER_ID = "scanner_main_hall";
 
 // BLE (서버에서 동적 업데이트 가능)
 BLEScan* pBLEScan;
@@ -112,9 +122,20 @@ void setup() {
   delay(2000);
   Serial.println("\n\n=== BLE SCANNER ===");
 
-  // 이 보드는 안테나 전환 회로가 없어 온보드 안테나를 그대로 쓴다
-  // (C6와 달리 GPIO 설정이 필요 없다).
-  Serial.println("Antenna: on-board");
+  // --- 안테나 선택 (무선을 켜기 전에 해야 WiFi/BLE 모두 외장 안테나를 탄다) ---
+  // XIAO ESP32C6는 온보드 세라믹 안테나와 외장 u.FL을 RF 스위치로 전환하고
+  // 기본값이 온보드다. 이 설정을 빼먹으면 u.FL에 안테나를 꽂아도 전파가 그쪽으로
+  // 가지 않는다 — 실측에서 안테나를 뽑아도, 손으로 감싸 쥐어도 RSSI가 1~2dB밖에
+  // 안 움직였던 게 그 증거였다(살아 있었다면 5~20dB는 떨어진다).
+  // 핀 번호는 Seeed 공식 문서 기준.
+  //
+  // 외장 안테나를 안 쓰고 온보드로 돌리려면 WIFI_ANT_CONFIG를 LOW로 바꾸면 된다.
+  pinMode(WIFI_ENABLE, OUTPUT);
+  digitalWrite(WIFI_ENABLE, LOW);          // GPIO3  — RF 스위치 활성화
+  delay(100);
+  pinMode(WIFI_ANT_CONFIG, OUTPUT);
+  digitalWrite(WIFI_ANT_CONFIG, HIGH);     // GPIO14 — HIGH = 외장 u.FL, LOW = 온보드
+  Serial.println("Antenna: EXTERNAL (u.FL)");
 
   // WiFi Connect
   Serial.print("Connecting to WiFi: ");
