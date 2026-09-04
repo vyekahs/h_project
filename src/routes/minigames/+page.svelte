@@ -113,10 +113,6 @@
         // }
     ];
 
-    // 인기 게임을 별도 섹션으로 안 보여주고, "전체 게임" 그리드 안에서
-    // 해당 아이콘에 금/은/동 배지로만 표시한다 — 순서 그대로 순위를 뜻함
-    const popularGameIds = $derived(data.popularGames.map((pg: { gameId: string }) => pg.gameId));
-
     // 게임이 늘어날수록(로드맵상 18개+) "전체 게임"을 한 번에 다 훑어야
     // 하는 부담이 커진다 — 장르 칩으로 좁혀볼 수 있게 함
     const categories = ['전체', ...Array.from(new Set(games.map(g => g.category)))];
@@ -160,7 +156,6 @@
     <section class="games-grid">
         {#each filteredGames as game}
             {@const rank = data.userRanks[game.id]}
-            {@const popularRank = popularGameIds.indexOf(game.id) + 1}
             <a href={game.url} class="game-icon-item" style="--accent: {game.accentColor}">
                 <div class="icon-wrapper glass-panel">
                     <div class="icon-box">
@@ -256,12 +251,6 @@
                 </div>
                 {#if rank}
                     <div class="rank-badge" class:rank-first={rank === 1}>#{rank}</div>
-                {/if}
-                {#if popularRank >= 1 && popularRank <= 3}
-                    <div
-                        class="popular-badge tier-{popularRank}"
-                        aria-label={`이번 달 인기 게임 ${popularRank}위`}
-                    >{popularRank}</div>
                 {/if}
                 <span class="icon-label">{game.name}</span>
             </a>
@@ -518,46 +507,6 @@
     @keyframes crownPulse {
         0%, 100% { transform: scale(1); }
         50% { transform: scale(1.1); }
-    }
-
-    /* Popular Badge - 이번 달 전체 인기 게임 1~3위. rank-badge(개인 순위,
-       오른쪽 위)와 헷갈리지 않게 반대쪽(왼쪽 위)에 금/은/동으로 표시 */
-    .popular-badge {
-        position: absolute;
-        top: -3px;
-        left: -3px;
-        z-index: 3;
-        font-size: 0.65rem;
-        font-weight: 800;
-        min-width: 1.3rem;
-        height: 1.3rem;
-        border-radius: 100px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        padding: 0 0.25rem;
-        box-shadow: 0 2px 6px var(--shadow-md);
-        border: 1.5px solid var(--bg-primary);
-        line-height: 1;
-    }
-
-    /* 그라데이션 두 색 중 어느 쪽에 텍스트가 걸리든 대비를 보장하기
-       어려워(작은 배지라 10px대 텍스트, large-text 예외 못 받음) 단색 +
-       실측 검증된 조합으로 확정 */
-    .popular-badge.tier-1 {
-        background: #f59e0b;
-        color: #451a03;
-        animation: crownPulse 2s ease-in-out infinite;
-    }
-
-    .popular-badge.tier-2 {
-        background: #9ca3af;
-        color: #1f2937;
-    }
-
-    .popular-badge.tier-3 {
-        background: #92400e;
-        color: #fff;
     }
 
     /* Icon Label */
