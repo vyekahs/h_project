@@ -65,6 +65,20 @@
         showToast(message, { label: '되돌리기', run });
     }
 
+    /*
+        페이지가 소유한 모달들은 열릴 때 배경 스크롤을 잠근다. 레이아웃이
+        소유한 셋(마감·오픈·알림)은 그러지 않아서, 확인창이 떠 있는데 뒤가
+        스크롤됐다 — 무엇을 확인하는 중인지 화면이 흘러가 버린다.
+    */
+    $effect(() => {
+        if (!browser) return;
+        const open = closeDayModalVisible || openDayModalVisible || alertVisible;
+        if (!open) return;
+        const prev = document.body.style.overflow;
+        document.body.style.overflow = 'hidden';
+        return () => { document.body.style.overflow = prev; };
+    });
+
     function showAlert(msg: string) {
         alertMessage = msg;
         alertVisible = true;
@@ -215,15 +229,22 @@
         tabindex="-1"
         aria-label="Close modal"
     >
-        <div class="modal-content confirm-modal" use:trapFocus={() => closeDayModalVisible = false} onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="dialog" aria-modal="true" tabindex="-1">
-            <h3>
+        <div class="modal-content confirm-modal" use:trapFocus={() => closeDayModalVisible = false} onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="alertdialog" aria-modal="true" aria-labelledby="dlg-close-day" tabindex="-1">
+            <h3 id="dlg-close-day">
                 <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px; vertical-align:text-bottom;"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
                 마감 하기
             </h3>
-            <p>정말 마감하시겠습니까?</p>
-            <p class="warning-text">모든 참가자가 퇴장 처리되고, 진행 중인 게임이 종료됩니다.</p>
+            <!-- 페이지의 다른 확인창들처럼 결과를 계산해서 말한다. 이 숫자는
+                 레이아웃이 세므로 대시보드가 아닌 화면에서도 정확하다. -->
+            <p class="warning-text">
+                {#if data.closeDaySummary.present === 0 && data.closeDaySummary.playing === 0}
+                    지금 방에 아무도 없고 진행 중인 판도 없습니다. 하루를 닫습니다.
+                {:else}
+                    지금 방에 있는 {data.closeDaySummary.present}명이 퇴장 처리되고, 진행 중인 {data.closeDaySummary.playing}판이 종료됩니다.
+                {/if}
+            </p>
             <div class="modal-actions">
-                <button class="btn-secondary" data-autofocus onclick={() => closeDayModalVisible = false}>취소</button>
+                <button class="btn-quiet" data-autofocus onclick={() => closeDayModalVisible = false}>취소</button>
                 <form method="POST" action="/admin?/closeDay" use:enhance={() => {
                     return async ({ result, update }) => {
                         if (result.type === 'failure') {
@@ -237,7 +258,7 @@
                         await update();
                     };
                 }}>
-                    <button type="submit" class="btn-close-day">마감 확정</button>
+                    <button type="submit" class="btn-close-day is-confirm">마감 확정</button>
                 </form>
             </div>
         </div>
@@ -613,10 +634,46 @@
         color: #666;
         font-size: var(--text-sm);
     }
-    .warning-text {
+    /*
+        `.modal-content p`(0,2,0)가 `.warning-text`(0,1,0)를 이겨서, 마감이
+        무엇을 지우는지 말하는 유일한 문장이 본문 회색(#555)으로 렌더됐다.
+        경고로 보이지 않는 경고는 경고가 아니다.
+    */
+    .modal-content p.warning-text {
         color: #d32f2f;
         font-size: var(--text-sm);
         margin-top: var(--space-2);
+    }
+    /*
+        「취소」와 「마감 확정」이 픽셀 단위로 같았다 — .btn-secondary와
+        .btn-close-day의 선언이 font-size 하나만 빼고 동일했다. 되돌리기가
+        없던 유일한 파괴적 동작이, 중단 버튼과 구별되지 않는 확인 버튼을
+        갖고 있었던 셈이다. 3등급은 「취소와 같음」을 뜻하지 않는다.
+
+        마감은 파괴가 아니라 상태 전이이므로 빨강으로 되돌리지 않는다.
+        중립 채움으로 "이쪽이 답이다"만 말하고, 중단은 테두리를 버린다.
+    */
+    .btn-close-day.is-confirm {
+        background: var(--text-primary);
+        color: var(--bg-primary);
+        border-color: var(--text-primary);
+    }
+    .btn-close-day.is-confirm:hover {
+        background: var(--text-darker, #111);
+    }
+    .btn-quiet {
+        background: none;
+        border: 1px solid transparent;
+        color: var(--text-secondary);
+        padding: var(--space-3) var(--space-5);
+        border-radius: var(--radius-control);
+        font-weight: bold;
+        font-size: var(--text-sm);
+        cursor: pointer;
+    }
+    .btn-quiet:hover {
+        background: var(--bg-hover);
+        color: var(--text-primary);
     }
     .modal-backdrop {
         position: fixed;
