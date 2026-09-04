@@ -31,6 +31,7 @@ export const load: PageServerLoad = async ({ cookies }) => {
             SELECT
                 g.id AS game_id,
                 g.name AS game_name,
+                g.image_url AS game_image_url,
                 gs.id AS session_id,
                 gs.end_time,
                 sp.score AS my_score,
@@ -62,6 +63,7 @@ export const load: PageServerLoad = async ({ cookies }) => {
         const play = {
             sessionId: row.session_id,
             gameName: row.game_name,
+            gameImageUrl: row.game_image_url,
             endTime: row.end_time,
             myScore: row.my_score,
             isWinner: row.is_winner,

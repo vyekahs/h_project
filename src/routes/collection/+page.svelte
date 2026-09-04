@@ -267,20 +267,32 @@
     {:else}
         <div class="modal-play-row" class:win={play.isWinner}>
             <div class="play-row-main">
-                <div class="play-row-top">
-                    <span class="play-date">
-                        {#if showGameName}<span class="play-game-name">{play.gameName}</span> · {/if}{formatDate(play.endTime)}
-                    </span>
-                    <span class="play-result">
-                        {#if play.isWinner}<span class="result-badge">승리</span>{/if}
-                        {#if play.myScore !== null && play.myScore !== undefined}<span class="play-score">{play.myScore}점</span>{/if}
-                    </span>
-                </div>
-                {#if play.opponents && play.opponents.length > 0}
-                    <p class="play-opponents">
-                        함께: {play.opponents.map((o: any) => o.name + (o.score ? `(${o.score})` : '')).join(', ')}
-                    </p>
+                {#if showGameName}
+                    <div class="play-row-cover">
+                        {#if play.gameImageUrl}
+                            <img src={play.gameImageUrl} alt="" loading="lazy" />
+                        {:else}
+                            <div class="play-row-cover-placeholder" aria-hidden="true">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                            </div>
+                        {/if}
+                    </div>
                 {/if}
+                <div class="play-row-text">
+                    {#if showGameName}<p class="play-game-name">{play.gameName}</p>{/if}
+                    <div class="play-row-top">
+                        <span class="play-date">{formatDate(play.endTime)}</span>
+                        <span class="play-result">
+                            {#if play.isWinner}<span class="result-badge">승리</span>{/if}
+                            {#if play.myScore !== null && play.myScore !== undefined}<span class="play-score">{play.myScore}점</span>{/if}
+                        </span>
+                    </div>
+                    {#if play.opponents && play.opponents.length > 0}
+                        <p class="play-opponents">
+                            함께: {play.opponents.map((o: any) => o.name + (o.score ? `(${o.score})` : '')).join(', ')}
+                        </p>
+                    {/if}
+                </div>
             </div>
             {#if justSavedSessionId === play.sessionId}
                 <span class="save-flash" aria-live="polite">✓ 저장됨</span>
@@ -334,6 +346,49 @@
             </button>
         {/if}
     </header>
+
+    {#if viewMode === 'all' && showAllFilters}
+        <!-- 토글 버튼이 헤더에 있으니(뷰 전환 시 위치 일관성 위해), 패널도
+             그 바로 아래 둬야 "눌렀는데 저 밑에서 펼쳐진다"는 혼란이 없다. -->
+        <div class="play-filters">
+            <span class="filter-group-label">언제</span>
+            <div class="play-filters-dates">
+                <select class="play-date-select" bind:value={allYearFilter} aria-label="연도 필터">
+                    <option value="all">전체 연도</option>
+                    {#each allYears as year}
+                        <option value={year.toString()}>{year}년</option>
+                    {/each}
+                </select>
+                <select class="play-date-select" bind:value={allMonthFilter} aria-label="월 필터">
+                    <option value="all">전체 월</option>
+                    {#each Array(12) as _, i}
+                        <option value={(i + 1).toString()}>{i + 1}월</option>
+                    {/each}
+                </select>
+                <select class="play-date-select" bind:value={allDayFilter} aria-label="일 필터">
+                    <option value="all">전체 일</option>
+                    {#each Array(31) as _, i}
+                        <option value={(i + 1).toString()}>{i + 1}일</option>
+                    {/each}
+                </select>
+            </div>
+            <span class="filter-group-label">무엇을 · 누구와</span>
+            <input type="text" class="play-game-input" placeholder="게임 이름 검색..." bind:value={allGameQuery} aria-label="게임 이름 검색" />
+            <div class="play-filters-row">
+                <input
+                    type="text"
+                    class="play-opponent-input"
+                    placeholder="같이 한 사람 검색..."
+                    bind:value={allOpponentQuery}
+                    aria-label="같이 한 사람 검색"
+                />
+                <label class="win-only-toggle">
+                    <input type="checkbox" bind:checked={allWinOnly} />
+                    승리한 게임만
+                </label>
+            </div>
+        </div>
+    {/if}
 
     {#if playedCount > 0}
         <section class="summary-row">
@@ -424,47 +479,6 @@
             </section>
         {/if}
     {:else}
-        {#if showAllFilters}
-            <div class="play-filters">
-                <span class="filter-group-label">언제</span>
-                <div class="play-filters-dates">
-                    <select class="play-date-select" bind:value={allYearFilter} aria-label="연도 필터">
-                        <option value="all">전체 연도</option>
-                        {#each allYears as year}
-                            <option value={year.toString()}>{year}년</option>
-                        {/each}
-                    </select>
-                    <select class="play-date-select" bind:value={allMonthFilter} aria-label="월 필터">
-                        <option value="all">전체 월</option>
-                        {#each Array(12) as _, i}
-                            <option value={(i + 1).toString()}>{i + 1}월</option>
-                        {/each}
-                    </select>
-                    <select class="play-date-select" bind:value={allDayFilter} aria-label="일 필터">
-                        <option value="all">전체 일</option>
-                        {#each Array(31) as _, i}
-                            <option value={(i + 1).toString()}>{i + 1}일</option>
-                        {/each}
-                    </select>
-                </div>
-                <span class="filter-group-label">무엇을 · 누구와</span>
-                <input type="text" class="play-game-input" placeholder="게임 이름 검색..." bind:value={allGameQuery} aria-label="게임 이름 검색" />
-                <div class="play-filters-row">
-                    <input
-                        type="text"
-                        class="play-opponent-input"
-                        placeholder="같이 한 사람 검색..."
-                        bind:value={allOpponentQuery}
-                        aria-label="같이 한 사람 검색"
-                    />
-                    <label class="win-only-toggle">
-                        <input type="checkbox" bind:checked={allWinOnly} />
-                        승리한 게임만
-                    </label>
-                </div>
-            </div>
-        {/if}
-
         {#if data.allPlays.length === 0}
             <div class="empty-state">
                 <p>아직 플레이 기록이 없어요.</p>
@@ -973,8 +987,13 @@
         gap: 0.6rem;
     }
     .play-game-name {
+        margin: 0 0 0.25rem;
         font-weight: 700;
         color: var(--text-primary);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        min-width: 0;
     }
     .edit-game-name {
         font-weight: 700;
@@ -1209,6 +1228,34 @@
         gap: 0.5rem;
     }
     .play-row-main {
+        display: flex;
+        gap: 0.6rem;
+        flex: 1;
+        min-width: 0;
+    }
+    .play-row-cover {
+        flex-shrink: 0;
+        width: 40px;
+        height: 40px;
+        border-radius: 6px;
+        overflow: hidden;
+    }
+    .play-row-cover img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+    }
+    .play-row-cover-placeholder {
+        width: 100%;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: var(--bg-secondary);
+        color: var(--text-tertiary);
+    }
+    .play-row-text {
         flex: 1;
         min-width: 0;
     }
@@ -1224,6 +1271,7 @@
     }
     .play-result {
         display: flex;
+        flex-shrink: 0;
         align-items: center;
         gap: 0.4rem;
     }
