@@ -233,6 +233,21 @@ export const actions: Actions = {
 
         if (!id) return fail(400, { error: '잘못된 요청입니다.' });
 
+        // 되돌리려면 무엇을 덮어썼는지 알아야 한다. 방문 기록은 여러 건일 수 있다.
+        const prevRows = await db.execute(sql`SELECT name, status FROM attendees WHERE id = ${id}`);
+        const prev = (prevRows as any[])[0];
+        if (!prev) return fail(404, { error: '해당 인원을 찾을 수 없습니다.' });
+        const visitIds = ((await db.execute(sql`
+            SELECT id FROM visits WHERE attendee_id = ${id} AND departure_time IS NULL
+        `)) as any[]).map((v) => Number(v.id));
+        let prevGame: { id: number; status: string; endTime: string | null } | null = null;
+        if (endGame && gameId) {
+            const g = ((await db.execute(sql`
+                SELECT status, end_time FROM game_sessions WHERE id = ${gameId}
+            `)) as any[])[0];
+            if (g) prevGame = { id: Number(gameId), status: g.status, endTime: g.end_time };
+        }
+
         try {
             await db.transaction(async (tx) => {
                 // 1. Update Attendee Status
@@ -251,6 +266,13 @@ export const actions: Actions = {
         } catch (e) {
             return fail(500, { error: '퇴장 처리에 실패했습니다.' });
         }
+
+        const undo = await recordUndo(
+            'remove_attendee',
+            { attendeeId: Number(id), prevStatus: prev.status, visitIds, prevGame },
+            prevGame ? `${prev.name}님 퇴장 · 게임 종료` : `${prev.name}님 퇴장 처리`
+        );
+        return { success: true, undo, removedName: prev.name as string };
     },
 
     createGame: async ({ request }) => {
@@ -456,17 +478,46 @@ export const actions: Actions = {
         }
     },
     closeDay: async () => {
+        // Calculate business date (before 9AM KST = previous day)
+        const nowForDate = new Date();
+        const kstNowForDate = new Date(nowForDate.getTime() + 9 * 60 * 60 * 1000);
+        let businessDateObjOuter = new Date(kstNowForDate);
+        if (kstNowForDate.getUTCHours() < 9) {
+            businessDateObjOuter.setUTCDate(businessDateObjOuter.getUTCDate() - 1);
+        }
+        const businessDateOuter = businessDateObjOuter.toISOString().split('T')[0];
+
+        /*
+            콘솔에서 가장 큰 상태 변화이고, 유일하게 되돌릴 수 없던 것이다.
+            23시 29분에 한 손으로 누르는 버튼이 방 전체를 퇴장시키고 도는 판을
+            모두 닫는다. 무엇을 덮어썼는지 먼저 뜬다 — 사람·방문 기록·진행 중인
+            판의 종료 시각·오늘로 예정됐던 판·그리고 이전 개폐 상태.
+
+            BLE 재실 캐시(markAllLeft)는 되돌리지 않는다. 그 캐시는 다음 신호에
+            다시 채워지고, 화면이 읽는 것은 attendees.status다.
+        */
+        const attendeeIds = ((await db.execute(sql`
+            SELECT id FROM attendees WHERE status = 'present'
+        `)) as any[]).map((r) => Number(r.id));
+        const visitIds = ((await db.execute(sql`
+            SELECT id FROM visits WHERE departure_time IS NULL
+        `)) as any[]).map((r) => Number(r.id));
+        const playing = ((await db.execute(sql`
+            SELECT id, end_time FROM game_sessions WHERE status = 'playing'
+        `)) as any[]).map((r) => ({ id: Number(r.id), endTime: r.end_time }));
+        const scheduledIds = ((await db.execute(sql`
+            SELECT id FROM game_sessions
+            WHERE status = 'scheduled' AND scheduled_at::date = ${businessDateOuter}::date
+        `)) as any[]).map((r) => Number(r.id));
+        const prevSettings = (await db.execute(sql`
+            SELECT key, value FROM system_settings WHERE key IN ('is_open', 'last_auto_close_date')
+        `)) as any[];
+        const prevIsOpen = prevSettings.find((r) => r.key === 'is_open')?.value ?? null;
+        const prevLastAutoClose = prevSettings.find((r) => r.key === 'last_auto_close_date')?.value ?? null;
+
         try {
             await db.transaction(async (tx) => {
-                // Calculate business date (before 9AM KST = previous day)
-                const now = new Date();
-                const kstNow = new Date(now.getTime() + 9 * 60 * 60 * 1000);
-                const currentHour = kstNow.getUTCHours();
-                let businessDateObj = new Date(kstNow);
-                if (currentHour < 9) {
-                    businessDateObj.setUTCDate(businessDateObj.getUTCDate() - 1);
-                }
-                const businessDate = businessDateObj.toISOString().split('T')[0];
+                const businessDate = businessDateOuter;
 
                 // Checkout all active visits
                 await tx.execute(sql`UPDATE visits SET departure_time = NOW() WHERE departure_time IS NULL`);
@@ -489,6 +540,13 @@ export const actions: Actions = {
         } catch (error) {
             return fail(500, { error: '마감 처리에 실패했습니다.' });
         }
+
+        const undo = await recordUndo(
+            'close_day',
+            { attendeeIds, visitIds, playing, scheduledIds, prevIsOpen, prevLastAutoClose },
+            `마감 · ${attendeeIds.length}명 퇴장 · ${playing.length}판 종료`
+        );
+        return { success: true, undo, closed: { people: attendeeIds.length, games: playing.length } };
     },
     openDay: async () => {
         try {
@@ -645,6 +703,121 @@ export const actions: Actions = {
                     }
                 });
                 await applyPenalty(Number(attendeeId), -1);
+            } else if (entry.kind === 'penalty') {
+                const { attendeeId, points, penaltyLogId } = entry.payload;
+                // 기록만 남으면 이력이 거짓이 되므로 점수와 로그를 함께 되돌린다.
+                if (penaltyLogId) {
+                    await db.execute(sql`DELETE FROM penalty_logs WHERE id = ${penaltyLogId}`);
+                }
+                await applyPenalty(Number(attendeeId), -Number(points));
+            } else if (entry.kind === 'remove_attendee') {
+                const { attendeeId, prevStatus, visitIds, prevGame } = entry.payload;
+                await db.transaction(async (tx) => {
+                    await tx.execute(sql`
+                        UPDATE attendees SET status = ${prevStatus}, updated_at = NOW() WHERE id = ${attendeeId}
+                    `);
+                    for (const visitId of (visitIds ?? []) as number[]) {
+                        await tx.execute(sql`UPDATE visits SET departure_time = NULL WHERE id = ${visitId}`);
+                    }
+                    if (prevGame) {
+                        await tx.execute(sql`
+                            UPDATE game_sessions SET status = ${prevGame.status}, end_time = ${prevGame.endTime}
+                            WHERE id = ${prevGame.id}
+                        `);
+                    }
+                });
+            } else if (entry.kind === 'cancel_reservation') {
+                const { sessionId, attendeeId, status, createdAt, hadParticipant, promoted } = entry.payload;
+                await db.transaction(async (tx) => {
+                    // 1. 승계부터 되돌린다. 자리를 비워야 원래 사람이 돌아올 수 있다.
+                    if (promoted?.mode === 'joined') {
+                        await tx.execute(sql`
+                            DELETE FROM session_participants
+                            WHERE session_id = ${sessionId} AND attendee_id = ${promoted.attendeeId}
+                        `);
+                        await tx.execute(sql`
+                            INSERT INTO reservations (session_id, attendee_id, status, created_at)
+                            VALUES (${sessionId}, ${promoted.attendeeId}, 'waitlisted', ${promoted.createdAt})
+                        `);
+                    } else if (promoted?.mode === 'confirmed') {
+                        await tx.execute(sql`
+                            UPDATE reservations SET status = 'waitlisted' WHERE id = ${promoted.reservationId}
+                        `);
+                    }
+                    // 2. 신청 시각까지 살려야 대기 순서가 유지된다.
+                    await tx.execute(sql`
+                        INSERT INTO reservations (session_id, attendee_id, status, created_at)
+                        VALUES (${sessionId}, ${attendeeId}, ${status}, ${createdAt})
+                    `);
+                    if (hadParticipant) {
+                        await tx.execute(sql`
+                            INSERT INTO session_participants (session_id, attendee_id)
+                            VALUES (${sessionId}, ${attendeeId})
+                        `);
+                    }
+                });
+            } else if (entry.kind === 'dissolve_game') {
+                const { session, participants, reservations, skip } = entry.payload;
+                await db.transaction(async (tx) => {
+                    // id까지 원래대로 돌아간다 — 시퀀스는 이미 그 값을 지나 있으므로 충돌하지 않는다.
+                    await tx.execute(sql`
+                        INSERT INTO game_sessions
+                        SELECT * FROM jsonb_populate_record(NULL::game_sessions, ${JSON.stringify(session)}::jsonb)
+                    `);
+                    if (participants?.length) {
+                        await tx.execute(sql`
+                            INSERT INTO session_participants
+                            SELECT * FROM jsonb_populate_recordset(NULL::session_participants, ${JSON.stringify(participants)}::jsonb)
+                        `);
+                    }
+                    if (reservations?.length) {
+                        await tx.execute(sql`
+                            INSERT INTO reservations
+                            SELECT * FROM jsonb_populate_recordset(NULL::reservations, ${JSON.stringify(reservations)}::jsonb)
+                        `);
+                    }
+                    // 위에서 조건부로 넣었으므로 없을 수도 있다. DELETE는 그래도 안전하다.
+                    if (skip) {
+                        await tx.execute(sql`
+                            DELETE FROM recurring_game_skips
+                            WHERE recurring_schedule_id = ${skip.recurringScheduleId}
+                              AND skip_date = ${skip.skipDate}::date
+                        `);
+                    }
+                });
+            } else if (entry.kind === 'close_day') {
+                const { attendeeIds, visitIds, playing, scheduledIds, prevIsOpen, prevLastAutoClose } = entry.payload;
+                await db.transaction(async (tx) => {
+                    for (const attendeeId of (attendeeIds ?? []) as number[]) {
+                        await tx.execute(sql`UPDATE attendees SET status = 'present' WHERE id = ${attendeeId}`);
+                    }
+                    for (const visitId of (visitIds ?? []) as number[]) {
+                        await tx.execute(sql`UPDATE visits SET departure_time = NULL WHERE id = ${visitId}`);
+                    }
+                    for (const g of (playing ?? []) as { id: number; endTime: string }[]) {
+                        await tx.execute(sql`
+                            UPDATE game_sessions SET status = 'playing', end_time = ${g.endTime} WHERE id = ${g.id}
+                        `);
+                    }
+                    for (const sessionId of (scheduledIds ?? []) as number[]) {
+                        await tx.execute(sql`UPDATE game_sessions SET status = 'scheduled' WHERE id = ${sessionId}`);
+                    }
+                    const restoredIsOpen = prevIsOpen ?? 'true';
+                    await tx.execute(sql`
+                        INSERT INTO system_settings (key, value) VALUES ('is_open', ${restoredIsOpen})
+                        ON CONFLICT (key) DO UPDATE SET value = ${restoredIsOpen}
+                    `);
+                    if (prevLastAutoClose === null) {
+                        await tx.execute(sql`DELETE FROM system_settings WHERE key = 'last_auto_close_date'`);
+                    } else {
+                        await tx.execute(sql`
+                            INSERT INTO system_settings (key, value) VALUES ('last_auto_close_date', ${prevLastAutoClose})
+                            ON CONFLICT (key) DO UPDATE SET value = ${prevLastAutoClose}
+                        `);
+                    }
+                });
+                updateSettingsCache((prevIsOpen ?? 'true') === 'true');
+                emitLiveEvent('visitors');
             } else {
                 return fail(400, { error: '되돌릴 수 없는 조치입니다.' });
             }
@@ -741,7 +914,7 @@ export const actions: Actions = {
         if (!reservationId) return fail(400, { error: '잘못된 요청입니다.' });
 
         const info = await db.execute(sql`
-            SELECT r.session_id, r.attendee_id, r.status, a.name AS attendee_name, gs.game_name
+            SELECT r.session_id, r.attendee_id, r.status, r.created_at, a.name AS attendee_name, gs.game_name
             FROM reservations r
             JOIN attendees a ON a.id = r.attendee_id
             JOIN game_sessions gs ON gs.id = r.session_id
@@ -749,6 +922,12 @@ export const actions: Actions = {
         `);
         const row = (info as any[])[0];
         if (!row) return fail(404, { error: '이미 처리되었거나 없는 예약입니다.' });
+
+        // 참가자 행이 원래 있었는지 알아야 되돌릴 때 없던 것을 만들지 않는다
+        const hadParticipant = ((await db.execute(sql`
+            SELECT 1 FROM session_participants
+            WHERE session_id = ${row.session_id} AND attendee_id = ${row.attendee_id}
+        `)) as any[]).length > 0;
 
         await db.transaction(async (tx) => {
             await tx.execute(sql`DELETE FROM reservations WHERE id = ${reservationId}`);
@@ -761,10 +940,28 @@ export const actions: Actions = {
         });
 
         const { promoteWaitlist } = await import('$lib/server/reservations');
-        await promoteWaitlist(row.session_id);
+        const promoted = await promoteWaitlist(row.session_id);
+
+        /*
+            이 취소는 제3자에게 번진다 — 자리가 비면 대기 1번이 자동 승계된다.
+            그래서 되돌리기는 승계부터 물러야 하고, 신청 시각까지 살려야
+            대기 순서가 유지된다. 노쇼 처리와 같은 모양이되 페널티가 없다.
+        */
+        const undo = await recordUndo(
+            'cancel_reservation',
+            {
+                sessionId: Number(row.session_id),
+                attendeeId: Number(row.attendee_id),
+                status: row.status,
+                createdAt: row.created_at,
+                hadParticipant,
+                promoted
+            },
+            `${row.attendee_name}님의 ${row.game_name} 예약 ${row.status === 'pending_approval' ? '거절' : '취소'}`
+        );
 
         emitLiveEvent('games');
-        return { success: true, queue: { name: row.attendee_name as string, game: row.game_name as string, kind: 'cancel' } };
+        return { success: true, undo, queue: { name: row.attendee_name as string, game: row.game_name as string, kind: 'cancel' } };
     },
 
     dissolveScheduledGame: async ({ request }) => {
@@ -773,18 +970,51 @@ export const actions: Actions = {
         if (!sessionId) return fail(400, { error: '잘못된 요청입니다.' });
         if (!(await canModifyGame(request, sessionId.toString()))) return fail(403, { error: '권한이 없습니다.' });
 
+        /*
+            폭파는 세션과 그에 매달린 예약·참가자를 통째로 지운다. 되살리려면
+            행을 그대로 갖고 있어야 하는데, 컬럼을 손으로 나열하면 마이그레이션이
+            컬럼을 하나 더할 때마다 조용히 유실된다. to_jsonb로 행 전체를 뜨고
+            jsonb_populate_record로 그대로 되꽂는다 — id까지 원래대로 돌아간다.
+        */
+        // ROW는 Postgres 예약어다 — `AS row`는 문법 오류가 된다.
+        const sessRow = ((await db.execute(sql`
+            SELECT to_jsonb(gs) AS row_json, gs.game_name, gs.recurring_schedule_id, gs.scheduled_at
+            FROM game_sessions gs WHERE gs.id = ${sessionId}
+        `)) as any[])[0];
+        if (!sessRow) return fail(404, { error: '이미 없는 게임입니다.' });
+        const participants = ((await db.execute(sql`
+            SELECT to_jsonb(sp) AS row_json FROM session_participants sp WHERE sp.session_id = ${sessionId}
+        `)) as any[]).map((r) => r.row_json);
+        const reservations = ((await db.execute(sql`
+            SELECT to_jsonb(r) AS row_json FROM reservations r WHERE r.session_id = ${sessionId}
+        `)) as any[]).map((r) => r.row_json);
+
+        let insertedSkip: { recurringScheduleId: number; skipDate: string } | null = null;
+        if (sessRow.recurring_schedule_id) {
+            insertedSkip = {
+                recurringScheduleId: Number(sessRow.recurring_schedule_id),
+                skipDate: sessRow.scheduled_at
+                    ? new Date(sessRow.scheduled_at).toISOString().split('T')[0]
+                    : new Date(new Date().getTime() + 9 * 60 * 60 * 1000).toISOString().split('T')[0]
+            };
+        }
+
         try {
             await db.transaction(async (tx) => {
                 // 반복일정이면 skip 기록 추가 (재생성 방지)
-                const sess = await tx.execute(sql`SELECT recurring_schedule_id, scheduled_at FROM game_sessions WHERE id = ${sessionId}`);
-                const session = (sess as any[])[0];
-                if (session?.recurring_schedule_id) {
-                    const skipDate = session.scheduled_at
-                        ? new Date(session.scheduled_at).toISOString().split('T')[0]
-                        : new Date(new Date().getTime() + 9 * 60 * 60 * 1000).toISOString().split('T')[0];
+                if (insertedSkip) {
+                    /*
+                        세션이 참조하는 반복 일정이 이미 지워졌을 수 있다. 그때
+                        이 INSERT가 FK 위반으로 트랜잭션 전체를 되돌려, 폭파가
+                        영영 500으로 끝났다 — 되살릴 일정이 없다는 이유로
+                        게임을 못 지우는 셈이었다. 있을 때만 기록한다.
+                    */
                     await tx.execute(sql`
                         INSERT INTO recurring_game_skips (recurring_schedule_id, skip_date)
-                        VALUES (${session.recurring_schedule_id}, ${skipDate}::date)
+                        SELECT ${insertedSkip.recurringScheduleId}, ${insertedSkip.skipDate}::date
+                        WHERE EXISTS (
+                            SELECT 1 FROM recurring_game_schedules WHERE id = ${insertedSkip.recurringScheduleId}
+                        )
                         ON CONFLICT DO NOTHING
                     `);
                 }
@@ -792,11 +1022,18 @@ export const actions: Actions = {
                 await tx.execute(sql`DELETE FROM reservations WHERE session_id = ${sessionId}`);
                 await tx.execute(sql`DELETE FROM game_sessions WHERE id = ${sessionId}`);
             });
-            emitLiveEvent('games');
-            return { success: true };
         } catch (e) {
+            console.error('dissolveScheduledGame failed:', e);
             return fail(500, { error: '게임 폭파에 실패했습니다.' });
         }
+
+        const undo = await recordUndo(
+            'dissolve_game',
+            { session: sessRow.row_json, participants, reservations, skip: insertedSkip },
+            `${sessRow.game_name} 폭파`
+        );
+        emitLiveEvent('games');
+        return { success: true, undo, dissolvedName: sessRow.game_name as string };
     },
 
     startScheduledGame: async ({ request }) => {
@@ -844,16 +1081,34 @@ export const actions: Actions = {
         const { applyPenalty } = await import('$lib/server/reservations');
         const total = await applyPenalty(Number(attendeeId), points);
 
-        await db.execute(sql`
+        const penaltyLogRows = await db.execute(sql`
             INSERT INTO penalty_logs (attendee_id, points, reason, total_after)
             VALUES (${attendeeId}, ${points}, ${points === 1 ? reason : 'revoke'}, ${total})
+            RETURNING id
         `);
 
         const thresholdRows = await db.execute(sql`SELECT value FROM system_settings WHERE key = 'penalty_threshold'`);
         const threshold = parseInt((thresholdRows as any[])[0]?.value ?? '3');
 
+        /*
+            게임이 아니라 사람을 판정하는 유일한 동작이다. 이름을 잘못 듣거나
+            사유를 잘못 고르거나 30초 뒤에 사정을 듣는 일이 바로 여기서 일어나는데,
+            콘솔의 회복 장치 중 이 동작만 연결돼 있지 않았다. 「1점 취소」가 있긴
+            했지만 방금 닫은 시트 안이다.
+        */
+        const undo = await recordUndo(
+            'penalty',
+            {
+                attendeeId: Number(attendeeId),
+                points,
+                penaltyLogId: Number((penaltyLogRows as any[])[0]?.id)
+            },
+            `${target.name}님 페널티 ${points === 1 ? '+1' : '-1'}`
+        );
+
         return {
             success: true,
+            undo,
             penalty: {
                 name: target.name as string,
                 points,

@@ -6,6 +6,9 @@
     import type { LayoutData } from './$types';
     import { trapFocus } from '$lib/actions/modal';
     import AdminFeedback from '$lib/components/admin/AdminFeedback.svelte';
+    import { showToast, showAlert as showToastAlert, rememberAction, forgetAction } from '$lib/stores/adminFeedback';
+    import { deserialize } from '$app/forms';
+    import { invalidateAll } from '$app/navigation';
 
     let { data, children }: { data: LayoutData; children: any } = $props();
 
@@ -28,6 +31,39 @@
             document.body.style.backgroundColor = originalBg;
         }
     });
+
+    /*
+        마감은 콘솔에서 가장 큰 상태 변화이고, 유일하게 되돌릴 수 없던 것이었다.
+        되돌리기는 실릴 자리가 있어야 눌린다 — 성공을 막는 모달로 알리면 그 자리가
+        없다. 따뜻한 마무리 문구는 모달이 아니라 말에 있으므로 토스트로 옮긴다.
+        대시보드에 있을 때는 「최근 조치」 패널이 나머지 10분을 마저 든다.
+    */
+    function closeDayUndoable(message: string, undo: { id: number; label: string } | undefined) {
+        if (!undo) {
+            showToast(message);
+            return;
+        }
+        let recentId = 0;
+        const run = async () => {
+            forgetAction(recentId);
+            const body = new FormData();
+            body.set('undoId', String(undo.id));
+            try {
+                const res = await fetch('/admin?/undoAdminAction', { method: 'POST', body });
+                const result: any = deserialize(await res.text());
+                if (result?.type === 'failure' || result?.type === 'error') {
+                    showToastAlert(result?.data?.error || result?.error?.message || '되돌리지 못했습니다.');
+                } else {
+                    showToast(`되돌렸습니다 · ${undo.label}`);
+                }
+            } catch {
+                showToastAlert('되돌리지 못했습니다. 네트워크를 확인해주세요.');
+            }
+            await invalidateAll();
+        };
+        recentId = rememberAction({ label: undo.label, run });
+        showToast(message, { label: '되돌리기', run });
+    }
 
     function showAlert(msg: string) {
         alertMessage = msg;
@@ -195,7 +231,8 @@
                             showAlert(data?.error || '마감 실패');
                         } else {
                             closeDayModalVisible = false;
-                            showAlert('오늘 하루가 마감되었습니다. 수고하셨습니다!');
+                            const d = (result as any)?.data ?? {};
+                            closeDayUndoable('오늘 하루가 마감되었습니다. 수고하셨습니다!', d.undo);
                         }
                         await update();
                     };

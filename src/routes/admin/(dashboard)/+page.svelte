@@ -1031,7 +1031,16 @@
                                     : `${r.attendee_name}님의 ${gameName} 예약을 취소합니다.${rows.some((x: any) => x.status === 'waitlisted') ? ' 대기 1번이 자동으로 승계됩니다.' : ''}`,
                             confirmLabel: r.status === 'pending_approval' ? '요청 거절' : '예약 삭제',
                             severity: 'destructive',
-                            success: `${r.attendee_name}님의 ${gameName} 예약을 처리했습니다.`
+                            handle: async ({ result, update }: any) => {
+                                if (!reportResult(result)) {
+                                    const d = (result?.data as any) ?? {};
+                                    toastUndoable(
+                                        `${r.attendee_name}님의 ${gameName} 예약을 ${r.status === 'pending_approval' ? '거절' : '취소'}했습니다`,
+                                        d.undo
+                                    );
+                                }
+                                await update();
+                            }
                         })}
                     >
                         <input type="hidden" name="reservationId" value={r.id} />
@@ -1772,7 +1781,11 @@
                     confirmLabel: '퇴장',
                     severity: 'destructive',
                     handle: async ({ result, update }) => {
-                        if (!reportResult(result)) manageTarget = null;
+                        if (!reportResult(result)) {
+                            manageTarget = null;
+                            const d = (result?.data as any) ?? {};
+                            toastUndoable(`${d.removedName ?? m.name}님 퇴장 처리`, d.undo);
+                        }
                         await update();
                     }
                 })(arg);
@@ -1814,7 +1827,11 @@
             <div class="modal-actions column-actions">
                 <form method="POST" action="?/removeAttendee" use:enhance={() => {
                     return async ({ result, update }) => {
-                        if (!reportResult(result)) removeModalVisible = false;
+                        if (!reportResult(result)) {
+                            removeModalVisible = false;
+                            const d = ((result as any)?.data as any) ?? {};
+                            toastUndoable(`${d.removedName ?? '참여자'}님 퇴장 · 게임 종료`, d.undo);
+                        }
                         await update();
                     };
                 }}>
@@ -1826,7 +1843,11 @@
 
                 <form method="POST" action="?/removeAttendee" use:enhance={() => {
                     return async ({ result, update }) => {
-                        if (!reportResult(result)) removeModalVisible = false;
+                        if (!reportResult(result)) {
+                            removeModalVisible = false;
+                            const d = ((result as any)?.data as any) ?? {};
+                            toastUndoable(`${d.removedName ?? '참여자'}님 퇴장 처리`, d.undo);
+                        }
                         await update();
                     };
                 }}>
@@ -2017,7 +2038,9 @@
                     handle: async ({ result, update }) => {
                         if (!reportResult(result)) {
                             selectedScheduledGame = null;
-                            showAlert('게임이 폭파되었습니다.', 'success');
+                            // 성공을 막는 모달로 알리면 되돌리기가 실릴 자리가 없다.
+                            const d = (result?.data as any) ?? {};
+                            toastUndoable(`${d.dissolvedName ?? g.game_name} 폭파됨 · 예약이 모두 취소되었습니다`, d.undo);
                         }
                         await update();
                     }
