@@ -240,24 +240,43 @@ bool sendBatch(int startIdx, int endIdx, int batchIndex, int totalBatches) {
   }
   client->setInsecure();  // 인증서 검증 스킵 (메모리 절약)
 
-  HTTPClient http;
-  String url = String(API_SERVER) + "/api/ble/report";
-  http.begin(*client, url);
-  http.setTimeout(15000);  // 15초 타임아웃
-  http.addHeader("Content-Type", "application/json");
-  http.addHeader("x-api-key", API_KEY);
+  int code = -1;
+  String response;
+  {
+    // HTTPClient는 begin()에서 받은 client 포인터를 내부에 보관했다가 소멸자에서
+    // 다시 접근한다(_client->stop()). 따라서 client를 먼저 delete하면 함수가
+    // 끝나는 순간 해제된 메모리를 건드려 죽는다 — 실제로 Load access fault
+    // (MCAUSE=5, MTVAL=0x3c)로 크래시했다. 해제된 힙이 우연히 멀쩡해 보이는
+    // 동안은 몇 사이클씩 정상 동작해서 재현이 들쭉날쭉했다.
+    // 별도 스코프에 두어 http가 client보다 반드시 먼저 소멸하게 한다.
+    HTTPClient http;
+    String url = String(API_SERVER) + "/api/ble/report";
+    http.begin(*client, url);
+    http.setTimeout(15000);  // 15초 타임아웃
+    http.addHeader("Content-Type", "application/json");
+    http.addHeader("x-api-key", API_KEY);
 
-  int code = http.POST(jsonString);
-  String response = http.getString();
-  http.end();
+    code = http.POST(jsonString);
+    response = http.getString();
+    http.end();
+  }  // ← http 소멸자가 여기서 실행된다 (client는 아직 살아 있음)
+
   delete client;  // 메모리 해제
 
   if (code > 0) {
     Serial.println("OK (" + String(code) + ")");
 
     // 서버 응답에서 config 업데이트
-    DynamicJsonDocument resDoc(256);
-    if (deserializeJson(resDoc, response) == DeserializationError::Ok && resDoc.containsKey("config")) {
+    // 용량은 넉넉히 잡는다 — 응답 키가 하나 늘어날 때마다 조용히 NoMemory로
+    // 실패해서 "설정이 반영 안 되는데 이유를 모르는" 상태가 되기 쉽다.
+    DynamicJsonDocument resDoc(512);
+    DeserializationError parseErr = deserializeJson(resDoc, response);
+    if (parseErr) {
+      Serial.println("  WARN: config JSON 파싱 실패 (" + String(parseErr.c_str())
+                     + ", 응답 " + String(response.length()) + "B)");
+    } else if (!resDoc.containsKey("config")) {
+      Serial.println("  WARN: 응답에 config 없음 (응답 " + String(response.length()) + "B)");
+    } else {
       JsonObject cfg = resDoc["config"];
       // 서버 값은 검증 후에만 반영한다. 특히 batch_size=0은 아래 totalBatches
       // 계산에서 0으로 나누기가 되어 즉시 리셋되고, scan_time=0은 스캔 자체를
