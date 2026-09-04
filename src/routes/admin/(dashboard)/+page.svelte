@@ -1101,7 +1101,7 @@
                         <span class="arrival-time">{formatTime(a.arrival_time)} 입장</span>
                         {#if a.is_playing && a.game_name}
                             <span class="seat-game" title={a.game_name}>· {a.game_name}</span>
-                            {#if a.game_end_time}<span class="seat-time">{getTimeRemaining(a.game_end_time, now)}</span>{/if}
+                            {#if a.game_end_time}<span class="seat-time" class:is-over={isSettling(a)}>{getTimeRemaining(a.game_end_time, now)}</span>{/if}
                         {/if}
                     </span>
                 </div>
@@ -2618,6 +2618,12 @@
     .seat-time {
         white-space: nowrap;
     }
+    /* 같은 사실을 게임 목록은 주황 굵게, 명단은 회색 보통으로 말하고 있었다.
+       한 상태에는 한 인코딩. */
+    .seat-time.is-over {
+        color: var(--color-orange-text);
+        font-weight: var(--weight-medium);
+    }
     .count-busy {
         color: var(--text-secondary);
     }
@@ -3911,10 +3917,19 @@
     }
 
     /* 게임 리스트 */
+    /*
+        만료 두 판이 나란히 서면 1px 구분선만으로 나뉜 하나의 앰버 덩어리가
+        됐다. 티츄가 어디서 끝나고 글룸헤이븐이 어디서 시작하는지, 어느
+        「게임 종료」가 어느 판의 것인지 한눈에 알 수 없었다 — 그리고 그 버튼은
+        누르면 판이 끝난다. 행마다 경계와 간격을 줘서 두 개가 두 개로 읽히게 한다.
+    */
     .game-list {
         list-style: none;
         padding: 0;
         margin: 0;
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-2);
     }
     .game-list li {
         list-style: none;
@@ -3969,7 +3984,9 @@
         display: flex;
         align-items: center;
         gap: var(--space-2);
-        border-bottom: 1px solid var(--border-light);
+        border: 1px solid var(--border-light);
+        border-radius: var(--radius-control);
+        overflow: hidden;
     }
     /*
         대기 예약이 붙으면 행이 두 줄이 된다. flex-wrap으로 열면 줄바꿈이
@@ -3985,9 +4002,7 @@
     .session-queue {
         grid-column: 1 / -1;
     }
-    .game-row:last-child {
-        border-bottom: none;
-    }
+
     .game-row .game-list-item {
         border-bottom: none;
         /* width:100%인 flex 아이템은 기본 min-width:auto 때문에 좁은 폭에서 줄지 않는다 */
@@ -4000,7 +4015,22 @@
        이름은 본문색을 지키고, 상태는 색이 아니라 왼쪽 레일과 배경 틴트로 말한다. */
     .game-row.is-expired {
         background: var(--color-warning-bg);
+        border-color: var(--color-orange-text);
         padding-right: var(--space-2);
+    }
+    /*
+        중첩된 대기 예약은 게임의 상태 틴트를 물려받으면 안 된다. 앰버는
+        "이 판의 시간이 끝났다"는 뜻이고, 그 아래 사람들은 별개의 사실이다.
+        같은 색이면 하나가 다른 하나를 설명하는 것처럼 읽힌다.
+    */
+    .game-row.is-expired .session-queue {
+        background: var(--bg-primary);
+        margin-left: calc(-1 * var(--space-3));
+        margin-right: calc(-1 * var(--space-3));
+        margin-bottom: calc(-1 * var(--space-2));
+        padding-left: var(--space-5);
+        padding-right: var(--space-3);
+        padding-bottom: var(--space-2);
     }
     .game-list-item.expired .time-remaining {
         color: var(--color-orange-text);
