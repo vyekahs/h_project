@@ -1240,6 +1240,54 @@ export const actions: Actions = {
 
 
 
+    /**
+     * 예정 게임 수정.
+     *
+     * 없을 때는 시각을 잘못 친 것을 고칠 방법이 폭파뿐이었다 — 그런데 폭파는
+     * 그 세션의 예약을 전부 취소해 회원들을 공정성 기계에 다시 떨어뜨린다.
+     * 운영자의 오타 비용을 회원이 내고 있었다.
+     */
+    updateScheduledGame: async ({ request }) => {
+        const data = await request.formData();
+        const sessionId = data.get('sessionId');
+        if (!sessionId) return fail(400, { error: '잘못된 요청입니다.' });
+        if (!(await canModifyGame(request, sessionId.toString()))) return fail(403, { error: '권한이 없습니다.' });
+
+        const scheduledAt = data.get('scheduledAt')?.toString();
+        const minPlayers = parseInt(data.get('minPlayers')?.toString() || '2');
+        const maxPlayers = parseInt(data.get('maxPlayers')?.toString() || '4');
+
+        if (!scheduledAt) return fail(400, { error: '시작 예정 시간을 입력해주세요.' });
+        if (!Number.isFinite(minPlayers) || minPlayers < 1) return fail(400, { error: '최소 인원은 1명 이상이어야 합니다.' });
+        if (maxPlayers < minPlayers) return fail(400, { error: '최대 인원이 최소 인원보다 적을 수 없습니다.' });
+
+        const current = ((await db.execute(sql`
+            SELECT gs.game_name, gs.status,
+                   (SELECT COUNT(*) FROM session_participants sp WHERE sp.session_id = gs.id) AS joined
+            FROM game_sessions gs WHERE gs.id = ${sessionId}
+        `)) as any[])[0];
+        if (!current) return fail(404, { error: '없는 게임입니다.' });
+        if (current.status !== 'scheduled') return fail(400, { error: '이미 시작했거나 끝난 게임은 수정할 수 없습니다.' });
+        // 이미 앉은 사람보다 정원을 줄이면 화면과 실제가 어긋난다.
+        if (Number(current.joined) > maxPlayers) {
+            return fail(400, { error: `이미 ${current.joined}명이 참여 중이라 최대 인원을 ${maxPlayers}명으로 줄일 수 없습니다.` });
+        }
+
+        try {
+            await db.execute(sql`
+                UPDATE game_sessions
+                SET scheduled_at = ${scheduledAt}, min_players = ${minPlayers}, max_players = ${maxPlayers}
+                WHERE id = ${sessionId}
+            `);
+        } catch (e) {
+            console.error('updateScheduledGame failed:', e);
+            return fail(500, { error: '수정에 실패했습니다.' });
+        }
+
+        emitLiveEvent('games');
+        return { success: true, updatedName: current.game_name as string };
+    },
+
     createScheduledGame: async ({ request }) => {
         const data = await request.formData();
         const gameName = data.get('gameName')?.toString();

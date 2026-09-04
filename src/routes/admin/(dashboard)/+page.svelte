@@ -293,6 +293,16 @@
         return Math.max(1, Math.ceil((at + UNDO_WINDOW_MS - Math.max(now, at)) / 60000));
     }
 
+    /* datetime-local은 로컬 시각 문자열을 요구한다. ISO를 그대로 넣으면 비거나
+       UTC로 표시돼, 고치려던 시각이 다른 시각으로 저장된다. */
+    function toDateTimeLocal(ts: string | null | undefined): string {
+        if (!ts) return '';
+        const d = new Date(ts);
+        if (Number.isNaN(d.getTime())) return '';
+        const pad = (n: number) => String(n).padStart(2, '0');
+        return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    }
+
     function announcePenalty(d: any) {
         const p = d?.penalty;
         if (!p) {
@@ -1992,6 +2002,39 @@
                 <strong>참여자 ({(g.participants || []).length})</strong>
                 <p class="detail-participants">{(g.participants || []).map((p: any) => p.is_guest ? `${p.name}(G)` : p.name).join(', ') || '없음'}</p>
             </div>
+            <!--
+                시각을 잘못 친 것을 고칠 방법이 「게임 폭파」뿐이었다. 그런데 폭파는
+                그 세션의 예약을 전부 취소해 회원들을 공정성 기계에 다시 떨어뜨린다.
+                운영자의 오타 비용을 회원이 내고 있었다.
+            -->
+            <form method="POST" action="?/updateScheduledGame" class="detail-section detail-edit" use:enhance={() => {
+                return async ({ result, update }) => {
+                    if (!reportResult(result)) {
+                        const d = (result as any)?.data ?? {};
+                        showToast(`${d.updatedName ?? g.game_name} 일정을 수정했습니다`);
+                    }
+                    await update();
+                    refreshSelectedScheduledGame();
+                };
+            }}>
+                <strong>일정 수정</strong>
+                <input type="hidden" name="sessionId" value={g.id} />
+                <div class="edit-grid">
+                    <div class="input-group">
+                        <label for="edit-when-{g.id}">시작 예정</label>
+                        <input id="edit-when-{g.id}" type="datetime-local" name="scheduledAt" value={toDateTimeLocal(g.scheduled_at)} required />
+                    </div>
+                    <div class="input-group">
+                        <label for="edit-min-{g.id}">최소 인원</label>
+                        <input id="edit-min-{g.id}" type="number" name="minPlayers" min="1" value={g.min_players} required class="number-input" />
+                    </div>
+                    <div class="input-group">
+                        <label for="edit-max-{g.id}">최대 인원</label>
+                        <input id="edit-max-{g.id}" type="number" name="maxPlayers" min="1" value={g.max_players} required class="number-input" />
+                    </div>
+                    <button type="submit" class="btn-mini edit-save">저장</button>
+                </div>
+            </form>
             <div class="detail-actions">
                 <form method="POST" action="?/joinGame" use:enhance={() => {
                     return async ({ result, update }) => {
@@ -4090,6 +4133,38 @@
     .detail-section strong {
         font-size: var(--text-sm);
         color: var(--text-darker);
+    }
+    /* 세 필드와 저장이 좁은 시트에서 한 줄로 눌리지 않게 접힌다 */
+    .detail-edit .edit-grid {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-end;
+        gap: var(--space-2);
+        margin-top: var(--space-2);
+    }
+    .detail-edit .input-group {
+        flex: 1 1 8rem;
+        min-width: 0;
+    }
+    .detail-edit .input-group label {
+        display: block;
+        font-size: var(--text-xs);
+        color: var(--text-secondary);
+        margin-bottom: var(--space-1);
+    }
+    .detail-edit input {
+        width: 100%;
+        min-height: 44px;
+        padding: 0 var(--space-2);
+        border: 1px solid var(--border-control);
+        border-radius: var(--radius-control);
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        font-size: var(--text-sm);
+    }
+    .detail-edit .edit-save {
+        flex: 0 0 auto;
+        min-height: 44px;
     }
     .detail-participants {
         margin: var(--space-1) 0 0;
