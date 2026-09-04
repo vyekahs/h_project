@@ -136,6 +136,9 @@
 
 <div class="library-container">
     <div class="header">
+        {#if data.user}
+            <a href="/collection" class="btn-my-collection">보드게임 장식장</a>
+        {/if}
         <h1>보드게임 목록</h1>
         <p>보유한 보드게임 목록입니다.</p>
         {#if data.user && (data.user.can_manage_games)}
@@ -458,6 +461,21 @@
         text-align: center;
         margin-bottom: 2rem;
         position: relative;
+    }
+    .btn-my-collection {
+        position: absolute;
+        top: 0;
+        left: 0;
+        flex-shrink: 0;
+        font-size: 0.8rem;
+        font-weight: 600;
+        color: var(--text-secondary);
+        background: var(--bg-primary);
+        border: 1px solid var(--border-default);
+        padding: 0.4rem 0.75rem;
+        border-radius: 100px;
+        text-decoration: none;
+        white-space: nowrap;
     }
     .header h1 {
         margin: 0 0 0.5rem 0;
@@ -1019,6 +1037,11 @@
             position: static;
             margin-top: 0.5rem;
             width: 100%;
+        }
+        .btn-my-collection {
+            position: static;
+            display: inline-block;
+            margin-bottom: 0.5rem;
         }
         .filters {
             flex-wrap: wrap;
