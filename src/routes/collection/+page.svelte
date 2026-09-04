@@ -390,7 +390,7 @@
         </div>
     {/if}
 
-    {#if playedCount > 0}
+    {#if viewMode === 'byGame' && playedCount > 0}
         <section class="summary-row">
             <div class="summary-card">
                 <h2>자주 만난 친구</h2>
