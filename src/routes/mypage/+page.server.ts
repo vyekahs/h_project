@@ -255,12 +255,16 @@ export const actions: Actions = {
                 removeFromIrkCache(user.id, irk);
                 // BLE 서버에 IRK 삭제 알림 (fire-and-forget)
                 const BLE_SERVER_URL = process.env.BLE_SERVER_URL || 'http://ble-server:3001';
-                const INTERNAL_API_KEY = process.env.INTERNAL_API_KEY || 'ble_internal_secret_2026';
-                fetch(`${BLE_SERVER_URL}/irk/remove`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'x-internal-key': INTERNAL_API_KEY },
-                    body: JSON.stringify({ attendee_id: user.id, irk_hex: irk })
-                }).catch(e => console.error('[IRK] Failed to notify BLE server (remove):', e));
+                const INTERNAL_API_KEY = process.env.INTERNAL_API_KEY;
+                if (!INTERNAL_API_KEY) {
+                    console.error('[IRK] INTERNAL_API_KEY 환경변수가 설정되지 않아 BLE 서버 알림을 건너뜁니다.');
+                } else {
+                    fetch(`${BLE_SERVER_URL}/irk/remove`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'x-internal-key': INTERNAL_API_KEY },
+                        body: JSON.stringify({ attendee_id: user.id, irk_hex: irk })
+                    }).catch(e => console.error('[IRK] Failed to notify BLE server (remove):', e));
+                }
             }
             return { success: true };
         } catch (e) {

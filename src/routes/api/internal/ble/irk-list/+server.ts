@@ -3,7 +3,7 @@ import type { RequestHandler } from './$types';
 import { db } from '$lib/server/db/index';
 import { sql } from 'drizzle-orm';
 
-const INTERNAL_API_KEY = process.env.INTERNAL_API_KEY || 'ble_internal_secret_2026';
+const INTERNAL_API_KEY = process.env.INTERNAL_API_KEY;
 
 export const GET: RequestHandler = async ({ request }) => {
 	const key = request.headers.get('x-internal-key');

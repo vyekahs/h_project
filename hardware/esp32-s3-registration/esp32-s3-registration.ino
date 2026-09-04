@@ -20,14 +20,10 @@
 #include "services/gap/ble_svc_gap.h"
 // Local HTTP Server (WiFi MAC 등록 페이지용)
 #include <WebServer.h>
+#include "secrets.h"  // WIFI_SSID, WIFI_PASS, SCANNER_API_KEY — secrets.h.example 참고
 
 // --- CONFIGURATION ---
 const char* SERVER_URL = "https://damonpyo.mooo.com";
-const char* WIFI_SSID = "KT_GiGA_3F81";
-const char* WIFI_PASS = "a4ke01fh66";
-
-// Server Config
-const char* SCANNER_API_KEY = "hproject_scanner_secret_2026";
 
 
 // WiFi Promiscuous Scan Config
