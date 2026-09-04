@@ -1065,90 +1065,6 @@
 {/snippet}
 
 <div class="room-columns">
-<section class="section-primary room-col-games" aria-labelledby="sec-playing">
-    <div class="section-header">
-        <!-- 「정리 대기 n」은 스트립이 헤드라인으로 든다. 여기서 또 세면 같은 숫자가
-             500px 안에 세 번 나오고, 만료 행은 이미 자기 틴트와 「n분 초과」로 말한다. -->
-        <!--
-            헤더는 자기가 렌더하는 목록을 센다. 「진행 중 {n}」만 들었더니 판이
-            전부 시간을 넘긴 밤의 끝 — 이 페이지가 가장 세게 쓰이는 시점 — 에
-            「진행 중 0」이 게임 행 두 개 위에 섰고, 그 문자열은 aria-labelledby로
-            섹션 전체의 접근 이름이기도 했다. 0을 단언하는 대신, 도는 판이 있을
-            때만 그 숫자를 덧붙인다. 「정리 대기」는 스트립이 든다.
-        -->
-        <h2 id="sec-playing">
-            게임
-            <span class="count-split">{playingSorted.length}{#if liveGames.length > 0}&nbsp;· 진행 중 {liveGames.length}{/if}</span>
-            {#if overdueCount > 0}<span class="queue-flag overdue">노쇼 판정 {overdueCount}</span>{/if}
-            {#if playingPendingCount - overdueCount > 0}<span class="queue-flag approval">대기 {playingPendingCount - overdueCount}</span>{/if}
-        </h2>
-        <button class="btn-primary" onclick={() => {
-            showModal = true;
-            selectedGameName = '';
-            selectedDuration = '60';
-            selectedGameId = '';
-            guestCount = 0;
-            dropdownOpen = false;
-            selectedPlayerIds = [];
-            playerSearch = '';
-            showPlayingInPicker = false;
-        }}>+ 새 게임 시작</button>
-    </div>
-    <ul class="game-list">
-        {#each (showAllPlaying ? playingSorted : playingSorted.slice(0, 5)) as game (game.id)}
-            {@const msLeft = new Date(game.end_time).getTime() - now}
-            {@const expired = msLeft <= 0}
-            {@const endingSoon = !expired && msLeft < 5 * 60000}
-            {@const waiting = pendingFor(game.id)}
-            <li class="game-row" class:is-expired={expired} class:has-pending={waiting.length > 0}>
-                <button type="button" class="game-list-item" class:ending-soon={endingSoon} class:expired onclick={() => { selectedPlayingGame = game; resetParticipantSearch(); }}>
-                    {#if game.image_url}
-                        <img src={game.image_url} alt={game.game_name} width="32" height="32" class="list-thumb" />
-                    {:else}
-                        <div class="list-thumb placeholder" aria-hidden="true">
-                            <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1"/><circle cx="15.5" cy="15.5" r="1"/><circle cx="15.5" cy="8.5" r="1"/><circle cx="8.5" cy="15.5" r="1"/></svg>
-                        </div>
-                    {/if}
-                    <span class="list-name">{game.game_name}</span>
-                    <span class="list-meta">{game.players.length}명</span>
-                    <span class="list-meta time-remaining">{getTimeRemaining(game.end_time, now)}</span>
-                    <span class="list-arrow" aria-hidden="true">›</span>
-                </button>
-                {#if expired}
-                    <!--
-                        시간이 지나도 게임은 playing으로 남는다 — autoClose는 마감 때만 닫는다.
-                        승자 기록은 선택이므로 여기서 한 번에 닫을 수 있어야 한다.
-                        승자를 남기려면 행을 눌러 종료 모달로 간다.
-                    -->
-                    <form method="POST" action="?/endGame" class="row-end-form" use:enhance={() => {
-                        return async ({ result, update }: { result: any, update: (options?: { reset?: boolean }) => Promise<void> }) => {
-                            if (!reportResult(result)) {
-                                const d = (result?.data as any) ?? {};
-                                toastUndoable(`${d.endedName ?? game.game_name} 종료됨 · 승자는 기록하지 않았습니다`, d.undo);
-                            }
-                            await update();
-                        };
-                    }}>
-                        <input type="hidden" name="id" value={game.id} />
-                        <button type="submit" class="btn-row-end">게임 종료</button>
-                    </form>
-                {/if}
-                {#if waiting.length > 0}
-                    {@render pendingRows(waiting, game.game_name)}
-                {/if}
-            </li>
-        {/each}
-        {#if (games || []).length === 0}
-            <p class="empty-state">진행 중인 게임이 없습니다. 「+ 새 게임 시작」으로 시작할 수 있습니다.</p>
-        {/if}
-    </ul>
-    {#if (games || []).length > 5}
-        <button class="show-more-btn" onclick={() => showAllPlaying = !showAllPlaying}>
-            {showAllPlaying ? '접기' : `+${(games || []).length - 5}개 더보기`}
-        </button>
-    {/if}
-</section>
-
 <section class="section-primary room-col-roster" aria-labelledby="sec-attendees">
     <!-- 「대기 중 n」은 스트립이 헤드라인으로 들고, 이 섹션 안에서는 바로 아래
          그룹 라벨이 같은 말을 한다. 제목에서까지 세면 한 화면에 세 번이 된다. -->
@@ -1269,6 +1185,90 @@
             </div>
             {/if}
         </div>
+    {/if}
+</section>
+
+<section class="section-primary room-col-games" aria-labelledby="sec-playing">
+    <div class="section-header">
+        <!-- 「정리 대기 n」은 스트립이 헤드라인으로 든다. 여기서 또 세면 같은 숫자가
+             500px 안에 세 번 나오고, 만료 행은 이미 자기 틴트와 「n분 초과」로 말한다. -->
+        <!--
+            헤더는 자기가 렌더하는 목록을 센다. 「진행 중 {n}」만 들었더니 판이
+            전부 시간을 넘긴 밤의 끝 — 이 페이지가 가장 세게 쓰이는 시점 — 에
+            「진행 중 0」이 게임 행 두 개 위에 섰고, 그 문자열은 aria-labelledby로
+            섹션 전체의 접근 이름이기도 했다. 0을 단언하는 대신, 도는 판이 있을
+            때만 그 숫자를 덧붙인다. 「정리 대기」는 스트립이 든다.
+        -->
+        <h2 id="sec-playing">
+            게임
+            <span class="count-split">{playingSorted.length}{#if liveGames.length > 0}&nbsp;· 진행 중 {liveGames.length}{/if}</span>
+            {#if overdueCount > 0}<span class="queue-flag overdue">노쇼 판정 {overdueCount}</span>{/if}
+            {#if playingPendingCount - overdueCount > 0}<span class="queue-flag approval">대기 {playingPendingCount - overdueCount}</span>{/if}
+        </h2>
+        <button class="btn-primary" onclick={() => {
+            showModal = true;
+            selectedGameName = '';
+            selectedDuration = '60';
+            selectedGameId = '';
+            guestCount = 0;
+            dropdownOpen = false;
+            selectedPlayerIds = [];
+            playerSearch = '';
+            showPlayingInPicker = false;
+        }}>+ 새 게임 시작</button>
+    </div>
+    <ul class="game-list">
+        {#each (showAllPlaying ? playingSorted : playingSorted.slice(0, 5)) as game (game.id)}
+            {@const msLeft = new Date(game.end_time).getTime() - now}
+            {@const expired = msLeft <= 0}
+            {@const endingSoon = !expired && msLeft < 5 * 60000}
+            {@const waiting = pendingFor(game.id)}
+            <li class="game-row" class:is-expired={expired} class:has-pending={waiting.length > 0}>
+                <button type="button" class="game-list-item" class:ending-soon={endingSoon} class:expired onclick={() => { selectedPlayingGame = game; resetParticipantSearch(); }}>
+                    {#if game.image_url}
+                        <img src={game.image_url} alt={game.game_name} width="32" height="32" class="list-thumb" />
+                    {:else}
+                        <div class="list-thumb placeholder" aria-hidden="true">
+                            <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1"/><circle cx="15.5" cy="15.5" r="1"/><circle cx="15.5" cy="8.5" r="1"/><circle cx="8.5" cy="15.5" r="1"/></svg>
+                        </div>
+                    {/if}
+                    <span class="list-name">{game.game_name}</span>
+                    <span class="list-meta">{game.players.length}명</span>
+                    <span class="list-meta time-remaining">{getTimeRemaining(game.end_time, now)}</span>
+                    <span class="list-arrow" aria-hidden="true">›</span>
+                </button>
+                {#if expired}
+                    <!--
+                        시간이 지나도 게임은 playing으로 남는다 — autoClose는 마감 때만 닫는다.
+                        승자 기록은 선택이므로 여기서 한 번에 닫을 수 있어야 한다.
+                        승자를 남기려면 행을 눌러 종료 모달로 간다.
+                    -->
+                    <form method="POST" action="?/endGame" class="row-end-form" use:enhance={() => {
+                        return async ({ result, update }: { result: any, update: (options?: { reset?: boolean }) => Promise<void> }) => {
+                            if (!reportResult(result)) {
+                                const d = (result?.data as any) ?? {};
+                                toastUndoable(`${d.endedName ?? game.game_name} 종료됨 · 승자는 기록하지 않았습니다`, d.undo);
+                            }
+                            await update();
+                        };
+                    }}>
+                        <input type="hidden" name="id" value={game.id} />
+                        <button type="submit" class="btn-row-end">게임 종료</button>
+                    </form>
+                {/if}
+                {#if waiting.length > 0}
+                    {@render pendingRows(waiting, game.game_name)}
+                {/if}
+            </li>
+        {/each}
+        {#if (games || []).length === 0}
+            <p class="empty-state">진행 중인 게임이 없습니다. 「+ 새 게임 시작」으로 시작할 수 있습니다.</p>
+        {/if}
+    </ul>
+    {#if (games || []).length > 5}
+        <button class="show-more-btn" onclick={() => showAllPlaying = !showAllPlaying}>
+            {showAllPlaying ? '접기' : `+${(games || []).length - 5}개 더보기`}
+        </button>
     {/if}
 </section>
 
@@ -2303,9 +2303,12 @@
             margin-bottom: 0;
         }
         /*
-            DOM 순서는 게임 → 명단 → 시작 예정 → 오늘 갈 예정이다. 폰에서 한 열로
-            쌓일 때 방에 서 있는 운영자가 먼저 봐야 하는 것이 그 순서이기 때문이다.
-            넓은 화면의 열 배치는 그것과 다르므로 넷 다 명시한다 — 왼쪽은 시간 축
+            DOM 순서는 명단 → 게임 → 시작 예정 → 오늘 갈 예정이다. 폰에서 한 열로
+            쌓일 때 방에 서 있는 운영자가 먼저 봐야 하는 것은 판이 아니라 사람이다 —
+            테이블은 눈으로 보이지만 페널티·블랙·대기 여부는 화면에만 있다.
+            그 전에는 게임 카드 539px가 첫 화면을 다 써서 접힌 선 위에 사람이
+            한 명도 없었다.
+            넓은 화면의 열 배치는 DOM과 다르므로 넷 다 명시한다 — 왼쪽은 시간 축
             (지금 도는 판 → 곧 시작할 판 → 오늘 올 사람), 오른쪽은 지금 방.
         */
         .room-col-games {
