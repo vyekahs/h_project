@@ -723,8 +723,23 @@
      * 있으면서 새 게임 피커에서 행을 비활성화하는 데만 쓰이고 있었다.
      * 콘솔이 알면서 말하지 않던 것을 말하게 한다.
      */
+    /*
+        「게임 중」이 두 상태를 하나로 접고 있었다. is_playing은 누가 세션을
+        닫아줄 때까지 참으로 남으므로, 시간이 지난 판의 사람은 상자를 정리하고
+        서 있는데 화면은 그를 게임 중이라 불렀다. 그래서 「대기 중 n」— 운영자가
+        가장 자주 묻는 "지금 앉힐 수 있나"의 답 — 이 그 인원만큼 틀렸고,
+        새 게임 피커는 그들을 비활성으로 만들어 앉히지 못하게 막았다.
+
+        정리 대기는 세 번째 상태다. 그리고 그 그룹이 곧 "이 테이블들을 치워라"
+        작업 목록이라, 스트립의 「정리 대기 n판」이 판이 아니라 사람과 묶인다.
+    */
+    const isSettling = (a: Attendee) =>
+        a.is_playing && !!a.game_end_time && new Date(a.game_end_time).getTime() <= now;
     const freeAttendees = $derived((attendees || []).filter((a: Attendee) => !a.is_playing));
-    const busyAttendees = $derived((attendees || []).filter((a: Attendee) => a.is_playing));
+    const settlingAttendees = $derived((attendees || []).filter((a: Attendee) => isSettling(a)));
+    const busyAttendees = $derived((attendees || []).filter((a: Attendee) => a.is_playing && !isSettling(a)));
+    /* 판을 짤 수 있는 사람 = 대기 중 + 정리 대기. 후자는 손에 카드가 없다. */
+    const seatableAttendees = $derived((attendees || []).filter((a: Attendee) => !a.is_playing || isSettling(a)));
 
     // 종료 임박 순 정렬 — "진행 중인 게임" 목록에서 끝나가는 게임을 위로
     const playingSorted = $derived([...(games || [])].sort(
@@ -748,9 +763,9 @@
     const nextEndMins = $derived(nextGameEndTs !== null ? Math.round((nextGameEndTs - now) / 60000) : null);
 
     // 새 게임 참여자 피커
-    const availableAttendees = $derived((attendees || []).filter((a: Attendee) => !a.is_playing));
+    const availableAttendees = $derived(seatableAttendees);
     const pickerResults = $derived((attendees || []).filter((a: Attendee) => {
-        if (!showPlayingInPicker && a.is_playing) return false;
+        if (!showPlayingInPicker && a.is_playing && !isSettling(a)) return false;
         if (playerSearch && !a.name.toLowerCase().includes(playerSearch.toLowerCase())) return false;
         return true;
     }));
@@ -1035,9 +1050,16 @@
     <div class="section-header">
         <!-- 「정리 대기 n」은 스트립이 헤드라인으로 든다. 여기서 또 세면 같은 숫자가
              500px 안에 세 번 나오고, 만료 행은 이미 자기 틴트와 「n분 초과」로 말한다. -->
+        <!--
+            헤더는 자기가 렌더하는 목록을 센다. 「진행 중 {n}」만 들었더니 판이
+            전부 시간을 넘긴 밤의 끝 — 이 페이지가 가장 세게 쓰이는 시점 — 에
+            「진행 중 0」이 게임 행 두 개 위에 섰고, 그 문자열은 aria-labelledby로
+            섹션 전체의 접근 이름이기도 했다. 0을 단언하는 대신, 도는 판이 있을
+            때만 그 숫자를 덧붙인다. 「정리 대기」는 스트립이 든다.
+        -->
         <h2 id="sec-playing">
             게임
-            <span class="count-split">진행 중 {liveGames.length}</span>
+            <span class="count-split">{playingSorted.length}{#if liveGames.length > 0}&nbsp;· 진행 중 {liveGames.length}{/if}</span>
             {#if overdueCount > 0}<span class="queue-flag overdue">노쇼 판정 {overdueCount}</span>{/if}
             {#if playingPendingCount - overdueCount > 0}<span class="queue-flag approval">대기 {playingPendingCount - overdueCount}</span>{/if}
         </h2>
@@ -1164,9 +1186,26 @@
         <ul class="attendee-list">
             {#each freeAttendees as a (a.id)}{@render attendeeRow(a as Attendee)}{/each}
             {#if freeAttendees.length === 0}
-                <li class="roster-empty">방에 있는 {attendeeCount}명이 모두 게임 중입니다.</li>
+                <!-- 정리 대기가 따로 서게 된 뒤로 「모두 게임 중」은 참이 아닐 수 있다.
+                     그 사람들은 앉힐 수 있으므로, 빈 상태가 그 사실을 가리켜야 한다. -->
+                {#if settlingAttendees.length > 0}
+                    <li class="roster-empty">대기 중인 사람이 없습니다. 아래 정리 대기 {settlingAttendees.length}명은 바로 앉힐 수 있습니다.</li>
+                {:else}
+                    <li class="roster-empty">방에 있는 {attendeeCount}명이 모두 게임 중입니다.</li>
+                {/if}
             {/if}
         </ul>
+        <!--
+            정리 대기는 대기 중과 게임 중 사이다. 판은 아직 열려 있지만 사람은
+            비어 있다 — 스트립의 「정리 대기 n판」이 가리키는 테이블에 앉아 있던
+            바로 그 사람들이고, 새 게임에도 앉힐 수 있다.
+        -->
+        {#if settlingAttendees.length > 0}
+            <p class="roster-group-label">정리 대기 {settlingAttendees.length}</p>
+            <ul class="attendee-list">
+                {#each settlingAttendees as a (a.id)}{@render attendeeRow(a as Attendee)}{/each}
+            </ul>
+        {/if}
         {#if busyAttendees.length > 0}
             <p class="roster-group-label">게임 중 {busyAttendees.length}</p>
             <ul class="attendee-list">
@@ -1404,7 +1443,7 @@
                                 disabled={availableAttendees.length === 0}
                                 title={availableAttendees.length === 0 ? '방에 있는 인원이 모두 게임 중입니다' : undefined}
                                 onclick={() => selectedPlayerIds = availableAttendees.map((a) => a.id)}
-                            >참석자 전원</button>
+                            >앉힐 수 있는 전원</button>
                             {#if selectedPlayerIds.length > 0}
                                 <button type="button" class="btn-ghost" onclick={() => selectedPlayerIds = []}>비우기</button>
                             {/if}
@@ -1435,7 +1474,7 @@
                         <div class="pp-scope" role="group" aria-label="참여자 범위">
                             <button type="button" class="pp-scope-btn" class:active={!showPlayingInPicker}
                                 aria-pressed={!showPlayingInPicker}
-                                onclick={() => showPlayingInPicker = false}>대기 중 {availableAttendees.length}</button>
+                                onclick={() => showPlayingInPicker = false}>앉힐 수 있음 {availableAttendees.length}</button>
                             <button type="button" class="pp-scope-btn" class:active={showPlayingInPicker}
                                 aria-pressed={showPlayingInPicker}
                                 onclick={() => showPlayingInPicker = true}>전체 {(attendees || []).length}</button>
@@ -1447,11 +1486,14 @@
                     <div class="pp-list">
                         {#each pickerResults as a (a.id)}
                             {@const checked = selectedPlayerIds.includes(a.id)}
-                            <button type="button" class="pp-option" class:checked={checked} disabled={a.is_playing}
+                            <button type="button" class="pp-option" class:checked={checked} disabled={a.is_playing && !isSettling(a)}
                                 onclick={() => selectedPlayerIds = checked ? selectedPlayerIds.filter((x) => x !== a.id) : [...selectedPlayerIds, a.id]}>
                                 <span class="pp-check" aria-hidden="true">{checked ? '✓' : ''}</span>
                                 <span class="pp-name">{a.name}</span>
-                                {#if a.is_playing}<span class="status-text">게임 중</span>{/if}
+                                <!-- 정리 대기는 「게임 중」이 아니다. 그 사람은 앉힐 수 있고,
+                                     그래서 이 행은 비활성이 아니다 — 이유를 다르게 말해야 한다. -->
+                                {#if isSettling(a)}<span class="status-text">정리 대기</span>
+                                {:else if a.is_playing}<span class="status-text">게임 중</span>{/if}
                             </button>
                         {/each}
                         {#if pickerResults.length === 0}
@@ -1461,8 +1503,8 @@
                             -->
                             {#if playerSearch}
                                 <p class="hint">「{playerSearch}」와 일치하는 사람이 없습니다.</p>
-                            {:else if !showPlayingInPicker && (attendees || []).some((a) => a.is_playing)}
-                                <p class="hint">방에 있는 {(attendees || []).length}명이 모두 게임 중입니다. 「전체」로 바꾸면 함께 고를 수 있습니다.</p>
+                            {:else if !showPlayingInPicker && (attendees || []).some((a) => a.is_playing && !isSettling(a))}
+                                <p class="hint">앉힐 수 있는 사람이 없습니다 — 방에 있는 {(attendees || []).length}명이 모두 게임 중입니다. 「전체」로 바꾸면 함께 고를 수 있습니다.</p>
                             {:else}
                                 <p class="hint">방에 있는 인원이 없습니다. 아래 「게스트 수」로 시작할 수 있습니다.</p>
                             {/if}
