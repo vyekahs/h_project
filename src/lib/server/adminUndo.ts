@@ -36,6 +36,7 @@ export type UndoKind =
 	| 'remove_attendee'
 	| 'cancel_reservation'
 	| 'dissolve_game'
+	| 'end_expired_games'
 	| 'close_day';
 
 export type UndoHandle = { id: number; label: string };

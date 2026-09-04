@@ -442,6 +442,25 @@
         document.body.style.overflow = 'hidden';
         return () => { document.body.style.overflow = prev; };
     });
+
+    /*
+        단축키가 하나도 없었다. 가장 자주 하는 두 가지 — 판을 열고, 끝난 판을
+        치우는 것 — 는 각각 탭 29번과 스크롤 한 화면 뒤에 있었다.
+
+        e.key가 아니라 e.code로 본다. 한글 입력 상태에서 e.key는 자모라
+        「ㅜ」와 「ㅐ」가 되고, 방에 서 있는 운영자의 키보드는 대개 한글 상태다.
+        accesskey는 쓰지 않는다 — 보조기술의 자기 단축키와 충돌한다.
+    */
+    let newGameButton: HTMLButtonElement | null = $state(null);
+    let bulkEndButton: HTMLButtonElement | null = $state(null);
+    function handleShortcut(e: KeyboardEvent) {
+        if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
+        if (anyModalOpen) return;
+        const t = e.target as HTMLElement | null;
+        if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+        if (e.code === 'KeyN') { e.preventDefault(); newGameButton?.click(); }
+        else if (e.code === 'KeyE') { e.preventDefault(); bulkEndButton?.click(); }
+    }
     let scheduledGameName = $state('');
     let scheduledAt = $state('');
     let minPlayers = $state(2);
@@ -830,6 +849,8 @@
     제목이 없으면 SvelteKit의 aria-live 안내 영역이 이동할 때마다
     "untitled page"를 읽는다. 방 상태를 제목에 실어 탭만 봐도 알게 한다.
 -->
+<svelte:window onkeydown={handleShortcut} />
+
 <svelte:head>
     <title>관리자 대시보드 · 방에 {attendeeCount}명{expiredGames.length > 0 ? ` · 정리 대기 ${expiredGames.length}` : ''} — 혼놀 라운지</title>
 </svelte:head>
@@ -1207,7 +1228,30 @@
             {#if overdueCount > 0}<span class="queue-flag overdue">노쇼 판정 {overdueCount}</span>{/if}
             {#if playingPendingCount - overdueCount > 0}<span class="queue-flag approval">대기 {playingPendingCount - overdueCount}</span>{/if}
         </h2>
-        <button class="btn-primary" onclick={() => {
+        <!--
+            「정리 대기 n판」은 코드에서 작업 목록으로 모델링돼 있는데 정작
+            운영자는 한 판씩 닫아야 했다. 집합을 고르는 화면이 집합을 처리한다.
+        -->
+        {#if expiredGames.length > 1}
+            <form method="POST" action="?/endExpiredGames" class="bulk-end-form" use:enhance={confirmSubmit({
+                title: '정리 대기 일괄 종료',
+                message: () =>
+                    `시간이 지난 ${expiredGames.length}판을 한 번에 종료합니다 — ${expiredGames.map((g) => g.game_name).join(', ')}. 승자는 기록되지 않으며, 되돌리기 한 번으로 전부 되살릴 수 있습니다.`,
+                confirmLabel: `${expiredGames.length}판 종료`,
+                severity: 'destructive',
+                handle: async ({ result, update }: any) => {
+                    if (!reportResult(result)) {
+                        const d = (result?.data as any) ?? {};
+                        toastUndoable(`${d.endedCount ?? expiredGames.length}판 정리됨 · 승자는 기록하지 않았습니다`, d.undo);
+                    }
+                    await update();
+                }
+            })}>
+                <button type="submit" class="btn-bulk-end" bind:this={bulkEndButton}
+                    title="단축키 E" aria-keyshortcuts="E">정리 대기 {expiredGames.length}판 모두 종료</button>
+            </form>
+        {/if}
+        <button class="btn-primary" bind:this={newGameButton} title="단축키 N" aria-keyshortcuts="N" onclick={() => {
             showModal = true;
             selectedGameName = '';
             selectedDuration = '60';
@@ -1245,15 +1289,28 @@
                         승자 기록은 선택이므로 여기서 한 번에 닫을 수 있어야 한다.
                         승자를 남기려면 행을 눌러 종료 모달로 간다.
                     -->
-                    <form method="POST" action="?/endGame" class="row-end-form" use:enhance={() => {
-                        return async ({ result, update }: { result: any, update: (options?: { reset?: boolean }) => Promise<void> }) => {
+                    <!--
+                        이 행에서 유일하게 확인창 없이 서버를 바꾸던 버튼이다.
+                        그리고 같은 행의 나머지 90%는 상세 시트를 여는 탭 타깃이라,
+                        시끄러운 방에서 한 손으로 누르면 열려던 것이 끝나 있었다.
+                        되돌리기가 있지만 그건 마지막 방어선이고, 이 콘솔의 다른
+                        파괴적 동작은 전부 확인을 거친다.
+                        잦은 경우(여러 판이 한꺼번에 만료)는 위의 일괄 종료가 받는다.
+                    -->
+                    <form method="POST" action="?/endGame" class="row-end-form" use:enhance={confirmSubmit({
+                        title: '게임 종료',
+                        message: () =>
+                            `${game.game_name}을(를) 종료합니다. 참여자 ${game.players.length}명의 세션이 닫히고 승자는 기록되지 않습니다.`,
+                        confirmLabel: '종료',
+                        severity: 'destructive',
+                        handle: async ({ result, update }: any) => {
                             if (!reportResult(result)) {
                                 const d = (result?.data as any) ?? {};
                                 toastUndoable(`${d.endedName ?? game.game_name} 종료됨 · 승자는 기록하지 않았습니다`, d.undo);
                             }
                             await update();
-                        };
-                    }}>
+                        }
+                    })}>
                         <input type="hidden" name="id" value={game.id} />
                         <button type="submit" class="btn-row-end">게임 종료</button>
                     </form>
@@ -4148,6 +4205,26 @@
         }
     }
 
+    /* 섹션의 주 버튼(+ 새 게임 시작)과 경쟁하지 않되, 경보와 같은 계열로
+       자기가 무엇을 치우는지 말한다. */
+    .btn-bulk-end {
+        min-height: 44px;
+        padding: 0 var(--space-3);
+        border: 1px solid var(--color-orange-text);
+        border-radius: var(--radius-control);
+        background: var(--bg-primary);
+        color: var(--color-orange-text);
+        font-size: var(--text-sm);
+        font-weight: var(--weight-medium);
+        white-space: nowrap;
+        cursor: pointer;
+    }
+    .btn-bulk-end:hover {
+        background: var(--color-warning-bg);
+    }
+    .bulk-end-form {
+        margin: 0;
+    }
     .show-more-btn {
         display: block;
         width: 100%;

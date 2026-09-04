@@ -341,6 +341,48 @@ export const actions: Actions = {
             return fail(500, { error: '게임 생성에 실패했습니다.' });
         }
     },
+    /**
+     * 만료된 판 일괄 종료.
+     *
+     * 「정리 대기 n판」은 코드에서 작업 목록으로 모델링돼 있는데 — expiredGames,
+     * settlingAttendees, isSettling — 정작 운영자는 한 판씩 닫아야 했다.
+     * 토요일에 만료 여섯 판이면 여섯 번 누르고 여섯 개의 토스트를 받는다.
+     * 스트립이 고르는 집합을 집합으로 처리한다. 되돌리기도 하나로 묶는다 —
+     * 한 번의 실수였으니 한 번에 물러야 한다.
+     */
+    endExpiredGames: async ({ request }) => {
+        const sessionToken = request.headers.get('cookie')?.match(/admin_session=([^;]+)/)?.[1];
+        if (!sessionToken || !(await verifyAdminSession(sessionToken))) return fail(403, { error: '권한이 없습니다.' });
+
+        const expired = (await db.execute(sql`
+            SELECT id, game_name, end_time FROM game_sessions
+            WHERE status = 'playing' AND end_time <= NOW()
+            ORDER BY end_time ASC
+        `)) as any[];
+        if (expired.length === 0) return fail(400, { error: '정리할 판이 없습니다.' });
+
+        const games = expired.map((g) => ({ id: Number(g.id), name: g.game_name as string, endTime: g.end_time }));
+
+        try {
+            await db.transaction(async (tx) => {
+                for (const g of games) {
+                    await tx.execute(sql`UPDATE game_sessions SET status = 'finished' WHERE id = ${g.id}`);
+                }
+            });
+        } catch (e) {
+            console.error('endExpiredGames failed:', e);
+            return fail(500, { error: '정리에 실패했습니다.' });
+        }
+
+        const undo = await recordUndo(
+            'end_expired_games',
+            { games },
+            games.length === 1 ? `${games[0].name} 종료` : `${games[0].name} 외 ${games.length - 1}판 종료`
+        );
+        emitLiveEvent('games');
+        return { success: true, undo, endedCount: games.length, endedNames: games.map((g) => g.name) };
+    },
+
     endGame: async ({ request }) => {
         const data = await request.formData();
         const id = data.get('id')?.toString();
@@ -782,6 +824,16 @@ export const actions: Actions = {
                             DELETE FROM recurring_game_skips
                             WHERE recurring_schedule_id = ${skip.recurringScheduleId}
                               AND skip_date = ${skip.skipDate}::date
+                        `);
+                    }
+                });
+            } else if (entry.kind === 'end_expired_games') {
+                const { games } = entry.payload;
+                await db.transaction(async (tx) => {
+                    for (const g of (games ?? []) as { id: number; endTime: string }[]) {
+                        // 승자 기록 없이 닫힌 판이므로 참가자 결과는 건드리지 않는다.
+                        await tx.execute(sql`
+                            UPDATE game_sessions SET status = 'playing', end_time = ${g.endTime} WHERE id = ${g.id}
                         `);
                     }
                 });
