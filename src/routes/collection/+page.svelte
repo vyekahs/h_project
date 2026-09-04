@@ -120,6 +120,11 @@
     }
     function closeGameModal() {
         selectedGameId = null;
+        // 진행 중이던 인라인 수정 상태가 안 지워지면, 이 세션이 "전체 기록"이나
+        // 같은 게임을 다시 열었을 때 수정 폼이 그대로 열린 채로 재등장한다.
+        editingSessionId = null;
+        historyEditError = '';
+        ownershipError = '';
     }
 
     // 게임 종료 시 승자/점수를 잘못 입력했을 때 이 모달 안에서 바로 고칠 수 있게 한다
@@ -154,6 +159,13 @@
     // 훑어야 하는 용도(마이페이지 활동기록 탭을 대체). 필터는 게임별 모달과
     // 별개로 둔다 — 두 화면이 동시에 열리진 않지만 상태가 섞이면 헷갈린다.
     let viewMode: 'byGame' | 'all' = $state('byGame');
+    function switchView(mode: 'byGame' | 'all') {
+        viewMode = mode;
+        // editingSessionId는 두 화면이 playRow 스니펫을 공유해서 생기는 상태다 —
+        // 전환할 때 안 지우면 다른 화면에서 편집 폼이 열린 채로 튀어나온다.
+        editingSessionId = null;
+        historyEditError = '';
+    }
     let allYearFilter = $state('all');
     let allMonthFilter = $state('all');
     let allDayFilter = $state('all');
@@ -294,8 +306,8 @@
             </span>
         </p>
         <div class="view-toggle" role="group" aria-label="보기 방식">
-            <button type="button" class:active={viewMode === 'byGame'} aria-pressed={viewMode === 'byGame'} onclick={() => viewMode = 'byGame'}>게임별</button>
-            <button type="button" class:active={viewMode === 'all'} aria-pressed={viewMode === 'all'} onclick={() => viewMode = 'all'}>전체 기록</button>
+            <button type="button" class:active={viewMode === 'byGame'} aria-pressed={viewMode === 'byGame'} onclick={() => switchView('byGame')}>게임별</button>
+            <button type="button" class:active={viewMode === 'all'} aria-pressed={viewMode === 'all'} onclick={() => switchView('all')}>전체 기록</button>
         </div>
         {#if viewMode === 'byGame'}
             <div class="search-input-wrap">
@@ -371,7 +383,10 @@
             </div>
         {:else}
             <p class="shelf-legend">
-                <span class="legend-item"><span class="legend-swatch owned" aria-hidden="true"></span>내 소장</span>
+                <span class="legend-item">
+                    <svg class="legend-star" width="10" height="10" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 21 12 17.77 5.82 21 7 14.14l-5-4.87 6.91-1.01L12 2z"/></svg>
+                    내 소장
+                </span>
                 <span class="legend-item"><span class="legend-swatch unplayed" aria-hidden="true"></span>아직 플레이 안 함</span>
             </p>
             <section class="shelf-grid">
@@ -736,8 +751,9 @@
         border-radius: 50%;
         flex-shrink: 0;
     }
-    .legend-swatch.owned {
-        background: var(--color-amber);
+    .legend-star {
+        flex-shrink: 0;
+        color: var(--color-amber);
     }
     .legend-swatch.unplayed {
         background: var(--text-tertiary);
