@@ -645,6 +645,10 @@
         margin-bottom: 1.5rem;
     }
     .summary-card {
+        /* 그리드 아이템은 기본 min-width: auto라 내용(긴 이름)의 고유 너비보다
+           트랙이 줄어들지 못해, 좁은 화면에서 카드가 화면 밖으로 밀려난다.
+           .summary-name의 ellipsis가 실제로 작동하려면 이 min-width: 0이 필요하다. */
+        min-width: 0;
         background: var(--bg-primary);
         border-radius: 12px;
         padding: 0.9rem;
