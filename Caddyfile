@@ -6,6 +6,11 @@ damonpyo.mooo.com {
     handle /api/ble/report {
         reverse_proxy ble-server:3001
     }
+    # ble-server가 내부망(:8080)으로만 호출하는 경로 — 공개 도메인에서는 완전 차단.
+    # (API 키만으로는 부족: 키가 새어나가도 이 경로 자체가 공개망에서 안 보이게)
+    handle /api/internal/* {
+        respond 404
+    }
     handle {
         import active_app.caddy
     }
@@ -14,6 +19,11 @@ damonpyo.mooo.com {
 honnol.org {
     handle /api/ble/report {
         reverse_proxy ble-server:3001
+    }
+    # ble-server가 내부망(:8080)으로만 호출하는 경로 — 공개 도메인에서는 완전 차단.
+    # (API 키만으로는 부족: 키가 새어나가도 이 경로 자체가 공개망에서 안 보이게)
+    handle /api/internal/* {
+        respond 404
     }
     handle {
         import active_app.caddy

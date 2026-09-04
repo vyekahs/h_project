@@ -49,6 +49,13 @@ docker compose up -d db caddy
 
 docker compose up -d --build ble-server
 
+# 새 코드가 기동하기 전에 스키마를 먼저 맞춘다.
+# 이 시점엔 기존 활성 슬롯(구버전 코드)이 트래픽을 받고 있으므로, 마이그레이션은
+# 구버전과도 호환되는 형태(컬럼 추가 등 additive)여야 한다. 컬럼/테이블 삭제처럼
+# 구버전을 깨뜨리는 변경은 배포를 두 번에 나눠야 안전하다.
+# 실패하면 여기서 중단되어 트래픽 전환까지 가지 않는다.
+./scripts/run-migrations.sh
+
 # 비활성 슬롯을 새로 빌드/기동 — 이 사이 기존 활성 슬롯은 계속 트래픽을 받는다.
 docker compose up -d --build "app_${TARGET}"
 

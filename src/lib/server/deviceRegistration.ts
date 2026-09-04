@@ -4,9 +4,13 @@ import { sql } from 'drizzle-orm';
 import { addToIrkCache } from '$lib/server/ble';
 
 const BLE_SERVER_URL = process.env.BLE_SERVER_URL || 'http://ble-server:3001';
-const INTERNAL_API_KEY = process.env.INTERNAL_API_KEY || 'ble_internal_secret_2026';
+const INTERNAL_API_KEY = process.env.INTERNAL_API_KEY;
 
 async function notifyBleServerIrkAdd(attendeeId: number, irkHex: string) {
+    if (!INTERNAL_API_KEY) {
+        console.error('[IRK] INTERNAL_API_KEY 환경변수가 설정되지 않아 BLE 서버 알림을 건너뜁니다.');
+        return;
+    }
     try {
         await fetch(`${BLE_SERVER_URL}/irk/add`, {
             method: 'POST',

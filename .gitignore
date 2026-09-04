@@ -40,3 +40,6 @@ scripts/killer-sudoku-gen/*
 # (scripts/deploy-blue-green.sh가 active_app.caddy.example을 복사해 생성/갱신함)
 /active_app.caddy
 /.deploy_active_color
+
+# ESP32 WiFi/API 키 — hardware/*/secrets.h.example을 복사해서 각자 채워 쓸 것
+hardware/**/secrets.h
