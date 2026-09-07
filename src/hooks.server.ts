@@ -7,9 +7,9 @@ import {
 	markRequestAborted,
 	recordDbPoolStats,
 	getActiveDbConnections,
-	getDbPoolStats,
-	pruneMonitoringData
+	getDbPoolStats
 } from '$lib/server/performance';
+import { runDataRetention } from '$lib/server/retention';
 
 let requestIdSeq = 0;
 function nextRequestId() {
@@ -37,20 +37,28 @@ if (!dbPoolMonitorInterval) {
 	);
 }
 
-// 모니터링 테이블 보존 정리 (기동 직후 1회 + 이후 하루 간격)
-// 블루/그린으로 두 인스턴스가 동시에 돌아도 DELETE는 멱등이라 중복 실행이 안전하다.
-let monitoringPruneInterval: NodeJS.Timeout | null = null;
-if (!monitoringPruneInterval) {
+// 데이터 보존 정리 (기동 직후 1회 + 이후 30일 간격)
+//
+// 지우는 대상이 30~180일 지난 데이터라 매일 돌 이유가 없다. 미니게임 로그 삭제는
+// 월 경계 기준이라 실제로 한 달에 한 번만 지워지고, 월별 집계도 '완결된 달'만
+// 대상이라 이번 달 신선도를 신경 쓸 필요가 없다.
+//
+// 배포가 잦으면 아래 setTimeout 때문에 30일보다 자주 실행되는데, 집계는 값이
+// 달라졌을 때만 쓰고 DELETE는 조건에 맞는 행이 없으면 아무 일도 안 하므로
+// 중복 실행이 낭비가 되지 않는다.
+// 블루/그린으로 두 인스턴스가 동시에 돌아도 DELETE는 멱등이라 안전하다.
+let retentionInterval: NodeJS.Timeout | null = null;
+if (!retentionInterval) {
 	// 기동 직후 곧바로 돌리면 배포 시점의 부하와 겹치므로 1분 뒤에 시작
 	setTimeout(() => {
-		pruneMonitoringData().catch((e) => console.error('[PERF] 초기 모니터링 정리 실패:', e));
+		runDataRetention().catch((e) => console.error('[RETENTION] 초기 정리 실패:', e));
 	}, 60 * 1000);
 
-	monitoringPruneInterval = setInterval(
+	retentionInterval = setInterval(
 		() => {
-			pruneMonitoringData().catch((e) => console.error('[PERF] 모니터링 정리 실패:', e));
+			runDataRetention().catch((e) => console.error('[RETENTION] 정리 실패:', e));
 		},
-		24 * 60 * 60 * 1000
+		30 * 24 * 60 * 60 * 1000
 	);
 }
 
@@ -61,7 +69,15 @@ export const handle: Handle = async ({ event, resolve }) => {
 
 	// API 키 인증 엔드포인트 + ping은 세션 검증 스킵 (DB 커넥션 절약)
 	// ping은 순수 네트워크 왕복 시간만 재야 하므로 DB 조회가 섞이면 안 됨
-	const isApiKeyRoute = event.url.pathname.startsWith('/api/ble/') || event.url.pathname.startsWith('/api/wifi/') || event.url.pathname.startsWith('/api/internal/') || event.url.pathname === '/api/ping';
+	// 주의: '/api/wifi/' 전체를 넣으면 안 된다. 그 아래 /api/wifi/code는 브라우저에서
+	// 로그인한 사용자가 호출하는 엔드포인트라, 세션을 건너뛰면 locals.user가 비어
+	// 본인 확인을 할 수 없게 된다(실제로 그 탓에 남의 attendeeId로 코드를 받을 수
+	// 있었다). 기기/서버 간 통신 경로만 정확히 나열한다.
+	const isApiKeyRoute =
+		event.url.pathname.startsWith('/api/ble/') ||
+		event.url.pathname === '/api/wifi/report' ||
+		event.url.pathname.startsWith('/api/internal/') ||
+		event.url.pathname === '/api/ping';
 	if (!isApiKeyRoute) {
 		// 1+2. 인증 쿼리 순차 실행 (커넥션 1개씩만 사용)
 		const userSessionToken = event.cookies.get('user_session');

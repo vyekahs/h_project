@@ -7,7 +7,7 @@
 import { db, pgClient, APP_INSTANCE_NAME, MAX_POOL_CONNECTIONS } from '$lib/server/db';
 import { slowRequestLogs, dbPoolStats } from '$lib/server/db/schema/performance';
 import type { SlowRequestLog, DbPoolStat } from '$lib/server/db/schema/performance';
-import { desc, gte, lt, sql } from 'drizzle-orm';
+import { desc, gte, sql } from 'drizzle-orm';
 
 interface RequestMetrics {
 	path: string;
@@ -370,35 +370,6 @@ export async function getDbConnectionStats(): Promise<{
 	} catch (error) {
 		console.error('[PERF] Failed to get DB connection stats:', error);
 		return { total: 0, idle: 0, waiting: 0, dbTotal: 0, maxConnections: MAX_POOL_CONNECTIONS };
-	}
-}
-
-/**
- * 모니터링 테이블 보존 정리.
- *
- * db_pool_stats와 slow_request_logs는 계속 쌓기만 하고 지우는 코드가 없었다
- * (실측: db_pool_stats 17,712행 / 약 5개월치). 오래된 기록은 진단 가치가 없으므로
- * 보존 기간을 넘긴 행을 지운다.
- */
-export async function pruneMonitoringData(retentionDays = 30): Promise<void> {
-	try {
-		const cutoff = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000);
-		// db.execute(sql`... < ${cutoff}`)로 Date를 raw SQL 파라미터에 직접 넣으면
-		// postgres.js의 Bind 단계가 문자열/Buffer만 받아들여 TypeError가 난다.
-		// 쿼리 빌더(.where(lt(...)))는 drizzle이 컬럼 타입에 맞춰 직렬화하므로 안전하다.
-		const [pool, slow] = await Promise.all([
-			db.delete(dbPoolStats).where(lt(dbPoolStats.timestamp, cutoff)),
-			db.delete(slowRequestLogs).where(lt(slowRequestLogs.timestamp, cutoff))
-		]);
-		const poolCount = (pool as any)?.count ?? 0;
-		const slowCount = (slow as any)?.count ?? 0;
-		if (poolCount > 0 || slowCount > 0) {
-			console.log(
-				`[PERF] 모니터링 데이터 정리 (${retentionDays}일 초과): db_pool_stats ${poolCount}행, slow_request_logs ${slowCount}행 삭제`
-			);
-		}
-	} catch (error) {
-		console.error('[PERF] Failed to prune monitoring data:', error);
 	}
 }
 

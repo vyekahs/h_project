@@ -39,6 +39,10 @@ interface AttendeeInfo {
 }
 const attendeeCache = new Map<number, AttendeeInfo>();
 let attendeeCacheLoaded = false;
+// 캐시의 status가 DB와 어긋날 수 있어(QR 체크인·관리자 처리는 캐시를 안 건드림)
+// 주기적으로 다시 읽는다. 자세한 이유는 ensureCachesLoaded() 참고.
+let attendeeCacheLoadedAt = 0;
+const ATTENDEE_CACHE_TTL_MS = 5 * 60 * 1000; // 5분
 
 // Last Seen Maps for Auto-Checkout (AttendeeID -> timestamp ms)
 // BLE/WiFi 분리: 둘 중 하나라도 최근 감지되면 체크아웃 방지 (OR 조건)
@@ -276,12 +280,27 @@ export async function ensureCachesLoaded(source: string = 'BLE') {
         }
         console.log(`[${kstTime()}][${source}] IRK cache loaded: ${irkCache.length} devices (${wifiMacCache.size} with WiFi MAC)`);
     }
-    if (!attendeeCacheLoaded) {
+    // 주기적으로 다시 읽는다.
+    //
+    // 이 캐시의 status는 자동 체크인/체크아웃 경로에서만 갱신된다. QR 체크인
+    // (checkin/[token])과 관리자 화면은 DB만 바꾸고 이 캐시는 건드리지 않아서,
+    // 그렇게 입장한 회원은 캐시에 'left'로 남는다. checkAutoCheckout은 캐시에서
+    // status === 'present'인 사람만 순회하므로 그 회원은 자동 체크아웃 대상에서
+    // 통째로 빠진다 — 영업 종료(markAllLeft) 전까지 계속 입장 상태로 남았다.
+    //
+    // 모든 쓰기 경로가 캐시를 갱신하도록 강제하는 것보다, DB를 주기적으로 다시
+    // 읽어 어긋남을 스스로 바로잡는 편이 안전하다(경로가 늘어나도 깨지지 않는다).
+    const cacheAge = Date.now() - attendeeCacheLoadedAt;
+    if (!attendeeCacheLoaded || cacheAge > ATTENDEE_CACHE_TTL_MS) {
         const res = await db.execute(sql`
-            SELECT a.id, a.name, a.status, a.is_admin
+            SELECT DISTINCT a.id, a.name, a.status, a.is_admin
             FROM attendees a
             JOIN user_devices ud ON a.id = ud.attendee_id
         `);
+        // DB가 원본이므로 통째로 교체한다. 기기를 모두 삭제한 회원처럼 더는
+        // 대상이 아닌 항목도 이때 정리된다.
+        // (await 없이 동기적으로 교체해 중간 상태가 노출되지 않게 한다)
+        attendeeCache.clear();
         for (const row of res) {
             const r = row as any;
             attendeeCache.set(r.id, {
@@ -291,8 +310,12 @@ export async function ensureCachesLoaded(source: string = 'BLE') {
                 isAdmin: r.is_admin
             });
         }
+        const isReload = attendeeCacheLoaded;
         attendeeCacheLoaded = true;
-        console.log(`[${kstTime()}][${source}] Attendee cache loaded: ${attendeeCache.size} users`);
+        attendeeCacheLoadedAt = Date.now();
+        if (!isReload) {
+            console.log(`[${kstTime()}][${source}] Attendee cache loaded: ${attendeeCache.size} users`);
+        }
     }
 }
 
@@ -518,6 +541,24 @@ export async function checkAutoCheckout() {
                 await db.transaction(async (tx) => {
                     await tx.execute(sql`UPDATE attendees SET status = 'left', updated_at = NOW() WHERE id = ${attendee.id}`);
                     await tx.execute(sql`UPDATE visits SET departure_time = NOW() WHERE attendee_id = ${attendee.id} AND departure_time IS NULL`);
+                    // 판정 근거를 남긴다. 메모리 로그(autoLogs)는 100건에서 잘리고
+                    // 재시작하면 사라져서 사후 분석이 불가능했다.
+                    // idle_seconds가 있으면 "임계값을 아슬아슬하게 넘겼다"와
+                    // "몇 시간째 못 잡았다"를 구분할 수 있다 — 원인이 전혀 다르다.
+                    await tx.execute(sql`
+                        INSERT INTO auto_checkout_logs
+                            (attendee_id, last_seen_at, last_source, ble_seen_at, wifi_seen_at,
+                             idle_seconds, timeout_seconds)
+                        VALUES (
+                            ${attendee.id},
+                            ${lastSeen > 0 ? new Date(lastSeen) : null},
+                            ${lastSource},
+                            ${bleSeen > 0 ? new Date(bleSeen) : null},
+                            ${wifiSeen > 0 ? new Date(wifiSeen) : null},
+                            ${lastSeen > 0 ? Math.round((now - lastSeen) / 1000) : null},
+                            ${Math.round(CHECKOUT_TIMEOUT_MS / 1000)}
+                        )
+                    `);
                 });
                 attendee.status = 'left';
                 lastSeenBleMap.delete(attendee.id);

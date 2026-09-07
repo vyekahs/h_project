@@ -39,15 +39,9 @@ if [ "$CURRENT" = "blue" ]; then TARGET="green"; else TARGET="blue"; fi
 
 echo "[deploy] 현재 활성: app_${CURRENT} → 새로 배포: app_${TARGET}"
 
-# db/caddy는 항상 최신 상태 유지. ble-server는 코드가 바뀌었으면 재빌드
-# (사용자 트래픽과 무관한 백그라운드 서비스라 짧은 재시작은 감수한다).
+# db/caddy는 항상 최신 상태 유지.
+# ble-server는 여기서 올리지 않는다 — 아래 트래픽 전환 뒤로 미룬다(이유는 그쪽 주석 참고).
 docker compose up -d db caddy
-
-# 새 코드가 아직 없는 컬럼/제약을 가정할 수 있으므로, 새 앱 슬롯을 띄우기 전에
-# 마이그레이션부터 적용한다. 실패하면 배포 자체를 중단한다(set -e).
-./scripts/migrate-db.sh
-
-docker compose up -d --build ble-server
 
 # 새 코드가 기동하기 전에 스키마를 먼저 맞춘다.
 # 이 시점엔 기존 활성 슬롯(구버전 코드)이 트래픽을 받고 있으므로, 마이그레이션은
@@ -99,6 +93,19 @@ echo "[deploy] ✅ 트래픽이 app_${TARGET}로 전환됨."
 # (server.js의 graceful shutdown이 SIGTERM 이후 최대 5초까지 기존 연결을 마무리함)
 sleep 3
 docker compose stop "app_${CURRENT}"
+
+# ble-server는 트래픽 전환이 끝난 뒤에 올린다.
+#
+# ble-server는 기동하자마자 caddy:8080 → 활성 앱 슬롯에서 IRK 목록을 받아온다.
+# 예전처럼 앱보다 먼저 올리면 그 시점의 활성 슬롯은 아직 구버전이라, .env의
+# INTERNAL_API_KEY를 바꾼 배포에서는 401이 난다. 실제로 그 배포에서 30회 재시도
+# 중 17번째에 겨우 성공했다 — 조금만 늦었으면 빈 IRK 목록으로 기동해 아무도
+# 매칭되지 않고 회원 전원이 20분 뒤 자동 체크아웃될 뻔했다.
+#
+# 전환 후에 올리면 상대가 항상 새 슬롯이라 키/코드가 일치한다.
+# (ble-server에 5분 주기 IRK 갱신도 넣어두어, 그래도 실패하면 스스로 복구한다)
+echo "[deploy] ble-server 갱신 중..."
+docker compose up -d --build ble-server
 
 echo "$TARGET" > "$STATE_FILE"
 echo "[deploy] 🎉 배포 완료: app_${CURRENT} → app_${TARGET}"

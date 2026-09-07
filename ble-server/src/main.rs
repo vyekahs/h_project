@@ -237,21 +237,49 @@ fn check_internal_key(headers: &HeaderMap, expected: &str) -> bool {
 
 // --- Startup ---
 
+/// IRK 목록 주기 갱신 간격.
+///
+/// 예전에는 기동 시 1회만 가져왔다. 그래서 그때 실패하면(예: 배포 중 앱이 아직
+/// 안 떠서 401/연결 실패) 사람이 재시작해 줄 때까지 빈 목록으로 돌았고, 그동안은
+/// 아무도 매칭되지 않아 회원 전원이 20분 뒤 자동 체크아웃됐다.
+/// 실제로 배포 한 번에서 30회 재시도 중 17번째에 겨우 성공한 적이 있다.
+///
+/// 주기 갱신을 두면 초기 실패든 중간 장애든 스스로 복구된다. 기기 등록 시 오는
+/// /irk/add 호출이 유실된 경우도 다음 갱신에서 메워진다.
+const IRK_REFRESH_SECS: u64 = 300;
+
+/// IRK 목록을 한 번 가져와 store에 반영한다. 성공 시 반영된 기기 수를 돌려준다.
+async fn refresh_irk_once(state: &AppState) -> Result<usize, String> {
+    let devices = forward::fetch_irk_list(
+        &state.http_client,
+        &state.config.sveltekit_url,
+        &state.config.internal_api_key,
+    )
+    .await?;
+
+    let fetched = devices.len();
+    let mut store = state.irk_store.write().await;
+
+    // 빈 목록으로는 기존 목록을 덮어쓰지 않는다.
+    // IRK가 0건이 되면 아무도 매칭되지 않고, 그 상태가 20분 이어지면 현장에 있는
+    // 회원이 전원 자동 체크아웃된다. 일시적인 오류로 0건이 왔을 때 기존 목록을
+    // 지키는 편이 훨씬 안전하다.
+    if fetched == 0 && !store.entries().is_empty() {
+        return Err(format!(
+            "빈 목록이 반환되어 기존 {}건을 유지합니다",
+            store.entries().len()
+        ));
+    }
+
+    store.load(devices);
+    Ok(fetched)
+}
+
 async fn load_irk_with_retry(state: &AppState) {
     let max_retries = 30;
     for attempt in 1..=max_retries {
-        match forward::fetch_irk_list(
-            &state.http_client,
-            &state.config.sveltekit_url,
-            &state.config.internal_api_key,
-        )
-        .await
-        {
-            Ok(devices) => {
-                let mut store = state.irk_store.write().await;
-                store.load(devices);
-                return;
-            }
+        match refresh_irk_once(state).await {
+            Ok(_) => return,
             Err(e) => {
                 tracing::warn!(
                     "Failed to fetch IRK list (attempt {}/{}): {}",
@@ -263,7 +291,12 @@ async fn load_irk_with_retry(state: &AppState) {
             }
         }
     }
-    tracing::error!("Could not fetch IRK list after {} attempts. Starting with empty list.", max_retries);
+    // 여기까지 와도 죽지 않는다. 아래 주기 갱신 태스크가 계속 재시도하므로
+    // 앱이 늦게 뜨는 등의 이유로 초기 로드가 실패해도 스스로 복구된다.
+    tracing::error!(
+        "Could not fetch IRK list after {} attempts. 빈 목록으로 기동하지만 {}초마다 재시도합니다.",
+        max_retries, IRK_REFRESH_SECS
+    );
 }
 
 #[tokio::main]
@@ -299,6 +332,21 @@ async fn main() {
 
     // Load IRKs from SvelteKit
     load_irk_with_retry(&state).await;
+
+    // IRK 목록 주기 갱신 — 초기 로드 실패나 /irk/add 유실을 스스로 복구한다
+    let refresh_state = Arc::clone(&state);
+    tokio::spawn(async move {
+        let mut interval =
+            tokio::time::interval(std::time::Duration::from_secs(IRK_REFRESH_SECS));
+        interval.tick().await; // 첫 tick은 즉시 발생 — 기동 시 이미 로드했으므로 건너뛴다
+        loop {
+            interval.tick().await;
+            match refresh_irk_once(&refresh_state).await {
+                Ok(n) => tracing::debug!("IRK list refreshed: {} devices", n),
+                Err(e) => tracing::warn!("IRK list refresh failed (기존 목록 유지): {}", e),
+            }
+        }
+    });
 
     // Background cache cleanup every 60 seconds
     let cleanup_state = Arc::clone(&state);

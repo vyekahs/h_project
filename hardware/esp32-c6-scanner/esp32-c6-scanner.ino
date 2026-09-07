@@ -174,15 +174,20 @@ void setup() {
   pBLEScan = BLEDevice::getScan();
   pBLEScan->setActiveScan(false);   // Passive scan (MAC+RSSI만 필요, RF 시간 절약)
 
-  // WiFi/BLE 공존 튜닝: C6는 2.4GHz 라디오를 WiFi와 BLE가 공유한다.
-  // window == interval(100% 듀티)로 두면 공존 중재기가 강제로 시간을 뺏어가고,
-  // 그 손실은 약한 신호(주머니 속 폰)에 집중된다. 명시적 여유를 두는 편이
-  // 실제 캡처 수가 늘어나는 경우가 많다.
-  // 값 튜닝 시 A/B 비교 권장 (이전 설정: interval 160 / window 160 = 100%)
+  // 듀티는 100%(window == interval)를 유지한다. 건드리지 말 것.
+  //
+  // 한때 "WiFi/BLE가 2.4GHz 라디오를 공유하니 여유를 주면 실제 캡처가 늘 것"이라는
+  // 가설로 window를 112(70%)로 낮춘 적이 있는데, 운영에서 명백히 나빠졌다 —
+  // 자동 체크아웃이 눈에 띄게 늘었다. 수신 시간이 30% 줄면 그 손실은 약하고
+  // 드문 광고 신호(주머니 속 폰)에 그대로 집중된다.
+  // C6는 같은 시기에 외장 안테나까지 살렸는데도 결과가 나빴다 — 안테나 이득보다
+  // 듀티 손실이 더 컸다는 뜻이다.
+  //
+  // 즉 검증되지 않은 공존 이론보다 "더 오래 듣는다"가 실측에서 이겼다.
   pBLEScan->setInterval(160);       // 100ms 주기 (단위 0.625ms)
-  pBLEScan->setWindow(112);         // 70ms 수신 = 70% 듀티, 나머지는 WiFi 몫
+  pBLEScan->setWindow(160);         // 160 = interval과 동일 → 100% 듀티 (연속 수신)
 
-  Serial.println("=== SCANNER READY (passive, 70% duty) ===\n");
+  Serial.println("=== SCANNER READY (passive, 100% duty) ===\n");
 }
 
 void addDevice(const uint8_t mac[6], int rssi, const char* name) {
