@@ -45,6 +45,21 @@ async function compactMinigamePlayLog(retainMonths: number): Promise<PruneResult
 	try {
 		let deleted = 0;
 		await db.transaction(async (tx) => {
+			// 블루/그린 두 인스턴스가(또는 재시작이 잦을 때 같은 인스턴스가) 동시에
+			// 이 트랜잭션에 들어오면, 같은 (month_key, game_id, difficulty, user_id)
+			// 행을 동시에 upsert하려다 서로 tuple/transactionid 락을 기다리며 줄줄이
+			// 쌓인다 — 실제로 커넥션 풀(20개)이 전부 이 대기로 막혀 사이트 전체가
+			// 멈춘 적이 있다. 트랜잭션 스코프 advisory lock으로 한 번에 하나만
+			// 실제로 돌게 하고, 이미 누가 돌고 있으면 그냥 이번 실행은 건너뛴다
+			// (커밋/롤백 시 자동 해제되므로 별도 unlock이나 누수 걱정이 없다).
+			const [{ locked }] = (await tx.execute(
+				sql`SELECT pg_try_advisory_xact_lock(hashtext('minigame_play_log_compaction')::bigint) AS locked`
+			)) as any[];
+			if (!locked) {
+				console.log('[RETENTION] minigame_play_log 압축 — 다른 인스턴스가 이미 실행 중이라 건너뜀');
+				return;
+			}
+
 			// 1) '완결된 달'만 집계한다. 이번 달은 제외 — 이 표는 지난 기록을 보기 위한
 			//    것이고, 진행 중인 달이 완결된 달처럼 섞여 있으면 오해를 부른다
 			//    (이번 달이 궁금하면 원본이 아직 남아 있으니 그쪽을 보면 된다).
