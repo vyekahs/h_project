@@ -113,10 +113,20 @@ async function compactMinigamePlayLog(retainMonths: number): Promise<PruneResult
 	}
 }
 
-export async function runDataRetention(): Promise<void> {
-	const now = Date.now();
-	const daysAgo = (d: number) => new Date(now - d * 24 * 60 * 60 * 1000);
+/**
+ * 기준 시각은 JS Date가 아니라 SQL 인터벌로 만든다.
+ *
+ * db.execute(sql`...`)는 postgres.js의 unsafe()로 내려가는데, 태그드 템플릿과 달리
+ * 파라미터 타입 추론을 하지 않아 Date 객체를 그대로 넘기면 Bind 단계에서
+ * "The string argument must be of type string... Received an instance of Date"로
+ * 실패한다. 실제로 이 때문에 Date를 쓰던 정리 항목 네 개가 계속 실패하고 있었다.
+ *
+ * 인터벌로 쓰면 이 문제가 없을뿐더러, 기준 시각을 DB가 직접 계산하므로
+ * 앱 컨테이너와 DB의 시계가 어긋나도 삭제 범위가 흔들리지 않는다.
+ */
+const daysAgo = (d: number) => sql.raw(`NOW() - INTERVAL '${Math.trunc(d)} days'`);
 
+export async function runDataRetention(): Promise<void> {
 	// 플레이 로그는 집계가 선행되어야 하므로 아래 병렬 정리와 분리해 먼저 처리한다.
 	// 이 테이블을 읽는 쿼리는 최대 1개월까지만 보지만(활동 피드, getPopularGames),
 	// 여유를 두어 6개월치 원본을 남긴다.
