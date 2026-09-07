@@ -126,7 +126,46 @@ async function compactMinigamePlayLog(retainMonths: number): Promise<PruneResult
  */
 const daysAgo = (d: number) => sql.raw(`NOW() - INTERVAL '${Math.trunc(d)} days'`);
 
+/** 보존 정리 최소 간격. 이보다 자주 호출되면 실제 작업 없이 반환한다. */
+const RETENTION_MIN_INTERVAL = "INTERVAL '30 days'";
+
+/**
+ * 이번 실행 권한을 DB에서 원자적으로 가져온다.
+ *
+ * 호출 주기를 타이머에만 맡기면 안 된다는 것을 비싸게 배웠다. setInterval에
+ * 30일(2,592,000,000ms)을 넘겼는데 Node의 타이머 지연 상한이 2^31-1ms(약 24.8일)라
+ * 지연이 1ms로 축소됐고, 결과적으로 정리 작업이 초당 900회 넘게 돌면서 커넥션
+ * 20개를 상시 점유하고 DB에 초당 7,500 트랜잭션을 쏟아냈다.
+ *
+ * 그래서 "언제 돌지"의 최종 판단을 타이머가 아니라 DB에 둔다. 마지막 실행 시각을
+ * 조건부 UPSERT로 갱신하고, 갱신된 경우에만 실제 작업을 한다. 조건이 DB 안에서
+ * 원자적으로 평가되므로 타이머가 아무리 자주 깨워도, 블루/그린 두 인스턴스가
+ * 동시에 깨어나도 30일에 한 번만 통과한다.
+ */
+async function claimRetentionRun(): Promise<boolean> {
+	try {
+		const rows = (await db.execute(sql`
+			INSERT INTO system_settings (key, value)
+			VALUES ('last_retention_run', NOW()::text)
+			ON CONFLICT (key) DO UPDATE SET value = NOW()::text
+			WHERE system_settings.value::timestamptz
+			      < NOW() - ${sql.raw(RETENTION_MIN_INTERVAL)}
+			RETURNING 1 AS claimed
+		`)) as any[];
+		return rows.length > 0;
+	} catch (e) {
+		// 조회에 실패하면 실행하지 않는다. 못 지운 데이터는 다음 기회에 지우면 되지만,
+		// 판단을 못 하는 채로 계속 도는 쪽이 훨씬 위험하다.
+		console.error('[RETENTION] 실행 시각 확인 실패 — 이번 호출은 건너뛴다:', e);
+		return false;
+	}
+}
+
 export async function runDataRetention(): Promise<void> {
+	if (!(await claimRetentionRun())) return;
+
+	console.log('[RETENTION] 정리 시작');
+
 	// 플레이 로그는 집계가 선행되어야 하므로 아래 병렬 정리와 분리해 먼저 처리한다.
 	// 이 테이블을 읽는 쿼리는 최대 1개월까지만 보지만(활동 피드, getPopularGames),
 	// 여유를 두어 6개월치 원본을 남긴다.

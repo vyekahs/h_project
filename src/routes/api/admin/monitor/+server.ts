@@ -1,11 +1,9 @@
 import { json } from '@sveltejs/kit';
 import os from 'os';
-import { db } from '$lib/server/db/index';
-import { sql } from 'drizzle-orm';
 import { getSSEConnectionCount } from '$lib/server/liveEvents';
 import { verifyAdminSession } from '$lib/server/auth';
 import { getAutoCheckinLogs } from '$lib/server/ble';
-import { getDbConnectionStats, getStuckRequests, getAbandonedRequests } from '$lib/server/performance';
+import { getDbHealthSnapshot, getStuckRequests, getAbandonedRequests } from '$lib/server/performance';
 
 // CPU snapshot for delta-based usage calculation
 let prevCpuIdle = 0;
@@ -51,25 +49,15 @@ export async function GET({ cookies }: { cookies: any }) {
 
 	const start = performance.now();
 
-	// DB ping with timeout
-	let dbLatency = -1;
-	let dbTotal = 0, dbIdle = 0, dbWaiting = 0, dbAllInstances = 0, dbMax = 0;
-	try {
-		const dbStart = performance.now();
-		await Promise.race([
-			db.execute(sql`SELECT 1`),
-			new Promise((_, reject) => setTimeout(() => reject(new Error('DB timeout')), 3000))
-		]);
-		dbLatency = Math.round(performance.now() - dbStart);
-		const stats = await getDbConnectionStats();
-		dbTotal = stats.total;
-		dbIdle = stats.idle;
-		dbWaiting = stats.waiting;
-		dbAllInstances = stats.dbTotal;
-		dbMax = stats.maxConnections;
-	} catch {
-		dbLatency = -1;
-	}
+	// 지연 측정과 커넥션 통계를 쿼리 하나로 함께 가져온다 (getDbHealthSnapshot 주석 참고)
+	const {
+		latency: dbLatency,
+		total: dbTotal,
+		idle: dbIdle,
+		waiting: dbWaiting,
+		dbTotal: dbAllInstances,
+		maxConnections: dbMax
+	} = await getDbHealthSnapshot();
 
 	const mem = process.memoryUsage();
 	const totalMem = os.totalmem();

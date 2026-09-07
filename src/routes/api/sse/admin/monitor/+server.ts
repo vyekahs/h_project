@@ -1,10 +1,8 @@
 import os from 'os';
-import { db } from '$lib/server/db/index';
-import { sql } from 'drizzle-orm';
 import { getSSEConnectionCount, incrementSSECount, decrementSSECount } from '$lib/server/liveEvents';
 import { verifyAdminSession } from '$lib/server/auth';
 import { getAutoCheckinLogs } from '$lib/server/ble';
-import { getDbConnectionStats, getStuckRequests, getAbandonedRequests } from '$lib/server/performance';
+import { getDbHealthSnapshot, getStuckRequests, getAbandonedRequests } from '$lib/server/performance';
 
 // CPU snapshot for delta-based usage calculation
 let prevCpuIdle = 0;
@@ -42,13 +40,6 @@ function updateCpuUsage(): number {
 	prevCpuTotal = snap.total;
 })();
 
-function queryWithTimeout(timeoutMs = 3000): Promise<any> {
-	return Promise.race([
-		db.execute(sql`SELECT 1`),
-		new Promise((_, reject) => setTimeout(() => reject(new Error('DB timeout')), timeoutMs))
-	]);
-}
-
 // Metrics history ring buffer (최근 60개 = 5분 @ 5초 간격)
 interface MetricsSnapshot {
 	cpu: number;
@@ -61,21 +52,15 @@ const metricsHistory: MetricsSnapshot[] = [];
 const MAX_HISTORY = 60;
 
 async function collectMetrics() {
-	let dbLatency = -1;
-	let dbTotal = 0, dbIdle = 0, dbWaiting = 0, dbAllInstances = 0, dbMax = 0;
-	try {
-		const dbStart = performance.now();
-		await queryWithTimeout();
-		dbLatency = Math.round(performance.now() - dbStart);
-		const stats = await getDbConnectionStats();
-		dbTotal = stats.total;
-		dbIdle = stats.idle;
-		dbWaiting = stats.waiting;
-		dbAllInstances = stats.dbTotal;
-		dbMax = stats.maxConnections;
-	} catch {
-		dbLatency = -1;
-	}
+	// 지연 측정과 커넥션 통계를 쿼리 하나로 함께 가져온다 (getDbHealthSnapshot 주석 참고)
+	const {
+		latency: dbLatency,
+		total: dbTotal,
+		idle: dbIdle,
+		waiting: dbWaiting,
+		dbTotal: dbAllInstances,
+		maxConnections: dbMax
+	} = await getDbHealthSnapshot();
 
 	const mem = process.memoryUsage();
 	const totalMem = os.totalmem();
@@ -161,14 +146,35 @@ export async function GET({ request, cookies }: { request: Request; cookies: any
 				send(': heartbeat\n\n');
 			}
 
+			// 지표 수집이 한 번 실패했다고 스트림을 닫지 않는다.
+			//
+			// 예전에는 실패 즉시 cleanup()으로 스트림을 끊었다. 그러면 클라이언트가
+			// 폴백 폴링(/api/admin/monitor)을 켜고 3초 뒤 재연결하는데, 이 과정에서
+			// SSE와 REST가 한동안 같은 데이터를 중복으로 가져간다. DB가 잠깐
+			// 느려졌을 뿐인데 모니터링 부하가 오히려 늘어나는 셈이다.
+			//
+			// 한 틱 건너뛰는 편이 낫다. 다음 5초에 다시 시도하면 되고, 그 사이
+			// 클라이언트는 마지막 값을 그대로 보여준다. 계속 실패하면 그때는
+			// 정말 무언가 잘못된 것이므로 스트림을 닫아 클라이언트가 재연결하게 한다.
+			let consecutiveFailures = 0;
+			const MAX_CONSECUTIVE_FAILURES = 5;
+
 			async function pushMetrics() {
 				if (closed) return;
 				try {
 					const metrics = await collectMetrics();
+					consecutiveFailures = 0;
 					sendData(metrics);
 				} catch (e) {
-					console.error('[Monitor SSE] Failed to collect metrics:', e);
-					cleanup();
+					consecutiveFailures++;
+					console.error(
+						`[Monitor SSE] 지표 수집 실패 (${consecutiveFailures}/${MAX_CONSECUTIVE_FAILURES} 연속):`,
+						e
+					);
+					if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+						console.error('[Monitor SSE] 연속 실패가 이어져 스트림을 닫는다');
+						cleanup();
+					}
 				}
 			}
 
