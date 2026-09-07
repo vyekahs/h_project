@@ -69,7 +69,15 @@ export const handle: Handle = async ({ event, resolve }) => {
 
 	// API 키 인증 엔드포인트 + ping은 세션 검증 스킵 (DB 커넥션 절약)
 	// ping은 순수 네트워크 왕복 시간만 재야 하므로 DB 조회가 섞이면 안 됨
-	const isApiKeyRoute = event.url.pathname.startsWith('/api/ble/') || event.url.pathname.startsWith('/api/wifi/') || event.url.pathname.startsWith('/api/internal/') || event.url.pathname === '/api/ping';
+	// 주의: '/api/wifi/' 전체를 넣으면 안 된다. 그 아래 /api/wifi/code는 브라우저에서
+	// 로그인한 사용자가 호출하는 엔드포인트라, 세션을 건너뛰면 locals.user가 비어
+	// 본인 확인을 할 수 없게 된다(실제로 그 탓에 남의 attendeeId로 코드를 받을 수
+	// 있었다). 기기/서버 간 통신 경로만 정확히 나열한다.
+	const isApiKeyRoute =
+		event.url.pathname.startsWith('/api/ble/') ||
+		event.url.pathname === '/api/wifi/report' ||
+		event.url.pathname.startsWith('/api/internal/') ||
+		event.url.pathname === '/api/ping';
 	if (!isApiKeyRoute) {
 		// 1+2. 인증 쿼리 순차 실행 (커넥션 1개씩만 사용)
 		const userSessionToken = event.cookies.get('user_session');
