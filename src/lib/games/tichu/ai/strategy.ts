@@ -846,16 +846,30 @@ function pickBestFollow(
 		const trickCards = context.trick!.plays.flatMap(p => p.combination.cards);
 		const trickPoints = getTrickPoints(trickCards);
 
+		// 강제로 내야 하는 상황인지는 **지금 이 트릭을 이기고 있는 사람**을 기준으로 본다.
+		//
+		// 기존에는 "상대 중 아무나 4장 이하" / "상대 중 아무나 티츄 선언"으로 판정했다.
+		// 그래서 티츄를 부르지 않은 다른 상대가 K를 내도 강제로 A를 내버렸다.
+		// 정작 티츄 선언자를 막아야 할 때는 손에 막을 카드가 남아 있지 않게 된다.
+		// (이 코드베이스는 폭탄 쪽에서 이미 같은 원칙을 정리해뒀다 —
+		//  "그 상대가 지금 이 트릭의 리더가 아니면 이 트릭을 이겨봤자 무관하다")
+		// 강제로 내야 하는 상황 판정.
+		//
+		// 티츄 조건은 **지금 이 트릭을 이기고 있는 사람**을 기준으로 본다.
+		// 기존에는 "상대 중 아무나 티츄 선언"으로 판정해서, 티츄를 부르지 않은 다른
+		// 상대가 K를 내도 강제로 A를 내버렸다. 그러면 정작 선언자를 막아야 할 때
+		// 손에 막을 카드가 남아 있지 않다.
+		// (폭탄 쪽에는 이미 같은 원칙이 적용돼 있다 — "그 상대가 지금 이 트릭의 리더가
+		//  아니면 이 트릭을 이겨봤자 그 상대를 막는 것과 무관하다")
+		//
+		// 반면 "나가기 직전 상대"는 트릭 리더가 아니어도 뺏는다. 내가 이겨야 다음 선을
+		// 잡아서 그 상대에게 낼 기회를 주지 않기 때문이다.
+		// (이쪽까지 리더 기준으로 좁혀보니 팀 점수차가 +5.8 → -5.7로 크게 나빠졌다)
+		const leader = context.players[lastPlay.seat];
+		const leaderIsOpponent = getTeam(lastPlay.seat) !== myTeam && leader.finishOrder === null;
 		const mustPlay =
-			// 상대가 나가기 직전이면 뺏어야 함 (4장 이하로 확대)
 			context.players.some(p => getTeam(p.seat) !== myTeam && p.finishOrder === null && p.hand.length <= 4) ||
-			// 티츄 선언 상대가 있으면 반드시 차단
-			context.players.some(p =>
-				getTeam(p.seat) !== myTeam &&
-				(p.grandTichu === true || p.smallTichu) &&
-				p.finishOrder === null
-			) ||
-			// 트릭 포인트가 높으면 뺏어야 함
+			(leaderIsOpponent && (leader.grandTichu === true || leader.smallTichu)) ||
 			(trickPoints >= 15 && getTeam(lastPlay.seat) !== myTeam);
 
 		if (!mustPlay) {
