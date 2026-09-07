@@ -28,105 +28,142 @@ async function canModifyGame(request: Request, gameId: string | number): Promise
 }
 
 export const load: PageServerLoad = async () => {
-    const [attendeesResult, historyResult, gamesResult, scheduledGamesResult, reservationsResult, gameNamesResult, allGamesResult, settingsResult, dailyVisitPlansResult, todayScheduledParticipantsResult] = await Promise.all([
+    // 예전에는 10개 쿼리를 Promise.all로 동시에 던져 이 화면 하나가 커넥션 10개를
+    // 점유했다. 관리자 두 명이 동시에 열면 그것만으로 풀(max 20)이 찼다.
+    // 논리적으로 묶어 3개로 줄인다.
+    const [sessionsRes, peopleRes, miscRes] = await Promise.all([
+        // ① 게임 세션 관련 — 진행중/예정/예약
         db.execute(sql`
-            SELECT a.id, a.name, a.arrival_time, a.status, a.penalty_points, a.is_blacklisted, a.can_manage_games,
-                   MAX(g.id) as game_id,
-                   MAX(g.game_name) as game_name,
-                   BOOL_OR(g.id IS NOT NULL) as is_playing
-            FROM attendees a
-            LEFT JOIN session_participants sp ON a.id = sp.attendee_id
-            LEFT JOIN game_sessions g ON sp.session_id = g.id AND g.status = 'playing'
-            WHERE a.status = 'present'
-            GROUP BY a.id, a.name, a.arrival_time, a.status, a.penalty_points, a.is_blacklisted, a.can_manage_games
-            ORDER BY is_playing, a.arrival_time DESC
+            WITH players AS (
+                SELECT sp.session_id,
+                       json_agg(json_build_object(
+                           'id', COALESCE(a.id, -sp.id),
+                           'name', COALESCE(a.name, sp.guest_name),
+                           'is_guest', (sp.attendee_id IS NULL)
+                       ) ORDER BY sp.id) AS list
+                FROM session_participants sp
+                LEFT JOIN attendees a ON sp.attendee_id = a.id
+                GROUP BY sp.session_id
+            ),
+            playing AS (
+                SELECT gs.*, g.image_url, COALESCE(p.list, '[]') AS players
+                FROM game_sessions gs
+                LEFT JOIN games g ON gs.game_id = g.id
+                LEFT JOIN players p ON p.session_id = gs.id
+                WHERE gs.status = 'playing'
+            ),
+            scheduled AS (
+                SELECT gs.id, gs.game_name, gs.game_id, gs.min_players, gs.max_players,
+                       gs.scheduled_at, g.image_url,
+                       COALESCE(p.list, '[]') AS participants
+                FROM game_sessions gs
+                LEFT JOIN games g ON gs.game_id = g.id
+                LEFT JOIN players p ON p.session_id = gs.id
+                WHERE gs.status = 'scheduled'
+            ),
+            res AS (
+                SELECT r.id, r.status, r.created_at, r.attendee_id,
+                       a.name AS attendee_name, a.penalty_points, a.is_blacklisted,
+                       a.status AS attendee_status,
+                       gs.id AS session_id, gs.game_name,
+                       gs.status AS session_status, gs.scheduled_at, gs.start_time, gs.max_players,
+                       (SELECT COUNT(*) FROM session_participants sp WHERE sp.session_id = gs.id) AS current_players,
+                       CASE WHEN r.status = 'waitlisted'
+                            THEN ROW_NUMBER() OVER (PARTITION BY r.session_id, r.status ORDER BY r.created_at ASC)
+                       END AS waitlist_position
+                FROM reservations r
+                JOIN attendees a ON r.attendee_id = a.id
+                JOIN game_sessions gs ON r.session_id = gs.id
+                WHERE r.status IN ('pending', 'waitlisted', 'confirmed', 'pending_approval')
+                  AND gs.status IN ('scheduled', 'playing')
+            )
+            SELECT
+                COALESCE((SELECT json_agg(row_to_json(x) ORDER BY x.start_time DESC) FROM playing x), '[]') AS playing_games,
+                COALESCE((SELECT json_agg(row_to_json(x) ORDER BY x.scheduled_at ASC) FROM scheduled x), '[]') AS scheduled_games,
+                COALESCE((SELECT json_agg(row_to_json(x) ORDER BY x.scheduled_at ASC NULLS LAST, x.created_at ASC) FROM res x), '[]') AS reservations
         `),
+
+        // ② 사람 관련 — 현재 입장자 / 전체 회원 / 갈 예정 / 오늘 예정 참가자
         db.execute(sql`
-            SELECT id, name, penalty_points, is_blacklisted
-            FROM attendees
-            ORDER BY name ASC
+            WITH present AS (
+                SELECT a.id, a.name, a.arrival_time, a.status, a.penalty_points,
+                       a.is_blacklisted, a.can_manage_games,
+                       MAX(g.id) AS game_id,
+                       MAX(g.game_name) AS game_name,
+                       BOOL_OR(g.id IS NOT NULL) AS is_playing
+                FROM attendees a
+                LEFT JOIN session_participants sp ON a.id = sp.attendee_id
+                LEFT JOIN game_sessions g ON sp.session_id = g.id AND g.status = 'playing'
+                WHERE a.status = 'present'
+                GROUP BY a.id, a.name, a.arrival_time, a.status, a.penalty_points,
+                         a.is_blacklisted, a.can_manage_games
+            ),
+            all_users AS (
+                SELECT id, name, penalty_points, is_blacklisted FROM attendees
+            ),
+            visit_plans AS (
+                SELECT dvp.id, dvp.attendee_id, a.name, dvp.planned_time, t.title_name, dvp.created_at
+                FROM daily_visit_plans dvp
+                JOIN attendees a ON dvp.attendee_id = a.id
+                LEFT JOIN minigame_user_points up ON a.id = up.user_id
+                LEFT JOIN minigame_titles t ON up.equipped_title_id = t.id
+                WHERE dvp.plan_date = CURRENT_DATE
+            ),
+            today_scheduled AS (
+                SELECT DISTINCT ON (sp.attendee_id) sp.attendee_id, a.name, t.title_name,
+                       gs.party_id IS NOT NULL AS is_party,
+                       TO_CHAR(gs.scheduled_at AT TIME ZONE 'Asia/Seoul', 'HH24:MI') AS planned_time
+                FROM session_participants sp
+                JOIN game_sessions gs ON sp.session_id = gs.id
+                JOIN attendees a ON sp.attendee_id = a.id
+                LEFT JOIN minigame_user_points up ON a.id = up.user_id
+                LEFT JOIN minigame_titles t ON up.equipped_title_id = t.id
+                WHERE gs.status = 'scheduled'
+                  AND gs.scheduled_at::date = (NOW() AT TIME ZONE 'Asia/Seoul')::date
+                  AND sp.attendee_id IS NOT NULL
+                ORDER BY sp.attendee_id, gs.scheduled_at ASC
+            )
+            SELECT
+                COALESCE((SELECT json_agg(row_to_json(x) ORDER BY x.is_playing, x.arrival_time DESC) FROM present x), '[]') AS attendees,
+                COALESCE((SELECT json_agg(row_to_json(x) ORDER BY x.name ASC) FROM all_users x), '[]') AS all_users,
+                COALESCE((SELECT json_agg(row_to_json(x) ORDER BY x.created_at ASC) FROM visit_plans x), '[]') AS daily_visit_plans,
+                COALESCE((SELECT json_agg(row_to_json(x)) FROM today_scheduled x), '[]') AS today_scheduled_participants
         `),
+
+        // ③ 목록/설정 — 저장된 게임명, 전체 게임, 시스템 설정
         db.execute(sql`
-            SELECT gs.*, g.image_url,
-                COALESCE(json_agg(json_build_object(
-                    'id', COALESCE(a.id, -sp.id),
-                    'name', COALESCE(a.name, sp.guest_name),
-                    'is_guest', (sp.attendee_id IS NULL)
-                )) FILTER (WHERE sp.id IS NOT NULL), '[]') as players
-            FROM game_sessions gs
-            LEFT JOIN session_participants sp ON gs.id = sp.session_id
-            LEFT JOIN attendees a ON sp.attendee_id = a.id
-            LEFT JOIN games g ON gs.game_id = g.id
-            WHERE gs.status = 'playing'
-            GROUP BY gs.id, g.image_url
-            ORDER BY gs.start_time DESC
-        `),
-        db.execute(sql`
-            SELECT gs.id, gs.game_name, gs.game_id, gs.min_players, gs.max_players, gs.scheduled_at, g.image_url,
-                   COALESCE(json_agg(json_build_object(
-                       'id', COALESCE(a.id, -sp.id),
-                       'name', COALESCE(a.name, sp.guest_name),
-                       'is_guest', (sp.attendee_id IS NULL)
-                   )) FILTER (WHERE sp.id IS NOT NULL), '[]') as participants
-            FROM game_sessions gs
-            LEFT JOIN session_participants sp ON gs.id = sp.session_id
-            LEFT JOIN attendees a ON sp.attendee_id = a.id
-            LEFT JOIN games g ON gs.game_id = g.id
-            WHERE gs.status = 'scheduled'
-            GROUP BY gs.id, gs.game_name, gs.game_id, gs.min_players, gs.max_players, gs.scheduled_at, g.image_url
-            ORDER BY gs.scheduled_at ASC
-        `),
-        db.execute(sql`
-            SELECT r.id, r.status, r.created_at, r.attendee_id,
-                   a.name AS attendee_name, a.penalty_points, a.is_blacklisted,
-                   a.status AS attendee_status,
-                   gs.id AS session_id, gs.game_name,
-                   gs.status AS session_status, gs.scheduled_at, gs.start_time, gs.max_players,
-                   (SELECT COUNT(*) FROM session_participants sp WHERE sp.session_id = gs.id) AS current_players,
-                   CASE WHEN r.status = 'waitlisted'
-                        THEN ROW_NUMBER() OVER (PARTITION BY r.session_id, r.status ORDER BY r.created_at ASC)
-                   END AS waitlist_position
-            FROM reservations r
-            JOIN attendees a ON r.attendee_id = a.id
-            JOIN game_sessions gs ON r.session_id = gs.id
-            WHERE r.status IN ('pending', 'waitlisted', 'confirmed', 'pending_approval')
-              AND gs.status IN ('scheduled', 'playing')
-            ORDER BY gs.scheduled_at ASC NULLS LAST, r.created_at ASC
-        `),
-        db.execute(sql`
-            SELECT DISTINCT ON (game_name)
-                game_name,
-                ROUND(EXTRACT(EPOCH FROM (end_time - start_time))/60) as duration
-            FROM game_sessions
-            ORDER BY game_name, start_time DESC
-        `),
-        db.execute(sql`SELECT id, name, playtime_min, min_players, max_players, image_url FROM games WHERE is_active = true ORDER BY name ASC`),
-        db.execute(sql`SELECT key, value FROM system_settings`),
-        db.execute(sql`
-            SELECT dvp.id, dvp.attendee_id, a.name, dvp.planned_time,
-                   t.title_name
-            FROM daily_visit_plans dvp
-            JOIN attendees a ON dvp.attendee_id = a.id
-            LEFT JOIN minigame_user_points up ON a.id = up.user_id
-            LEFT JOIN minigame_titles t ON up.equipped_title_id = t.id
-            WHERE dvp.plan_date = CURRENT_DATE
-            ORDER BY dvp.created_at ASC
-        `),
-        db.execute(sql`
-            SELECT DISTINCT ON (sp.attendee_id) sp.attendee_id, a.name, t.title_name,
-                   gs.party_id IS NOT NULL as is_party,
-                   TO_CHAR(gs.scheduled_at AT TIME ZONE 'Asia/Seoul', 'HH24:MI') as planned_time
-            FROM session_participants sp
-            JOIN game_sessions gs ON sp.session_id = gs.id
-            JOIN attendees a ON sp.attendee_id = a.id
-            LEFT JOIN minigame_user_points up ON a.id = up.user_id
-            LEFT JOIN minigame_titles t ON up.equipped_title_id = t.id
-            WHERE gs.status = 'scheduled'
-              AND gs.scheduled_at::date = (NOW() AT TIME ZONE 'Asia/Seoul')::date
-              AND sp.attendee_id IS NOT NULL
-            ORDER BY sp.attendee_id, gs.scheduled_at ASC
+            WITH game_names AS (
+                SELECT DISTINCT ON (game_name)
+                       game_name,
+                       ROUND(EXTRACT(EPOCH FROM (end_time - start_time))/60) AS duration
+                FROM game_sessions
+                ORDER BY game_name, start_time DESC
+            ),
+            active_games AS (
+                SELECT id, name, playtime_min, min_players, max_players, image_url
+                FROM games WHERE is_active = true
+            )
+            SELECT
+                COALESCE((SELECT json_agg(row_to_json(x) ORDER BY x.game_name) FROM game_names x), '[]') AS saved_game_names,
+                COALESCE((SELECT json_agg(row_to_json(x) ORDER BY x.name ASC) FROM active_games x), '[]') AS all_games,
+                COALESCE((SELECT json_agg(row_to_json(x)) FROM system_settings x), '[]') AS settings
         `),
     ]);
+
+    const sessionsRow = (sessionsRes as any[])[0] ?? {};
+    const peopleRow = (peopleRes as any[])[0] ?? {};
+    const miscRow = (miscRes as any[])[0] ?? {};
+
+    const attendeesResult = peopleRow.attendees ?? [];
+    const historyResult = peopleRow.all_users ?? [];
+    const gamesResult = sessionsRow.playing_games ?? [];
+    const scheduledGamesResult = sessionsRow.scheduled_games ?? [];
+    const reservationsResult = sessionsRow.reservations ?? [];
+    const gameNamesResult = miscRow.saved_game_names ?? [];
+    const allGamesResult = miscRow.all_games ?? [];
+    const settingsResult = miscRow.settings ?? [];
+    const dailyVisitPlansResult = peopleRow.daily_visit_plans ?? [];
+    const todayScheduledParticipantsResult = peopleRow.today_scheduled_participants ?? [];
 
     const presentNames = new Set((attendeesResult as any[]).map((a: any) => a.name));
     const savedMembers = (historyResult as any[])
