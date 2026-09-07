@@ -776,7 +776,12 @@ function pickBestFollow(
 	}
 
 	// === 전략적 패스: 확률이 낮으면 패스 ===
-	const passThreshold = 0.15 + weights.aggressiveness * 0.1;
+	// 티츄를 부른 쪽은 패스할 때마다 카드를 한 장도 못 뺀다. 먼저 나가야 하는 쪽이
+	// 스스로 기회를 버리는 셈이라 문턱을 크게 낮춘다.
+	const meForPass = context.players[context.currentSeat];
+	const iDeclaredForPass = meForPass.finishOrder === null &&
+		(meForPass.grandTichu === true || meForPass.smallTichu);
+	const passThreshold = (0.15 + weights.aggressiveness * 0.1) * (iDeclaredForPass ? 0.25 : 1);
 
 	if (bestResult.totalScore < passThreshold) {
 		// 단, 패스하면 안 되는 상황 체크
