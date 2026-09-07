@@ -160,7 +160,16 @@
     <section class="games-grid">
         {#each filteredGames as game}
             {@const rank = data.userRanks[game.id]}
-            <a href={game.url} class="game-icon-item" style="--accent: {game.accentColor}">
+            <!-- 티츄만 시작 화면을 거치지 않고 게임 페이지로 바로 들어가는데, 그 라우트의
+                 CSS가 57KB로 앱에서 가장 크다. 모바일엔 hover가 없어 기본 preload-data가
+                 사실상 탭 순간에야 걸리고, 그동안 스타일이 덜 붙은 화면이 잠깐 보인다.
+                 아이콘이 보이는 시점에 미리 받아둔다. -->
+            <a
+                href={game.url}
+                class="game-icon-item"
+                style="--accent: {game.accentColor}"
+                data-sveltekit-preload-code={game.id === 'tichu' ? 'viewport' : undefined}
+            >
                 <div class="icon-wrapper glass-panel">
                     <div class="icon-box">
                         {#if game.id === 'sudoku'}
