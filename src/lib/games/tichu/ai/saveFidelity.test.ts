@@ -8,7 +8,8 @@ import { describe, it, expect } from 'vitest';
 import { LocalGameEngine } from './localGameEngine';
 import { AiPlayer } from './aiPlayer';
 import { clampTimers } from './simHarness';
-import type { AiStrategy, SeatIndex, GamePhase } from '../types';
+import type { SeatIndex, GamePhase } from '../types';
+import type { AiStrategy } from './types';
 
 const PRESETS: AiStrategy[] = ['aggressive', 'balanced', 'defensive', 'tricky', 'wild'];
 
