@@ -45,8 +45,13 @@ async function compactMinigamePlayLog(retainMonths: number): Promise<PruneResult
 	try {
 		let deleted = 0;
 		await db.transaction(async (tx) => {
-			// 1) 남아 있는 원본 전체를 월별로 집계해 upsert.
+			// 1) '완결된 달'만 집계한다. 이번 달은 제외 — 이 표는 지난 기록을 보기 위한
+			//    것이고, 진행 중인 달이 완결된 달처럼 섞여 있으면 오해를 부른다
+			//    (이번 달이 궁금하면 원본이 아직 남아 있으니 그쪽을 보면 된다).
 			//    원본이 이미 지워진 달은 이 SELECT에 안 나오므로 기존 집계가 유지된다.
+			//
+			//    값이 실제로 달라졌을 때만 UPDATE한다(DO UPDATE ... WHERE). 완결된 달은
+			//    두 번째 집계부터 값이 같으므로, 작업이 여러 번 돌아도 쓰기가 발생하지 않는다.
 			await tx.execute(sql`
 				INSERT INTO minigame_monthly_play_stats
 					(month_key, game_id, difficulty, user_id,
@@ -63,6 +68,7 @@ async function compactMinigamePlayLog(retainMonths: number): Promise<PruneResult
 					max(played_at),
 					NOW()
 				FROM minigame_play_log
+				WHERE played_at < date_trunc('month', NOW())
 				GROUP BY 1, 2, 3, 4
 				ON CONFLICT (month_key, game_id, difficulty, user_id) DO UPDATE SET
 					start_count     = EXCLUDED.start_count,
@@ -71,6 +77,11 @@ async function compactMinigamePlayLog(retainMonths: number): Promise<PruneResult
 					best_clear_time = EXCLUDED.best_clear_time,
 					last_played_at  = EXCLUDED.last_played_at,
 					aggregated_at   = NOW()
+				WHERE minigame_monthly_play_stats.start_count     IS DISTINCT FROM EXCLUDED.start_count
+				   OR minigame_monthly_play_stats.clear_count     IS DISTINCT FROM EXCLUDED.clear_count
+				   OR minigame_monthly_play_stats.best_score      IS DISTINCT FROM EXCLUDED.best_score
+				   OR minigame_monthly_play_stats.best_clear_time IS DISTINCT FROM EXCLUDED.best_clear_time
+				   OR minigame_monthly_play_stats.last_played_at  IS DISTINCT FROM EXCLUDED.last_played_at
 			`);
 
 			// 2) 보존 기간을 넘긴 '완결된 달'의 원본만 삭제
