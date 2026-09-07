@@ -6,8 +6,7 @@
 
 import { db, pgClient, APP_INSTANCE_NAME, MAX_POOL_CONNECTIONS } from '$lib/server/db';
 import { slowRequestLogs, dbPoolStats } from '$lib/server/db/schema/performance';
-import type { SlowRequestLog, DbPoolStat } from '$lib/server/db/schema/performance';
-import { desc, gte, sql } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 
 interface RequestMetrics {
 	path: string;
@@ -398,74 +397,74 @@ async function persistSlowRequestToDB(metrics: RequestMetrics): Promise<void> {
 }
 
 /**
- * Get slow requests from database (historical data)
- * @param limit Number of records to retrieve (default: 100)
- * @param sinceDate Optional timestamp to filter from (default: last 7 days)
+ * 성능 이력 화면(/admin/monitor)이 쓰는 데이터를 한 번의 쿼리로 가져온다.
+ *
+ * 예전에는 다섯 개 함수를 Promise.all로 동시에 던졌다. 지연 시간은 짧아지지만
+ * 그동안 커넥션 다섯 개를 동시에 점유한다 — 화면 하나 여는 데 풀(20)의 1/4을
+ * 쓰는 셈이라, 사람이 몇 명만 겹쳐도 풀이 바닥난다. CTE로 합치면 커넥션 하나로
+ * 끝나고 왕복도 한 번이다.
+ *
+ * json_agg는 CTE에 적어둔 ORDER BY를 보존하지 않으므로 집계 안에서 다시 정렬한다.
+ * 키는 화면이 읽는 이름(camelCase)에 맞춰 명시적으로 만든다 — row_to_json을 쓰면
+ * DB 컬럼명(snake_case)이 그대로 나가 화면이 조용히 빈 값을 그린다.
+ *
+ * 예전 응답에 있던 slowestEndpoints는 뺐다. 7일치 GROUP BY 스캔을 매번 하면서도
+ * 화면 어디에서도 읽지 않는 값이었다.
  */
-export async function getSlowRequestsFromDB(
-	limit = 100,
-	sinceDate?: Date
-): Promise<SlowRequestLog[]> {
-	const since = sinceDate || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-
-	return await db
-		.select()
-		.from(slowRequestLogs)
-		.where(gte(slowRequestLogs.timestamp, since))
-		.orderBy(desc(slowRequestLogs.timestamp))
-		.limit(limit);
-}
-
-/**
- * Get aggregated statistics from slow request logs
- */
-export async function getSlowRequestStats(sinceDate?: Date) {
-	const since = sinceDate || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-
-	const [stats] = await db
-		.select({
-			total: sql<number>`count(*)`,
-			avgDuration: sql<number>`avg(duration)`,
-			maxDuration: sql<number>`max(duration)`,
-			minDuration: sql<number>`min(duration)`
-		})
-		.from(slowRequestLogs)
-		.where(gte(slowRequestLogs.timestamp, since));
+export async function getPerformanceHistory(limit = 100, days = 7) {
+	const [row] = (await db.execute(sql`
+		WITH slow_all AS (
+			SELECT * FROM slow_request_logs
+			WHERE timestamp >= NOW() - make_interval(days => ${days})
+		),
+		slow_recent AS (
+			SELECT * FROM slow_all ORDER BY timestamp DESC LIMIT ${limit}
+		),
+		pool_all AS (
+			SELECT * FROM db_pool_stats
+			WHERE timestamp >= NOW() - make_interval(days => ${days})
+		),
+		pool_recent AS (
+			SELECT * FROM pool_all ORDER BY timestamp DESC LIMIT ${limit}
+		)
+		SELECT
+			COALESCE((
+				SELECT json_agg(json_build_object(
+					'timestamp', s.timestamp, 'path', s.path, 'method', s.method,
+					'duration', s.duration, 'statusCode', s.status_code
+				) ORDER BY s.timestamp DESC) FROM slow_recent s
+			), '[]'::json) AS slow_requests,
+			(SELECT json_build_object(
+				'total', count(*),
+				'avgDuration', COALESCE(round(avg(duration))::int, 0),
+				'maxDuration', COALESCE(max(duration), 0),
+				'minDuration', COALESCE(min(duration), 0)
+			) FROM slow_all) AS stats,
+			COALESCE((
+				SELECT json_agg(json_build_object(
+					'timestamp', p.timestamp, 'activeConnections', p.active_connections,
+					'maxConnections', p.max_connections, 'utilizationPercent', p.utilization_percent
+				) ORDER BY p.timestamp DESC) FROM pool_recent p
+			), '[]'::json) AS db_pool_history,
+			(SELECT json_build_object(
+				'total', count(*),
+				'avgUtilization', COALESCE(round(avg(utilization_percent))::int, 0),
+				'maxUtilization', COALESCE(max(utilization_percent), 0),
+				'peakConnections', COALESCE(max(active_connections), 0)
+			) FROM pool_all) AS db_pool_stats
+	`)) as any[];
 
 	return {
-		total: Number(stats?.total || 0),
-		avgDuration: Math.round(Number(stats?.avgDuration || 0)),
-		maxDuration: Number(stats?.maxDuration || 0),
-		minDuration: Number(stats?.minDuration || 0)
+		slowRequests: row?.slow_requests ?? [],
+		stats: row?.stats ?? { total: 0, avgDuration: 0, maxDuration: 0, minDuration: 0 },
+		dbPoolHistory: row?.db_pool_history ?? [],
+		dbPoolStats: row?.db_pool_stats ?? {
+			total: 0,
+			avgUtilization: 0,
+			maxUtilization: 0,
+			peakConnections: 0
+		}
 	};
-}
-
-/**
- * Get slowest endpoints from database
- */
-export async function getSlowestEndpointsFromDB(limit = 20) {
-	const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-
-	const results = await db
-		.select({
-			path: slowRequestLogs.path,
-			method: slowRequestLogs.method,
-			count: sql<number>`count(*)`,
-			avgDuration: sql<number>`avg(${slowRequestLogs.duration})`,
-			maxDuration: sql<number>`max(${slowRequestLogs.duration})`
-		})
-		.from(slowRequestLogs)
-		.where(gte(slowRequestLogs.timestamp, sevenDaysAgo))
-		.groupBy(slowRequestLogs.path, slowRequestLogs.method)
-		.orderBy(desc(sql<number>`avg(${slowRequestLogs.duration})`))
-		.limit(limit);
-
-	return results.map((r) => ({
-		path: `${r.method} ${r.path}`,
-		count: Number(r.count),
-		avgDuration: Math.round(Number(r.avgDuration)),
-		maxDuration: Number(r.maxDuration)
-	}));
 }
 
 /**
@@ -496,45 +495,3 @@ export async function recordDbPoolStats(
 	}
 }
 
-/**
- * Get DB pool statistics from database (historical data)
- * @param limit Number of records to retrieve (default: 100)
- * @param sinceDate Optional timestamp to filter from (default: last 7 days)
- */
-export async function getDbPoolStatsFromDB(
-	limit = 100,
-	sinceDate?: Date
-): Promise<DbPoolStat[]> {
-	const since = sinceDate || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-
-	return await db
-		.select()
-		.from(dbPoolStats)
-		.where(gte(dbPoolStats.timestamp, since))
-		.orderBy(desc(dbPoolStats.timestamp))
-		.limit(limit);
-}
-
-/**
- * Get aggregated DB pool statistics
- */
-export async function getDbPoolStatsAggregated(sinceDate?: Date) {
-	const since = sinceDate || new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-
-	const [stats] = await db
-		.select({
-			total: sql<number>`count(*)`,
-			avgUtilization: sql<number>`avg(utilization_percent)`,
-			maxUtilization: sql<number>`max(utilization_percent)`,
-			peakConnections: sql<number>`max(active_connections)`
-		})
-		.from(dbPoolStats)
-		.where(gte(dbPoolStats.timestamp, since));
-
-	return {
-		total: Number(stats?.total || 0),
-		avgUtilization: Math.round(Number(stats?.avgUtilization || 0)),
-		maxUtilization: Number(stats?.maxUtilization || 0),
-		peakConnections: Number(stats?.peakConnections || 0)
-	};
-}
