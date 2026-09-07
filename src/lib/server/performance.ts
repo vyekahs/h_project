@@ -383,15 +383,20 @@ export async function getDbConnectionStats(): Promise<{
 export async function pruneMonitoringData(retentionDays = 30): Promise<void> {
 	try {
 		const cutoff = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000);
-		const [pool, slow] = await Promise.all([
+		// 자동 체크아웃 이력은 더 오래 남긴다. 하루 몇 건 수준이라 용량 부담이 없고,
+		// "몇 주 전부터 이상했다" 같은 문의를 사후에 확인하려면 기간이 길어야 한다.
+		const checkoutCutoff = new Date(Date.now() - 180 * 24 * 60 * 60 * 1000);
+		const [pool, slow, checkout] = await Promise.all([
 			db.execute(sql`DELETE FROM db_pool_stats WHERE timestamp < ${cutoff}`),
-			db.execute(sql`DELETE FROM slow_request_logs WHERE timestamp < ${cutoff}`)
+			db.execute(sql`DELETE FROM slow_request_logs WHERE timestamp < ${cutoff}`),
+			db.execute(sql`DELETE FROM auto_checkout_logs WHERE checked_out_at < ${checkoutCutoff}`)
 		]);
 		const poolCount = (pool as any)?.count ?? 0;
 		const slowCount = (slow as any)?.count ?? 0;
-		if (poolCount > 0 || slowCount > 0) {
+		const checkoutCount = (checkout as any)?.count ?? 0;
+		if (poolCount > 0 || slowCount > 0 || checkoutCount > 0) {
 			console.log(
-				`[PERF] 모니터링 데이터 정리 (${retentionDays}일 초과): db_pool_stats ${poolCount}행, slow_request_logs ${slowCount}행 삭제`
+				`[PERF] 모니터링 데이터 정리: db_pool_stats ${poolCount}행, slow_request_logs ${slowCount}행 (${retentionDays}일 초과), auto_checkout_logs ${checkoutCount}행 (180일 초과) 삭제`
 			);
 		}
 	} catch (error) {

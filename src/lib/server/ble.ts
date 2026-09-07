@@ -518,6 +518,24 @@ export async function checkAutoCheckout() {
                 await db.transaction(async (tx) => {
                     await tx.execute(sql`UPDATE attendees SET status = 'left', updated_at = NOW() WHERE id = ${attendee.id}`);
                     await tx.execute(sql`UPDATE visits SET departure_time = NOW() WHERE attendee_id = ${attendee.id} AND departure_time IS NULL`);
+                    // 판정 근거를 남긴다. 메모리 로그(autoLogs)는 100건에서 잘리고
+                    // 재시작하면 사라져서 사후 분석이 불가능했다.
+                    // idle_seconds가 있으면 "임계값을 아슬아슬하게 넘겼다"와
+                    // "몇 시간째 못 잡았다"를 구분할 수 있다 — 원인이 전혀 다르다.
+                    await tx.execute(sql`
+                        INSERT INTO auto_checkout_logs
+                            (attendee_id, last_seen_at, last_source, ble_seen_at, wifi_seen_at,
+                             idle_seconds, timeout_seconds)
+                        VALUES (
+                            ${attendee.id},
+                            ${lastSeen > 0 ? new Date(lastSeen) : null},
+                            ${lastSource},
+                            ${bleSeen > 0 ? new Date(bleSeen) : null},
+                            ${wifiSeen > 0 ? new Date(wifiSeen) : null},
+                            ${lastSeen > 0 ? Math.round((now - lastSeen) / 1000) : null},
+                            ${Math.round(CHECKOUT_TIMEOUT_MS / 1000)}
+                        )
+                    `);
                 });
                 attendee.status = 'left';
                 lastSeenBleMap.delete(attendee.id);

@@ -110,6 +110,24 @@ CREATE TABLE IF NOT EXISTS visits (
     departure_time TIMESTAMP WITH TIME ZONE
 );
 
+-- 자동 체크아웃 이력. 판정 근거(마지막 감지 후 경과 시간, 그때의 임계값)를 함께
+-- 남겨야 "아슬아슬하게 넘겼다"와 "한참 못 잡았다"를 사후에 구분할 수 있다.
+CREATE TABLE IF NOT EXISTS auto_checkout_logs (
+    id              SERIAL PRIMARY KEY,
+    attendee_id     INTEGER REFERENCES attendees(id) ON DELETE CASCADE,
+    checked_out_at  TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    last_seen_at    TIMESTAMP WITH TIME ZONE,
+    last_source     VARCHAR(10),
+    ble_seen_at     TIMESTAMP WITH TIME ZONE,
+    wifi_seen_at    TIMESTAMP WITH TIME ZONE,
+    idle_seconds    INTEGER,
+    timeout_seconds INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_auto_checkout_logs_time
+    ON auto_checkout_logs (checked_out_at DESC);
+CREATE INDEX IF NOT EXISTS idx_auto_checkout_logs_attendee
+    ON auto_checkout_logs (attendee_id, checked_out_at DESC);
+
 
 -- QR Tokens table (For secure check-in)
 CREATE TABLE IF NOT EXISTS qr_tokens (
