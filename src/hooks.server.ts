@@ -37,29 +37,29 @@ if (!dbPoolMonitorInterval) {
 	);
 }
 
-// 데이터 보존 정리 (기동 직후 1회 + 이후 30일 간격)
+// 데이터 보존 정리
 //
-// 지우는 대상이 30~180일 지난 데이터라 매일 돌 이유가 없다. 미니게임 로그 삭제는
-// 월 경계 기준이라 실제로 한 달에 한 번만 지워지고, 월별 집계도 '완결된 달'만
-// 대상이라 이번 달 신선도를 신경 쓸 필요가 없다.
+// 실제 실행 간격(30일)은 runDataRetention 안에서 DB에 기록된 마지막 실행 시각으로
+// 판단한다. 여기 타이머는 "확인하러 깨우는" 역할만 한다.
 //
-// 배포가 잦으면 아래 setTimeout 때문에 30일보다 자주 실행되는데, 집계는 값이
-// 달라졌을 때만 쓰고 DELETE는 조건에 맞는 행이 없으면 아무 일도 안 하므로
-// 중복 실행이 낭비가 되지 않는다.
-// 블루/그린으로 두 인스턴스가 동시에 돌아도 DELETE는 멱등이라 안전하다.
+// 타이머에 30일을 직접 넣었다가 크게 데었다. 30일은 2,592,000,000ms인데 Node의
+// 타이머 지연 상한은 2^31-1ms(약 24.8일)이고, 이를 넘기면 지연이 1ms로 축소된다.
+// 그래서 정리 작업이 초당 900회 넘게 돌면서 커넥션 20개를 상시 점유하고 DB에
+// 초당 7,500 트랜잭션을 쏟아냈다. 사용자가 없는 새벽에도 계속.
+//
+// 이제 깨우는 주기는 하루(상한의 1/25 수준으로 안전)이고, 하루에 한 번 깨어나도
+// 30일이 안 지났으면 DB 조회 한 번으로 즉시 반환한다.
+const RETENTION_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 let retentionInterval: NodeJS.Timeout | null = null;
 if (!retentionInterval) {
-	// 기동 직후 곧바로 돌리면 배포 시점의 부하와 겹치므로 1분 뒤에 시작
+	// 기동 직후 곧바로 돌리면 배포 시점의 부하와 겹치므로 1분 뒤에 확인
 	setTimeout(() => {
 		runDataRetention().catch((e) => console.error('[RETENTION] 초기 정리 실패:', e));
 	}, 60 * 1000);
 
-	retentionInterval = setInterval(
-		() => {
-			runDataRetention().catch((e) => console.error('[RETENTION] 정리 실패:', e));
-		},
-		30 * 24 * 60 * 60 * 1000
-	);
+	retentionInterval = setInterval(() => {
+		runDataRetention().catch((e) => console.error('[RETENTION] 정리 실패:', e));
+	}, RETENTION_CHECK_INTERVAL_MS);
 }
 
 import type { Handle } from '@sveltejs/kit';
