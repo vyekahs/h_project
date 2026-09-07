@@ -941,6 +941,7 @@
 -->
 {#if $recentActions.length > 0}
     <div class="recent-actions">
+        <div class="recent-head">
         <button
             type="button"
             class="recent-toggle"
@@ -951,6 +952,15 @@
             <span class="recent-caret" aria-hidden="true">{recentOpen ? '▾' : '▸'}</span>
             되돌릴 수 있는 조치 {$recentActions.length}
         </button>
+        <!--
+            10분 창이 끝날 때까지 지울 방법이 없었다. 무를 생각이 없는 조치까지
+            그 시간 내내 화면 위에 앉아 있으면, 되돌리기를 담은 자리가 치우고
+            싶은 것이 된다. 서버 창은 그대로 두고 화면에서만 거둔다.
+        -->
+        <button type="button" class="recent-clear" onclick={() => $recentActions.forEach((a) => forgetAction(a.id))}>
+            모두 지우기
+        </button>
+        </div>
         {#if recentOpen}
             <ul class="recent-list" id="recent-actions-list">
                 {#each $recentActions as a (a.id)}
@@ -960,6 +970,8 @@
                         <button type="button" class="btn-role is-secondary recent-undo" onclick={() => a.run()}>
                             되돌리기<span class="sr-only"> — {a.label}</span>
                         </button>
+                        <button type="button" class="recent-dismiss" onclick={() => forgetAction(a.id)}
+                            aria-label="목록에서 지우기 — {a.label}">×</button>
                     </li>
                 {/each}
             </ul>
@@ -968,14 +980,14 @@
 {/if}
 
 <!--
-    넓은 화면에서 게임·큐·사람이 같은 화면에 들어오도록 2열로 묶는다.
-    왼쪽 열에 게임과 큐가 쌓이고 오른쪽 열은 명단이 통째로 쓴다.
+    넓은 화면에서 방의 네 질문이 같은 화면에 들어오도록 2열로 묶는다.
+    왼쪽 열에 게임 → 시작 예정 → 오늘 갈 예정이 쌓이고, 오른쪽 열은 명단이
+    통째로 쓴다.
 
-    DOM 순서는 게임 → 명단 → 큐다. 데스크톱에서 보이는 순서(왼쪽 위→아래,
-    오른쪽)와 어긋나지만, 이 순서가 접히는 폰에서는 명단이 큐보다 먼저 와야
-    한다 — 게임 → 큐 → 명단으로 쌓으면 큐가 591px이라 375x812에서 사람이
-    한 명도 접힌 선 위에 남지 않는다. 세 섹션 모두 랜드마크라 보조기술은
-    순서와 무관하게 건너뛴다.
+    DOM 순서는 명단 → 게임 → 시작 예정 → 오늘 갈 예정이다. 폰에서 한 열로
+    접힐 때 방에 서 있는 운영자가 먼저 봐야 하는 것이 사람이기 때문이다 —
+    테이블은 눈으로 보이지만 페널티·블랙·대기 여부는 화면에만 있다.
+    데스크톱의 열 배치는 이것과 다르므로 아래 CSS가 넷 다 명시한다.
 -->
 <!--
     손이 필요한 예약 한 묶음. 진행 중 게임 행과 예정 게임 행이 같은 걸 쓴다 —
@@ -1130,7 +1142,40 @@
                         {/if}
                     </span>
                 </div>
+                <!--
+                    퇴장은 명단에서 가장 잦은 조치인데 관리 시트 안에 있었다.
+                    한 명 내보낼 때마다 시트를 열고 닫아야 했고, 저녁이 끝날
+                    무렵에는 그걸 여러 번 반복한다.
+
+                    확인창은 두지 않는다. 퇴장에는 되돌리기가 있고(토스트와
+                    「되돌릴 수 있는 조치」 양쪽), 이 동작의 문제는 위험이 아니라
+                    반복이다. 대신 되돌릴 수 있는 파괴적 동작의 표시(빨간 테두리)를
+                    입고, 관리와 붙지 않게 떨어뜨린다.
+
+                    게임 중인 사람은 예외다 — 게임도 함께 끝낼지 물어야 하므로
+                    기존 선택 모달로 간다.
+                -->
                 <div class="attendee-actions">
+                    {#if a.is_playing}
+                        <button type="button" class="btn-row-exit" onclick={() => handleRemove(a)}>
+                            퇴장<span class="sr-only"> — {a.name} · 게임 중</span>
+                        </button>
+                    {:else}
+                        <form method="POST" action="?/removeAttendee" use:enhance={() => {
+                            return async ({ result, update }) => {
+                                if (!reportResult(result)) {
+                                    const d = ((result as any)?.data as any) ?? {};
+                                    toastUndoable(`${d.removedName ?? a.name}님 퇴장 처리`, d.undo);
+                                }
+                                await update();
+                            };
+                        }}>
+                            <input type="hidden" name="id" value={a.id} />
+                            <button type="submit" class="btn-row-exit">
+                                퇴장<span class="sr-only"> — {a.name}</span>
+                            </button>
+                        </form>
+                    {/if}
                     <button type="button" class="btn-manage" onclick={() => openManage(a)}>
                         관리<span class="sr-only"> — {a.name}</span>
                     </button>
@@ -1830,11 +1875,10 @@
             <div class="manage-row">
                 <div class="manage-label">
                     <span>입장 상태</span>
-                    <!-- 하드코딩이라 게임 중인 사람도 「방에 있음」이라 말했고,
-                         그래서 퇴장 처리가 예고 없이 다른 시트로 분기했다.
+                    <!-- 한때 하드코딩이라 게임 중인 사람도 「방에 있음」이라 말했다.
                          큐에서 열면 방에 없는 사람의 시트일 수도 있다 — 그때
-                         「방에 있음」은 거짓이고 퇴장 처리는 할 일이 없다. -->
-                    <span class="manage-sub" id="manage-presence">
+                         「방에 있음」은 거짓이다. 이제 상태만 말한다. -->
+                    <span class="manage-sub">
                         {m.status !== 'present'
                             ? '방에 없음 — 예약만 남아 있습니다'
                             : m.is_playing && m.game_name
@@ -1842,37 +1886,11 @@
                               : '방에 있음'}
                     </span>
                 </div>
-            <form method="POST" action="?/removeAttendee" use:enhance={(arg) => {
-                if (m.is_playing) {
-                    arg.cancel();
-                    manageTarget = null;
-                    handleRemove(m);
-                    return;
-                }
-                return confirmSubmit({
-                    title: '퇴장 처리',
-                    message: `${m.name}님을 퇴장 처리합니다. 방에 없음으로 바뀌고, 대기·승인 큐의 확정 예약은 노쇼 후보로 표시됩니다.`,
-                    confirmLabel: '퇴장',
-                    severity: 'destructive',
-                    handle: async ({ result, update }) => {
-                        if (!reportResult(result)) {
-                            manageTarget = null;
-                            const d = (result?.data as any) ?? {};
-                            toastUndoable(`${d.removedName ?? m.name}님 퇴장 처리`, d.undo);
-                        }
-                        await update();
-                    }
-                })(arg);
-            }}>
-                <input type="hidden" name="id" value={m.id} />
-                <!-- 조건부로 숨기면 "왜 없지"를 알 수 없다. 못 쓰는 이유를 달고 남긴다. -->
-                <button
-                    type="submit"
-                    class="btn-role is-danger-outline"
-                    disabled={m.status !== 'present'}
-                    aria-describedby={m.status !== 'present' ? 'manage-presence' : undefined}
-                >퇴장 처리</button>
-            </form>
+            <!--
+                퇴장은 명단 행으로 나갔다. 여기 남겨두면 같은 레이블이 두 계약을
+                갖는다 — 행의 것은 바로 처리하고 시트의 것은 확인창을 거쳤다.
+                이 행은 이제 상태만 말한다.
+            -->
             </div>
 
             <button type="button" class="btn-sheet-close manage-close" onclick={() => (manageTarget = null)}>
@@ -2445,17 +2463,54 @@
         「최근 조치」 패널. 스트립과 방 사이에 끼지만 접힌 상태의 높이는
         한 줄(40px)이고, 되돌릴 것이 없으면 아예 렌더되지 않는다.
     */
+    .recent-clear {
+        flex: 0 0 auto;
+        margin-right: var(--space-2);
+        min-height: 44px;
+        padding: 0 var(--space-2);
+        border: 1px solid transparent;
+        border-radius: var(--radius-control);
+        background: none;
+        color: var(--text-secondary);
+        font-size: var(--text-xs);
+        cursor: pointer;
+    }
+    .recent-clear:hover {
+        background: var(--bg-hover);
+        color: var(--text-primary);
+    }
+    .recent-dismiss {
+        min-width: 44px;
+        min-height: 44px;
+        padding: 0;
+        border: 1px solid transparent;
+        border-radius: var(--radius-control);
+        background: none;
+        color: var(--text-secondary);
+        font-size: 1.1rem;
+        line-height: 1;
+        cursor: pointer;
+    }
+    .recent-dismiss:hover {
+        background: var(--bg-hover);
+        color: var(--text-primary);
+    }
     .recent-actions {
         margin-bottom: var(--space-5);
         border: 1px solid var(--border-light);
         border-radius: var(--radius-control);
         background: var(--bg-secondary);
     }
+    .recent-head {
+        display: flex;
+        align-items: center;
+    }
     .recent-toggle {
         display: flex;
         align-items: center;
         gap: var(--space-2);
-        width: 100%;
+        flex: 1 1 auto;
+        min-width: 0;
         padding: var(--space-2) var(--space-4);
         border: none;
         border-radius: var(--radius-control);
@@ -3326,8 +3381,13 @@
     }
     .attendee-actions {
         display: flex;
-        gap: 0.4rem;
+        /* 퇴장과 관리가 붙어 있으면 시트를 열려다 사람을 내보낸다 */
+        gap: var(--space-3);
         align-items: center;
+        flex-shrink: 0;
+    }
+    .attendee-actions form {
+        margin: 0;
     }
     /* 대기 · 승인 큐 */
     /* 대기 배지가 붙으면 제목이 두 줄이 될 수 있다 */
@@ -3529,7 +3589,28 @@
     }
     /* 비활성 버튼도 --bg-hover를 쓴다. 같은 회색이 한 섹션에서는 "죽음",
        다음 섹션에서는 "누르세요"를 뜻하면 안 된다. 테두리로 세운다. */
+    /*
+        되돌릴 수 있는 파괴적 동작의 표시 — 빨간 테두리. 채움은 되돌릴 수 없는
+        것(블랙 등록)에만 예약돼 있다. 관리와 붙지 않게 간격을 두어, 시트를
+        열려다 사람을 내보내는 일이 없게 한다.
+    */
+    .btn-row-exit {
+        min-height: 44px;
+        padding: 0 var(--space-3);
+        background: var(--bg-primary);
+        color: var(--color-red-dark);
+        border: 1px solid var(--color-red-dark);
+        border-radius: var(--radius-control);
+        font-size: var(--text-xs);
+        font-weight: var(--weight-medium);
+        white-space: nowrap;
+        cursor: pointer;
+    }
+    .btn-row-exit:hover {
+        background: var(--color-error-bg);
+    }
     .btn-manage {
+        min-height: 44px;
         background: var(--bg-primary);
         color: var(--text-primary);
         border: 1px solid var(--border-control);
