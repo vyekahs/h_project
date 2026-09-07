@@ -7,9 +7,9 @@ import {
 	markRequestAborted,
 	recordDbPoolStats,
 	getActiveDbConnections,
-	getDbPoolStats,
-	pruneMonitoringData
+	getDbPoolStats
 } from '$lib/server/performance';
+import { runDataRetention } from '$lib/server/retention';
 
 let requestIdSeq = 0;
 function nextRequestId() {
@@ -37,18 +37,18 @@ if (!dbPoolMonitorInterval) {
 	);
 }
 
-// 모니터링 테이블 보존 정리 (기동 직후 1회 + 이후 하루 간격)
+// 데이터 보존 정리 (기동 직후 1회 + 이후 하루 간격)
 // 블루/그린으로 두 인스턴스가 동시에 돌아도 DELETE는 멱등이라 중복 실행이 안전하다.
-let monitoringPruneInterval: NodeJS.Timeout | null = null;
-if (!monitoringPruneInterval) {
+let retentionInterval: NodeJS.Timeout | null = null;
+if (!retentionInterval) {
 	// 기동 직후 곧바로 돌리면 배포 시점의 부하와 겹치므로 1분 뒤에 시작
 	setTimeout(() => {
-		pruneMonitoringData().catch((e) => console.error('[PERF] 초기 모니터링 정리 실패:', e));
+		runDataRetention().catch((e) => console.error('[RETENTION] 초기 정리 실패:', e));
 	}, 60 * 1000);
 
-	monitoringPruneInterval = setInterval(
+	retentionInterval = setInterval(
 		() => {
-			pruneMonitoringData().catch((e) => console.error('[PERF] 모니터링 정리 실패:', e));
+			runDataRetention().catch((e) => console.error('[RETENTION] 정리 실패:', e));
 		},
 		24 * 60 * 60 * 1000
 	);
