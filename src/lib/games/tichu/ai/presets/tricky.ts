@@ -129,27 +129,15 @@ export const trickyBehavior: PresetBehavior = {
 		return null; // 기본 로직으로 (PersonalityWeights의 tichoPropensity가 0.5)
 	},
 
-	shouldDeclareSmallTichu(hand, context) {
-		// 원투 선호 — 확실히 나갈 수 있을 때만
-		const combos = findAllPlayableCombinations(hand);
-		const nonBombCombos = combos.filter(c => !isBomb(c));
-
-		// 턴 수 추정
-		const turnsNeeded = estimateSimpleTurns(hand);
-
-		// 4턴 이하로 나갈 수 있고 높은 카드가 있으면
-		if (turnsNeeded <= 4) {
-			const normalCards = hand.filter(c => c.type === 'normal') as NormalCard[];
-			const hasAce = normalCards.some(c => c.rank === 14);
-			const hasDragon = hand.some(c => c.type === 'special' && c.special === 'dragon');
-			// 드래곤이나 에이스가 있어야 선 잡을 수 있음
-			if (hasDragon || hasAce) return true;
-		}
-
-		// 조건 미달 시 false가 아니라 null — false를 반환하면 기본 판단(손패 강도)이
-		// 통째로 무시되어 선언이 사실상 사라진다.
-		return null;
-	},
+	// shouldDeclareSmallTichu 오버라이드는 제거했다.
+	//
+	// "4턴 이하로 비울 수 있고 A나 드래곤이 있으면 무조건 선언"이었는데, true를 반환하면
+	// 기본 판단(손패 강도 임계값)을 통째로 건너뛴다. 그래서 손패 강도가 임계값 한참
+	// 아래인데도 선언하는 경로가 되었다 — 전 프리셋 중 tricky만 강도 35 미만 선언을
+	// 만들어냈고(52건 중 20건), 스몰 티츄는 ±100점이라 그런 선언은 순손실이다.
+	// "원투 선호"라는 성격은 기본 로직의 turnsToEmpty 보정이 이미 표현하고 있다.
+	// (절제 실험, 같은 시드 460/465라운드: 이 훅을 끄면 팀 점수차 -9.2 → +1.8,
+	//  스몰 선언 81건 39.5% → 45건 51.1%)
 
 	decideDragonGiftOverride(context, seat) {
 		// 기본 로직 사용 (카드 많은 상대에게)

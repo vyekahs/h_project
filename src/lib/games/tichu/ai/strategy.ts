@@ -144,9 +144,11 @@ export function decideGrandTichu(hand8: Card[], weights: PersonalityWeights, beh
 	// 무작위 8장 손패 5000회 실측: 중앙값 11.7 / p90 29.9 / p95 35.1 / p99 46.8 / 최대 67.6.
 	// 기존 공식(70 - p*25 → 50~66)은 상위 0.5% 이내여야 도달 가능해 사실상 선언이
 	// 발생하지 않았음(148라운드 실측 0회). 사람의 그랜드 티츄 선언 빈도는 대략 5~10%.
-	// 45 - p*18.5 → 공격적 30.2(≈상위 10%) / 변칙적 33.9(≈7%) / 밸런스·전략적 35.8(≈5%)
-	//              / 수비적 42.2(≈2%)
-	const threshold = 45 - weights.tichoPropensity * 18.5;
+	// 이후 실측으로 **성공률** 기준 재보정: 선언 시점 손패 강도별 성공률을 모아보니
+	// 강도 30 이상 전체는 60.2%인데 38 이상은 65.2%, 42 이상은 67.5%였다.
+	// 그랜드는 ±200점이라 60%도 기대값은 양수지만, 부르는 값어치를 내려면 65% 선이 맞다.
+	// 48 - p*14 → 공격적 36.8 / 변칙적 39.6 / 밸런스·전략적 41 / 수비적 45.9
+	const threshold = 48 - weights.tichoPropensity * 14;
 	return strength >= threshold;
 }
 
@@ -172,10 +174,12 @@ export function decideSmallTichu(hand: Card[], weights: PersonalityWeights, cont
 	const strength = evaluateHandStrength(hand);
 	// 그랜드 티츄와 동일하게 실제 분포 기준으로 보정.
 	// 무작위 14장 손패 5000회 실측: 중앙값 22 / p75 31 / p90 39 / p95 44 / 최대 68.
-	// 기존 공식(60 - p*20 → 44~57)은 도달률 0.6~5.6%에 그쳤음. 사람은 대략 15~25%.
-	// 41 - p*12.3 → 공격적 31.2(≈상위 25%) / 변칙적 33.6(≈20%) / 밸런스·전략적 34.9(≈18%)
-	//              / 수비적 39.2(≈10%)
-	const threshold = 41 - weights.tichoPropensity * 12.3;
+	// 그 뒤 "선언 빈도"가 아니라 **성공률**로 다시 맞췄다. 41 - p*12.3은 사람과 비슷한
+	// 빈도(좌석당 13.9%)를 만들었지만 성공률이 50.6%였다 — 스몰 티츄는 ±100점이므로
+	// 50%는 기대값 0, 즉 불러도 그만 안 불러도 그만이다.
+	// 실측 곡선: 강도 39 이상 57.4% / 43 이상 64.0% / 47 이상 70.3%.
+	// 50 - p*10 → 공격적 42 / 변칙적 44 / 밸런스·전략적 45 / 수비적 48.5
+	const threshold = 50 - weights.tichoPropensity * 10;
 
 	// Don't declare if someone on opposing team already declared
 	const myTeam = getTeam(context.currentSeat);
@@ -189,7 +193,9 @@ export function decideSmallTichu(hand: Card[], weights: PersonalityWeights, cont
 	// If too many singletons, hand is weak even if raw score is high
 	if (plan.singletonCount >= 5 && weights.riskTolerance < 0.8) return false;
 	// If we can empty in few turns, boost confidence
-	if (plan.turnsToEmpty <= 5) return strength >= (threshold - 10);
+	// 할인폭이 -10이면 임계값이 통째로 무너져(실효 21~29) 약한 손패 선언이 대량으로
+	// 새어나왔다. 빨리 비울 수 있다는 건 분명 이점이지만 그 정도는 아니다.
+	if (plan.turnsToEmpty <= 5) return strength >= (threshold - 4);
 
 	return strength >= threshold;
 }
