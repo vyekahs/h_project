@@ -12,8 +12,8 @@ import { generateBlockSet } from '$lib/games/block-blaster/blocks';
 import {
 	generateDangerStage,
 	isDangerResolved,
-	isDoomTriggered,
-	dangerCountForStage
+	doomHasRemainingCells,
+	dangerRequirementForStage
 } from '$lib/games/block-blaster/danger';
 import {
 	ABILITY_POOL,
@@ -310,6 +310,8 @@ export function createBlockBlasterGame() {
 	let pendingStageRewardScheduled = $state(false);
 	/** 게임오버 사유 — 'doom' (게임오버 줄로 끝남) | 'no-blocks' (배치 불가) | null */
 	let gameOverReason: 'doom' | 'no-blocks' | null = $state(null);
+	/** 놓을 블록이 없어 능력으로만 탈출 가능한 상태 — UI 안내용 */
+	let mustUseAbilityToEscape = $state(false);
 	let pendingDraftOptions: Ability[] | null = $state(null);
 	let pendingAbilitySlot: number | null = $state(null); // 타겟 대기 중인 액티브 슬롯
 	let pendingDiscardForAbility: Ability | null = $state(null); // 슬롯 풀일 때 새 능력 등록 대기
@@ -317,6 +319,35 @@ export function createBlockBlasterGame() {
 	let nextBlocksQueue: BlockShape[][] = $state([]); // peek-next용 큐
 	/** 위험 클리어 시 보너스 드래프트 횟수 (9~10 스테이지 추가 보너스용) */
 	let bonusDraftsRemaining = $state(0);
+	/**
+	 * 신속 해결 토큰 — 위험을 카운트가 넉넉히 남은 시점에 해결하면 1개.
+	 * TOKENS_PER_DRAFT개를 모으면 추가 드래프트 1회.
+	 *
+	 * 위험 해결 보상이 점수뿐이었는데 점수는 게임플레이에 아무 영향이 없었다.
+	 * 토큰을 붙이면 위험이 "버텨야 할 것"에서 "빨리 처리하면 이득인 것"으로 바뀌고,
+	 * 리스크를 감수해 빌드를 가속하는 로그라이트 루프가 생긴다.
+	 */
+	let draftTokens = $state(0);
+	/**
+	 * 10막 완주 여부. 엔드리스 전환 이후 "클리어"는 런의 종점이 아니라 관문이다.
+	 * 완주 인증(칭호·기록)은 이 플래그로, 랭킹 순위는 그 이후 도달 막수/점수로 갈린다.
+	 */
+	let hasCompletedRun = $state(false);
+	/**
+	 * 신속 해결 연속 스택. 위험을 카운트가 넉넉할 때 해결하면 +1, 만료 1회로 0.
+	 * 점수 배수로 환산되어 "안전하게 버티기"가 아니라 "빠르게 처리하기"가 최적이 되게 한다.
+	 * 클래식이 오래 버티는 게임이라면, 플러스는 빠르게 처리하는 게임이라는 축 분리.
+	 */
+	let swiftStreak = $state(0);
+	/**
+	 * 봉인된 능력 슬롯 — { dangerId, slotIndex, usesLeft }.
+	 * 봉인 중에는 그 슬롯을 쓸 수 없고 쿨다운도 흐르지 않는다.
+	 * 다른 능력을 usesLeft회 사용하면 풀린다.
+	 */
+	let sealedSlots = $state<{ dangerId: string; slotIndex: number; usesLeft: number }[]>([]);
+	const TOKENS_PER_DRAFT = 3;
+	/** 이번 드래프트에서 남은 리롤 횟수 (드래프트가 열릴 때마다 1로 리셋) */
+	let rerollsRemaining = $state(0);
 	/** 셀별 메타데이터 — 위험 셀(petrified), 강화 블록(hp) */
 	let cellMeta: CellMetaMap = $state({});
 
@@ -530,7 +561,10 @@ export function createBlockBlasterGame() {
 	}
 
 	function tickCooldowns() {
-		for (const o of inventory) {
+		for (let i = 0; i < inventory.length; i++) {
+			// 봉인된 슬롯은 쿨다운이 흐르지 않는다 — 봉인의 실질 비용
+			if (sealedSlots.some(x => x.slotIndex === i)) continue;
+			const o = inventory[i];
 			if (o.cooldownRemaining > 0) o.cooldownRemaining--;
 		}
 	}
@@ -592,6 +626,9 @@ export function createBlockBlasterGame() {
 				stagesCleared,
 				currentDangerStage,
 				bonusDraftsRemaining,
+				draftTokens,
+				hasCompletedRun,
+				sealedSlots,
 				cellMeta,
 				lastSnapshots,
 				nextBlocksQueue,
@@ -656,6 +693,9 @@ export function createBlockBlasterGame() {
 				currentDangerStage.lockedSlotDangerIds = ids;
 			}
 			bonusDraftsRemaining = data.bonusDraftsRemaining || 0;
+			draftTokens = data.draftTokens || 0;
+			hasCompletedRun = data.hasCompletedRun || false;
+			sealedSlots = data.sealedSlots || [];
 			cellMeta = data.cellMeta || {};
 			lastSnapshots = data.lastSnapshots || [];
 			nextBlocksQueue = data.nextBlocksQueue || [];
@@ -677,6 +717,7 @@ export function createBlockBlasterGame() {
 			pendingDangerIntro = null;
 			pendingDangerClear = null;
 			gameOverReason = null;
+		mustUseAbilityToEscape = false;
 
 			// 진행 중이던 능력 모달이 있으면 paused가 아닌 playing으로 복귀 (모달 우선 표시)
 			const hasPendingAction = pendingDraftOptions !== null
@@ -729,9 +770,15 @@ export function createBlockBlasterGame() {
 		stagesCleared = 0;
 		currentDangerStage = null;
 		bonusDraftsRemaining = 0;
+		draftTokens = 0;
+		rerollsRemaining = 0;
+		hasCompletedRun = false;
+		swiftStreak = 0;
+		sealedSlots = [];
 		cellMeta = {};
 		pendingDangerClear = null;
 		gameOverReason = null;
+		mustUseAbilityToEscape = false;
 		pendingDangerIntro = null;
 		seenDangerTypes = new Set();
 		pendingStageRewardScheduled = false;
@@ -754,6 +801,16 @@ export function createBlockBlasterGame() {
 
 		gameState = 'playing';
 		startTimer();
+
+		// 플러스 모드: 시작 드래프트 1회 무료.
+		// 지금까지는 능력 0개로 1막을 맨손 통과해야 했고, 첫 위험이 10턴째 등장하므로
+		// 트레이 운이 나쁘면 대응 수단 없이 끝났다(0막 사망 25%). 시작 능력을 주면
+		// 초반 관문이 완화될 뿐 아니라, 첫 선택이 그 판의 빌드 방향을 정하게 되어
+		// 로그라이트로서의 의사결정이 첫 턴부터 시작된다.
+		if (mode === 'special') {
+			openAbilityDraft();
+		}
+
 		saveGame();
 	}
 
@@ -822,6 +879,9 @@ export function createBlockBlasterGame() {
 		newBlocks[selectedBlockIndex] = null;
 		currentBlocks = newBlocks;
 		selectedBlockIndex = null;
+
+		// 배치에 성공했으므로 '막힘' 안내 해제
+		mustUseAbilityToEscape = false;
 
 		// special 모드: 블록 배치 성공 시 쿨다운 진행
 		if (isSpecialMode()) tickCooldowns();
@@ -965,9 +1025,14 @@ export function createBlockBlasterGame() {
 		// Check game over — special 모드에서는 사용 가능한 액티브 스킬이 있으면 보류
 		if (!canPlaceAnyBlock(grid, placeableBlocks)) {
 			if (hasUsableActiveAbility()) {
-				// 능력으로 탈출 가능 — 게임오버 보류 (안내 모달 없음)
+				// 능력으로 탈출 가능 — 게임오버 보류.
+				// 이때 아무 안내가 없으면 보드가 그냥 얼어붙은 것처럼 보이고, 능력을 써야
+				// 한다는 걸 알 방법이 없어 플레이어가 방치된다. 상태를 노출해 UI가
+				// 안내를 띄울 수 있게 한다.
+				mustUseAbilityToEscape = true;
 				return;
 			}
+			mustUseAbilityToEscape = false;
 			// WAVE 클리어 보상이 진행 중이면 게임오버 보류 — 드래프트로 받을 능력이
 			// 위기를 풀어줄 수 있으므로 afterDraftPick 시점에 다시 판정.
 			if (pendingStageRewardScheduled || pendingDraftOptions || pendingDangerClear) {
@@ -1020,7 +1085,7 @@ export function createBlockBlasterGame() {
 				clearRandomCells(ratio);
 				// 트레이도 새로 채워줌
 				currentBlocks = popOrGenerateNextSet();
-				// 쿨다운 설정 — 레벨에 따라 단축 (Lv1: 30턴, Lv2: 25턴, Lv3: 20턴)
+				// 쿨다운 설정 — 레벨에 따라 단축 (reviveCooldown 참고)
 				revive.cooldownRemaining = reviveCooldown(reviveLevel);
 				isAnimating = false;
 				saveGame();
@@ -1120,6 +1185,12 @@ export function createBlockBlasterGame() {
 	 * 능력 사용은 카운트 영향 X — 블록 배치 1회 = 1턴.
 	 */
 	function turnsToNextDanger(): number {
+		// 위험 풀을 10종 → 6종으로 줄이면서 남은 종류가 전부 보드를 점거하는 유형이
+		// 되었다(제외된 portal/rust/quest는 점거가 없거나 오히려 셀을 비워줬다).
+		// 같은 간격이면 체감 압박이 크게 올라가므로(클리어율 19.7%→11.3%) 간격을 늘린다.
+		// P3에서 12/10/8/6으로 넓혔던 것을 되돌린다. 그 완화는 위험 감축으로 압박이
+		// 몰린 것을 보정하려던 조치였는데, P1에서 doom 즉사가 사라지며 사망 요인이
+		// 통째로 빠져 게임이 다시 헐거워졌다(클리어율 18%→38.7%).
 		const next = stagesCleared + 1;
 		if (next <= 2) return 10;
 		if (next <= 5) return 8;
@@ -1250,7 +1321,74 @@ export function createBlockBlasterGame() {
 	 * 위험을 보드에 활성화 — reinforced/spreading은 셀을 그리드에 배치.
 	 * doom-row/col, hazard-zone은 영역 표시만 — DangerOverlay가 cells 좌표로 그림.
 	 */
+	/**
+	 * JAM(고장) 활성화 — 트레이 한 칸을 놓기 어려운 불량 블록으로 채운다.
+	 * 보드를 건드리지 않으므로 clear 계열로는 손댈 수 없고, 조작 계열
+	 * (swap-block/rotate-block) 또는 실제로 놓아서만 해소된다.
+	 */
+	function injectJamBlock(d: Danger, stageNumber: number) {
+		// 스테이지가 오를수록 더 까다로운 모양
+		// 해결률이 82.8%로 너무 높아(= 그냥 놓으면 끝나는 공짜 진행) 초반 모양도
+		// 5~6칸 이상으로 올렸다. 놓으려면 보드 공간을 실제로 마련해야 하므로
+		// "공간을 비울 것인가, 조작 스킬을 쓸 것인가"의 선택이 생긴다.
+		const shapes: [number, number][][] = stageNumber <= 5
+			? [
+				[[0, 0], [0, 1], [1, 0], [1, 1], [2, 0], [2, 1]],  // 3×2
+				[[0, 0], [1, 0], [1, 1], [1, 2], [2, 2]],          // Z 확장
+				[[0, 0], [0, 1], [0, 2], [1, 0], [1, 1], [1, 2]]   // 2×3
+			]
+			: [
+				[[0, 0], [0, 1], [0, 2], [1, 0], [1, 1], [1, 2]],                     // 2×3
+				[[0, 0], [0, 1], [0, 2], [1, 1], [2, 0], [2, 1], [2, 2]],             // I 형
+				[[0, 0], [0, 1], [0, 2], [1, 0], [1, 1], [1, 2], [2, 0], [2, 1], [2, 2]] // 3×3
+			];
+		const cells = shapes[Math.floor(Math.random() * shapes.length)];
+		const color = (1 + Math.floor(Math.random() * 5)) as CellColor;
+		const jamBlock: BlockShape = { cells: cells.map(c => [...c] as [number, number]), color, jamId: d.id };
+
+		// 잠기지 않은 슬롯 중 하나를 덮어씀 (빈 칸 우선)
+		const next = [...currentBlocks];
+		let target = next.findIndex((b, i) => b === null && !isSlotLocked(i));
+		if (target < 0) target = next.findIndex((b, i) => b !== null && !isSlotLocked(i));
+		if (target < 0) return; // 넣을 자리가 없으면 포기(다음 턴 판정에서 해결로 처리됨)
+		next[target] = jamBlock;
+		currentBlocks = next;
+	}
+
+	/** 트레이에 해당 jam 블록이 남아 있는지 */
+	function jamBlockPresent(dangerId: string): boolean {
+		return currentBlocks.some(b => b?.jamId === dangerId);
+	}
+
 	function activateDangerOnBoard(d: Danger, stageNumber: number) {
+		if (d.type === 'jam') {
+			injectJamBlock(d, stageNumber);
+			return;
+		}
+		if (d.type === 'seal') {
+			// 쿨다운이 가장 짧은(=가장 자주 쓰는) 액티브 슬롯을 노린다.
+			// clear 몰빵 빌드가 자동으로 처벌받고, 예비 카드를 들 이유가 생긴다.
+			let bestIdx = -1;
+			let bestCd = Infinity;
+			for (let i = 0; i < inventory.length; i++) {
+				const o = inventory[i];
+				if (isPassive(o.ability)) continue;
+				if (sealedSlots.some(x => x.slotIndex === i)) continue;
+				const cd2 = computeCooldown(o.ability, o.level);
+				if (cd2 < bestCd) { bestCd = cd2; bestIdx = i; }
+			}
+			if (bestIdx < 0) {
+				// 봉인할 액티브가 없으면 즉시 해결 처리 (빈 위험으로 남기지 않음)
+				d.resolved = true;
+				return;
+			}
+			// 해제에 필요한 "다른 능력 사용" 횟수.
+			// 처음엔 2~3회였는데 해결률이 1.6%로 사실상 불가능이었다. 봉인은 가장 자주
+			// 쓰는(=쿨다운이 짧은) 능력을 노리는데, 능력 쿨다운이 7~13턴이라 짧은 카운트
+			// 안에 다른 능력을 2~3회 쓰는 것은 성립하지 않았다.
+			sealedSlots = [...sealedSlots, { dangerId: d.id, slotIndex: bestIdx, usesLeft: stageNumber <= 5 ? 1 : 2 }];
+			return;
+		}
 		if (
 			d.type !== 'reinforced' &&
 			d.type !== 'spreading' &&
@@ -1346,12 +1484,35 @@ export function createBlockBlasterGame() {
 			for (const d of ds.dangers) {
 				if (d.resolved) continue;
 				if (d.delayTurns > 0) continue;
-				if (!isDangerResolved(d, grid, cellMeta)) continue;
+				// jam은 보드가 아니라 트레이로 판정 — 불량 블록이 사라졌으면 해결
+				const jamCleared = d.type === 'jam' && !jamBlockPresent(d.id);
+				if (!jamCleared && !isDangerResolved(d, grid, cellMeta)) continue;
 				d.resolved = true;
 				changed = true;
 				score += 200; // 위험 1개 해결 보너스
 				// 카운트가 1 이상 남았는데 해결 = 긴박 보너스 (reinforced는 카운트 의미 없음)
 				if (d.type !== 'reinforced' && d.type !== 'spreading' && d.countdown > 1) score += 100;
+				// 신속 배수 — 연속 신속 해결마다 스택이 쌓여 해결 점수가 커진다.
+				// (스택 n → 배수 1 + n*0.25, 상한 3배)
+				// 신속 해결 토큰 — 카운트가 초기값의 절반 이상 남은 시점에 해결했을 때만.
+				// (카운트를 쓰지 않는 점거형은 해결 자체가 어려우므로 항상 지급)
+				// jam은 제외 — 그냥 놓기만 해도 해결되므로 토큰이 사실상 무상 지급된다.
+				// (전체 스폰의 약 12%에 해결률 80%라 판당 2~3토큰 ≈ 보너스 드래프트 1회가
+				//  공짜로 나왔다. 클리어율이 헐거워진 숨은 원인.)
+				const fast = d.type === 'jam'
+					? false
+					: d.type === 'reinforced' || d.type === 'spreading'
+					? true
+					: d.countdown * 2 >= d.initialCountdown;
+				if (fast) {
+					swiftStreak++;
+					score += Math.round(200 * Math.min(3, 1 + swiftStreak * 0.25)) - 200;
+					draftTokens++;
+					if (draftTokens >= TOKENS_PER_DRAFT) {
+						draftTokens -= TOKENS_PER_DRAFT;
+						bonusDraftsRemaining++;
+					}
+				}
 				// 트레이 잠금 — 이 위험이 lockedSlotDangerIds에 있으면 그 항목을 제거(슬롯 해제).
 				if (isMatchedToLock(d, ds)) {
 					ds.lockedSlotDangerIds = ds.lockedSlotDangerIds.filter(id => id !== d.id);
@@ -1420,11 +1581,26 @@ export function createBlockBlasterGame() {
 		for (const d of ds.dangers) {
 			if (d.resolved) continue;
 			if (d.delayTurns > 0) continue;
-			if (isDoomTriggered(d, grid)) {
-				// 게임오버 줄 — 사유 기록 + 잠시 후 게임오버 (위험 강조 표시 시간 확보)
-				gameOverReason = 'doom';
-				setTimeout(() => handleGameOver(), 800);
-				return;
+			if ((d.type === 'doom-row' || d.type === 'doom-col') && d.countdown === 0) {
+				// 만료 — 즉사 대신 그 줄의 남은 칸을 전부 석화.
+				// (석화 셀은 라인 클리어로만 지워지므로 보드의 12.5%가 사실상 봉인된다.
+				//  "갑자기 죽는" 대신 "확실히 불리해지는" 처벌로 번역한 것.)
+				if (doomHasRemainingCells(d, grid)) {
+					const nextMeta = { ...cellMeta };
+					for (const [r, c] of d.cells) {
+						if (grid[r][c] !== 0) {
+							nextMeta[cellKey(r, c)] = { ...nextMeta[cellKey(r, c)], petrified: true };
+						}
+					}
+					cellMeta = nextMeta;
+				}
+				d.resolved = true;
+				d.expired = true;
+				applyExpiryCredit();
+				if (isMatchedToLock(d, ds)) {
+					ds.lockedSlotDangerIds = ds.lockedSlotDangerIds.filter(id => id !== d.id);
+				}
+				continue;
 			}
 			if (d.type === 'hazard-zone' && d.countdown === 0) {
 				// 위험 구역 카운트 0 — 영역의 채워진 셀들을 petrified로 변환
@@ -1435,9 +1611,9 @@ export function createBlockBlasterGame() {
 					}
 				}
 				cellMeta = nextMeta;
-				d.resolved = true; // 만료 처리(보너스 없음)
-				resolvedDangerCount++;
-				checkStageClearByCount();
+				d.resolved = true;
+				d.expired = true; // 만료 — 페널티(석화) + 부분 크레딧
+				applyExpiryCredit();
 			}
 			if (d.type === 'spreading' && d.countdown === 0) {
 				// 증식 활성화 — 인접 빈 셀 1곳으로 증식 후 카운트 리셋
@@ -1453,8 +1629,8 @@ export function createBlockBlasterGame() {
 				}
 				cellMeta = nextMeta;
 				d.resolved = true;
-				resolvedDangerCount++;
-				checkStageClearByCount();
+				d.expired = true;
+				applyExpiryCredit();
 				if (isMatchedToLock(d, ds)) {
 					ds.lockedSlotDangerIds = ds.lockedSlotDangerIds.filter(id => id !== d.id);
 				}
@@ -1475,8 +1651,8 @@ export function createBlockBlasterGame() {
 					void _so; void _sid;
 					cellMeta = { ...cellMeta, [cellKey(r, c)]: { ...rest, petrified: true } };
 					d.resolved = true;
-					resolvedDangerCount++;
-					checkStageClearByCount();
+					d.expired = true; // 만료 — 페널티(검은 돌) + 부분 크레딧
+					applyExpiryCredit();
 					// 잠금 매칭 위험이면 슬롯 해제 (1단계 fixpoint와 별개로 명시 처리)
 					if (isMatchedToLock(d, ds)) {
 						ds.lockedSlotDangerIds = ds.lockedSlotDangerIds.filter(id => id !== d.id);
@@ -1491,20 +1667,27 @@ export function createBlockBlasterGame() {
 					rustSpreadOnce(d);
 				}
 				if (d.countdown === 0) {
-					// 카운트 만료 — 부식 가족 셀 모두 제거 + 자연 종료 (보너스 X)
+					// 카운트 만료 — 부식이 굳어 석화로 남는다.
+					//
+					// 원래는 부식 셀이 그냥 사라졌다. 그래서 만료가 오히려 이득이라
+					// "위험"이라는 의미가 성립하지 않았고(방치가 최적), 결국 풀에서
+					// 제외했었다. 강도(해결률 34.4%)가 아니라 의미론이 문제였으므로
+					// 만료 결과를 뒤집어 되살린다 — 방치하면 보드가 굳는다.
 					const next = cloneGrid(grid);
 					const nextMeta = { ...cellMeta };
 					for (const [r, c] of d.cells) {
-						if (nextMeta[cellKey(r, c)]?.rustDangerId === d.id) {
-							next[r][c] = 0;
-							delete nextMeta[cellKey(r, c)];
-						}
+						const k = cellKey(r, c);
+						if (nextMeta[k]?.rustDangerId !== d.id) continue;
+						const { rustMark: _rm, rustDangerId: _rd, ...rest } = nextMeta[k];
+						void _rm; void _rd;
+						if (next[r][c] === 0) next[r][c] = 5 as CellColor;
+						nextMeta[k] = { ...rest, petrified: true };
 					}
 					grid = next;
 					cellMeta = nextMeta;
 					d.resolved = true;
-					resolvedDangerCount++;
-					checkStageClearByCount();
+					d.expired = true; // 만료(수명 종료) — 부분 크레딧
+					applyExpiryCredit();
 					if (isMatchedToLock(d, ds)) {
 						ds.lockedSlotDangerIds = ds.lockedSlotDangerIds.filter(id => id !== d.id);
 					}
@@ -1519,18 +1702,49 @@ export function createBlockBlasterGame() {
 					// 카운트 만료 — 3x3 폭발: 영역의 채워진 셀들을 petrified로 변환 후 자연 종료
 					chaserExplode(d);
 					d.resolved = true;
-					resolvedDangerCount++;
-					checkStageClearByCount();
+					d.expired = true; // 만료 — 페널티(폭발) + 부분 크레딧
+					applyExpiryCredit();
 					if (isMatchedToLock(d, ds)) {
 						ds.lockedSlotDangerIds = ds.lockedSlotDangerIds.filter(id => id !== d.id);
 					}
 				}
 			}
-			if (d.type === 'quest' && d.countdown === 0) {
-				// 카운트 만료 — 패턴 미달성. 잠금 해제 + 자연 종료 (보너스 X, resolvedDangerCount는 +1)
+			if (d.type === 'seal' && d.countdown === 0) {
+				// 만료 — 봉인은 풀리되 그 능력의 레벨이 1 내려간다(빌드에 영구 손상).
+				const sealed = sealedSlots.find(x => x.dangerId === d.id);
+				if (sealed) {
+					const o = inventory[sealed.slotIndex];
+					if (o && o.level > 1) {
+						o.level = (o.level - 1) as 1 | 2 | 3;
+						if (o.ability.id === 'extra-slot') syncTraySizeToInventory();
+					}
+					sealedSlots = sealedSlots.filter(x => x.dangerId !== d.id);
+				}
 				d.resolved = true;
-				resolvedDangerCount++;
-				checkStageClearByCount();
+				d.expired = true;
+				applyExpiryCredit();
+				if (isMatchedToLock(d, ds)) {
+					ds.lockedSlotDangerIds = ds.lockedSlotDangerIds.filter(id => id !== d.id);
+				}
+			}
+			if (d.type === 'jam' && d.countdown === 0) {
+				// 만료 — 불량 블록을 치워주되 보드에 검은 돌 1개를 남긴다.
+				// (트레이를 영원히 막아두면 진행 불가가 되므로 페널티를 보드로 옮김)
+				const next = currentBlocks.map(b => (b?.jamId === d.id ? null : b));
+				currentBlocks = next;
+				addRandomBlackStone();
+				d.resolved = true;
+				d.expired = true;
+				applyExpiryCredit();
+				if (isMatchedToLock(d, ds)) {
+					ds.lockedSlotDangerIds = ds.lockedSlotDangerIds.filter(id => id !== d.id);
+				}
+			}
+			if (d.type === 'quest' && d.countdown === 0) {
+				// 카운트 만료 — 패턴 미달성(실패). 부분 크레딧만.
+				d.resolved = true;
+				d.expired = true;
+				applyExpiryCredit();
 				if (isMatchedToLock(d, ds)) {
 					ds.lockedSlotDangerIds = ds.lockedSlotDangerIds.filter(id => id !== d.id);
 				}
@@ -1861,26 +2075,97 @@ export function createBlockBlasterGame() {
 	 * 다음 스테이지의 dangerCount 임계에 도달할 때마다 stagesCleared++ + 보상.
 	 * 한 번에 여러 스테이지가 동시 클리어될 수도 있음(while 루프).
 	 */
+	/**
+	 * 만료(실패) 시 주는 부분 크레딧.
+	 *
+	 * 만료를 완전한 0으로 두면 진행이 막혀 압박이 무한 누적된다(실측: 0막 사망 45.9%,
+	 * 클리어율 2.7%). 반대로 예전처럼 1.0을 주면 방치가 항상 최적이 되어 위험 시스템이
+	 * 죽는다. 해결이 만료보다 두 배 가치 있게 두어 "빨리 처리할수록 이득"을 유지한다.
+	 */
+	const EXPIRY_CREDIT = 0.25;
+
+	/**
+	 * 능력을 실제로 사용했을 때 호출 — 봉인 해제 카운트를 진행한다.
+	 * 봉인된 슬롯 자신은 쓸 수 없으므로, "다른 능력"이라는 조건은 자동으로 만족된다.
+	 */
+	function progressSeals() {
+		if (sealedSlots.length === 0) return;
+		const ds = currentDangerStage;
+		const next: typeof sealedSlots = [];
+		for (const sealed of sealedSlots) {
+			const remaining = sealed.usesLeft - 1;
+			if (remaining > 0) {
+				next.push({ ...sealed, usesLeft: remaining });
+				continue;
+			}
+			// 해제 — 해당 위험을 해결 처리
+			const d = ds?.dangers.find(x => x.id === sealed.dangerId);
+			if (d && !d.resolved) {
+				d.resolved = true;
+				score += 200;
+				swiftStreak++;
+				draftTokens++;
+				if (draftTokens >= TOKENS_PER_DRAFT) {
+					draftTokens -= TOKENS_PER_DRAFT;
+					bonusDraftsRemaining++;
+				}
+				resolvedDangerCount++;
+				checkStageClearByCount();
+				if (ds && isMatchedToLock(d, ds)) {
+					ds.lockedSlotDangerIds = ds.lockedSlotDangerIds.filter(id => id !== d.id);
+				}
+			}
+		}
+		sealedSlots = next;
+	}
+
+	/** 만료(실패) 공통 처리 — 부분 크레딧 지급 + 신속 스택 리셋 */
+	function applyExpiryCredit() {
+		swiftStreak = 0; // 하나라도 놓치면 연속이 끊긴다
+		resolvedDangerCount += EXPIRY_CREDIT;
+		checkStageClearByCount();
+	}
+
 	function checkStageClearByCount() {
-		while (stagesCleared < MAX_STAGE) {
+		// 엔드리스 — 상한 없이 계속 진행한다. 10막은 런의 종점이 아니라 관문이며,
+		// 그 이후로도 요구 개수/카운트다운/트레이 잠금이 막 번호에 따라 계속 조여진다.
+		// (클리어율이 곧 만족도 분포 전체였던 이진 구조를 깨기 위한 변경 —
+		//  랭킹은 완주 여부가 아니라 도달 막수와 점수로 갈린다.)
+		// eslint-disable-next-line no-constant-condition
+		while (true) {
 			const nextStage = stagesCleared + 1;
-			const need = dangerCountForStage(nextStage);
+			const need = dangerRequirementForStage(nextStage);
 			if (resolvedDangerCount < need) break;
 			// 스테이지 nextStage 클리어
 			resolvedDangerCount -= need;
 			stagesCleared = nextStage;
 
-			// 9~10 스테이지 보너스 드래프트
+			// === 엔드리스 래칫 ===
+			// 검은 돌을 영구 적립한다. 단 11막부터만.
+			//
+			// 전 구간에 적용했을 때는 능력 격차가 2.0배→3.3배로 벌어졌다. 검은 돌은
+			// 능력으로 못 지우고 라인 완성으로만 사라져서, 보드 통제력이 약한 비-clear
+			// 빌드를 훨씬 크게 처벌하기 때문이다. 그래서 되돌렸었다.
+			//
+			// 그런데 엔드리스 구간에는 정의상 **이미 강한 빌드만** 도달한다. 여기서는
+			// 그 편향이 오히려 필요한 성질이다. 위험 개수를 늘리는 손잡이들은 크레딧도
+			// 함께 늘려 상쇄되므로(요구/카운트다운/생성을 모두 세워도 폭주가 그대로였다:
+			// 15+막 33.9%→36.2%, 최대 58막) 폭주를 끊는 유일한 수단은 보드 압박이다.
+			if (nextStage > MAX_STAGE) {
+				const ratchet = 1 + Math.floor((nextStage - MAX_STAGE) / 3);
+				for (let i = 0; i < ratchet; i++) addRandomBlackStone();
+			}
+
+			// 9막 이후로는 매 막 보너스 드래프트 (엔드리스 구간의 성장 공급)
 			if (nextStage >= 9) bonusDraftsRemaining += 1;
 
 			// 클리어 배너 (가장 마지막 클리어 정보로 갱신)
 			pendingDangerClear = { stageNumber: nextStage, dangerCount: need };
 			setTimeout(() => { pendingDangerClear = null; }, 1500);
 
-			// 게임 클리어 체크
-			if (stagesCleared >= MAX_STAGE) {
-				setTimeout(() => handleGameClear(), 1200);
-				return;
+			// 10막 도달 = 완주 인증. 게임은 끝나지 않고 엔드리스로 이어진다.
+			if (!hasCompletedRun && stagesCleared >= MAX_STAGE) {
+				hasCompletedRun = true;
 			}
 
 			// 드래프트 모달 (배너 후) — afterPlace의 게임오버 보류 신호 ON
@@ -1984,6 +2269,7 @@ export function createBlockBlasterGame() {
 	function openAbilityDraft() {
 		// 모달이 열리는 순간 scheduled 신호 해제 — 이후엔 pendingDraftOptions가 보류 신호
 		pendingStageRewardScheduled = false;
+		rerollsRemaining = 1;
 		// 드래프트 풀의 희귀도 해금은 "지금까지 클리어한 WAVE 수" 기준 — stage 변수는
 		// "다음에 진입할" 번호라 누적 진입 모델에서 갱신이 늦을 수 있음. 클리어 횟수가
 		// 더 정확한 진행도 지표.
@@ -1996,6 +2282,16 @@ export function createBlockBlasterGame() {
 			return;
 		}
 		pendingDraftOptions = options;
+		saveGame();
+	}
+
+	/** 현재 드래프트 후보를 다시 뽑는다 (드래프트당 1회). */
+	function rerollDraft() {
+		if (!pendingDraftOptions) return;
+		if (rerollsRemaining <= 0) return;
+		rerollsRemaining--;
+		const options = drawAbilities(ABILITY_POOL, inventory, 3, stagesCleared);
+		if (options.length > 0) pendingDraftOptions = options;
 		saveGame();
 	}
 
@@ -2070,15 +2366,10 @@ export function createBlockBlasterGame() {
 		afterPlace();
 	}
 
-	function handleGameClear() {
-		localStorage.removeItem('block_blaster_save');
-		gameState = 'finished';
-		stopTimer();
-		isAnimating = false;
-		if (!hasRestarted) {
-			submitScore();
-		}
-	}
+	// handleGameClear는 제거했다. 엔드리스 전환으로 10막 도달이 런의 종점이 아니라
+	// 관문(hasCompletedRun)이 되었고, 런은 항상 게임오버로만 끝난다.
+	// 완주 인증 표시는 handleGameOver 경로에서 hasCompletedRun으로 판단한다.
+
 
 	// ----- Active ability use -----
 
@@ -2097,6 +2388,11 @@ export function createBlockBlasterGame() {
 		const slot = inventory[slotIndex];
 		if (!slot) return;
 		if (isPassive(slot.ability)) return;
+		if (sealedSlots.some(x => x.slotIndex === slotIndex)) {
+			const remain = sealedSlots.find(x => x.slotIndex === slotIndex)?.usesLeft ?? 0;
+			showAlert(`봉인됨 — 다른 스킬 ${remain}회 사용 시 해제`);
+			return;
+		}
 		if (slot.cooldownRemaining > 0) {
 			showAlert(`쿨다운 ${slot.cooldownRemaining}턴 남음`);
 			return;
@@ -2138,6 +2434,7 @@ export function createBlockBlasterGame() {
 			const ok = executeAbility(slot.ability, slot.level, null);
 			if (!ok) return; // 발동 실패 시 쿨다운도 적용 X
 			slot.cooldownRemaining = computeCooldown(slot.ability, slot.level);
+			progressSeals();
 			handleSpecialTurnEnd({ tickCountdowns: false });
 			saveGame();
 			// 능력 사용 후 게임오버 가능성 체크
@@ -2170,6 +2467,7 @@ export function createBlockBlasterGame() {
 		selectedBlockIndex = null;
 
 		inventory[slotIndex].cooldownRemaining = computeCooldown(slot.ability, slot.level);
+		progressSeals();
 		pendingTransform = null;
 		handleSpecialTurnEnd({ tickCountdowns: false });
 		saveGame();
@@ -2197,6 +2495,7 @@ export function createBlockBlasterGame() {
 		selectedBlockIndex = null;
 
 		inventory[slotIndex].cooldownRemaining = computeCooldown(slot.ability, slot.level);
+		progressSeals();
 		pendingSwap = null;
 		handleSpecialTurnEnd({ tickCountdowns: false });
 		saveGame();
@@ -2219,6 +2518,7 @@ export function createBlockBlasterGame() {
 		}
 		addBlockToTray({ cells, color });
 		inventory[slotIndex].cooldownRemaining = computeCooldown(slot.ability, slot.level);
+		progressSeals();
 		pendingDraw = null;
 		selectedBlockIndex = null;
 		handleSpecialTurnEnd({ tickCountdowns: false });
@@ -2265,6 +2565,7 @@ export function createBlockBlasterGame() {
 		cellMeta = nextMeta;
 
 		inventory[slotIndex].cooldownRemaining = computeCooldown(slot.ability, slot.level);
+		progressSeals();
 		pendingColorChoose = null;
 		selectedBlockIndex = null;
 		handleSpecialTurnEnd({ tickCountdowns: false });
@@ -2360,6 +2661,7 @@ export function createBlockBlasterGame() {
 		}
 
 		inventory[slotIndex].cooldownRemaining = computeCooldown(ability, level);
+		progressSeals();
 		pendingAbilitySlot = null;
 		selectedBlockIndex = null;
 		handleSpecialTurnEnd({ tickCountdowns: false });
@@ -2505,6 +2807,81 @@ export function createBlockBlasterGame() {
 				selectedBlockIndex = null;
 				return true;
 			}
+			case 'chisel': {
+				// 석화·강화 셀을 직접 부순다. 검은 돌은 라인 완성으로만 사라지므로
+				// (능력 경로에서는 면역) 엔드리스 래칫에 대응할 유일한 수단이다.
+				if (!target || target.kind !== 'cell') return false;
+				const { row, col } = target;
+				const area: [number, number][] = [];
+				if (level === 1) area.push([row, col]);
+				else if (level === 2) {
+					area.push([row, col], [row - 1, col], [row + 1, col], [row, col - 1], [row, col + 1]);
+				} else {
+					for (let dr = -1; dr <= 1; dr++)
+						for (let dc = -1; dc <= 1; dc++) area.push([row + dr, col + dc]);
+				}
+				const nextGrid = cloneGrid(grid);
+				const nextMeta = { ...cellMeta };
+				let broke = 0;
+				for (const [r, c] of area) {
+					if (r < 0 || r >= GRID_SIZE || c < 0 || c >= GRID_SIZE) continue;
+					const meta = nextMeta[cellKey(r, c)];
+					if (!meta?.petrified && meta?.hp == null) continue;
+					nextGrid[r][c] = 0;
+					delete nextMeta[cellKey(r, c)];
+					broke++;
+				}
+				if (broke === 0) {
+					showAlert('부술 석화·강화 셀이 없습니다.');
+					return false;
+				}
+				grid = nextGrid;
+				cellMeta = nextMeta;
+				triggerAbilityFx('bomb', area.filter(([r, c]) => r >= 0 && r < GRID_SIZE && c >= 0 && c < GRID_SIZE), [row, col]);
+				return true;
+			}
+			case 'shrink': {
+				// 트레이 블록에서 셀을 덜어낸다 — jam 대응 및 위기 탈출용.
+				if (!target || target.kind !== 'block') return false;
+				const block = currentBlocks[target.index];
+				if (!block) return false;
+				const removeCount = level >= 3 ? block.cells.length - 1 : level;
+				if (block.cells.length - removeCount < 1) {
+					showAlert('더 줄일 수 없는 블록입니다.');
+					return false;
+				}
+				// 뒤쪽 셀부터 덜어내되, 남은 셀이 연결을 유지하도록 정규화만 다시 한다.
+				const kept = block.cells.slice(0, block.cells.length - removeCount);
+				let minR = Infinity, minC = Infinity;
+				for (const [r, c] of kept) { if (r < minR) minR = r; if (c < minC) minC = c; }
+				const normalized = kept.map(([r, c]) => [r - minR, c - minC] as [number, number]);
+				const next = [...currentBlocks];
+				// jamId는 유지 — 축소해도 그 위험을 처리한 것으로 인정하려면 아래 해결 판정이 필요
+				next[target.index] = { ...block, cells: normalized };
+				currentBlocks = next;
+				return true;
+			}
+			case 'freeze': {
+				// 모든 활성 위험의 카운트다운을 되돌린다 — 시간 압박 축에 대한 유일한 대응.
+				if (!currentDangerStage) {
+					showAlert('활성 위험이 없습니다.');
+					return false;
+				}
+				const gain = level + 1; // Lv1: 2턴, Lv2: 3턴, Lv3: 4턴
+				let affected = 0;
+				for (const d of currentDangerStage.dangers) {
+					if (d.resolved || d.delayTurns > 0) continue;
+					if (d.type === 'reinforced') continue; // 카운트다운을 쓰지 않음
+					d.countdown += gain;
+					if (d.countdown > d.initialCountdown) d.countdown = d.initialCountdown;
+					affected++;
+				}
+				if (affected === 0) {
+					showAlert('되돌릴 위험이 없습니다.');
+					return false;
+				}
+				return true;
+			}
 			case 'single-cell': {
 				// Lv1: 1×1 블록 즉시 추가 (빈 슬롯 없으면 트레이 확장)
 				// Lv2/Lv3: 모달에서 사용자가 모양 그리기 — useAbility에서 처리하므로 여기 도달 X
@@ -2603,7 +2980,9 @@ export function createBlockBlasterGame() {
 		get pendingColorChoose() { return pendingColorChoose; },
 		get nextBlocksQueue() { return nextBlocksQueue; },
 		get peekBlocks() { return getPeekBlocks(); },
-		get isCleared() { return stagesCleared >= MAX_STAGE; },
+		get isCleared() { return hasCompletedRun; },
+		get swiftStreak() { return swiftStreak; },
+		get sealedSlots() { return sealedSlots; },
 		get maxStage() { return MAX_STAGE; },
 		get stagesCleared() { return stagesCleared; },
 		get currentDangerStage() { return currentDangerStage; },
@@ -2673,7 +3052,12 @@ export function createBlockBlasterGame() {
 		get pendingDangerIntro() { return pendingDangerIntro; },
 		get pendingDangerClear() { return pendingDangerClear; },
 		get gameOverReason() { return gameOverReason; },
+		get mustUseAbilityToEscape() { return mustUseAbilityToEscape; },
 		get bonusDraftsRemaining() { return bonusDraftsRemaining; },
+		get draftTokens() { return draftTokens; },
+		get tokensPerDraft() { return TOKENS_PER_DRAFT; },
+		get rerollsRemaining() { return rerollsRemaining; },
+		rerollDraft,
 		get turnsUntilNextDanger() {
 			return Math.max(0, turnsToNextDanger() - turnsSinceLastDanger);
 		},

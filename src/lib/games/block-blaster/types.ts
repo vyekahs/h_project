@@ -9,6 +9,12 @@ export interface BlockShape {
 	/** Relative [row, col] offsets from anchor (top-left of bounding box) */
 	cells: [number, number][];
 	color: CellColor;
+	/**
+	 * JAM(고장) 위험이 트레이에 밀어넣은 불량 블록 표식 — 해당 Danger의 id.
+	 * 이 블록이 트레이에서 사라지면(놓았거나 교체·변형했거나) 그 위험이 해결된다.
+	 * 보드 압박(빈 칸)과 별개의 두 번째 압박 축을 만들기 위한 장치.
+	 */
+	jamId?: string;
 }
 
 /** 8×8 grid, grid[row][col] */
@@ -19,7 +25,7 @@ export type BoardGrid = CellColor[][];
 // ===========================================================================
 
 /** 위험 종류 */
-export type DangerType = 'doom-row' | 'doom-col' | 'hazard-zone' | 'reinforced' | 'spreading' | 'storm' | 'portal' | 'rust' | 'chaser' | 'quest';
+export type DangerType = 'doom-row' | 'doom-col' | 'hazard-zone' | 'reinforced' | 'spreading' | 'storm' | 'portal' | 'rust' | 'chaser' | 'quest' | 'jam' | 'seal';
 
 /** QUEST 패턴 종류 — 사용자가 카운트 동안 한 번 달성하면 위험 해결 */
 export type QuestPatternType = 'combo' | 'same-color-line' | 'cross';
@@ -78,8 +84,18 @@ export interface Danger {
 	countdown: number;
 	/** 초기 카운트다운 (시각 변화 비율 계산용) */
 	initialCountdown: number;
-	/** 해결됨 마커 — 해결 직후 ticking에서 제외, UI 페이드아웃 처리용 */
+	/** 종료됨 마커 — 종료 직후 ticking에서 제외, UI 페이드아웃 처리용 */
 	resolved: boolean;
+	/**
+	 * 종료가 "플레이어의 해결"이 아니라 "카운트 만료"였는지.
+	 *
+	 * 이 구분이 없던 시절에는 만료도 스테이지 클리어 크레딧을 그대로 줬다.
+	 * 그래서 카운트다운을 쓰는 6종(hazard-zone/storm/portal/rust/chaser/quest)은
+	 * 실패 경로 자체가 없었고, 방치하는 것이 언제나 최적이라 위험 시스템이
+	 * 사실상 진행 티켓으로만 동작했다(시뮬레이션 해결률 87~97%의 정체).
+	 * 만료 시 페널티(석화·폭발 등)는 그대로 두되 크레딧은 주지 않는다.
+	 */
+	expired?: boolean;
 	/**
 	 * 등장 지연 턴 수 (단계별 위험 등장용).
 	 * 0이면 활성(보드에 표시·카운트다운 진행), >0이면 대기 중(매 턴 -1).

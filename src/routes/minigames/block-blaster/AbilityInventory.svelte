@@ -20,8 +20,10 @@
 		inventory,
 		pendingSlot,
 		onSlotClick,
-		onSlotPointerDown
+		onSlotPointerDown,
+		sealedSlots = []
 	} = $props<{
+		sealedSlots?: { dangerId: string; slotIndex: number; usesLeft: number }[];
 		inventory: OwnedAbility[];
 		pendingSlot: number | null;
 		onSlotClick: (index: number) => void;
@@ -70,6 +72,7 @@
 				{@const passive = slot ? isPassive(slot.ability) : false}
 				{@const isPending = pendingSlot === i}
 				{@const onCooldown = slot ? slot.cooldownRemaining > 0 : false}
+				{@const sealed = sealedSlots.find((x: { slotIndex: number }) => x.slotIndex === i)}
 				<button
 					type="button"
 					class="slot"
@@ -77,6 +80,7 @@
 					class:passive
 					class:pending={isPending}
 					class:cooldown={onCooldown}
+					class:sealed={!!sealed}
 					disabled={!slot}
 					onclick={() => handleSlotClick(i)}
 					onpointerdown={(e) => {
@@ -91,7 +95,11 @@
 						{#if passive}
 							<span class="type-badge">P</span>
 						{/if}
-						{#if onCooldown}
+						{#if sealed}
+							<span class="seal-overlay" title="봉인됨 — 다른 스킬 {sealed.usesLeft}회 사용 시 해제">
+								🔒{sealed.usesLeft}
+							</span>
+						{:else if onCooldown}
 							<span class="cd-overlay">{slot.cooldownRemaining}</span>
 						{/if}
 						{#if isPending}
@@ -297,6 +305,23 @@
 		font-size: 0.55rem;
 		font-weight: 700;
 		color: #a855f7;
+	}
+
+	.slot.sealed {
+		border-color: rgba(168, 85, 247, 0.7);
+		box-shadow: 0 0 0 1px rgba(168, 85, 247, 0.35) inset;
+	}
+	.seal-overlay {
+		position: absolute;
+		inset: 0;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		background: rgba(59, 7, 100, 0.72);
+		color: #e9d5ff;
+		font-size: 0.7rem;
+		font-weight: 800;
+		border-radius: inherit;
 	}
 
 	.cd-overlay {

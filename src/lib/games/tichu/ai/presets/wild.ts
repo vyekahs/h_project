@@ -47,17 +47,14 @@ export const wildBehavior: PresetBehavior = {
 		return fallback.length > 0 ? fallback[0] : null;
 	},
 
-	shouldGiveMahjongToPartner(hand) {
-		// 마작이 어떤 콤보에도 속하지 않으면 파트너에게 줌
-		const allCombos = findAllPlayableCombinations(hand);
-		const mahjongInCombo = allCombos.some(
-			combo =>
-				combo.type !== 'single' &&
-				combo.cards.some(c => c.type === 'special' && c.special === 'mahjong')
-		);
-		// 어떤 멀티카드 콤보에도 속하지 않으면 true (파트너에게 줌)
-		return !mahjongInCombo;
-	},
+	// shouldGiveMahjongToPartner 오버라이드는 제거했다.
+	//
+	// "마작이 멀티카드 콤보에 안 속하면 파트너에게 준다"였는데, 마작은 대부분 어떤
+	// 콤보에도 안 들어가므로 사실상 매 판 마작을 상납했다. 교환 카드 한 장을 랭크 1짜리
+	// 카드로 낭비하는 셈이고(파트너는 아무것도 못 이긴다), 대신 소원 권한과 선을
+	// 스스로 포기한다.
+	// (절제 실험, 같은 시드 439/459라운드: 이 훅을 끄면 wild팀 라운드 평균 33.7 → 48.9,
+	//  상대 팀과의 점수차 -42.5 → -16.7)
 
 	// onPartnerWinning 오버라이드는 제거했다.
 	//

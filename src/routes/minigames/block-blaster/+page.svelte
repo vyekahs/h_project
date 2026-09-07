@@ -334,9 +334,9 @@
 								{#if ds}
 									{@const active = ds.dangers.filter((d) => !d.resolved && d.delayTurns === 0)}
 									{@const pending = ds.dangers.filter((d) => !d.resolved && d.delayTurns > 0)}
-									WAVE {game.stagesCleared + 1}/{game.maxStage} · 위협 {active.length}/{active.length + pending.length}{#if pending.length > 0} (다음 {Math.min(...pending.map((d) => d.delayTurns))}턴 후){:else if game.dangerCountdownActive} · 다음 WAVE {game.turnsUntilNextDanger}턴{/if}
+									WAVE {game.stagesCleared + 1}{game.stagesCleared + 1 > game.maxStage ? ' (엔드리스)' : `/${game.maxStage}`} · 위협 {active.length}/{active.length + pending.length}{#if pending.length > 0} (다음 {Math.min(...pending.map((d) => d.delayTurns))}턴 후){:else if game.dangerCountdownActive} · 다음 WAVE {game.turnsUntilNextDanger}턴{/if}
 								{:else}
-									WAVE {game.stagesCleared}/{game.maxStage} · 다음 WAVE까지 {game.turnsUntilNextDanger}턴
+									WAVE {game.stagesCleared}{game.stagesCleared >= game.maxStage ? ' (엔드리스)' : `/${game.maxStage}`} · 다음 WAVE까지 {game.turnsUntilNextDanger}턴
 								{/if}
 							</span>
 							{#each game.activeQuests as q (q.id)}
@@ -372,6 +372,7 @@
 			<div class="center-group">
 			{#if game.isSpecialMode}
 				<AbilityInventory
+				sealedSlots={game.sealedSlots}
 					inventory={game.inventory}
 					pendingSlot={game.pendingAbilitySlot}
 					onSlotClick={(i: number) => {
@@ -453,6 +454,10 @@
 				options={game.pendingDraftOptions}
 				owned={game.inventory}
 				onPick={game.pickAbility}
+				rerollsRemaining={game.rerollsRemaining}
+				onReroll={game.rerollDraft}
+				tokens={game.draftTokens}
+				tokensPerDraft={game.tokensPerDraft}
 			/>
 		{/if}
 
@@ -518,9 +523,9 @@
 		{#if game.gameState === 'finished'}
 			<GameResultModal
 				isWon={game.isCleared}
-				title={game.isCleared ? `🏆 WAVE ${game.maxStage} 정복!` : 'GAME OVER'}
+				title={game.isCleared ? `🏆 완주 · WAVE ${game.stagesCleared} 도달` : 'GAME OVER'}
 				message={game.isCleared
-					? `${game.maxStage}개의 WAVE를 모두 정복했습니다!`
+					? `${game.maxStage}개 WAVE를 정복하고 WAVE ${game.stagesCleared}까지 나아갔습니다!`
 					: game.gameOverReason === 'doom'
 						? '게임오버 줄을 제때 비우지 못했습니다.'
 						: game.gameOverReason === 'no-blocks'
@@ -604,6 +609,14 @@
 			stageNumber={game.pendingDangerClear.stageNumber}
 			dangerCount={game.pendingDangerClear.dangerCount}
 		/>
+	{/if}
+
+	<!-- 놓을 곳이 없어 능력으로만 탈출 가능한 상태 안내 -->
+	{#if game.isSpecialMode && game.mustUseAbilityToEscape}
+		<div class="escape-hint" role="status">
+			<span class="escape-hint-icon">⚠️</span>
+			<span>놓을 자리가 없습니다 — 능력을 사용해 길을 여세요</span>
+		</div>
 	{/if}
 
 	<!-- 드래그 중인 플로팅 블록 -->
@@ -828,6 +841,37 @@
 	/* 트레이 ↔ NEXT 미리보기 */
 	.center-group > :global(.peek-strip) {
 		margin-top: 0.85rem;
+	}
+
+	/* 막힘 안내 — 능력으로만 탈출 가능한 상태 */
+	.escape-hint {
+		position: fixed;
+		left: 50%;
+		bottom: calc(18px + env(safe-area-inset-bottom));
+		transform: translateX(-50%);
+		z-index: 60;
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		padding: 10px 18px;
+		border-radius: 14px;
+		background: rgba(120, 53, 15, 0.92);
+		border: 1px solid rgba(251, 191, 36, 0.55);
+		color: #fde68a;
+		font-size: 0.85rem;
+		font-weight: 700;
+		white-space: nowrap;
+		box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+		animation: escapeHintPulse 1.6s ease-in-out infinite;
+		pointer-events: none;
+	}
+	.escape-hint-icon { font-size: 1rem; }
+	@keyframes escapeHintPulse {
+		0%, 100% { opacity: 0.85; }
+		50% { opacity: 1; }
+	}
+	@media (max-width: 420px) {
+		.escape-hint { font-size: 0.78rem; padding: 8px 14px; white-space: normal; max-width: 90vw; }
 	}
 
 	.floating-ability {

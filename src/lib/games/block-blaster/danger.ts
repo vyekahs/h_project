@@ -14,17 +14,42 @@ function generateId(prefix: string): string {
 }
 
 /**
- * 위험 스테이지에 등장할 위험 개수 — 큰 막 기준
- * 기 (1~2): 1개
- * 승 (3~5): 2개
- * 전 (6~8): 2~3개
- * 결 (9~10): 3개
+ * 한 위험 스테이지에 **생성**되는 위험 개수.
+ * 기(1~2): 1개 / 승(3~5): 2개 / 전·결(6~10): 3개
  */
-export function dangerCountForStage(stage: number): number {
+export function dangerSpawnCountForStage(stage: number): number {
+	// 반드시 결정적이어야 한다 — 생성과 판정이 각각 호출되므로 무작위면 어긋난다.
 	if (stage <= 2) return 1;
 	if (stage <= 5) return 2;
-	if (stage <= 8) return 2 + (Math.random() < 0.5 ? 1 : 0); // 50% 확률로 3
-	return 3;
+	if (stage <= 10) return 3;
+	// 엔드리스 구간(11막~): 3막마다 +1, 상한 6.
+	// 밸런싱이 아니라 수식이어야 하는 구간이므로 막 번호로 외삽한다.
+	return Math.min(6, 3 + Math.floor((stage - 10) / 3));
+}
+
+/**
+ * 한 막을 넘기는 데 **필요한** 해결 크레딧.
+ *
+ * 생성 개수와 분리한 이유: 예전에는 한 함수가 양쪽에 쓰여, 요구를 올리면 생성도
+ * 같이 올라 통화 발행량이 늘었다. 그래서 "요구 개수"가 유일한 손잡이인데도
+ * 사실상 상한에 걸려 있었다(올려도 상쇄됨).
+ *
+ * 이 게임은 위험 등장 자체가 진행 통화라(해결이든 만료든 크레딧이 쌓인다)
+ * 압박을 늘리는 조작이 진행도 함께 가속해 손잡이의 부호가 상쇄돼 왔다.
+ * 지급량(생성)을 고정한 채 요구만 올리면, 진행 가속을 동반하지 않는 순수한
+ * 난이도 손잡이가 된다. 10막 완주 총 요구: 23 → 31.
+ * (5로 더 올려봤지만 클리어율이 36.5%→37.5%로 오히려 올랐다. 보드가 자가 치유되어
+ *  판이 길어져도 어려워지지 않기 때문 — 그래서 아래 래칫이 필요하다.)
+ */
+export function dangerRequirementForStage(stage: number): number {
+	if (stage <= 2) return 1;
+	if (stage <= 5) return 3;
+	if (stage <= 10) return 4;
+	// 엔드리스: 3막마다 +1.
+	// 2막마다로 세워봤지만 폭주를 전혀 못 막았다(15+막 33.9%→36.2%, 최대 58막) —
+	// 위험 개수를 늘리면 크레딧도 함께 늘어 상쇄되기 때문이다. 폭주는 요구 개수가
+	// 아니라 보드 압박(엔드리스 래칫)으로 끊는다.
+	return 4 + Math.ceil((stage - 10) / 3);
 }
 
 /**
@@ -36,7 +61,27 @@ export function countdownForStage(stage: number): number {
 	if (stage <= 2) return 6 + Math.floor(Math.random() * 2); // 6~7
 	if (stage <= 5) return 6 + Math.floor(Math.random() * 2); // 6~7
 	if (stage <= 8) return 5 + Math.floor(Math.random() * 2); // 5~6
-	return 4 + Math.floor(Math.random() * 2); // 4~5
+	if (stage <= 10) return 4 + Math.floor(Math.random() * 2); // 4~5
+	// 엔드리스: 3막마다 -1, 최소 2턴
+	const base = Math.max(2, 4 - Math.floor((stage - 10) / 3));
+	return base + Math.floor(Math.random() * 2);
+}
+
+/**
+ * 위험 종류별 카운트다운 배수.
+ *
+ * 한때 6종(portal/hazard-zone/rust/quest/chaser/storm)의 카운트를 0.7~0.8배로
+ * 줄인 적이 있다. "해결률 87~97%라 대응을 요구하지 않는다"는 관찰 때문이었는데,
+ * 당시에는 **만료도 스테이지 크레딧을 줬으므로** 카운트를 줄이는 것은 압박을
+ * 늘리는 게 아니라 공짜 크레딧을 더 빨리 지급하는 것이었다(방향이 반대).
+ * 만료와 해결을 분리한 지금은 그 조정의 전제가 사라졌으므로 1.0으로 되돌린다.
+ */
+function countdownScaleFor(type: DangerType): number {
+	// seal은 보드를 점거하지 않는 대신 해제에 "다른 능력 사용"이 필요하다.
+	// 능력 쿨다운이 7~13턴이라 일반 카운트(4~7턴)로는 물리적으로 해제가 불가능했다
+	// (해결률 1.6%). 시간을 넉넉히 준다.
+	if (type === 'seal') return 2;
+	return 1;
 }
 
 /**
@@ -47,10 +92,12 @@ export function countdownForStage(stage: number): number {
  * 결 (9~10): 2
  */
 export function lockedSlotsForStage(stage: number): number {
+	// dangerSpawnCountForStage와 같은 이유로 결정적이어야 한다(생성/판정 이중 호출).
 	if (stage <= 2) return 0;
 	if (stage <= 5) return 1;
-	if (stage <= 8) return 1 + (Math.random() < 0.5 ? 1 : 0);
-	return 2;
+	if (stage <= 10) return 2;
+	// 엔드리스: 3칸 → 16막부터 4칸
+	return stage >= 16 ? 4 : 3;
 }
 
 /**
@@ -60,25 +107,75 @@ export function lockedSlotsForStage(stage: number): number {
  * 3단계: + spreading
  */
 /**
- * 위험 종류별 출현 가중치 — WAVE와 무관하게 처음부터 5종 모두 등장.
- * 강도가 낮을수록 자주, 게임오버 위협(doom)이 가장 드물게.
+ * 위험 종류별 출현 가중치.
+ *
+ * 의도는 "강도가 낮을수록 자주, 치명적일수록 드물게"였으나, 300판 시뮬레이션 결과
+ * 의도와 실제가 정반대였다:
+ *   - reinforced(가중치 35, 최다 등장): 해결률 42%, **사망판의 76.8%에서 미해결 활성**
+ *   - spreading(25): 해결률 37%, 사망판의 54.5%에서 활성
+ *   - doom-row/col(10, 최소 등장): 사망판의 21.5% / 14.6%
+ *   - 나머지 6종: 해결률 85~95%, 사망 기여 3~6% (사실상 무료 진행)
+ * reinforced/spreading은 보드 칸을 오래 점거해 놓을 자리를 없애는 유형이라,
+ * 실제 사망 원인 1위가 doom이 아니라 no-blocks(55~63%)인 것과 일치한다.
+ *
+ * 따라서 점거형 두 종을 줄이고, 존재감이 없던 6종을 늘려 압박의 출처를 분산한다.
  */
 const DANGER_WEIGHTS: Record<DangerType, number> = {
-	reinforced: 35,
-	spreading: 25,
-	'hazard-zone': 20,
-	storm: 15,
-	portal: 15,
+	// --- 유지: 플레이어가 실제로 대응 가능한 위험 (해결률 41~64%) ---
+	reinforced: 24,      // 56.9%
+	spreading: 20,       // 51.1%
+	storm: 26,           // 41.1%
+	chaser: 26,          // 34.5%
+	'hazard-zone': 24,   // 13.8% → 아래에서 3×3을 2×2로 축소해 달성 가능하게 조정
+	// doom은 P1에서 즉사 → "만료 시 그 줄의 남은 칸 석화"로 바뀌었다. 더 이상
+	// 한 방에 죽이지 않으므로 자주 등장해도 되고, 오히려 자주 나와야 clear 외의
+	// 능력들이 기여할 자리가 생긴다(즉사가 사라진 뒤 클리어율이 18%→38%로 뛰었다).
+	'doom-row': 22,      // 9
+	'doom-col': 22,      // 9
+
+	// --- 두 번째 압박 축 ---
+	// 지금까지 모든 위험이 "보드의 빈 칸" 하나로 수렴했고, clear 계열은 빈 칸을
+	// 직접 발행하는 능력이라 그 두 장이 정답인 것이 경제 구조상 필연이었다.
+	// jam은 보드가 아니라 **트레이**를 공격하므로 clear로는 손댈 수 없고,
+	// swap-block / rotate-block / single-cell 같은 조작 계열이 대응 수단이 된다.
+	// 16으로 낮췄더니 no-clear 빌드 클리어율이 17.3%→10.7%로 나빠졌다. jam이
+	// 조작 계열 능력을 쓸모있게 만드는 유일한 장치이므로 빈도를 낮추면 안 된다.
+	// 난이도는 만료 크레딧 쪽에서 조인다.
+	jam: 22,
+
+	// --- 세 번째 압박 축: 능력 ---
+	// 보드 축과 트레이 축은 결국 둘 다 "놓을 자리"로 수렴한다. clear 지배를
+	// 구조적으로 공격하는 유일한 방법은 능력 자체를 공격하는 것이다.
+	// 봉인은 가장 자주 쓴 능력을 우선 노리므로 clear 몰빵 빌드가 자동으로 처벌받고,
+	// 5슬롯을 예비 카드로 채울 이유가 생긴다.
+	seal: 18,
+
+	// --- 풀에서 제외(0) ---
+	// 만료와 해결을 분리한 뒤 실제 플레이어 해결률을 재보니 아래 3종은 대응이
+	// 사실상 불가능했다. 부분 크레딧으로 완화됐을 뿐 "대응하는 위험"이 아니라
+	// "페널티 타이머"로만 동작한다. 코드는 남겨두어 언제든 되살릴 수 있게 한다.
+	portal: 0,           // 14.5% — 블록을 놓으면 짝꿍 자리에 셀이 **추가**되어
+	                     //         대응할수록 불리해지는 역방향 기믹
+	// rust 재활성 — 제외했던 이유는 강도가 아니라 **의미론**이었다. 만료 시 부식 셀이
+	// 그냥 사라져서 방치가 이득이었다. 만료 시 석화로 남기도록 고쳐 "방치하면 보드가
+	// 굳는다"로 의미를 바로잡았다. 해결률 34.4%로 강도 자체는 적절했다.
 	rust: 20,
-	chaser: 15,
-	quest: 15,
-	'doom-row': 10,
-	'doom-col': 10
+	quest: 0             // 6.8%  — 콤보≥3/십자/같은색줄을 의도적으로 노리기 어려움.
+	                     //         위험 슬롯이 아니라 별도 보너스 목표에 어울림
 };
 
-/** 가중 무작위 — 한 가지 위험 종류 뽑기 */
-function pickWeightedDangerType(): DangerType {
-	const types = Object.keys(DANGER_WEIGHTS) as DangerType[];
+/**
+ * 가중 무작위 — 한 가지 위험 종류 뽑기.
+ *
+ * 1~2막에서는 doom을 제외한다. 이 구간의 플레이어는 능력이 0~1개뿐이라 doom이
+ * 뜨면 트레이 운에 따라 대응 수단 없이 즉사할 수 있다(만료가 크레딧을 주던 시절엔
+ * 가려져 있었지만, 만료를 실패로 바꾼 뒤 0막 사망률이 45.9%까지 올랐다).
+ */
+function pickWeightedDangerType(stageNumber: number): DangerType {
+	const all = (Object.keys(DANGER_WEIGHTS) as DangerType[]).filter(t => DANGER_WEIGHTS[t] > 0);
+	const types = stageNumber <= 2
+		? all.filter(t => t !== 'doom-row' && t !== 'doom-col')
+		: all;
 	const total = types.reduce((sum, t) => sum + DANGER_WEIGHTS[t], 0);
 	let roll = Math.random() * total;
 	for (const t of types) {
@@ -101,7 +198,7 @@ function dangerStaggerInterval(stageNumber: number): number {
 }
 
 export function generateDangerStage(stageNumber: number, grid: BoardGrid): DangerStage {
-	const dangerCount = dangerCountForStage(stageNumber);
+	const dangerCount = dangerSpawnCountForStage(stageNumber);
 	const dangers: Danger[] = [];
 	const usedRows = new Set<number>();
 	const usedCols = new Set<number>();
@@ -109,7 +206,7 @@ export function generateDangerStage(stageNumber: number, grid: BoardGrid): Dange
 	const usedCells = new Set<string>(); // 가족형 위험(reinforced/spreading/storm/portal)이 픽한 좌표
 
 	for (let i = 0; i < dangerCount; i++) {
-		const type: DangerType = pickWeightedDangerType();
+		const type: DangerType = pickWeightedDangerType(stageNumber);
 		const danger = createDanger(type, stageNumber, grid, {
 			usedRows,
 			usedCols,
@@ -130,12 +227,15 @@ export function generateDangerStage(stageNumber: number, grid: BoardGrid): Dange
 			case 'spreading':
 			case 'portal':
 			case 'rust':
+			case 'jam':
+			case 'seal':
 			case 'quest': return 1;
 			case 'hazard-zone':
 			case 'storm':
 			case 'chaser': return 2;
 			case 'doom-row':
 			case 'doom-col': return 3;
+			default: return 1;
 		}
 	};
 	dangers.sort((a, b) => dangerOrderRank(a.type) - dangerOrderRank(b.type));
@@ -173,7 +273,7 @@ function createDanger(
 	grid: BoardGrid,
 	ctx: CreateDangerCtx
 ): Danger | null {
-	const cd = countdownForStage(stageNumber);
+	const cd = Math.max(3, Math.round(countdownForStage(stageNumber) * countdownScaleFor(type)));
 	// 첫 위험(스테이지 1)의 doom-row/col은 트레이 운에 따라 무력하게 패배하는 일이
 	// 없도록 카운트다운 +2턴 완화 (학습 단계 보호).
 	const doomCd = stageNumber === 1 ? cd + 2 : cd;
@@ -213,15 +313,19 @@ function createDanger(
 			};
 		}
 		case 'hazard-zone': {
-			// 3×3 영역. 보드 안쪽으로만 (앵커 0~5)
-			const anchorR = Math.floor(Math.random() * (GRID_SIZE - 2));
-			const anchorC = Math.floor(Math.random() * (GRID_SIZE - 2));
+			// 2×2 영역.
+			// 원래 3×3이었는데, 해결 조건이 "영역 9칸이 모두 빈 칸"이라 사실상 달성이
+			// 불가능했다(실측 플레이어 해결률 13.8%). 3줄 또는 3열을 그 위치에 겹쳐
+			// 지워야 하기 때문이다. 2×2는 가로 2줄 또는 세로 2열로 해결 가능해
+			// "노리면 풀 수 있는" 범위로 들어온다.
+			const anchorR = Math.floor(Math.random() * (GRID_SIZE - 1));
+			const anchorC = Math.floor(Math.random() * (GRID_SIZE - 1));
 			const key = `${anchorR},${anchorC}`;
 			if (ctx.usedZoneAnchors.has(key)) return null;
 			ctx.usedZoneAnchors.add(key);
 			const cells: [number, number][] = [];
-			for (let r = anchorR; r < anchorR + 3; r++) {
-				for (let c = anchorC; c < anchorC + 3; c++) {
+			for (let r = anchorR; r < anchorR + 2; r++) {
+				for (let c = anchorC; c < anchorC + 2; c++) {
 					cells.push([r, c]);
 				}
 			}
@@ -236,8 +340,11 @@ function createDanger(
 			};
 		}
 		case 'reinforced': {
-			// 2~3셀 폴리오미노 강화 블록. 셀별 독립 hp는 activateDangerOnBoard에서 부여.
-			const cells = pickPolyomino(grid, 2 + Math.floor(Math.random() * 2), ctx.usedCells);
+			// 강화 블록 — 셀별 독립 hp는 activateDangerOnBoard에서 부여.
+			// 셀 수를 2~3 → 2로 고정. 이 유형은 hp가 0이 될 때까지 보드 칸을 계속
+			// 점거해 놓을 자리를 없애는 것이 실제 위협이었으므로(사망판의 76.8%에서 활성)
+			// 점거 면적을 줄인다.
+			const cells = pickPolyomino(grid, 2, ctx.usedCells);
 			if (cells.length === 0) return null;
 			return {
 				id: generateId('reinforced'),
@@ -250,8 +357,9 @@ function createDanger(
 			};
 		}
 		case 'spreading': {
-			// 2~3셀 폴리오미노 증식 블록. 모든 셀이 동등한 근원.
-			const cells = pickPolyomino(grid, 2 + Math.floor(Math.random() * 2), ctx.usedCells);
+			// 증식 블록 — 모든 셀이 동등한 근원. reinforced와 같은 이유로 시작 크기를 2로 고정
+			// (사망판의 54.5%에서 활성이었던 2위 위협).
+			const cells = pickPolyomino(grid, 2, ctx.usedCells);
 			if (cells.length === 0) return null;
 			// countdown은 활성화 주기. 0 도달 시 증식 후 다시 주기로 리셋
 			const interval = stageNumber <= 7 ? 3 : 2;
@@ -329,6 +437,32 @@ function createDanger(
 				id: generateId('rust'),
 				type: 'rust',
 				cells: [[r, c]],
+				countdown: cd,
+				initialCountdown: cd,
+				resolved: false,
+				delayTurns: 0
+			};
+		}
+		case 'seal': {
+			// 봉인 — 보드를 점거하지 않는다. 활성화 시 인벤토리 슬롯 하나를 잠그고,
+			// 다른 능력을 일정 횟수 사용하면 풀린다. gameLogic에서 상태를 관리한다.
+			return {
+				id: generateId('seal'),
+				type: 'seal',
+				cells: [],
+				countdown: cd,
+				initialCountdown: cd,
+				resolved: false,
+				delayTurns: 0
+			};
+		}
+		case 'jam': {
+			// 고장 — 보드를 점거하지 않는다(cells 빈 배열). 활성화 시점에 트레이 한 칸을
+			// 놓기 어려운 불량 블록으로 채우고, 그 블록이 트레이에서 사라지면 해결.
+			return {
+				id: generateId('jam'),
+				type: 'jam',
+				cells: [],
 				countdown: cd,
 				initialCountdown: cd,
 				resolved: false,
@@ -525,14 +659,31 @@ export function isDangerResolved(danger: Danger, grid: BoardGrid, cellMeta?: Cel
 		}
 		return true;
 	}
+	if (danger.type === 'seal') {
+		// seal은 인벤토리 상태로 판정 — gameLogic에서 명시적으로 resolved 처리
+		return false;
+	}
+	if (danger.type === 'jam') {
+		// jam은 보드가 아니라 트레이 상태로 판정 — gameLogic에서 명시적으로 resolved 처리
+		return false;
+	}
 	if (danger.type === 'quest') {
 		// quest는 cells가 빈 배열 — 패턴 달성 시 명시적으로 d.resolved=true 처리됨
 		return false;
 	}
+	// === 해결 조건의 "모양" ===
+	// doom/hazard-zone은 원래 "영역의 **모든** 셀이 빈 칸"이어야 해결됐다. 이건
+	// 라인 모양의 조건이고, 라인을 만드는 능력은 clear-row/col 둘뿐이다. 폭탄으로
+	// 3×3을 지워도 8칸짜리 doom 줄은 절대 완성되지 않으므로, 쿨다운을 아무리
+	// 조정해도 그 두 장의 독점은 형태 때문에 깨지지 않았다(격차 3.7배의 근본 원인).
+	// 잔여 허용치를 두면 폭탄·같은색지우기 등도 실제로 기여하고 마무리까지 할 수 있다.
+	let filled = 0;
 	for (const [r, c] of danger.cells) {
-		if (grid[r][c] !== 0) return false;
+		if (grid[r][c] !== 0) filled++;
 	}
-	return true;
+	if (danger.type === 'doom-row' || danger.type === 'doom-col') return filled <= 2;
+	if (danger.type === 'hazard-zone') return filled <= 1;
+	return filled === 0;
 }
 
 /** 위험 종류별 사용자 친화적 표시명 */
@@ -544,6 +695,10 @@ export function dangerLabel(type: DangerType): string {
 			return '게임오버 열';
 		case 'hazard-zone':
 			return '위험 구역';
+		case 'jam':
+			return '고장 블록';
+		case 'seal':
+			return '스킬 봉인';
 		case 'reinforced':
 			return '강화 블록';
 		case 'spreading':
@@ -582,6 +737,10 @@ export function dangerDescription(type: DangerType): string {
 			return '해당 세로열을 라인 완성하세요. 실패 시 게임오버!';
 		case 'hazard-zone':
 			return '카운트 종료 전에 영역의 셀을 모두 비우세요. 남은 셀은 스킬이 통하지 않는 블록으로 변환됩니다.';
+		case 'jam':
+			return '트레이에 불량 블록이 들어옵니다. 보드에 놓거나 블록 교체·변형 스킬로 없애세요.';
+		case 'seal':
+			return '스킬 슬롯 하나가 봉인됩니다. 다른 스킬을 사용해 풀어내세요.';
 		case 'reinforced':
 			return '회색 강화 블록은 HP 0이 되면 사라집니다.';
 		case 'spreading':
@@ -602,11 +761,20 @@ export function dangerDescription(type: DangerType): string {
 /**
  * doom-row / doom-col이 카운트 0에 도달했는데 해결 못 한 경우 게임오버.
  */
-export function isDoomTriggered(danger: Danger, grid: BoardGrid): boolean {
+/**
+ * doom 만료 시 즉사 대신 **남은 칸 석화**로 바꿨으므로 이 함수는 더 이상 게임오버를
+ * 판정하지 않는다. 남겨두는 이유는 doom이 만료 시점에 처리할 대상이 있는지
+ * (=아직 채워진 칸이 남았는지) 알려주기 위함이다.
+ *
+ * 왜 바꿨나: doom의 해결 조건이 "줄 전체가 빈 칸"이라 clear-row/clear-col 외의
+ * 어떤 능력으로도 손댈 수 없었다. 이것이 드래프트에서 그 두 장만 정답이 되는
+ * 구조적 원인이었다(bomb으로 4칸을 지워도 doom 해결에 1도 기여하지 못함).
+ * 이제 그 줄의 칸을 어떤 수단으로든 비우면 그만큼 진척이 되고, 만료 시에는
+ * 남은 칸이 석화되어 "즉사" 대신 "확실히 불리해짐"으로 처벌이 번역된다.
+ */
+export function doomHasRemainingCells(danger: Danger, grid: BoardGrid): boolean {
 	if (danger.resolved) return false;
-	if (danger.countdown > 0) return false;
 	if (danger.type !== 'doom-row' && danger.type !== 'doom-col') return false;
-	// 카운트 0이고 해결 안 됨 → 그 줄에 블록 1개라도 있으면 게임오버
 	for (const [r, c] of danger.cells) {
 		if (grid[r][c] !== 0) return true;
 	}

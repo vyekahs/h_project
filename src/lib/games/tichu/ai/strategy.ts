@@ -9,6 +9,7 @@ import {
 	findAllPlayableCombinations,
 	findBeatablePlays,
 	findBombs,
+	findOptimalPartition,
 	getCardSortRank
 } from './handEvaluator';
 import {
@@ -17,7 +18,7 @@ import {
 	hasOpponentDeclaredTichu,
 	type CardTracker
 } from './cardTracker';
-import { searchBestPlay, calcExitRate } from './playSearchGrid';
+import { searchBestPlay, calcExitRate, isForcedOutIfLeading } from './playSearchGrid';
 import { buildSampleWorlds, evaluateLeadSafety, evaluateTwoTurnFinish, getUnseenCards, type SampledWorld } from './monteCarlo';
 
 // ===== Hand Analysis Helpers =====
@@ -143,18 +144,32 @@ export function decideGrandTichu(hand8: Card[], weights: PersonalityWeights, beh
 	// 무작위 8장 손패 5000회 실측: 중앙값 11.7 / p90 29.9 / p95 35.1 / p99 46.8 / 최대 67.6.
 	// 기존 공식(70 - p*25 → 50~66)은 상위 0.5% 이내여야 도달 가능해 사실상 선언이
 	// 발생하지 않았음(148라운드 실측 0회). 사람의 그랜드 티츄 선언 빈도는 대략 5~10%.
-	// 45 - p*18.5 → 공격적 30.2(≈상위 10%) / 변칙적 33.9(≈7%) / 밸런스·전략적 35.8(≈5%)
-	//              / 수비적 42.2(≈2%)
-	const threshold = 45 - weights.tichoPropensity * 18.5;
+	// 이후 실측으로 **성공률** 기준 재보정: 선언 시점 손패 강도별 성공률을 모아보니
+	// 강도 30 이상 전체는 60.2%인데 38 이상은 65.2%, 42 이상은 67.5%였다.
+	// 그랜드는 ±200점이라 60%도 기대값은 양수지만, 부르는 값어치를 내려면 65% 선이 맞다.
+	// 48 - p*14 → 공격적 36.8 / 변칙적 39.6 / 밸런스·전략적 41 / 수비적 45.9
+	const threshold = 48 - weights.tichoPropensity * 14;
 	return strength >= threshold;
 }
 
 // ===== Small Tichu Decision =====
 
+/** 스몰 티츄 선언에 요구하는 최소 나가기 효율 */
+const SMALL_TICHU_MIN_EXIT_RATE = 0.5;
+
 /**
  * Decide whether to declare Small Tichu based on full 14-card hand.
  */
 export function decideSmallTichu(hand: Card[], weights: PersonalityWeights, context: AiDecisionContext, behavior: PresetBehavior = {}): boolean {
+	// === 하드 거부: 파트너가 이미 선언함 ===
+	// 이 검사는 **프리셋 훅보다 먼저** 와야 한다. 훅이 true를 반환하면 아래 기본 판단이
+	// 통째로 건너뛰어지므로, 아래에 두면 '변칙적'처럼 true를 반환하는 프리셋이 파트너의
+	// 선언을 무시하고 같이 부른다(실제 발생한 버그).
+	// 한 팀이 둘 다 부르면 위험만 두 배가 되고, 한쪽이 먼저 나가는 순간 다른 쪽은
+	// 확정 실패라 상방이 없다.
+	const partner = context.players.find(p => p.seat === getPartnerSeat(context.currentSeat));
+	if (partner?.grandTichu === true || partner?.smallTichu) return false;
+
 	// Behavior hook
 	const override = behavior.shouldDeclareSmallTichu?.(hand, context);
 	if (override !== null && override !== undefined) return override;
@@ -162,10 +177,20 @@ export function decideSmallTichu(hand: Card[], weights: PersonalityWeights, cont
 	const strength = evaluateHandStrength(hand);
 	// 그랜드 티츄와 동일하게 실제 분포 기준으로 보정.
 	// 무작위 14장 손패 5000회 실측: 중앙값 22 / p75 31 / p90 39 / p95 44 / 최대 68.
-	// 기존 공식(60 - p*20 → 44~57)은 도달률 0.6~5.6%에 그쳤음. 사람은 대략 15~25%.
-	// 41 - p*12.3 → 공격적 31.2(≈상위 25%) / 변칙적 33.6(≈20%) / 밸런스·전략적 34.9(≈18%)
-	//              / 수비적 39.2(≈10%)
-	const threshold = 41 - weights.tichoPropensity * 12.3;
+	// 그 뒤 "선언 빈도"가 아니라 **성공률**로 다시 맞췄다. 41 - p*12.3은 사람과 비슷한
+	// 빈도(좌석당 13.9%)를 만들었지만 성공률이 50.6%였다 — 스몰 티츄는 ±100점이므로
+	// 50%는 기대값 0, 즉 불러도 그만 안 불러도 그만이다.
+	// 그 뒤 실게임에서 임계값을 5씩 올려가며 성공률/빈도 곡선을 직접 측정했다
+	// (설정당 1300라운드):
+	//   실효 42~48.5 → 54.7% (좌석당 선언율 4.67%)
+	//   실효 47~53.5 → 65.0% (2.20%)
+	//   실효 52~58.5 → 67.2% (1.06%)
+	//   실효 57~63.5 → 85.7% (0.26%, n=14로 신뢰 불가)
+	// 성공률을 크게 올리려면 선언 빈도가 사실상 0으로 수렴한다. 65% 지점을 택했다 —
+	// ±100점이므로 기대값이 뚜렷하게 양수이면서, 라운드당 누군가 부를 확률이 약 8.5%로
+	// 게임에서 티츄가 여전히 보인다.
+	// 55 - p*10 → 공격적 47 / 변칙적 49 / 밸런스 50 / 수비적 53.5
+	const threshold = 55 - weights.tichoPropensity * 10;
 
 	// Don't declare if someone on opposing team already declared
 	const myTeam = getTeam(context.currentSeat);
@@ -174,21 +199,117 @@ export function decideSmallTichu(hand: Card[], weights: PersonalityWeights, cont
 	);
 	if (opponentDeclared && weights.riskTolerance < 0.7) return false;
 
-	// More likely if partner declared tichu (we want to help)
-	const partner = context.players.find(p => p.seat === getPartnerSeat(context.currentSeat));
-	if (partner?.grandTichu === true || partner?.smallTichu) return false; // partner already declared, don't double-up risk
-
 	// Additional check: analyze hand structure
 	const plan = analyzeHand(hand);
 	// If too many singletons, hand is weak even if raw score is high
 	if (plan.singletonCount >= 5 && weights.riskTolerance < 0.8) return false;
 	// If we can empty in few turns, boost confidence
-	if (plan.turnsToEmpty <= 5) return strength >= (threshold - 10);
-
-	return strength >= threshold;
+	// 할인폭이 -10이면 임계값이 통째로 무너져(실효 21~29) 약한 손패 선언이 대량으로
+	// 새어나왔다. 빨리 비울 수 있다는 건 분명 이점이지만 그 정도는 아니다.
+	// === 판정의 주축은 강도가 아니라 나가기 효율(exitRate)이다 ===
+	//
+	// 스몰 티츄는 14장을 다 보고 부르는데 8장 블라인드인 그랜드보다 성공률이 낮았다
+	// (67.4% vs 79.0%). 더 많은 정보를 쥐고 더 못 맞히는 건 판정이 그 정보를
+	// 안 쓰고 있다는 뜻이다. 실제로 두 판정 모두 evaluateHandStrength 하나만 봤다.
+	//
+	// 선언 후 플레이를 exitRate 최대화로 바꾼 뒤부터는(TICHU_EXIT_WEIGHT) 선언 시점의
+	// exitRate가 곧 "이 손패로 실제 낼 수 있는 계획의 품질"이 됐다. 그래서 강도는
+	// 최소 조건으로만 두고 exitRate를 주 기준으로 삼는다.
+	//
+	// 실측(설정당 약 1500라운드, 두 번 재현):
+	//   현재 방식               70.9% (좌석당 2.74%)
+	//   exitRate>=0.46          67.5% (3.28%)
+	//   exitRate>=0.50          77.9% (2.45%)  ← 채택. 그랜드(73.3%)를 앞선다
+	//   exitRate>=0.54          75.3% (1.33%)
+	//   강도 문턱 -18로 완화     65.7% (4.27%)
+	//   강도 문턱 -6로 강화      69.0% (0.96%)
+	if (strength < threshold - 12) return false;
+	// 문턱을 성향에 따라 움직인다. 고정값(0.5)으로 두면 이 게이트가 판정을 지배해서
+	// 프리셋별 tichoPropensity가 묻힌다 — 실제로 '공격적'(0.8)과 '밸런스'(0.5)의
+	// 선언율이 5.2%로 같아져 "티츄를 적극 선언합니다"라는 설명과 어긋났다.
+	const exitGate = SMALL_TICHU_MIN_EXIT_RATE - (weights.tichoPropensity - 0.5) * 0.12;
+	if (calcExitRate(hand, buildCardTracker(context)).rate < exitGate) return false;
+	return true;
 }
 
 // ===== Exchange Card Selection =====
+
+/** 리드를 이겨 선을 되찾을 수 있는 카드 수 (용 · A · 폭탄) */
+function countLeadWinners(hand: Card[]): number {
+	let n = 0;
+	for (const c of hand) {
+		if (c.type === 'special' && c.special === 'dragon') n++;
+		else if (c.type === 'normal' && (c as NormalCard).rank === 14) n++;
+	}
+	n += findBombs(hand).length; // 폭탄은 어떤 리드든 되찾을 수 있으므로 1회분
+	return n;
+}
+
+/**
+ * 티츄를 부른 플레이어가 파트너에게 넘길 카드를 고른다.
+ *
+ * 두 가지를 동시에 지켜야 한다.
+ *  1) **구조**: 페어·트리플·스트레이트 등 다장 조합을 깨면 나가는 데 필요한 턴이 늘어난다.
+ *  2) **주도권**: T턴 만에 나가려면 그 T번을 실제로 낼 수 있어야 하고, 그러려면
+ *     상위 T장의 높은 카드가 필요하다. 턴 수만 보고 고르면 A 싱글처럼
+ *     "빼면 턴이 줄어드는" 카드를 넘기게 되는데, 그건 티츄에 가장 필요한 카드다.
+ *
+ * 둘 다에 걸리지 않는 카드를 "필요 없는 카드"로 보고 그중 가장 높은 것을 반환한다.
+ * (파트너에게 가는 카드이므로 높을수록 팀에 이롭다.)
+ */
+function pickDispensableCardForTichu(hand: Card[], isGrand: boolean): Card | null {
+	const partition = findOptimalPartition(hand);
+
+	// === 개(dog) 예외 ===
+	// 개는 파트너에게 선을 넘기는 카드라, 티츄를 부른 쪽이 들고 있으면 한 턴이 통째로
+	// 낭비된다. 파트너에게 넘기면 파트너가 그걸 내서 나에게 선을 돌려줄 수 있어
+	// 교과서적으로는 좋은 수지만, 매번 넘기면 "개를 상납한다"는 인상이 강하다.
+	// 그래서 **그랜드 티츄**를 부르고, **개를 넘겨야만 턴 수가 맞아떨어질 때**로 한정한다.
+	if (isGrand) {
+		const dog = hand.find(c => c.type === 'special' && c.special === 'dog');
+		if (dog) {
+			// T턴에 나가려면 중간에 선을 T-1번 되찾아야 하고, 그건 리드를 이길 수 있는
+			// 카드(용·A·폭탄) 수로 가늠한다.
+			const control = countLeadWinners(hand);
+			const needWith = partition.turns - 1;      // 개를 든 채로 필요한 선 확보 횟수
+			const needWithout = partition.turns - 2;   // 개를 넘기면 턴이 하나 줄어든다
+			// 든 채로는 부족하고, 넘기면 충족되는 경우에만 넘긴다
+			if (control < needWith && control >= needWithout) return dog;
+		}
+	}
+
+	const needed = new Set<string>();
+
+	// 1) 다장 조합에 속한 카드는 구조상 필요
+	for (const combo of partition.combos) {
+		if (combo.cards.length >= 2) {
+			for (const c of combo.cards) needed.add(c.id);
+		}
+	}
+
+	// 2) 선을 잡기 위한 상위 T장은 필요
+	const byRank = [...hand].sort((a, b) => getCardSortRank(b) - getCardSortRank(a));
+	for (let i = 0; i < Math.min(partition.turns, byRank.length); i++) {
+		needed.add(byRank[i].id);
+	}
+
+	// 마작은 소원 권한 때문에 유지
+	const mahjong = hand.find(c => c.type === 'special' && c.special === 'mahjong');
+	if (mahjong) needed.add(mahjong.id);
+
+	// 개는 위 예외 경로로만 넘긴다. 여기서 빼두지 않으면 "필요 없는 카드 중 최고"
+	// 규칙에 그대로 걸려서(개의 정렬 순위가 낮은 숫자패보다 높다) 예외를 좁게 만든
+	// 의미가 사라진다.
+	const dogCard = hand.find(c => c.type === 'special' && c.special === 'dog');
+	if (dogCard) needed.add(dogCard.id);
+
+	const dispensable = hand.filter(c => !needed.has(c.id));
+	if (dispensable.length === 0) return null; // 호출부가 기본 로직으로 폴백
+
+	dispensable.sort((a, b) => getCardSortRank(b) - getCardSortRank(a));
+	return dispensable[0];
+}
+
 
 /**
  * Select 3 cards to exchange: one to partner, one to left, one to right.
@@ -199,7 +320,15 @@ export function selectExchangeCards(
 	seat: SeatIndex,
 	weights: PersonalityWeights,
 	behavior: PresetBehavior = {},
-	partnerDeclaredTichu: boolean = false
+	partnerDeclaredTichu: boolean = false,
+	/**
+	 * 내가 티츄(그랜드 포함)를 선언했는지.
+	 * 이전에는 이 정보가 교환 결정에 전혀 전달되지 않아서, 티츄를 부른 AI가
+	 * 자기 용/봉/A를 그대로 파트너에게 넘기고 스스로 나갈 수단을 잃었다.
+	 */
+	selfDeclaredTichu: boolean = false,
+	/** 그랜드 티츄인지 — 개(dog)를 넘기는 예외 판단에만 쓴다 */
+	selfDeclaredGrandTichu: boolean = false
 ): ExchangeCards {
 	const normalCards = hand.filter(c => c.type === 'normal') as NormalCard[];
 	const rankGroups = new Map<number, NormalCard[]>();
@@ -249,6 +378,14 @@ export function selectExchangeCards(
 	if (mahjongCard && behavior.shouldGiveMahjongToPartner?.(hand)) {
 		toPartner = mahjongCard;
 		protectedIds.delete(mahjongCard.id); // 마작을 주기로 했으므로 보호 해제
+	}
+
+	// === 내가 티츄를 부른 경우 ===
+	// 최고 카드를 넘기면 "내가 먼저 나간다"는 계획 자체가 깨진다.
+	// 손패를 비우는 최소 턴 수(T)를 실제로 계산해서, 그 계획에 필요 없는 카드 중
+	// 가장 높은 것을 준다. 파트너에게도 쓸모 있는 카드가 가고, 내 계획은 유지된다.
+	if (!toPartner && selfDeclaredTichu) {
+		toPartner = pickDispensableCardForTichu(hand, selfDeclaredGrandTichu);
 	}
 
 	// 파트너에게는 무조건 최고 카드를 줌 (페어/트리플이든 상관없이)
@@ -381,10 +518,18 @@ export function decidePlay(
 			}
 		}
 
-		// 파트너 티츄 선언 or 파트너 카드 ≤3장이면 → 나갈 기회도 양보하고 패스
+		// 파트너 티츄 선언 → 손패가 1장이어도 양보하고 패스.
+		// 기존에는 hand.length > 1 조건이 붙어 있어서, 1장 남은 상태로 파트너의 트릭을
+		// 덮어 내며 **내가 먼저 나가버리는** 구멍이 있었다(바로 아래 hand.length === 1 분기).
+		// 파트너가 티츄를 불렀으면 파트너가 1등으로 나가야 하므로 내가 먼저 나가면
+		// 그 티츄는 확정 실패다.
 		const partnerDeclaredTichu = partner.grandTichu === true || partner.smallTichu;
-		if (hand.length > 1 && partner.finishOrder === null &&
-			(partnerDeclaredTichu || partner.hand.length <= 3)) {
+		if (partner.finishOrder === null && partnerDeclaredTichu) {
+			return 'pass';
+		}
+		// 파트너 카드 ≤3장: 티츄가 걸린 게 아니므로 내가 1장이면 같이 나가는 편이 낫다
+		// (원투 성립) → 기존대로 hand.length > 1 일 때만 양보
+		if (hand.length > 1 && partner.finishOrder === null && partner.hand.length <= 3) {
 			return 'pass';
 		}
 
@@ -633,13 +778,34 @@ function pickBestFollow(
 	// 근소한 차이의 후보 중 무작위 선택 (사람처럼 매번 같은 수를 두지 않도록)
 	const bestResult = pickAmongNearBest(gridResults, weights);
 
+	// 파트너 티츄가 살아있는데 이 수로 내 손패가 비면 패스한다.
+	// 아래 mustPlay(상대 차단·고득점 트릭) 예외보다도 우선한다: 상대가 먼저 나가도
+	// 파트너 티츄는 실패하지만 그건 어디까지나 **가능성**이고, 내가 나가는 것은
+	// **확정 실패**다. 패스는 파트너가 먼저 나갈 여지를 남기므로 지배적이다.
+	const partnerTichuLive = context.players[getPartnerSeat(context.currentSeat)].finishOrder === null &&
+		(context.players[getPartnerSeat(context.currentSeat)].grandTichu === true ||
+			context.players[getPartnerSeat(context.currentSeat)].smallTichu);
+	if (partnerTichuLive) {
+		const rem = hand.filter(c => !bestResult.combo.cards.some(cc => cc.id === c.id));
+		// 손패가 비거나, 남은 패가 "선을 잡으면 나갈 수밖에 없는" 상태면 트릭을 먹지 않는다.
+		// 이 트릭을 이겨서 선을 잡는 순간 다음 리드가 강제되기 때문이다.
+		if (rem.length === 0 || isForcedOutIfLeading(rem, tracker)) {
+			return 'pass';
+		}
+	}
+
 	// 나갈 수 있으면 무조건 냄
 	if (iAmClose) {
 		return bestResult.combo.cards.map(c => c.id);
 	}
 
 	// === 전략적 패스: 확률이 낮으면 패스 ===
-	const passThreshold = 0.15 + weights.aggressiveness * 0.1;
+	// 티츄를 부른 쪽은 패스할 때마다 카드를 한 장도 못 뺀다. 먼저 나가야 하는 쪽이
+	// 스스로 기회를 버리는 셈이라 문턱을 크게 낮춘다.
+	const meForPass = context.players[context.currentSeat];
+	const iDeclaredForPass = meForPass.finishOrder === null &&
+		(meForPass.grandTichu === true || meForPass.smallTichu);
+	const passThreshold = (0.15 + weights.aggressiveness * 0.1) * (iDeclaredForPass ? 0.25 : 1);
 
 	if (bestResult.totalScore < passThreshold) {
 		// 단, 패스하면 안 되는 상황 체크

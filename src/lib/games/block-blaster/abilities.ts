@@ -119,7 +119,38 @@ export const ABILITY_POOL: Ability[] = [
 		targetType: 'block'
 	},
 
-	// === Defense — 액티브 (1종) ===
+	// === Clear — 석화/강화 전용 (1종) ===
+	{
+		id: 'chisel',
+		name: '정 (끌)',
+		description: '석화·강화된 셀을 직접 부숩니다.',
+		category: 'clear',
+		rarity: 'rare',
+		icon: '⛏️',
+		targetType: 'cell'
+	},
+
+	// === Manipulate — 추가 (1종) ===
+	{
+		id: 'shrink',
+		name: '블록 축소',
+		description: '선택한 트레이 블록의 크기를 줄입니다.',
+		category: 'manipulate',
+		rarity: 'common',
+		icon: '🗜️',
+		targetType: 'block'
+	},
+
+	// === Defense — 액티브 (2종) ===
+	{
+		id: 'freeze',
+		name: '시간 정지',
+		description: '모든 위험의 카운트다운을 늦춥니다.',
+		category: 'defense',
+		rarity: 'rare',
+		icon: '⏳',
+		targetType: 'instant'
+	},
 	{
 		id: 'undo',
 		name: '되돌리기',
@@ -191,6 +222,18 @@ export function getLevelEffect(id: string, level: number): string {
 			if (level === 1) return '선택한 블록을 90도 회전한 모양으로 변경합니다.';
 			if (level === 2) return '선택한 블록을 90/180/270도 회전 중 원하는 모양으로 변경합니다.';
 			return '선택한 블록을 90/180/270도 회전, 좌우 반전, 상하 반전 중 원하는 모양으로 변경합니다.';
+		case 'chisel':
+			if (level === 1) return '선택한 셀 1칸의 석화·강화를 부숩니다. 라인 완성 없이 검은 돌을 없앨 수 있는 유일한 수단입니다.';
+			if (level === 2) return '선택한 셀과 인접한 상하좌우까지 최대 5칸의 석화·강화를 부숩니다.';
+			return '선택한 셀 중심 3×3(최대 9칸)의 석화·강화를 부숩니다.';
+		case 'shrink':
+			if (level === 1) return '선택한 트레이 블록에서 셀 1개를 덜어냅니다.';
+			if (level === 2) return '선택한 트레이 블록에서 셀 2개를 덜어냅니다.';
+			return '선택한 트레이 블록을 1×1 단일 블록으로 만듭니다.';
+		case 'freeze':
+			if (level === 1) return '모든 활성 위험의 카운트다운을 2턴 되돌립니다.';
+			if (level === 2) return '모든 활성 위험의 카운트다운을 3턴 되돌립니다.';
+			return '모든 활성 위험의 카운트다운을 4턴 되돌립니다.';
 		case 'undo':
 			if (level === 1) return '마지막에 배치한 블록 1개를 되돌립니다. 보드와 트레이가 직전 상태로 돌아갑니다.';
 			if (level === 2) return '최근에 배치한 블록 2개까지 되돌릴 수 있습니다.';
@@ -200,9 +243,9 @@ export function getLevelEffect(id: string, level: number): string {
 			if (level === 2) return '다음에 등장할 블록 2세트를 미리 볼 수 있습니다.';
 			return '다음에 등장할 블록 3세트를 미리 볼 수 있습니다.';
 		case 'revive':
-			if (level === 1) return '게임오버가 발생하면 자동 발동되어 보드의 50%를 정리하고 게임을 이어갑니다. 발동 후 30턴의 재충전이 필요합니다.';
-			if (level === 2) return '게임오버가 발생하면 자동 발동되어 보드의 70%를 정리하고 게임을 이어갑니다. 발동 후 25턴의 재충전이 필요합니다.';
-			return '게임오버가 발생하면 자동 발동되어 보드를 완전히 정리하고 게임을 이어갑니다. 발동 후 20턴의 재충전이 필요합니다.';
+			if (level === 1) return '게임오버가 발생하면 자동 발동되어 보드의 50%를 정리하고 게임을 이어갑니다. 발동 후 40턴의 재충전이 필요합니다.';
+			if (level === 2) return '게임오버가 발생하면 자동 발동되어 보드의 70%를 정리하고 게임을 이어갑니다. 발동 후 34턴의 재충전이 필요합니다.';
+			return '게임오버가 발생하면 자동 발동되어 보드를 완전히 정리하고 게임을 이어갑니다. 발동 후 28턴의 재충전이 필요합니다.';
 		case 'extra-slot':
 			if (level === 1) return '블록 트레이의 슬롯이 1칸 늘어납니다(기본 3칸 → 4칸). 한 라운드에 더 많은 블록 선택이 가능합니다.';
 			if (level === 2) return '블록 트레이의 슬롯이 2칸 늘어납니다(기본 3칸 → 5칸).';
@@ -218,21 +261,30 @@ export function getLevelEffect(id: string, level: number): string {
  */
 export function baseCooldown(ability: Ability): number {
 	if (ability.targetType === 'passive') return 0;
+	// 시뮬레이션 결과 clear-row/col을 우선 선택하는 것만으로 클리어율이 7.7% → 15.7%로
+	// 두 배가 됐다. 두 능력이 사실상 정답이고 나머지 9종은 곁다리였다는 뜻이라,
+	// clear 계열은 약간 늦추고 나머지는 회전을 빠르게 해 선택지를 넓힌다.
 	switch (ability.id) {
 		case 'clear-row':
 		case 'clear-col':
-			return 10; // 위기 탈출 핵심 — 자주 쓰게
+			return 12; // 10 → 살짝만 늦춤(doom 비중을 낮췄으므로 과한 너프 불필요)
 		case 'bomb-3x3':
-			return 14; // 광역 + 형태 자유
+			return 11; // 14 → 광역 정리의 대안으로 실사용 가능하게
 		case 'clear-color':
-			return 16; // Epic, 다중 색까지 — 강력
+			return 14; // 16
 		case 'single-cell':
-			return 12; // 원하는 모양 그리기 — 자유도 매우 높음
+			return 10; // 12 → 원하는 모양을 직접 그리는 값어치를 살림
 		case 'swap-block':
 		case 'rotate-block':
-			return 8; // 단순 교체/변형 — 불운 보정
+			return 7; // 8 → 불운 보정은 자주 쓰여야 의미가 있음
+		case 'chisel':
+			return 11; // 검은 돌 제거는 clear 계열이 못 하는 일 — 엔드리스 구간의 핵심 대응 수단
+		case 'shrink':
+			return 7; // 트레이 압박(jam) 대응 + 위기 탈출
+		case 'freeze':
+			return 12; // 모든 위험을 동시에 늦추므로 강력
 		case 'undo':
-			return 12; // 리스크 헷지
+			return 9; // 12 → 리스크 헷지가 한 게임에 몇 번은 돌아오게
 		default:
 			return 10;
 	}
@@ -244,11 +296,18 @@ export function computeCooldown(ability: Ability, level: number): number {
 	return Math.max(1, baseCooldown(ability) - drop);
 }
 
-/** revive 전용 쿨다운 — 발동 후 재충전까지 N턴 (Lv1: 90, Lv2: 80, Lv3: 70) */
+/**
+ * revive 전용 쿨다운 — 발동 후 재충전까지 N턴.
+ *
+ * 기존 값은 90/80/70이었는데 설명문과 코드 주석은 30/25/20이라고 안내하고 있어
+ * 3배 어긋나 있었다. 게다가 플러스 모드 게임 길이 중앙값이 약 50턴이라 90턴은
+ * 사실상 재충전이 오지 않는 값(= 1회용)이었다.
+ * 설명과 실제를 맞추면서, 긴 판에서는 한 번쯤 다시 차오르도록 40/34/28로 정한다.
+ */
 export function reviveCooldown(level: number): number {
-	if (level >= 3) return 70;
-	if (level === 2) return 80;
-	return 90;
+	if (level >= 3) return 28;
+	if (level === 2) return 34;
+	return 40;
 }
 
 export function isPassive(ability: Ability): boolean {
