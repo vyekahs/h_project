@@ -334,14 +334,14 @@ export async function getActiveDbConnections(): Promise<number> {
  * wait_event_type = 'Client'로 표시되므로, 이를 waiting으로 잘못 세지 않도록
  * state = 'active'이면서 'Client'가 아닌 이벤트(Lock/IO/IPC 등)로 막힌 경우만 센다.
  */
-export async function getDbConnectionStats(): Promise<{
+async function queryDbConnectionStats(): Promise<{
 	total: number;
 	idle: number;
 	waiting: number;
 	dbTotal: number;
 	maxConnections: number;
 }> {
-	try {
+	{
 		// total/idle/waiting은 "이 인스턴스의 풀"만 집계한다 — 상한(max)과 비교되는 값이므로
 		// 범위가 같아야 한다. dbTotal은 블루/그린 등 다른 인스턴스까지 포함한 DB 전체 수치.
 		const result = await db.execute(sql`
@@ -366,9 +366,51 @@ export async function getDbConnectionStats(): Promise<{
 			dbTotal: Number(row.db_total || 0),
 			maxConnections: MAX_POOL_CONNECTIONS
 		};
+	}
+}
+
+/**
+ * 모니터 화면이 필요로 하는 DB 상태를 쿼리 한 번으로 가져온다.
+ *
+ * 예전에는 REST(/api/admin/monitor)와 SSE가 각자 `SELECT 1`로 지연을 재고
+ * 이어서 getDbConnectionStats()를 호출했다. 순차 두 번 왕복이고 커넥션도
+ * 두 개를 쓴다. 두 엔드포인트가 5초마다 함께 돌면 이것만으로 초당 네 개의
+ * 쿼리가 나가는데, 정작 재려는 대상은 하나다.
+ *
+ * 통계 쿼리 자체의 소요 시간을 지연으로 쓴다. `SELECT 1`보다 약간 크게
+ * 나오지만(pg_stat_activity를 훑으므로) 실제 쿼리 한 번의 왕복이라
+ * 오히려 체감에 가깝다. 실패나 타임아웃이면 latency = -1.
+ */
+export async function getDbHealthSnapshot(timeoutMs = 3000): Promise<{
+	latency: number;
+	total: number;
+	idle: number;
+	waiting: number;
+	dbTotal: number;
+	maxConnections: number;
+}> {
+	const start = Date.now();
+	let timer: ReturnType<typeof setTimeout> | null = null;
+	try {
+		const stats = await Promise.race([
+			queryDbConnectionStats(),
+			new Promise<never>((_, reject) => {
+				timer = setTimeout(() => reject(new Error('DB timeout')), timeoutMs);
+			})
+		]);
+		return { latency: Date.now() - start, ...stats };
 	} catch (error) {
-		console.error('[PERF] Failed to get DB connection stats:', error);
-		return { total: 0, idle: 0, waiting: 0, dbTotal: 0, maxConnections: MAX_POOL_CONNECTIONS };
+		console.error('[PERF] DB 상태 확인 실패:', error);
+		return {
+			latency: -1,
+			total: 0,
+			idle: 0,
+			waiting: 0,
+			dbTotal: 0,
+			maxConnections: MAX_POOL_CONNECTIONS
+		};
+	} finally {
+		if (timer) clearTimeout(timer);
 	}
 }
 
