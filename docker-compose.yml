@@ -1,5 +1,22 @@
+# 로그 크기 제한.
+#
+# 도커 기본 json-file 드라이버는 크기 제한이 없어서 로그가 무한히 쌓인다.
+# 스캐너가 30초마다 보고하고 그때마다 감지 기기 목록까지 찍히므로 증가 속도가
+# 빠르다 — 방치하면 디스크를 채운다.
+#
+# 주의: 이 설정은 "배포 전 로그 보존"과는 무관하다. 배포 때 컨테이너가 새로
+# 만들어지면서 이전 컨테이너의 로그 파일도 함께 사라지기 때문이다. 며칠 전 상황을
+# 사후에 확인해야 하는 정보는 도커 로그가 아니라 DB에 남겨야 한다
+# (auto_checkout_logs, slow_request_logs 등).
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "20m"
+    max-file: "5"
+
 x-app-common: &app-common
   build: .
+  logging: *default-logging
   environment:
     - DATABASE_URL=postgres://user:password@db:5432/boardgameclub
     - PROTOCOL_HEADER=x-forwarded-proto
@@ -40,6 +57,7 @@ services:
     <<: *app-common
 
   db:
+    logging: *default-logging
     image: postgres:15-alpine
     environment:
       - POSTGRES_USER=user
@@ -56,6 +74,7 @@ services:
     command: postgres -c timezone=Asia/Seoul
 
   ble-server:
+    logging: *default-logging
     build: ./ble-server
     environment:
       - SCANNER_API_KEY=${SCANNER_API_KEY:?SCANNER_API_KEY를 .env에 설정하세요}
@@ -69,6 +88,7 @@ services:
     restart: always
 
   caddy:
+    logging: *default-logging
     image: caddy:2-alpine
     restart: always
     ports:
