@@ -453,7 +453,9 @@ export class LocalGameEngine {
 			const partnerSeat = ((seat + 2) % 4) as SeatIndex;
 			const partnerPlayer = this.state.players[partnerSeat];
 			const partnerDeclaredTichu = partnerPlayer.grandTichu === true || partnerPlayer.smallTichu === true;
-			const exchange = ai.makeExchangeDecision(this.state.players[seat].hand, partnerDeclaredTichu);
+			const self = this.state.players[seat];
+			const selfDeclaredTichu = self.grandTichu === true || self.smallTichu === true;
+			const exchange = ai.makeExchangeDecision(self.hand, partnerDeclaredTichu, selfDeclaredTichu);
 			this.exchangeSubmissions[seat] = exchange;
 		}
 
@@ -1022,24 +1024,29 @@ export class LocalGameEngine {
 					}
 				}
 
-				// Check for small tichu before first card
-				// (첫 카드를 내기 전이라면 매 차례 재평가 — 앞선 플레이로 빠진 카드를 보고
-				//  가능성이 생기면 그때 선언할 수 있어야 하므로)
-				const player = this.state.players[currentSeat];
-				if (!player.hasPlayedFirstCard && !player.smallTichu && !player.grandTichu) {
-					const context = this.createAiContext(currentSeat);
-					if (ai.makeSmallTichuDecision(player.hand, context)) {
-						player.smallTichu = true;
-						this.emitEvent({ type: 'tichu_declare', seat: currentSeat, tichuType: 'small' });
-						this.notifyStateChange();
-					}
-				}
-
 				const seatBefore = round.currentSeat;
 
 				// Make play decision
 				const context = this.createAiContext(currentSeat);
 				const decision = ai.makePlayDecision(context);
+
+				// Check for small tichu — "자기 첫 카드를 내기 직전"에만 판단한다.
+				// 매 차례 재평가하는 것은 맞지만(앞선 플레이로 빠진 카드를 보고 가능성이
+				// 생길 수 있으므로), 이 차례에 패스할 거라면 선언하지 않고 미룬다.
+				// 패스는 첫 카드를 낸 것이 아니라 선언 기회가 그대로 남아 있고,
+				// 무엇보다 "못 이겨서 넘기면서 티츄를 부르는" 그림이 사람의 판단과 다르다.
+				const player = this.state.players[currentSeat];
+				if (
+					decision !== 'pass' &&
+					!player.hasPlayedFirstCard &&
+					!player.smallTichu &&
+					!player.grandTichu &&
+					ai.makeSmallTichuDecision(player.hand, context)
+				) {
+					player.smallTichu = true;
+					this.emitEvent({ type: 'tichu_declare', seat: currentSeat, tichuType: 'small' });
+					this.notifyStateChange();
+				}
 
 				let actionSucceeded = false;
 

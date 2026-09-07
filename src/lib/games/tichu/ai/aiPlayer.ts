@@ -58,8 +58,8 @@ export class AiPlayer {
 		return decideSmallTichu(hand, this.weights, context, this.behavior);
 	}
 
-	makeExchangeDecision(hand: Card[], partnerDeclaredTichu: boolean = false): ExchangeCards {
-		return selectExchangeCards(hand, this.seat, this.weights, this.behavior, partnerDeclaredTichu);
+	makeExchangeDecision(hand: Card[], partnerDeclaredTichu: boolean = false, selfDeclaredTichu: boolean = false): ExchangeCards {
+		return selectExchangeCards(hand, this.seat, this.weights, this.behavior, partnerDeclaredTichu, selfDeclaredTichu);
 	}
 
 	makePlayDecision(context: AiDecisionContext): string[] | 'pass' {

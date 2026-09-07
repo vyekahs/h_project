@@ -141,7 +141,9 @@ export async function simulateGame(opts: SimOptions): Promise<SimResult> {
 					const p0 = engine.state.players[0];
 					const partner = engine.state.players[2];
 					engine.humanSubmitExchange(ai0.makeExchangeDecision(
-						p0.hand, partner.grandTichu === true || partner.smallTichu === true));
+						p0.hand,
+						partner.grandTichu === true || partner.smallTichu === true,
+						p0.grandTichu === true || p0.smallTichu === true));
 				}
 				continue;
 			}
@@ -149,13 +151,13 @@ export async function simulateGame(opts: SimOptions): Promise<SimResult> {
 				const round = engine.state.round;
 				if (round && round.currentSeat === 0 && engine.state.players[0].finishOrder === null) {
 					const p0 = engine.state.players[0];
-					// 사람 자리도 규칙과 동일하게 첫 카드 전까지 매 차례 스몰 티츄 판단
-					if (!p0.hasPlayedFirstCard && !p0.smallTichu && !p0.grandTichu &&
+					const d = ai0.makePlayDecision(engine.createAiContext(0));
+					// 엔진과 동일하게 "실제로 첫 카드를 내는 차례"에만 선언 (패스면 미룸)
+					if (d !== 'pass' && !p0.hasPlayedFirstCard && !p0.smallTichu && !p0.grandTichu &&
 						ai0.makeSmallTichuDecision(p0.hand, engine.createAiContext(0))) {
 						engine.humanDeclareSmallTichu();
 						opts.onEvent?.({ type: 'tichu_declare', seat: 0 as SeatIndex, tichuType: 'small' }, engine);
 					}
-					const d = ai0.makePlayDecision(engine.createAiContext(0));
 					if (d === 'pass') engine.humanPass();
 					else await engine.humanPlayCards(d);
 				}

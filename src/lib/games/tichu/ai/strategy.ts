@@ -9,6 +9,7 @@ import {
 	findAllPlayableCombinations,
 	findBeatablePlays,
 	findBombs,
+	findOptimalPartition,
 	getCardSortRank
 } from './handEvaluator';
 import {
@@ -155,6 +156,15 @@ export function decideGrandTichu(hand8: Card[], weights: PersonalityWeights, beh
  * Decide whether to declare Small Tichu based on full 14-card hand.
  */
 export function decideSmallTichu(hand: Card[], weights: PersonalityWeights, context: AiDecisionContext, behavior: PresetBehavior = {}): boolean {
+	// === 하드 거부: 파트너가 이미 선언함 ===
+	// 이 검사는 **프리셋 훅보다 먼저** 와야 한다. 훅이 true를 반환하면 아래 기본 판단이
+	// 통째로 건너뛰어지므로, 아래에 두면 '변칙적'처럼 true를 반환하는 프리셋이 파트너의
+	// 선언을 무시하고 같이 부른다(실제 발생한 버그).
+	// 한 팀이 둘 다 부르면 위험만 두 배가 되고, 한쪽이 먼저 나가는 순간 다른 쪽은
+	// 확정 실패라 상방이 없다.
+	const partner = context.players.find(p => p.seat === getPartnerSeat(context.currentSeat));
+	if (partner?.grandTichu === true || partner?.smallTichu) return false;
+
 	// Behavior hook
 	const override = behavior.shouldDeclareSmallTichu?.(hand, context);
 	if (override !== null && override !== undefined) return override;
@@ -174,10 +184,6 @@ export function decideSmallTichu(hand: Card[], weights: PersonalityWeights, cont
 	);
 	if (opponentDeclared && weights.riskTolerance < 0.7) return false;
 
-	// More likely if partner declared tichu (we want to help)
-	const partner = context.players.find(p => p.seat === getPartnerSeat(context.currentSeat));
-	if (partner?.grandTichu === true || partner?.smallTichu) return false; // partner already declared, don't double-up risk
-
 	// Additional check: analyze hand structure
 	const plan = analyzeHand(hand);
 	// If too many singletons, hand is weak even if raw score is high
@@ -191,6 +197,47 @@ export function decideSmallTichu(hand: Card[], weights: PersonalityWeights, cont
 // ===== Exchange Card Selection =====
 
 /**
+ * 티츄를 부른 플레이어가 파트너에게 넘길 카드를 고른다.
+ *
+ * 두 가지를 동시에 지켜야 한다.
+ *  1) **구조**: 페어·트리플·스트레이트 등 다장 조합을 깨면 나가는 데 필요한 턴이 늘어난다.
+ *  2) **주도권**: T턴 만에 나가려면 그 T번을 실제로 낼 수 있어야 하고, 그러려면
+ *     상위 T장의 높은 카드가 필요하다. 턴 수만 보고 고르면 A 싱글처럼
+ *     "빼면 턴이 줄어드는" 카드를 넘기게 되는데, 그건 티츄에 가장 필요한 카드다.
+ *
+ * 둘 다에 걸리지 않는 카드를 "필요 없는 카드"로 보고 그중 가장 높은 것을 반환한다.
+ * (파트너에게 가는 카드이므로 높을수록 팀에 이롭다.)
+ */
+function pickDispensableCardForTichu(hand: Card[]): Card | null {
+	const partition = findOptimalPartition(hand);
+	const needed = new Set<string>();
+
+	// 1) 다장 조합에 속한 카드는 구조상 필요
+	for (const combo of partition.combos) {
+		if (combo.cards.length >= 2) {
+			for (const c of combo.cards) needed.add(c.id);
+		}
+	}
+
+	// 2) 선을 잡기 위한 상위 T장은 필요
+	const byRank = [...hand].sort((a, b) => getCardSortRank(b) - getCardSortRank(a));
+	for (let i = 0; i < Math.min(partition.turns, byRank.length); i++) {
+		needed.add(byRank[i].id);
+	}
+
+	// 마작은 소원 권한 때문에 유지
+	const mahjong = hand.find(c => c.type === 'special' && c.special === 'mahjong');
+	if (mahjong) needed.add(mahjong.id);
+
+	const dispensable = hand.filter(c => !needed.has(c.id));
+	if (dispensable.length === 0) return null; // 호출부가 기본 로직으로 폴백
+
+	dispensable.sort((a, b) => getCardSortRank(b) - getCardSortRank(a));
+	return dispensable[0];
+}
+
+
+/**
  * Select 3 cards to exchange: one to partner, one to left, one to right.
  * Strategy: analyze hand structure and get rid of cards that hurt hand cohesion.
  */
@@ -199,7 +246,13 @@ export function selectExchangeCards(
 	seat: SeatIndex,
 	weights: PersonalityWeights,
 	behavior: PresetBehavior = {},
-	partnerDeclaredTichu: boolean = false
+	partnerDeclaredTichu: boolean = false,
+	/**
+	 * 내가 티츄(그랜드 포함)를 선언했는지.
+	 * 이전에는 이 정보가 교환 결정에 전혀 전달되지 않아서, 티츄를 부른 AI가
+	 * 자기 용/봉/A를 그대로 파트너에게 넘기고 스스로 나갈 수단을 잃었다.
+	 */
+	selfDeclaredTichu: boolean = false
 ): ExchangeCards {
 	const normalCards = hand.filter(c => c.type === 'normal') as NormalCard[];
 	const rankGroups = new Map<number, NormalCard[]>();
@@ -249,6 +302,14 @@ export function selectExchangeCards(
 	if (mahjongCard && behavior.shouldGiveMahjongToPartner?.(hand)) {
 		toPartner = mahjongCard;
 		protectedIds.delete(mahjongCard.id); // 마작을 주기로 했으므로 보호 해제
+	}
+
+	// === 내가 티츄를 부른 경우 ===
+	// 최고 카드를 넘기면 "내가 먼저 나간다"는 계획 자체가 깨진다.
+	// 손패를 비우는 최소 턴 수(T)를 실제로 계산해서, 그 계획에 필요 없는 카드 중
+	// 가장 높은 것을 준다. 파트너에게도 쓸모 있는 카드가 가고, 내 계획은 유지된다.
+	if (!toPartner && selfDeclaredTichu) {
+		toPartner = pickDispensableCardForTichu(hand);
 	}
 
 	// 파트너에게는 무조건 최고 카드를 줌 (페어/트리플이든 상관없이)
