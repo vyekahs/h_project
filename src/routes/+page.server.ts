@@ -46,48 +46,64 @@ export const load: PageServerLoad = async ({ locals }) => {
     const user = locals.user || null;
     const isAdmin = locals.isAdmin || false;
 
-    // 유저별 데이터는 공용 데이터(shared/wantToPlay)와 서로 의존하지 않으므로
-    // 별도 라운드로 나누지 않고 하나의 Promise.all로 동시에 실행한다.
-    // (실패해도 공용 데이터 로딩엔 영향 없도록 자체 catch로 격리)
+    // 유저별 데이터 6종을 CTE 하나로 합쳐 조회한다.
+    //
+    // 예전에는 Promise.all로 6개를 동시에 던졌는데, 그러면 요청 하나가 커넥션을
+    // 6개씩 동시에 움켜쥔다. 여기에 getOpenPosts()까지 더해 페이지 로드 1회가
+    // 8~9슬롯을 쓰다 보니, 실측상 2~3명만 동시에 접속해도 풀(max 20)이 가득 찼다.
+    //
+    // 병렬화는 지연 시간을 커넥션 슬롯과 맞바꾸는 거래다(순차 6개 = 6ms/1슬롯,
+    // 병렬 6개 = 1ms/6슬롯). 쿼리를 하나로 합치면 둘 다 얻는다 — 1ms에 1슬롯.
+    // 풀 크기를 올리는 건 근본 해결이 아니다. 요청당 슬롯을 줄여야 같은 풀로
+    // 감당하는 동시 접속이 늘어난다.
+    //
+    // 반환 형태는 기존과 동일하게 맞췄다(아래 구조 분해 참고).
     const userQueriesPromise = user
-        ? Promise.all([
-            db.execute(sql`
-                SELECT r.*, gs.game_name, gs.status as session_status, gs.scheduled_at
+        ? db.execute(sql`
+            WITH reservation AS (
+                SELECT r.*, gs.game_name, gs.status AS session_status, gs.scheduled_at
                 FROM reservations r
                 JOIN game_sessions gs ON r.session_id = gs.id
-                WHERE r.attendee_id = ${user.id} AND r.status IN ('pending', 'waitlisted', 'confirmed', 'pending_approval')
+                WHERE r.attendee_id = ${user.id}
+                  AND r.status IN ('pending', 'waitlisted', 'confirmed', 'pending_approval')
                 LIMIT 1
-            `),
-            db.execute(sql`
+            ),
+            scheduled AS (
                 SELECT gs.*
                 FROM game_sessions gs
                 JOIN session_participants sp ON gs.id = sp.session_id
                 WHERE sp.attendee_id = ${user.id} AND gs.status = 'scheduled'
-                ORDER BY gs.scheduled_at ASC
-            `),
-            db.execute(sql`
+            ),
+            playing AS (
                 SELECT gs.id, gs.game_name
                 FROM session_participants sp
                 JOIN game_sessions gs ON sp.session_id = gs.id
                 WHERE sp.attendee_id = ${user.id} AND gs.status = 'playing'
-            `),
-            db.execute(sql`
+                LIMIT 1
+            ),
+            parties AS (
                 SELECT gp.id, gp.name, gp.game_id, gp.game_name, gp.duration, gp.guest_count,
-                    g.image_url, g.name as resolved_game_name,
-                    COALESCE(json_agg(json_build_object(
-                        'id', a.id, 'name', a.name
-                    ) ORDER BY a.name) FILTER (WHERE a.id IS NOT NULL), '[]') as members
+                       g.image_url, g.name AS resolved_game_name, gp.updated_at,
+                       COALESCE(json_agg(json_build_object('id', a.id, 'name', a.name) ORDER BY a.name)
+                                FILTER (WHERE a.id IS NOT NULL), '[]') AS members
                 FROM game_parties gp
                 LEFT JOIN game_party_members gpm ON gp.id = gpm.party_id AND gpm.status = 'accepted'
                 LEFT JOIN attendees a ON gpm.attendee_id = a.id
                 LEFT JOIN games g ON gp.game_id = g.id
                 WHERE gp.owner_id = ${user.id}
-                GROUP BY gp.id, gp.name, gp.game_id, gp.game_name, gp.duration, gp.guest_count, g.image_url, g.name
-                ORDER BY gp.updated_at DESC
-            `),
-            db.execute(sql`SELECT party_id FROM game_party_members WHERE attendee_id = ${user.id} AND status = 'accepted'`),
-            db.execute(sql`SELECT id FROM daily_visit_plans WHERE attendee_id = ${user.id} AND plan_date = CURRENT_DATE`),
-        ]).catch(() => null)
+                GROUP BY gp.id, gp.name, gp.game_id, gp.game_name, gp.duration,
+                         gp.guest_count, g.image_url, g.name, gp.updated_at
+            )
+            SELECT
+                (SELECT row_to_json(r) FROM reservation r) AS reservation,
+                COALESCE((SELECT json_agg(row_to_json(s) ORDER BY s.scheduled_at ASC) FROM scheduled s), '[]') AS scheduled_games,
+                (SELECT row_to_json(p) FROM playing p) AS playing_game,
+                COALESCE((SELECT json_agg(row_to_json(pt) ORDER BY pt.updated_at DESC) FROM parties pt), '[]') AS parties,
+                COALESCE((SELECT json_agg(party_id) FROM game_party_members
+                          WHERE attendee_id = ${user.id} AND status = 'accepted'), '[]') AS party_ids,
+                EXISTS(SELECT 1 FROM daily_visit_plans
+                       WHERE attendee_id = ${user.id} AND plan_date = CURRENT_DATE) AS has_visit_plan
+        `).catch(() => null)
         : Promise.resolve(null);
 
     // 공용 데이터는 메모리 캐시에서 가져옴 (동시 요청 시 DB 1번만 조회)
@@ -106,14 +122,16 @@ export const load: PageServerLoad = async ({ locals }) => {
     let userPartyIds: number[] = [];
     let userHasVisitPlan = false;
 
-    if (userResults) {
-        const [resResult, schedResult, playingResult, partiesResult, partyMembershipResult, visitPlanResult] = userResults;
-        userReservation = (resResult[0] as any) || null;
-        userScheduledGames = schedResult as any[];
-        userPlayingGame = (playingResult[0] as any) || null;
-        parties = partiesResult as any[];
-        userPartyIds = (partyMembershipResult as any[]).map((r: any) => r.party_id);
-        userHasVisitPlan = visitPlanResult.length > 0;
+    // CTE 한 방으로 조회한 결과를 기존과 같은 모양으로 풀어낸다.
+    // 각 항목은 JSON으로 오므로 별도 파싱 없이 그대로 쓴다.
+    const userRow = (userResults as any[] | null)?.[0];
+    if (userRow) {
+        userReservation = userRow.reservation ?? null;
+        userScheduledGames = userRow.scheduled_games ?? [];
+        userPlayingGame = userRow.playing_game ?? null;
+        parties = userRow.parties ?? [];
+        userPartyIds = userRow.party_ids ?? [];
+        userHasVisitPlan = userRow.has_visit_plan === true;
     }
 
     return {
