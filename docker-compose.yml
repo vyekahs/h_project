@@ -5,9 +5,10 @@ x-app-common: &app-common
     - PROTOCOL_HEADER=x-forwarded-proto
     - HOST_HEADER=x-forwarded-host
     - BODY_SIZE_LIMIT=Infinity
-    - ADMIN_PASSWORD=${ADMIN_PASSWORD:-admin1234}
-    - SCANNER_API_KEY=${SCANNER_API_KEY:-hproject_scanner_secret_2026}
-    - INTERNAL_API_KEY=${INTERNAL_API_KEY:-ble_internal_secret_2026}
+    # 공개 저장소에 알려진 값으로 조용히 폴백하지 않도록 기본값 없이 .env 필수화
+    - ADMIN_PASSWORD=${ADMIN_PASSWORD:?ADMIN_PASSWORD를 .env에 설정하세요}
+    - SCANNER_API_KEY=${SCANNER_API_KEY:?SCANNER_API_KEY를 .env에 설정하세요}
+    - INTERNAL_API_KEY=${INTERNAL_API_KEY:?INTERNAL_API_KEY를 .env에 설정하세요}
     - BLE_SERVER_URL=http://ble-server:3001
     - SMTP_HOST=${SMTP_HOST:-smtp.gmail.com}
     - SMTP_PORT=${SMTP_PORT:-587}
@@ -57,11 +58,11 @@ services:
   ble-server:
     build: ./ble-server
     environment:
-      - SCANNER_API_KEY=${SCANNER_API_KEY:-hproject_scanner_secret_2026}
+      - SCANNER_API_KEY=${SCANNER_API_KEY:?SCANNER_API_KEY를 .env에 설정하세요}
       # app:3000을 직접 보지 않고 Caddy의 내부 전용 리스너(8080)를 거친다 —
       # 블루/그린 중 지금 활성인 쪽으로 항상 자동으로 연결됨 (Caddyfile의 active_app.caddy 참고)
       - SVELTEKIT_URL=http://caddy:8080
-      - INTERNAL_API_KEY=${INTERNAL_API_KEY:-ble_internal_secret_2026}
+      - INTERNAL_API_KEY=${INTERNAL_API_KEY:?INTERNAL_API_KEY를 .env에 설정하세요}
       - LISTEN_PORT=3001
       - RUST_LOG=info
       - TZ=Asia/Seoul

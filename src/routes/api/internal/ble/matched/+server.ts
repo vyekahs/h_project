@@ -10,7 +10,7 @@ import {
 	checkAutoCheckout
 } from '$lib/server/ble';
 
-const INTERNAL_API_KEY = process.env.INTERNAL_API_KEY || 'ble_internal_secret_2026';
+const INTERNAL_API_KEY = process.env.INTERNAL_API_KEY;
 
 export const POST: RequestHandler = async ({ request }) => {
 	const key = request.headers.get('x-internal-key');

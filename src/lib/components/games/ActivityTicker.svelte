@@ -52,10 +52,10 @@
 <style>
     .ticker-container {
         width: 100%;
-        background: rgba(255, 255, 255, 0.5);
+        background: var(--glass-surface-strong);
         backdrop-filter: blur(8px);
         -webkit-backdrop-filter: blur(8px);
-        border: 1px solid rgba(255, 255, 255, 0.6);
+        border: 1px solid var(--glass-border-strong);
         border-radius: 16px;
         height: 2.8rem;
         display: flex;

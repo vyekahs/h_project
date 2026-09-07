@@ -441,7 +441,7 @@
         width: 100vw;
         height: 100vh;
         z-index: -1;
-        background: radial-gradient(circle at 10% 20%, rgba(216, 241, 230, 0.7) 0%, rgba(233, 240, 255, 0.4) 40%, rgba(240, 230, 250, 0.3) 80%);
+        background: var(--arcade-bg-gradient);
         background-size: 200% 200%;
         animation: gradientMove 20s ease infinite;
     }
@@ -507,6 +507,11 @@
         margin: 0;
         text-align: center;
         letter-spacing: -0.5px;
+        /* 오른쪽 현황 배지가 넓어져도 제목이 헤더를 넘치지 않도록 줄어들 수 있게 한다. */
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
     }
 
     .glass-btn {
@@ -516,10 +521,10 @@
         width: 40px;
         height: 40px;
         border-radius: 50%;
-        background: rgba(255, 255, 255, 0.5);
+        background: var(--glass-surface-faint);
         backdrop-filter: blur(8px);
         -webkit-backdrop-filter: blur(8px);
-        border: 1px solid rgba(255, 255, 255, 0.6);
+        border: 1px solid var(--glass-border-strong);
         color: var(--text-primary);
         text-decoration: none;
         transition: all 0.2s;
@@ -527,11 +532,26 @@
 
     .glass-btn:active {
         transform: scale(0.95);
-        background: rgba(255, 255, 255, 0.7);
+        background: var(--glass-surface-strong);
     }
 
     .back-btn {
         justify-self: start;
+        flex-shrink: 0;
+    }
+
+    /* 좁은 화면(320px 등)에서는 제목 + 현황 배지가 헤더 폭을 넘겨 서로 겹친다.
+       제목을 줄여 배지가 들어갈 자리를 만든다. */
+    @media (max-width: 360px) {
+        .start-header h1 {
+            font-size: 1.4rem;
+        }
+    }
+
+    @media (max-width: 330px) {
+        .start-header h1 {
+            font-size: 1.2rem;
+        }
     }
 
     .header-links {
@@ -544,13 +564,13 @@
 
     /* Main Glass Panel */
     .glass-panel {
-        background: rgba(255, 255, 255, 0.55);
+        background: var(--glass-surface-medium);
         backdrop-filter: blur(16px);
         -webkit-backdrop-filter: blur(16px);
-        border: 1px solid rgba(255, 255, 255, 0.6);
+        border: 1px solid var(--glass-border-strong);
         box-shadow: 
             0 10px 25px -5px var(--overlay-light), 
-            0 8px 10px -6px rgba(0, 0, 0, 0.01);
+            0 8px 10px -6px var(--shadow-sm);
         border-radius: 28px;
         padding: 1rem;
         display: flex;
@@ -571,12 +591,12 @@
         display: flex;
         justify-content: center;
         align-items: center;
-        background: rgba(255, 255, 255, 0.5);
+        background: var(--glass-surface-faint);
         border-radius: 16px;
         padding: 4px;
         margin-bottom: 1rem;
         flex-shrink: 0;
-        border: 1px solid rgba(255, 255, 255, 0.3);
+        border: 1px solid var(--glass-border-soft);
     }
 
     .tab-btn {
@@ -603,7 +623,7 @@
         background: var(--bg-primary);
         color: var(--text-primary);
         font-weight: 700;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        box-shadow: 0 2px 8px var(--shadow-md);
     }
 
     /* Tab Content */
@@ -667,8 +687,8 @@
         justify-content: center;
         align-items: center;
         padding: 1rem;
-        background: rgba(255, 255, 255, 0.4);
-        border: 1px solid rgba(255, 255, 255, 0.6);
+        background: var(--glass-surface-faint);
+        border: 1px solid var(--glass-border-strong);
         border-radius: 16px;
         cursor: pointer;
         transition: all 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
@@ -677,11 +697,11 @@
     }
 
     .diff-btn:hover {
-        background: rgba(255, 255, 255, 0.7);
+        background: var(--glass-surface-strong);
     }
 
     .diff-btn.selected {
-        background: linear-gradient(135deg, var(--bg-dark) 0%, #111 100%);
+        background: linear-gradient(135deg, var(--bg-dark) 0%, var(--bg-dark-deep) 100%);
         border-color: var(--text-primary);
         color: var(--bg-primary);
         box-shadow: 0 4px 12px var(--shadow-lg);
@@ -753,7 +773,7 @@
 
     /* Buttons */
     .btn-primary {
-        background: linear-gradient(135deg, var(--bg-dark) 0%, #111 100%);
+        background: linear-gradient(135deg, var(--bg-dark) 0%, var(--bg-dark-deep) 100%);
         color: var(--bg-primary);
         border: none;
         padding: 1.1rem;
@@ -839,8 +859,8 @@
     }
 
     .glass-list-item {
-        background: rgba(255, 255, 255, 0.4);
-        border: 1px solid rgba(255, 255, 255, 0.5);
+        background: var(--glass-surface-faint);
+        border: 1px solid var(--glass-border-soft);
         border-radius: 14px;
         padding: 0.8rem 1rem;
         display: flex;
@@ -889,7 +909,7 @@
     
     .hof-diff-badge.easy { background: var(--color-success-bg); color: var(--color-green-dark); }
     .hof-diff-badge.medium { background: var(--color-warning-bg); color: var(--color-orange-dark); }
-    .hof-diff-badge.hard { background: #ffebee; color: var(--color-red-dark); }
+    .hof-diff-badge.hard { background: var(--color-error-bg); color: var(--color-red-dark); }
     .hof-diff-badge.expert { background: var(--color-info-bg); color: var(--color-blue-bright); }
     .hof-diff-badge.master { background: var(--color-info-bg); color: var(--color-blue-bright); }
 
@@ -916,7 +936,7 @@
 
     .tutorial-list-item:active {
         transform: scale(0.98);
-        background: rgba(255, 255, 255, 0.6);
+        background: var(--glass-surface-medium);
     }
     
     .t-info {

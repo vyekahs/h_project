@@ -17,7 +17,10 @@ CREATE TABLE IF NOT EXISTS attendees (
     is_blacklisted BOOLEAN DEFAULT false,
     can_manage_games BOOLEAN DEFAULT FALSE,
     last_penalty_at TIMESTAMP WITH TIME ZONE,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    -- 가입일. arrival_time은 체크인마다 갱신되므로 가입일 대용으로 쓸 수 없다
+    -- (새내기 칭호의 account_age 조건이 이 값을 기준으로 판정된다)
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Games table (Board game collection)

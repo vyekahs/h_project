@@ -275,13 +275,14 @@ async fn main() {
         )
         .init();
 
+    // 공개 저장소에 알려진 값으로 조용히 폴백하지 않고, 설정 안 됐으면 아예 기동을 막는다
     let config = Config {
         scanner_api_key: std::env::var("SCANNER_API_KEY")
-            .unwrap_or_else(|_| "hproject_scanner_secret_2026".to_string()),
+            .expect("SCANNER_API_KEY 환경변수가 설정되지 않았습니다"),
         sveltekit_url: std::env::var("SVELTEKIT_URL")
             .unwrap_or_else(|_| "http://app:3000".to_string()),
         internal_api_key: std::env::var("INTERNAL_API_KEY")
-            .unwrap_or_else(|_| "ble_internal_secret_2026".to_string()),
+            .expect("INTERNAL_API_KEY 환경변수가 설정되지 않았습니다"),
     };
     let port: u16 = std::env::var("LISTEN_PORT")
         .ok()

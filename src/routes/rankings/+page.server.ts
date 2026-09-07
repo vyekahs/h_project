@@ -18,7 +18,12 @@ export const load: PageServerLoad = async () => {
             LIMIT 10
         `),
 
-        // 2. Win Rate Rankings (Min 5 games)
+        // 2. Win Rate Rankings (승자가 기록된 5판 이상)
+        //
+        // 승자 기록은 선택이라 아무도 승자로 표시되지 않은 채 끝난 판이 많다.
+        // 그 판까지 분모에 넣으면 "아무도 이기지 않은 게임"이 참가자 전원의
+        // 패배로 계산돼 모두의 승률이 실제보다 낮게 나온다.
+        // 승자가 한 명이라도 기록된 판만 센다.
         db.execute(sql`
             SELECT
                 a.name,
@@ -30,6 +35,10 @@ export const load: PageServerLoad = async () => {
             JOIN game_sessions gs ON sp.session_id = gs.id
             JOIN games g ON gs.game_id = g.id
             WHERE gs.status = 'finished' AND g.playtime_min > 0
+              AND EXISTS (
+                  SELECT 1 FROM session_participants w
+                  WHERE w.session_id = gs.id AND w.is_winner = true
+              )
             GROUP BY a.name
             HAVING COUNT(*) >= 5
             ORDER BY win_rate DESC, wins DESC

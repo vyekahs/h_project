@@ -3,7 +3,7 @@ import type { RequestHandler } from './$types';
 import { db } from '$lib/server/db/index';
 import { sql } from 'drizzle-orm';
 
-const SCANNER_API_KEY = process.env.SCANNER_API_KEY || 'hproject_scanner_secret_2026';
+const SCANNER_API_KEY = process.env.SCANNER_API_KEY;
 
 export const POST: RequestHandler = async ({ request }) => {
     const authHeader = request.headers.get('x-api-key');

@@ -93,14 +93,14 @@
 
 <style>
 	.monitor-page {
-		padding: 1.5rem;
+		padding: var(--space-5);
 		max-width: 1400px;
 		margin: 0 auto;
 	}
 
 	.header {
-		margin-bottom: 2rem;
-		padding-bottom: 1rem;
+		margin-bottom: var(--space-6);
+		padding-bottom: var(--space-4);
 		border-bottom: 2px solid var(--border-light);
 	}
 
@@ -108,8 +108,8 @@
 		margin: 0;
 		display: flex;
 		align-items: center;
-		gap: 0.75rem;
-		font-size: 1.75rem;
+		gap: var(--space-3);
+		font-size: var(--text-xl);
 		font-weight: 700;
 		color: var(--text-primary);
 	}
@@ -120,11 +120,11 @@
 
 	.tab-nav {
 		display: flex;
-		gap: 0.5rem;
-		margin-bottom: 1.5rem;
+		gap: var(--space-2);
+		margin-bottom: var(--space-5);
 		background: var(--bg-secondary);
-		padding: 0.5rem;
-		border-radius: 12px;
+		padding: var(--space-2);
+		border-radius: var(--radius-card);
 		box-shadow: 0 2px 4px var(--shadow-sm);
 	}
 
@@ -132,9 +132,9 @@
 		flex: 1;
 		background: transparent;
 		border: none;
-		padding: 0.875rem 1.5rem;
+		padding: 0.875rem var(--space-5);
 		cursor: pointer;
-		font-size: 1rem;
+		font-size: var(--text-base);
 		font-weight: 600;
 		color: var(--text-secondary);
 		display: flex;
@@ -143,7 +143,7 @@
 		gap: 0.625rem;
 		transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 		font-family: inherit;
-		border-radius: 8px;
+		border-radius: var(--radius-control);
 		position: relative;
 	}
 
@@ -152,7 +152,7 @@
 		position: absolute;
 		inset: 0;
 		background: var(--bg-hover);
-		border-radius: 8px;
+		border-radius: var(--radius-control);
 		opacity: 0;
 		transition: opacity 0.25s;
 	}
@@ -207,16 +207,16 @@
 	/* Mobile Responsive */
 	@media (max-width: 768px) {
 		.monitor-page {
-			padding: 1rem;
+			padding: var(--space-4);
 		}
 
 		.header {
-			margin-bottom: 1.5rem;
+			margin-bottom: var(--space-5);
 		}
 
 		.header h1 {
-			font-size: 1.5rem;
-			gap: 0.5rem;
+			font-size: var(--text-xl);
+			gap: var(--space-2);
 		}
 
 		.tab-nav {
@@ -225,9 +225,9 @@
 		}
 
 		.tab-btn {
-			padding: 0.75rem 1rem;
-			font-size: 0.9rem;
-			gap: 0.5rem;
+			padding: var(--space-3) var(--space-4);
+			font-size: var(--text-sm);
+			gap: var(--space-2);
 			min-height: 44px;
 		}
 

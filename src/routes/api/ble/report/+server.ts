@@ -4,12 +4,16 @@ import { processScanResults } from '$lib/server/ble';
 import { db } from '$lib/server/db/index';
 import { sql } from 'drizzle-orm';
 
-const SCANNER_API_KEY = process.env.SCANNER_API_KEY || 'hproject_scanner_secret_2026';
+const SCANNER_API_KEY = process.env.SCANNER_API_KEY;
 
 // ESP32-C6: 더 긴 스캔, 큰 배치 가능
 // ESP32-C3: 메모리 제한으로 보수적 설정
 const SCANNER_CONFIG: Record<string, { scan_time: number; scan_rounds: number; batch_size: number; scan_interval: number }> = {
-    scanner_main:  { scan_time: 15, scan_rounds: 3, batch_size: 50, scan_interval: 50 },  // C6
+    // 펌웨어가 실제로 보내는 ID는 "scanner_main_hall"이다 (esp32-c3-scanner.ino의 SCANNER_ID).
+    // 여기에 키가 없어서 그동안 조용히 DEFAULT_CONFIG(scan_time 10)로 폴백했고,
+    // C6용으로 의도한 15초 대신 짧은 스캔을 받아 약한 신호 탐지율이 떨어졌다.
+    scanner_main_hall: { scan_time: 15, scan_rounds: 3, batch_size: 50, scan_interval: 50 },  // C6
+    scanner_main:  { scan_time: 15, scan_rounds: 3, batch_size: 50, scan_interval: 50 },  // C6 (레거시 ID)
     scanner_sub_hall: { scan_time: 10, scan_rounds: 3, batch_size: 30, scan_interval: 30 },  // C3
     scanner_entrance:  { scan_time: 10, scan_rounds: 3, batch_size: 30, scan_interval: 30 },  // C3
     scanner_2f:        { scan_time: 10, scan_rounds: 3, batch_size: 30, scan_interval: 30 },  // C3

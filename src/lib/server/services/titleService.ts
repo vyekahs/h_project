@@ -33,7 +33,7 @@ export const TitleService = {
             db.execute(sql`
                 SELECT
                     p.total_points,
-                    a.arrival_time
+                    a.created_at
                 FROM minigame_user_points p
                 RIGHT JOIN attendees a ON p.user_id = a.id
                 WHERE a.id = ${userId}
@@ -48,8 +48,13 @@ export const TitleService = {
 
         const totalPoints = (pointRes[0] as any)?.total_points || 0;
         // 가입일 기준 — arrival_time은 체크인할 때마다 갱신되는 "오늘 도착 시각"이라
-        // 새내기(account_age) 조건에 쓰면 안 됨 (오늘 출석만 해도 항상 조건을 통과하게 됨)
-        const accountCreatedAt = new Date((pointRes[0] as any)?.created_at || Date.now());
+        // 새내기(account_age) 조건에 쓰면 안 됨 (오늘 출석만 해도 항상 조건을 통과하게 됨).
+        //
+        // 값이 없을 때 Date.now()로 폴백하면 안 된다. 그러면 경과일이 0이 되어 조건이
+        // 항상 참이 되고, 아래 회수 로직에 영영 도달하지 못해 칭호가 안 사라진다.
+        // 모르면 새내기가 아닌 것으로 본다(fail-closed).
+        const rawCreatedAt = (pointRes[0] as any)?.created_at;
+        const accountCreatedAt = rawCreatedAt ? new Date(rawCreatedAt) : null;
         const playCount = parseInt(String((gameRes[0] as any)?.play_count || '0'));
         const ownedTitleIds = new Set(ownedRes.map(r => r.titleId));
 
@@ -136,9 +141,17 @@ export const TitleService = {
                     else if (cond.type === 'play_count') qualified = playCount >= cond.value;
                     else if (cond.type === 'gift_count') qualified = false;
                     else if (cond.type === 'account_age') {
-                         const diffTime = Math.abs(Date.now() - accountCreatedAt.getTime());
-                         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                         qualified = diffDays <= cond.value;
+                        if (!accountCreatedAt || Number.isNaN(accountCreatedAt.getTime())) {
+                            qualified = false;
+                        } else {
+                            // 가입 후 경과한 온전한 일수. 시계 오차로 미래 날짜가 들어와도
+                            // 음수가 되지 않도록 0으로 막는다(갓 가입한 것으로 취급).
+                            const elapsedDays = Math.max(
+                                0,
+                                Math.floor((Date.now() - accountCreatedAt.getTime()) / (1000 * 60 * 60 * 24))
+                            );
+                            qualified = elapsedDays <= cond.value;
+                        }
                     }
                 }
                 else if (cond.rank !== undefined) {

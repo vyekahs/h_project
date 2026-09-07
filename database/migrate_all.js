@@ -408,6 +408,24 @@ async function migrate() {
         `);
         await pool.query('CREATE INDEX IF NOT EXISTS idx_penalty_logs_attendee ON penalty_logs(attendee_id, created_at DESC);');
 
+        // 34. Admin Undo (되돌리기 기록)
+        // 노쇼 처리는 예약 취소 + 페널티 + 대기 승계를 한 번에 하고 제3자에게까지
+        // 영향을 준다. 되돌리려면 "무엇이 있었는지"를 알아야 하는데, 그 상태를
+        // 클라이언트가 들고 있다가 돌려주게 하면 되돌리기가 임의 변경 수단이 된다.
+        // 원상태는 서버에 남기고 클라이언트에는 불투명한 id만 준다.
+        console.log('[34] Checking admin_undo table...');
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS admin_undo (
+                id SERIAL PRIMARY KEY,
+                kind VARCHAR(30) NOT NULL,
+                payload JSONB NOT NULL,
+                label TEXT NOT NULL,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                consumed_at TIMESTAMP WITH TIME ZONE
+            );
+        `);
+        await pool.query('CREATE INDEX IF NOT EXISTS idx_admin_undo_open ON admin_undo(created_at DESC) WHERE consumed_at IS NULL;');
+
     } catch (err) {
         console.error('Migration failed:', err);
         process.exit(1);

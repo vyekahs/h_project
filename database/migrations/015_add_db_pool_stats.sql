@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS db_pool_stats (
 );
 
 -- Performance index for time-series queries
-CREATE INDEX idx_db_pool_stats_timestamp ON db_pool_stats(timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_db_pool_stats_timestamp ON db_pool_stats(timestamp DESC);
 
 -- Table and column comments
 COMMENT ON TABLE db_pool_stats IS 'Time-series data of DB connection pool utilization for correlation with performance issues';

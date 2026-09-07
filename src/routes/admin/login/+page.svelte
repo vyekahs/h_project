@@ -1,6 +1,6 @@
 <script lang="ts">
     import { enhance } from '$app/forms';
-    export let form;
+    let { form }: { form: any } = $props();
 </script>
 
 <div class="login-container">
@@ -30,11 +30,11 @@
         min-height: 100vh;
         background: #2c3e50;
         font-family: sans-serif;
-        padding: 1rem;
+        padding: var(--space-4);
     }
     .login-box {
         background: white;
-        padding: 2rem;
+        padding: var(--space-6);
         border-radius: 12px;
         box-shadow: 0 4px 12px rgba(0,0,0,0.2);
         width: 100%;
@@ -43,19 +43,19 @@
     }
     h1 {
         font-size: 1.5rem;
-        margin-bottom: 2rem;
+        margin-bottom: var(--space-6);
         color: #333;
         display: flex;
         align-items: center;
         justify-content: center;
-        gap: 0.75rem;
+        gap: var(--space-3);
     }
     .form-group {
-        margin-bottom: 1rem;
+        margin-bottom: var(--space-4);
     }
     input {
         width: 100%;
-        padding: 0.75rem;
+        padding: var(--space-3);
         border: 1px solid #ddd;
         border-radius: 6px;
         font-size: 1rem;
@@ -63,7 +63,7 @@
     }
     button {
         width: 100%;
-        padding: 0.75rem;
+        padding: var(--space-3);
         color: white;
         border: none;
         border-radius: 6px;
@@ -71,6 +71,16 @@
         font-weight: bold;
         cursor: pointer;
         transition: background 0.2s;
+    }
+    /* 로그인은 콘솔 레이아웃 밖이라 어드민 포커스 링을 물려받지 못하고
+       UA 기본 1px 링(#005fcc)에 의존했다. #333 버튼 위에서 거의 보이지 않는다. */
+    :focus-visible {
+        outline: 2px solid #111827;
+        outline-offset: 2px;
+        border-radius: 2px;
+    }
+    .btn-dark:focus-visible {
+        outline-color: #9ec5fe;
     }
     .btn-dark {
         background: #333;
@@ -80,14 +90,14 @@
     }
     .error {
         color: #d32f2f;
-        margin-bottom: 1rem;
+        margin-bottom: var(--space-4);
         font-size: 0.9rem;
     }
     .btn-secondary {
         display: block;
-        margin-top: 1rem;
+        margin-top: var(--space-4);
         width: 100%;
-        padding: 0.75rem;
+        padding: var(--space-3);
         background: #f1f3f5;
         color: #495057;
         text-decoration: none;

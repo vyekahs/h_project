@@ -9,7 +9,8 @@ test.describe('Admin Dashboard', () => {
   test('should access admin dashboard', async ({ page }) => {
     // Login as admin
     await page.goto('/admin/login');
-    await page.fill('input[name="password"]', 'admin1234');
+    // 로컬 .env의 ADMIN_PASSWORD와 동일해야 함 (admin/login이 더 이상 기본값으로 폴백하지 않음)
+    await page.fill('input[name="password"]', process.env.ADMIN_PASSWORD ?? '');
     await page.click('button[type="submit"]');
 
     await expect(page).toHaveURL('/admin');
@@ -20,7 +21,8 @@ test.describe('Admin Dashboard', () => {
   test('should see stats', async ({ page }) => {
     // Login as admin
     await page.goto('/admin/login');
-    await page.fill('input[name="password"]', 'admin1234');
+    // 로컬 .env의 ADMIN_PASSWORD와 동일해야 함 (admin/login이 더 이상 기본값으로 폴백하지 않음)
+    await page.fill('input[name="password"]', process.env.ADMIN_PASSWORD ?? '');
     await page.click('button[type="submit"]');
     
     await page.goto('/admin/stats');

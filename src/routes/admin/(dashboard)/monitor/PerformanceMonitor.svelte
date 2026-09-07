@@ -411,10 +411,9 @@
 	.card {
 		background: var(--bg-primary);
 		border: 1px solid var(--border-default);
-		border-radius: 12px;
-		padding: 1.5rem;
-		box-shadow: 0 2px 8px var(--shadow-sm);
-		margin-bottom: 1.5rem;
+		border-radius: var(--radius-card);
+		padding: var(--space-5);
+		margin-bottom: var(--space-5);
 		transition: box-shadow 0.2s;
 	}
 
@@ -424,7 +423,7 @@
 
 	.card h2 {
 		color: var(--text-primary);
-		font-size: 1.125rem;
+		font-size: var(--text-lg);
 		font-weight: 700;
 		margin: 0 0 1.25rem 0;
 	}
@@ -432,7 +431,7 @@
 	/* Grid Stats */
 	:global(.grid) {
 		display: grid;
-		gap: 1.5rem;
+		gap: var(--space-5);
 	}
 
 	:global(.grid-cols-4) {
@@ -446,14 +445,14 @@
 	.stat-card {
 		background: var(--bg-secondary);
 		padding: 1.25rem;
-		border-radius: 10px;
+		border-radius: var(--radius-card);
 		border: 1px solid var(--border-light);
 	}
 
 	.stat-label {
-		font-size: 0.8125rem;
+		font-size: var(--text-sm);
 		color: var(--text-secondary);
-		margin-bottom: 0.5rem;
+		margin-bottom: var(--space-2);
 		font-weight: 500;
 	}
 
@@ -487,9 +486,9 @@
 	}
 
 	:global(th) {
-		padding: 0.875rem 1rem;
+		padding: 0.875rem var(--space-4);
 		text-align: left;
-		font-size: 0.75rem;
+		font-size: var(--text-xs);
 		font-weight: 700;
 		color: var(--text-secondary);
 		text-transform: uppercase;
@@ -497,9 +496,9 @@
 	}
 
 	:global(td) {
-		padding: 0.875rem 1rem;
+		padding: 0.875rem var(--space-4);
 		color: var(--text-primary);
-		font-size: 0.875rem;
+		font-size: var(--text-sm);
 		border-bottom: 1px solid var(--border-light);
 	}
 
@@ -513,21 +512,21 @@
 
 	:global(.font-mono) {
 		font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
-		font-size: 0.8125rem;
+		font-size: var(--text-sm);
 	}
 
 	/* Info Box */
 	.info-box {
-		margin-top: 1.5rem;
+		margin-top: var(--space-5);
 		padding: 1.25rem;
 		background: var(--color-info-bg);
 		border: 1px solid var(--color-blue);
-		border-radius: 10px;
+		border-radius: var(--radius-card);
 	}
 
 	.info-box h3 {
-		margin: 0 0 0.75rem 0;
-		font-size: 1rem;
+		margin: 0 0 var(--space-3) 0;
+		font-size: var(--text-base);
 		font-weight: 700;
 		color: var(--text-primary);
 	}
@@ -540,24 +539,24 @@
 
 	.info-box li {
 		padding: 0.375rem 0;
-		font-size: 0.875rem;
+		font-size: var(--text-sm);
 		color: var(--text-secondary);
 		display: flex;
 		align-items: center;
-		gap: 0.5rem;
+		gap: var(--space-2);
 	}
 
 	.info-box li span {
-		font-size: 1.25rem;
+		font-size: var(--text-lg);
 		line-height: 1;
 	}
 
 	/* Historical Data */
 	.history-stats {
-		padding: 1rem;
+		padding: var(--space-4);
 		background: var(--color-info-bg);
 		border: 1px solid var(--color-blue);
-		border-radius: 8px;
+		border-radius: var(--radius-control);
 		margin-bottom: 1.25rem;
 	}
 
@@ -571,7 +570,7 @@
 		gap: 0.375rem;
 		background: var(--bg-secondary);
 		padding: 0.375rem;
-		border-radius: 10px;
+		border-radius: var(--radius-card);
 		border: 1px solid var(--border-light);
 	}
 
@@ -580,7 +579,7 @@
 		border: none;
 		padding: 0.625rem 1.25rem;
 		border-radius: 7px;
-		font-size: 0.875rem;
+		font-size: var(--text-sm);
 		font-weight: 600;
 		color: var(--text-secondary);
 		cursor: pointer;
@@ -596,7 +595,6 @@
 	.toggle-btn.active {
 		background: var(--bg-primary);
 		color: var(--color-blue-bright);
-		box-shadow: 0 2px 6px var(--shadow-md);
 	}
 
 	/* Loading State */
@@ -607,8 +605,8 @@
 	}
 
 	.loading-state p {
-		margin-top: 1rem;
-		font-size: 0.95rem;
+		margin-top: var(--space-4);
+		font-size: var(--text-sm);
 	}
 
 	.spinner {
@@ -618,7 +616,7 @@
 		width: 48px;
 		height: 48px;
 		animation: spin 1s cubic-bezier(0.22, 1, 0.36, 1) infinite;
-		margin: 0 auto 1rem;
+		margin: 0 auto var(--space-4);
 	}
 
 	@keyframes spin {
@@ -634,7 +632,7 @@
 		text-align: center;
 		padding: 3rem;
 		color: var(--text-tertiary);
-		font-size: 0.95rem;
+		font-size: var(--text-sm);
 	}
 
 	/* Overflow handling */
@@ -642,7 +640,7 @@
 		overflow-x: auto;
 		-webkit-overflow-scrolling: touch;
 		margin: -0.5rem;
-		padding: 0.5rem;
+		padding: var(--space-2);
 		position: relative;
 	}
 
@@ -668,24 +666,24 @@
 	/* Mobile Responsive */
 	@media (max-width: 768px) {
 		.card {
-			padding: 1rem;
-			border-radius: 10px;
+			padding: var(--space-4);
+			border-radius: var(--radius-card);
 		}
 
 		.card h2 {
-			font-size: 1rem;
-			margin-bottom: 1rem;
+			font-size: var(--text-base);
+			margin-bottom: var(--space-4);
 		}
 
 		.view-toggle {
-			gap: 0.25rem;
-			padding: 0.25rem;
+			gap: var(--space-1);
+			padding: var(--space-1);
 			flex-direction: column;
 		}
 
 		.toggle-btn {
-			padding: 0.625rem 1rem;
-			font-size: 0.8125rem;
+			padding: 0.625rem var(--space-4);
+			font-size: var(--text-sm);
 			width: 100%;
 		}
 
@@ -693,34 +691,34 @@
 		:global(.grid-cols-4),
 		:global(.grid-cols-3) {
 			grid-template-columns: repeat(2, 1fr);
-			gap: 1rem;
+			gap: var(--space-4);
 		}
 
 		.stat-card {
-			padding: 1rem;
+			padding: var(--space-4);
 		}
 
 		.stat-label {
-			font-size: 0.75rem;
+			font-size: var(--text-xs);
 		}
 
 		.stat-value {
-			font-size: 1.5rem;
+			font-size: var(--text-xl);
 		}
 
 		/* Table responsive */
 		:global(th),
 		:global(td) {
-			padding: 0.625rem 0.75rem;
-			font-size: 0.8125rem;
+			padding: 0.625rem var(--space-3);
+			font-size: var(--text-sm);
 		}
 
 		:global(th) {
-			font-size: 0.6875rem;
+			font-size: var(--text-xs);
 		}
 
 		:global(.font-mono) {
-			font-size: 0.75rem;
+			font-size: var(--text-xs);
 		}
 
 		/* Compact table on mobile */
@@ -730,21 +728,21 @@
 
 		/* Info box */
 		.info-box {
-			padding: 1rem;
+			padding: var(--space-4);
 		}
 
 		.info-box h3 {
-			font-size: 0.9375rem;
+			font-size: var(--text-sm);
 		}
 
 		.info-box li {
-			font-size: 0.8125rem;
-			padding: 0.25rem 0;
+			font-size: var(--text-sm);
+			padding: var(--space-1) 0;
 		}
 
 		.history-stats {
 			padding: 0.875rem;
-			font-size: 0.8125rem;
+			font-size: var(--text-sm);
 		}
 	}
 
@@ -756,15 +754,15 @@
 		}
 
 		.stat-value {
-			font-size: 1.375rem;
+			font-size: var(--text-xl);
 		}
 
 		.view-toggle {
-			font-size: 0.75rem;
+			font-size: var(--text-xs);
 		}
 
 		.toggle-btn {
-			padding: 0.5rem 0.75rem;
+			padding: var(--space-2) var(--space-3);
 		}
 	}
 </style>

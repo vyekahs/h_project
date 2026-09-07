@@ -14,20 +14,16 @@
     import { user } from '$lib/stores/user';
     import { initNotificationsSSE } from '$lib/stores/notifications.svelte';
     import { initNetworkHealthCheck } from '$lib/stores/networkHealth.svelte';
+    import { isInGame } from '$lib/games/isInGame';
 
 	let { children } = $props();
 
-    const GAME_PATHS = ['/minigames/tichu', '/minigames/sudoku', '/minigames/killer-sudoku', '/minigames/unblock-me', '/minigames/energy', '/minigames/water-sort'];
     let versionCheckTimer: ReturnType<typeof setInterval> | null = null;
-
-    function isInGame(pathname: string): boolean {
-        return GAME_PATHS.some(p => pathname.startsWith(p));
-    }
 
     // 하단 네비게이션 물방울 인디케이터
     const navActiveIndex = $derived.by(() => {
         const path = $page.url.pathname;
-        if (path.startsWith('/games')) return 1;
+        if (path.startsWith('/collection') || path.startsWith('/games')) return 1;
         if (path.startsWith('/minigames')) return 2;
         if (path.startsWith('/mypage')) return 3;
         return 0;
@@ -79,7 +75,13 @@
 
     onMount(() => {
         themeStore.init();
-        user.refresh();
+        /*
+            어드민 콘솔은 회원 세션이 아니라 admin_session으로 인증한다.
+            그런데도 이 호출이 나가서 모든 어드민 로드마다 401이 콘솔에 빨간
+            에러로 찍혔다 — 네트워크 계층이 내는 것이라 코드로 삼킬 수 없다.
+            어드민 화면은 이 스토어를 읽는 곳이 하나도 없다.
+        */
+        if (!$page.url.pathname.startsWith('/admin')) user.refresh();
         initNetworkHealthCheck();
 
         // /_app/version.json은 프로덕션 빌드에만 생성됨 (vite dev에선 없어서 항상 404) — dev 모드에선 폴링 생략
@@ -109,7 +111,7 @@
 	<link rel="icon" href={favicon} />
 </svelte:head>
 
-<div class="app-layout">
+<div class="app-layout" class:is-admin={$page.url.pathname.startsWith('/admin')}>
     <!-- Top Bar for Points (Shop Button) - Temporarily hidden for initial release -->
     <!-- {#if $page.url.pathname === '/minigames'}
         <div class="top-bar">
@@ -118,12 +120,16 @@
         </div>
     {/if} -->
 
-	<main class="content">
+	<!--
+		어드민 콘솔은 자기 <main>(사이드바를 뺀 오른쪽 열)을 따로 가진다.
+		여기까지 <main>이면 랜드마크가 둘이 되고 유효하지 않은 HTML이 된다.
+	-->
+	<svelte:element this={$page.url.pathname.startsWith('/admin') ? 'div' : 'main'} class="content">
 		{@render children()}
         {#if !$page.url.pathname.startsWith('/admin') && !$page.url.pathname.includes('/minigames/') && !$page.url.pathname.startsWith('/tools/') && !$page.url.pathname.startsWith('/party/')}
              <AdBanner adSlot="footer-banner" />
         {/if}
-	</main>
+	</svelte:element>
 
 	{#if !$page.url.pathname.startsWith('/admin') && !$page.url.pathname.startsWith('/minigames/') && !$page.url.pathname.startsWith('/tools/') && !$page.url.pathname.startsWith('/party/')}
 	<footer class="site-footer">
@@ -145,7 +151,7 @@
             </span>
 			<span class="label">홈</span>
 		</a>
-		<a href="/games" class="nav-item games" class:active={$page.url.pathname.startsWith('/games')}>
+		<a href="/collection" class="nav-item games" class:active={$page.url.pathname.startsWith('/collection') || $page.url.pathname.startsWith('/games')}>
 			<span class="icon">
                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
             </span>
@@ -227,7 +233,7 @@
         --color-amber-dark: #f59e0b;
         --color-amber-darker: #d97706;
         --color-green: #22c55e;
-        --color-green-dark: #2b8a3e;
+        --color-green-dark: #1b6b2c;
         --color-red: #ef4444;
         --color-red-dark: #d32f2f;
         --color-orange: #ff9800;
@@ -244,6 +250,24 @@
         --color-error-bg: #fff5f5;
         --color-warning-bg: #fff3e0;
         --color-info-bg: #e7f5ff;
+
+        /* Glass surfaces (오락실 등 glassmorphism 카드용) — 흰색 반투명을
+           하드코딩하면 다크 테마에서 뿌연 얼룩이 되어 테마별로 분리 */
+        --glass-surface-strong: rgba(255, 255, 255, 0.7);
+        --glass-surface-medium: rgba(255, 255, 255, 0.65);
+        --glass-surface-soft: rgba(255, 255, 255, 0.2);
+        --glass-surface-faint: rgba(255, 255, 255, 0.4);
+        --glass-border-soft: rgba(255, 255, 255, 0.3);
+        --glass-border-strong: rgba(255, 255, 255, 0.8);
+        --glass-inset-highlight: rgba(255, 255, 255, 0.5);
+
+        /* 오락실 배경 그라디언트 — 라이트는 파스텔, 다크는 은은한 색 글로우.
+           하드코딩된 파스텔을 그대로 두면 다크에서 화면 전체가 회백색으로 떠버린다 */
+        --arcade-bg-gradient: radial-gradient(circle at 10% 20%, rgba(216, 241, 230, 0.7) 0%, rgba(233, 240, 255, 0.4) 40%, rgba(240, 230, 250, 0.3) 80%);
+
+        /* --bg-dark와 짝을 이루는 더 깊은 톤 (반전 버튼의 그라디언트 끝점).
+           #111을 하드코딩하면 다크에서 밝은색 → 검정 그라디언트가 되어 글자가 묻힌다 */
+        --bg-dark-deep: #111;
 
         /* Additional Colors */
         --border-warning: #ffe0b2;
@@ -326,6 +350,20 @@
         --color-warning-bg: rgba(251,191,36,0.12);
         --color-info-bg: rgba(59,130,246,0.12);
 
+        /* 다크 테마의 글래스 표면 — 흰색을 아주 낮은 불투명도로 유지해
+           "서리 낀 유리" 느낌은 살리되 하얗게 뜨지 않게 함 */
+        --glass-surface-strong: rgba(255, 255, 255, 0.08);
+        --glass-surface-medium: rgba(255, 255, 255, 0.06);
+        --glass-surface-soft: rgba(255, 255, 255, 0.05);
+        --glass-surface-faint: rgba(255, 255, 255, 0.04);
+        --glass-border-soft: rgba(255, 255, 255, 0.1);
+        --glass-border-strong: rgba(255, 255, 255, 0.14);
+        --glass-inset-highlight: rgba(255, 255, 255, 0.08);
+
+        --arcade-bg-gradient: radial-gradient(circle at 10% 20%, rgba(52, 211, 153, 0.07) 0%, rgba(96, 165, 250, 0.06) 40%, rgba(167, 139, 250, 0.05) 80%);
+
+        --bg-dark-deep: #f3f4f6;
+
         /* Additional Colors */
         --border-warning: rgba(251,191,36,0.25);
         --color-purple-bg: rgba(147,51,234,0.12);
@@ -351,6 +389,15 @@
         touch-action: manipulation;
         transition: background-color 0.2s, color 0.2s;
 	}
+    /*
+        어드민의 킬 스위치는 `.force-light *` — 후손만 잡는다. 이 transition은
+        body, 즉 그 조상에 있어서 유일하게 설정을 빠져나갔다. 선언한 자리에서 끈다.
+    */
+    @media (prefers-reduced-motion: reduce) {
+        :global(body) {
+            transition: none;
+        }
+    }
     :global(input), :global(textarea), :global(select) {
         background-color: var(--bg-primary);
         color: var(--text-primary);
@@ -368,6 +415,10 @@
 		padding-bottom: calc(96px + env(safe-area-inset-bottom));
 		display: flex;
 		flex-direction: column;
+	}
+	/* 어드민은 사이트 하단 네비를 쓰지 않으므로 그 자리를 비워둘 이유가 없다 */
+	.app-layout.is-admin {
+		padding-bottom: 0;
 	}
 	.content {
 		flex: 1;

@@ -8,6 +8,7 @@ import { emitLiveEvent } from '$lib/server/liveEvents';
 import { getSharedData } from '$lib/server/dataCache';
 import { NotificationService } from '$lib/server/services/notificationService';
 import { WantToPlayService } from '$lib/server/services/wantToPlayService';
+import { resolveGameId } from '$lib/server/games';
 
 async function canModifyGame(request: Request, gameId: string | number): Promise<boolean> {
     const sessionToken = request.headers.get('cookie')?.match(/admin_session=([^;]+)/)?.[1];
@@ -220,6 +221,7 @@ export const actions: Actions = {
     createScheduledGame: async ({ request, cookies }) => {
         const data = await request.formData();
         const gameName = data.get('gameName')?.toString();
+        const rawGameId = data.get('gameId')?.toString();
         const scheduledAt = data.get('scheduledAt')?.toString();
         const minPlayers = parseInt(data.get('minPlayers')?.toString() || '2');
         const maxPlayers = parseInt(data.get('maxPlayers')?.toString() || '4');
@@ -248,12 +250,17 @@ export const actions: Actions = {
         const finalShowOnMain = isAdmin ? showOnMain : false;
         const finalIsRecurring = isAdmin ? isRecurring : false;
 
+        // 등록된 게임을 고른 경우에만 game_id를 남긴다.
+        // 클라이언트가 이름을 직접 수정하면 gameId를 비워 보내지만, 여기서도 이름이
+        // 실제로 일치하는지 확인해서 game_id와 game_name이 어긋나는 일이 없게 한다.
+        const finalGameId = await resolveGameId(rawGameId, gameName);
+
         // 2. Create scheduled session
         try {
             await db.transaction(async (tx) => {
                 const sessionResult = await tx.execute(sql`
-                    INSERT INTO game_sessions (game_name, status, scheduled_at, min_players, max_players, created_by, party_id, show_on_main)
-                    VALUES (${gameName}, 'scheduled', ${scheduledAt}, ${minPlayers}, ${maxPlayers}, ${creatorId}, ${partyId}, ${finalShowOnMain})
+                    INSERT INTO game_sessions (game_name, game_id, status, scheduled_at, min_players, max_players, created_by, party_id, show_on_main)
+                    VALUES (${gameName}, ${finalGameId}, 'scheduled', ${scheduledAt}, ${minPlayers}, ${maxPlayers}, ${creatorId}, ${partyId}, ${finalShowOnMain})
                     RETURNING id
                 `);
                 const newSessionId = (sessionResult[0] as any).id;
@@ -778,6 +785,9 @@ export const actions: Actions = {
         const sessionToken = request.headers.get('cookie')?.match(/admin_session=([^;]+)/)?.[1];
         let authorized = false;
         let isAdmin = false;
+        // 관리자는 attendees 테이블의 계정이 아니므로(admin_sessions는 별도 users 테이블 참조)
+        // 취소자 표시를 할 attendee id가 없다 — 그 경우 null로 남기고 화면에서 "관리자"로 표시한다.
+        let cancelledByAttendeeId: number | null = null;
 
         if (sessionToken && await verifyAdminSession(sessionToken)) {
             authorized = true;
@@ -792,6 +802,7 @@ export const actions: Actions = {
             // Participants can only dissolve non-recurring games
             if (!isRecurringGame && await isParticipant(sessionId, user.id)) {
                 authorized = true;
+                cancelledByAttendeeId = user.id;
             }
         }
 
@@ -820,13 +831,18 @@ export const actions: Actions = {
                     `);
                 }
 
-                await tx.execute(sql`DELETE FROM session_participants WHERE session_id = ${sessionId}`);
-                await tx.execute(sql`DELETE FROM reservations WHERE session_id = ${sessionId}`);
-                await tx.execute(sql`DELETE FROM game_sessions WHERE id = ${sessionId}`);
+                // 삭제 대신 취소 상태로 남긴다 — 누가 취소했는지 알 수 있어야 한다.
+                // 참여자/예약 기록도 지우지 않는다: 취소된 게임 카드에 계속 표시할 참가자 목록이 필요하다.
+                await tx.execute(sql`
+                    UPDATE game_sessions
+                    SET status = 'cancelled', cancelled_by = ${cancelledByAttendeeId}, cancelled_at = NOW()
+                    WHERE id = ${sessionId}
+                `);
             });
             emitLiveEvent('games');
             return { success: true };
         } catch (e) {
+            console.error('[dissolveScheduledGame] Failed:', e);
             return fail(500, { error: 'Failed to dissolve game' });
         }
     },

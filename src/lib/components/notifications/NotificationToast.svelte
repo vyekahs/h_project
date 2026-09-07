@@ -12,7 +12,13 @@
 	}
 </script>
 
-{#if toasts.length > 0}
+<!--
+	라이브 리전은 메시지가 나타나기 전부터 DOM에 있어야 스크린리더가 변화를
+	읽는다. 컨테이너 자체가 {#if}로 생겼다 사라져서 이 토스트들은 한 번도
+	낭독된 적이 없다.
+-->
+<div class="toast-region" role="status" aria-live="polite">
+	{#if toasts.length > 0}
 	<div class="toast-container">
 		{#each toasts as toast (toast.id)}
 			<div
@@ -45,7 +51,8 @@
 			</div>
 		{/each}
 	</div>
-{/if}
+	{/if}
+</div>
 
 <style>
 	.toast-container {

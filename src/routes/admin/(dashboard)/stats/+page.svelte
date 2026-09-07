@@ -1,20 +1,29 @@
 <script lang="ts">
     import type { PageData } from './$types';
     import { trapFocus } from '$lib/actions/modal';
-    export let data: PageData;
+    let { data }: { data: PageData } = $props();
+
+    /** 분 단위 수치를 사람이 읽는 형태로 — 799분은 읽히지 않는다 */
+    function formatDuration(mins: number | string): string {
+        const n = Math.round(Number(mins) || 0);
+        if (n < 60) return `${n}분`;
+        const h = Math.floor(n / 60);
+        const m = n % 60;
+        return m === 0 ? `${h}시간` : `${h}시간 ${m}분`;
+    }
 
     // Modal states
-    let showDailyTrendModal = false;
-    let showTopVisitorsModal = false;
-    let showPopularGamesModal = false;
-    let showPeakHoursModal = false;
+    let showDailyTrendModal = $state(false);
+    let showTopVisitorsModal = $state(false);
+    let showPopularGamesModal = $state(false);
+    let showPeakHoursModal = $state(false);
 
     // Helper for chart scaling
-    $: maxGame = Math.max(...data.popularGames.map((g: any) => parseInt(g.count)), 1);
-    $: maxDailyTrend = Math.max(...data.dailyTrend.map((d: any) => parseInt(d.count)), 1);
-    $: maxHourly = Math.max(...data.peakHours.map((h: any) => parseInt(h.count)), 1);
-    $: maxVisitor = Math.max(...(data.userStats?.topVisitors || []).map((v: any) => parseInt(v.visit_count)), 1);
-    $: activeRate = data.userStats?.totalUsers > 0 ? Math.round((data.userStats.activeUsers / data.userStats.totalUsers) * 100) : 0;
+    const maxGame = $derived(Math.max(...data.popularGames.map((g: any) => parseInt(g.count)), 1));
+    const maxDailyTrend = $derived(Math.max(...data.dailyTrend.map((d: any) => parseInt(d.count)), 1));
+    const maxHourly = $derived(Math.max(...data.peakHours.map((h: any) => parseInt(h.count)), 1));
+    const maxVisitor = $derived(Math.max(...(data.userStats?.topVisitors || []).map((v: any) => parseInt(v.visit_count)), 1));
+    const activeRate = $derived(data.userStats?.totalUsers > 0 ? Math.round((data.userStats.activeUsers / data.userStats.totalUsers) * 100) : 0);
 </script>
 
 <div class="stats-page">
@@ -32,20 +41,20 @@
             <div class="value">{data.kpis.totalVisits}</div>
             <div class="label">누적 방문 횟수</div>
         </div>
-        <button type="button" class="kpi-card clickable" on:click={() => showTopVisitorsModal = true}>
+        <button type="button" class="kpi-card clickable" onclick={() => showTopVisitorsModal = true}>
             <h3>등록 멤버</h3>
             <div class="value">{data.kpis.totalMembers}</div>
             <div class="label">이번 달 방문 Top 10 보기</div>
         </button>
         <div class="kpi-card">
             <h3>평균 체류</h3>
-            <div class="value">{data.kpis.avgDuration}분</div>
+            <div class="value">{formatDuration(data.kpis.avgDuration)}</div>
             <div class="label">1회 방문당 평균 머문 시간</div>
         </div>
     </div>
 
     <div class="kpi-extra-actions">
-        <button type="button" class="btn-drilldown" on:click={() => showPopularGamesModal = true}>
+        <button type="button" class="btn-drilldown" onclick={() => showPopularGamesModal = true}>
             인기 게임 Top 5 보기
         </button>
     </div>
@@ -60,12 +69,12 @@
     </div>
 
     <div class="kpi-grid kpi-grid-4">
-        <button type="button" class="kpi-card clickable" on:click={() => showPeakHoursModal = true}>
+        <button type="button" class="kpi-card clickable" onclick={() => showPeakHoursModal = true}>
             <h3>평균 주간 방문</h3>
             <div class="value">{data.userStats.avgWeeklyVisits}<span class="unit">일</span></div>
             <div class="label">1인당 주 평균 방문 일수 · 시간대별 분포 보기</div>
         </button>
-        <button type="button" class="kpi-card clickable" on:click={() => showDailyTrendModal = true}>
+        <button type="button" class="kpi-card clickable" onclick={() => showDailyTrendModal = true}>
             <h3>평균 월간 방문</h3>
             <div class="value">{data.userStats.avgMonthlyVisits}<span class="unit">일</span></div>
             <div class="label">1인당 월 평균 방문 일수 · 최근 30일 추이 보기</div>
@@ -89,15 +98,15 @@
     <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
     <div 
         class="modal-backdrop" 
-        on:click={() => showPeakHoursModal = false}
+        onclick={() => showPeakHoursModal = false}
         role="button"
         tabindex="-1"
         aria-label="모달 닫기"
     >
-        <div class="modal-content" use:trapFocus={() => (showPeakHoursModal = false)} on:click|stopPropagation on:keydown|stopPropagation role="dialog" aria-modal="true" tabindex="-1">
+        <div class="modal-content" use:trapFocus={() => (showPeakHoursModal = false)} onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="dialog" aria-modal="true" tabindex="-1">
             <div class="modal-header">
                 <h3>시간대별 방문 (혼잡도)</h3>
-                <button class="modal-close" on:click={() => showPeakHoursModal = false}>&times;</button>
+                <button class="modal-close" onclick={() => showPeakHoursModal = false}>&times;</button>
             </div>
             <div class="modal-body">
                 <div class="chart-container bar-chart">
@@ -121,15 +130,15 @@
     <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
     <div 
         class="modal-backdrop" 
-        on:click={() => showDailyTrendModal = false}
+        onclick={() => showDailyTrendModal = false}
         role="button"
         tabindex="-1"
         aria-label="모달 닫기"
     >
-        <div class="modal-content" use:trapFocus={() => (showDailyTrendModal = false)} on:click|stopPropagation on:keydown|stopPropagation role="dialog" aria-modal="true" tabindex="-1">
+        <div class="modal-content" use:trapFocus={() => (showDailyTrendModal = false)} onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="dialog" aria-modal="true" tabindex="-1">
             <div class="modal-header">
                 <h3>최근 30일 방문자 추이</h3>
-                <button class="modal-close" on:click={() => showDailyTrendModal = false}>&times;</button>
+                <button class="modal-close" onclick={() => showDailyTrendModal = false}>&times;</button>
             </div>
             <div class="modal-body">
                 <div class="chart-container line-chart">
@@ -145,13 +154,13 @@
                                 const y = 200 - (parseInt(d.count) / maxDailyTrend) * 200;
                                 return `${x},${y}`;
                             }).join(' ')}
-                            fill="none" stroke="#007bff" stroke-width="2"
+                            fill="none" stroke="var(--color-blue-bright)" stroke-width="2"
                         />
                         {#each data.dailyTrend as item, i}
                             <circle
                                 cx={(i / (data.dailyTrend.length - 1 || 1)) * 1000}
                                 cy={200 - (parseInt(item.count) / maxDailyTrend) * 200}
-                                r="4" fill="#007bff" stroke="white" stroke-width="2"
+                                r="4" fill="var(--color-blue-bright)" stroke="white" stroke-width="2"
                             >
                                 <title>{item.date}: {item.count}명</title>
                             </circle>
@@ -181,15 +190,15 @@
     <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
     <div 
         class="modal-backdrop" 
-        on:click={() => showTopVisitorsModal = false}
+        onclick={() => showTopVisitorsModal = false}
         role="button"
         tabindex="-1"
         aria-label="모달 닫기"
     >
-        <div class="modal-content" use:trapFocus={() => (showTopVisitorsModal = false)} on:click|stopPropagation on:keydown|stopPropagation role="dialog" aria-modal="true" tabindex="-1">
+        <div class="modal-content" use:trapFocus={() => (showTopVisitorsModal = false)} onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="dialog" aria-modal="true" tabindex="-1">
             <div class="modal-header">
                 <h3>이번 달 Top 10 방문자</h3>
-                <button class="modal-close" on:click={() => showTopVisitorsModal = false}>&times;</button>
+                <button class="modal-close" onclick={() => showTopVisitorsModal = false}>&times;</button>
             </div>
             <div class="modal-body">
                 <div class="ranking-list">
@@ -220,15 +229,15 @@
     <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
     <div 
         class="modal-backdrop" 
-        on:click={() => showPopularGamesModal = false}
+        onclick={() => showPopularGamesModal = false}
         role="button"
         tabindex="-1"
         aria-label="모달 닫기"
     >
-        <div class="modal-content" use:trapFocus={() => (showPopularGamesModal = false)} on:click|stopPropagation on:keydown|stopPropagation role="dialog" aria-modal="true" tabindex="-1">
+        <div class="modal-content" use:trapFocus={() => (showPopularGamesModal = false)} onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="dialog" aria-modal="true" tabindex="-1">
             <div class="modal-header">
                 <h3>인기 게임 Top 5</h3>
-                <button class="modal-close" on:click={() => showPopularGamesModal = false}>&times;</button>
+                <button class="modal-close" onclick={() => showPopularGamesModal = false}>&times;</button>
             </div>
             <div class="modal-body">
                 <div class="ranking-list">
@@ -255,39 +264,38 @@
 
 <style>
     .header {
-        margin-bottom: 2rem;
+        margin-bottom: var(--space-6);
     }
     
     /* KPI Grid */
     .kpi-grid {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-        gap: 1.5rem;
-        margin-bottom: 2rem;
+        gap: var(--space-5);
+        margin-bottom: var(--space-6);
     }
     .kpi-card {
         background: white;
-        padding: 1.5rem;
-        border-radius: 12px;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        padding: var(--space-5);
+        border-radius: var(--radius-card);
         text-align: center;
-        border: 1px solid #eee;
+        border: 1px solid var(--border-light);
     }
     .kpi-card h3 {
         margin: 0;
-        font-size: 0.9rem;
-        color: #666;
+        font-size: var(--text-sm);
+        color: var(--text-secondary);
         font-weight: normal;
     }
     .kpi-card .value {
         font-size: 2.5rem;
         font-weight: bold;
-        color: #333;
-        margin: 0.5rem 0;
+        color: var(--text-primary);
+        margin: var(--space-2) 0;
     }
     .kpi-card .label {
-        font-size: 0.8rem;
-        color: #999;
+        font-size: var(--text-xs);
+        color: var(--text-muted);
     }
 
     /* Line Chart */
@@ -317,8 +325,8 @@
     .x-axis .label {
         position: absolute;
         transform: translateX(-50%);
-        font-size: 0.75rem;
-        color: #666;
+        font-size: var(--text-xs);
+        color: var(--text-secondary);
         white-space: nowrap;
     }
 
@@ -347,15 +355,15 @@
         opacity: 1;
     }
     .bar.peak {
-        background: #ff9800;
+        background: var(--color-orange);
     }
     .x-label {
         position: absolute;
         bottom: -20px;
         left: 50%;
         transform: translateX(-50%);
-        font-size: 0.7rem;
-        color: #666;
+        font-size: var(--text-xs);
+        color: var(--text-secondary);
         white-space: nowrap;
     }
 
@@ -363,67 +371,67 @@
     .ranking-list {
         display: flex;
         flex-direction: column;
-        gap: 1rem;
+        gap: var(--space-4);
     }
     .rank-item {
         display: flex;
         flex-direction: column;
-        gap: 0.25rem;
+        gap: var(--space-1);
     }
     .rank-info {
         display: flex;
         justify-content: space-between;
-        font-size: 0.9rem;
+        font-size: var(--text-sm);
     }
     .rank-num {
         font-weight: bold;
         width: 20px;
-        color: #666;
+        color: var(--text-secondary);
     }
     .game-name {
         flex: 1;
         font-weight: 500;
     }
     .play-count {
-        color: #666;
-        font-size: 0.8rem;
+        color: var(--text-secondary);
+        font-size: var(--text-xs);
     }
     .progress-bg {
         height: 8px;
-        background: #eee;
-        border-radius: 4px;
+        background: var(--border-light);
+        border-radius: var(--radius-control);
         overflow: hidden;
     }
     .progress-bar {
         height: 100%;
-        background: #4caf50;
-        border-radius: 4px;
+        background: var(--color-green-dark);
+        border-radius: var(--radius-control);
     }
     .empty-chart {
         height: 100%;
         display: flex;
         align-items: center;
         justify-content: center;
-        color: #999;
-        font-size: 0.9rem;
+        color: var(--text-muted);
+        font-size: var(--text-sm);
     }
 
     /* Section Header */
     .section-header {
         display: flex;
         align-items: baseline;
-        gap: 0.75rem;
+        gap: var(--space-3);
         margin-top: 3rem;
-        margin-bottom: 1.5rem;
+        margin-bottom: var(--space-5);
     }
     .section-header h2 {
         margin: 0;
-        font-size: 1.3rem;
-        color: #333;
+        font-size: var(--text-lg);
+        color: var(--text-primary);
     }
     .section-hint {
-        font-size: 0.8rem;
-        color: #999;
+        font-size: var(--text-xs);
+        color: var(--text-muted);
     }
 
     /* 4-column KPI grid */
@@ -431,15 +439,15 @@
         grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
     }
     .kpi-card .unit {
-        font-size: 1.2rem;
+        font-size: var(--text-lg);
         font-weight: normal;
-        color: #666;
+        color: var(--text-secondary);
         margin-left: 2px;
     }
     .kpi-card .sub-value {
-        font-size: 1rem;
+        font-size: var(--text-base);
         font-weight: normal;
-        color: #999;
+        color: var(--text-muted);
     }
 
     /* Clickable KPI card */
@@ -450,16 +458,16 @@
         color: inherit;
     }
     .kpi-extra-actions {
-        margin: 0.75rem 0 0;
+        margin: var(--space-3) 0 0;
     }
     .btn-drilldown {
         min-height: 44px;
         padding: 0 0.9rem;
-        border-radius: 6px;
-        border: 1px solid var(--border-medium, #ced4da);
-        background: var(--bg-primary, #fff);
-        color: var(--text-primary, #333);
-        font-size: 0.88rem;
+        border-radius: var(--radius-control);
+        border: 1px solid var(--border-medium);
+        background: var(--bg-primary, var(--bg-primary));
+        color: var(--text-primary, var(--text-primary));
+        font-size: var(--text-sm);
         font-weight: 600;
         cursor: pointer;
     }
@@ -470,12 +478,12 @@
     .kpi-card.clickable:hover {
         transform: translateY(-2px);
         box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-        border-color: #007bff;
+        border-color: var(--color-blue-bright);
     }
 
     /* Visitor progress bar color */
     .visitor-bar {
-        background: #007bff;
+        background: var(--color-blue-bright);
     }
 
     /* Modal */
@@ -493,7 +501,7 @@
     }
     .modal-content {
         background: white;
-        border-radius: 16px;
+        border-radius: var(--radius-card);
         width: 90%;
         max-width: 600px;
         max-height: 80vh;
@@ -504,27 +512,27 @@
         display: flex;
         justify-content: space-between;
         align-items: center;
-        padding: 1.25rem 1.5rem;
-        border-bottom: 1px solid #eee;
+        padding: 1.25rem var(--space-5);
+        border-bottom: 1px solid var(--border-light);
     }
     .modal-header h3 {
         margin: 0;
-        font-size: 1.1rem;
-        color: #333;
+        font-size: var(--text-lg);
+        color: var(--text-primary);
     }
     .modal-close {
         background: none;
         border: none;
-        font-size: 1.5rem;
-        color: #999;
+        font-size: var(--text-xl);
+        color: var(--text-muted);
         cursor: pointer;
         padding: 0;
         line-height: 1;
     }
     .modal-close:hover {
-        color: #333;
+        color: var(--text-primary);
     }
     .modal-body {
-        padding: 1.5rem;
+        padding: var(--space-5);
     }
 </style>

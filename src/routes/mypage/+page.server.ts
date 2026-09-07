@@ -14,42 +14,6 @@ export const load: PageServerLoad = async ({ parent }) => {
         throw redirect(302, '/login');
     }
 
-    // Fetch Game History
-    const historyResult = await db.execute(sql`
-        SELECT
-            gs.id,
-            gs.game_name,
-            gs.end_time,
-            sp.score as my_score,
-            sp.is_winner as is_winner,
-            (
-                SELECT json_agg(json_build_object(
-                    'name', a2.name,
-                    'score', sp2.score,
-                    'is_winner', sp2.is_winner
-                ))
-                FROM session_participants sp2
-                JOIN attendees a2 ON sp2.attendee_id = a2.id
-                WHERE sp2.session_id = gs.id AND sp2.attendee_id != ${user.id}
-            ) as opponents
-        FROM session_participants sp
-        JOIN game_sessions gs ON sp.session_id = gs.id
-        WHERE sp.attendee_id = ${user.id} AND gs.status = 'finished'
-        ORDER BY gs.end_time DESC
-    `);
-
-    // Fetch Stats
-    const statsResult = await db.execute(sql`
-        SELECT
-            COUNT(*) as total_games,
-            COUNT(*) FILTER (WHERE is_winner = true) as total_wins
-        FROM session_participants sp
-        JOIN game_sessions gs ON sp.session_id = gs.id
-        WHERE sp.attendee_id = ${user.id} AND gs.status = 'finished'
-    `);
-
-    const stats = statsResult[0] as any;
-
     // Fetch Registered Devices & Parties & All Attendees & All Games
     const [devicesResult, parties, allAttendeesResult, allGamesResult, pendingInvitations] = await Promise.all([
         db.execute(sql`SELECT id, name, created_at, last_seen_at FROM user_devices WHERE attendee_id = ${user.id} ORDER BY created_at DESC`),
@@ -81,8 +45,6 @@ export const load: PageServerLoad = async ({ parent }) => {
 
     return {
         user,
-        history: historyResult as any[],
-        stats,
         devices: devicesResult as any[],
         parties: parties as any[],
         allAttendees: allAttendeesResult as any[],
@@ -255,12 +217,16 @@ export const actions: Actions = {
                 removeFromIrkCache(user.id, irk);
                 // BLE 서버에 IRK 삭제 알림 (fire-and-forget)
                 const BLE_SERVER_URL = process.env.BLE_SERVER_URL || 'http://ble-server:3001';
-                const INTERNAL_API_KEY = process.env.INTERNAL_API_KEY || 'ble_internal_secret_2026';
-                fetch(`${BLE_SERVER_URL}/irk/remove`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'x-internal-key': INTERNAL_API_KEY },
-                    body: JSON.stringify({ attendee_id: user.id, irk_hex: irk })
-                }).catch(e => console.error('[IRK] Failed to notify BLE server (remove):', e));
+                const INTERNAL_API_KEY = process.env.INTERNAL_API_KEY;
+                if (!INTERNAL_API_KEY) {
+                    console.error('[IRK] INTERNAL_API_KEY 환경변수가 설정되지 않아 BLE 서버 알림을 건너뜁니다.');
+                } else {
+                    fetch(`${BLE_SERVER_URL}/irk/remove`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', 'x-internal-key': INTERNAL_API_KEY },
+                        body: JSON.stringify({ attendee_id: user.id, irk_hex: irk })
+                    }).catch(e => console.error('[IRK] Failed to notify BLE server (remove):', e));
+                }
             }
             return { success: true };
         } catch (e) {

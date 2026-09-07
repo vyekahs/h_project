@@ -11,7 +11,7 @@ export const load: PageServerLoad = async ({ params }) => {
     }
 
     // 1. Fetch Attendee Info
-    const attendeeResult = await db.execute(sql`SELECT id, name, status, arrival_time, season_pass_expires_at FROM attendees WHERE id = ${attendeeId}`);
+    const attendeeResult = await db.execute(sql`SELECT id, name, status, arrival_time, season_pass_expires_at, penalty_points, is_blacklisted FROM attendees WHERE id = ${attendeeId}`);
 
     if (attendeeResult.length === 0) {
         throw error(404, 'Attendee not found');
@@ -59,11 +59,33 @@ export const load: PageServerLoad = async ({ params }) => {
         ORDER BY arrival_time DESC
     `);
 
+    // 페널티 집행 이력 — "왜 이 사람이 3점인지"에 답할 수 있어야 한다
+    const penaltyLogResult = await db.execute(sql`
+        SELECT points, reason, total_after, created_at
+        FROM penalty_logs
+        WHERE attendee_id = ${params.id}
+        ORDER BY created_at DESC
+        LIMIT 50
+    `);
+
+    // 진행 중이거나 예정된 예약
+    const reservationResult = await db.execute(sql`
+        SELECT r.id, r.status, r.created_at, gs.game_name, gs.status AS session_status,
+               gs.scheduled_at, gs.start_time
+        FROM reservations r
+        JOIN game_sessions gs ON gs.id = r.session_id
+        WHERE r.attendee_id = ${params.id}
+          AND gs.status IN ('scheduled', 'playing')
+        ORDER BY r.created_at DESC
+    `);
+
     return {
         attendee,
         history: historyResult as any[],
         partners: partnersResult as any[],
-        visits: visitsResult as any[]
+        visits: visitsResult as any[],
+        penaltyLogs: penaltyLogResult as any[],
+        reservations: reservationResult as any[]
     };
 };
 

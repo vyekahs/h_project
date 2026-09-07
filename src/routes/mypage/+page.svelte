@@ -63,25 +63,6 @@
 
 
 
-    let selectedYear: string = 'all';
-    let selectedMonth: string = 'all';
-
-    // Extract available years from history
-    $: availableYears = data.history 
-        ? [...new Set(data.history.map((h: any) => new Date(h.end_time).getFullYear().toString()))].sort((a: any, b: any) => b.localeCompare(a))
-        : [];
-
-    // Filter history
-    $: filteredHistory = (data.history || []).filter((game: any) => {
-        const date = new Date(game.end_time);
-        const yearMatch = selectedYear === 'all' || date.getFullYear().toString() === selectedYear;
-        const monthMatch = selectedMonth === 'all' || (date.getMonth() + 1).toString() === selectedMonth;
-        return yearMatch && monthMatch;
-    });
-    // Dynamic Stats Analysis
-    $: filteredTotalGames = filteredHistory.length;
-    $: filteredTotalWins = filteredHistory.filter((g: any) => g.is_winner).length;
-
     // Season Pass Logic
     $: hasSeasonPass = data.user.season_pass_expires_at && new Date(data.user.season_pass_expires_at) > new Date();
     $: seasonPassDaysLeft = hasSeasonPass
@@ -104,41 +85,6 @@
         return null;
     })();
 
-    // Top Opponents
-    // 판 수가 아니라 "함께한 날짜 수"로 센다 — 하루에 같은 사람과 여러 판 해도 1회.
-    // (판 수로 세면 긴 게임 한 판보다 짧은 게임 여러 판 한 상대가 과대평가됨)
-    $: topOpponents = (() => {
-        const daysByName: Record<string, Set<string>> = {};
-        for (const game of filteredHistory) {
-            if (!game.opponents || !game.end_time) continue;
-            const date = new Date(game.end_time);
-            if (Number.isNaN(date.getTime())) continue;
-            // 로컬 기준 날짜 키 — 위 연/월 필터도 로컬 시간으로 판단하므로 기준을 맞춘다
-            const dayKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-            for (const opp of game.opponents) {
-                (daysByName[opp.name] ??= new Set<string>()).add(dayKey);
-            }
-        }
-        return Object.entries(daysByName)
-            .map(([name, days]) => [name, days.size] as [string, number])
-            .sort((a, b) => b[1] - a[1])
-            .slice(0, 3);
-    })();
-
-    // Top Games
-    $: topGames = (() => {
-        const counts: Record<string, number> = {};
-        for (const game of filteredHistory) {
-            counts[game.game_name] = (counts[game.game_name] || 0) + 1;
-        }
-        return Object.entries(counts)
-            .sort((a, b) => b[1] - a[1])
-            .slice(0, 3);
-    })();
-    
-    // ... toggle functions ...
-    let isYearOpen = false;
-    let isMonthOpen = false;
     let showGuideModal = false;
 
     // Title Management
@@ -194,48 +140,15 @@
         }
     }
 
-    // Load titles on mount
-    
-    function toggleYear() {
-        isYearOpen = !isYearOpen;
-        isMonthOpen = false;
-    }
-
-    function toggleMonth() {
-        isMonthOpen = !isMonthOpen;
-        isYearOpen = false;
-    }
-
-    function selectYear(year: any) {
-        selectedYear = year;
-        isYearOpen = false;
-        visibleCount = 10; // Reset pagination
-    }
-
-    function selectMonth(month: any) {
-        selectedMonth = month;
-        isMonthOpen = false;
-        visibleCount = 10; // Reset pagination
-    }
-
     import { enhance } from '$app/forms';
 
     function closeDropdowns() {
-        isYearOpen = false;
-        isMonthOpen = false;
         partyGameDropdownOpen = false;
-    }
-    
-    // Pagination
-    let visibleCount = 10;
-    
-    function loadMore() {
-        visibleCount += 10;
     }
 
     // Tab State
-    type Tab = 'dashboard' | 'titles' | 'history' | 'parties';
-    const validTabs: Tab[] = ['dashboard', 'titles', 'history', 'parties'];
+    type Tab = 'dashboard' | 'titles' | 'parties';
+    const validTabs: Tab[] = ['dashboard', 'titles', 'parties'];
     let activeTab: Tab = 'dashboard';
 
     $: {
@@ -244,6 +157,7 @@
             activeTab = tabParam as Tab;
         }
     }
+
     // 파괴적 액션(기기/팟 삭제) 확인을 하나의 커스텀 모달로 통일 — 네이티브 confirm()은 안 씀
     let confirmVisible = false;
     let confirmMessage = '';
@@ -331,6 +245,7 @@
 
     let partyModalError = '';
     let partyLeaveError = '';
+
     let partySubmitting = false;
     let showPartyAdvanced = false;
     let partyMemberSearch = '';
@@ -456,29 +371,30 @@
 <div class="mypage-container">
     <header class="page-header">
         <h1>마이페이지</h1>
-        <div class="header-right">
-            {#if data.user}
-                <div class="user-simple">
-                 <form method="POST" action="/logout">
-                        <button type="submit" class="btn-logout-text">로그아웃</button>
-                    </form>
-                    <span class="user-name">
-                        {#if data.user.title}
-                            <span class="user-title">{data.user.title.title_name}</span>
-                        {/if}
-                        <strong>{data.user.name}</strong> 님
-                    </span>
-                   
-                </div>
-            {:else}
-                 <a href="/login" class="btn-login-text">로그인</a>
-            {/if}
+        <div class="header-icons">
             <NotificationBell />
-            <button class="header-settings-btn" on:click={() => showSettings = true} aria-label="설정">
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
-            </button>
         </div>
     </header>
+    <!-- 칭호를 장착하면 텍스트가 길어져(예: "킬러 스도쿠 마스터") 마이페이지 h1과
+         한 줄에서 다투다가 알림/설정 버튼까지 통째로 밑으로 밀려났다.
+         아이콘은 항상 h1과 같은 줄에 고정하고, 이 상태 줄은 별도 줄로 분리한다. -->
+    <div class="user-status-row">
+        {#if data.user}
+            <div class="user-simple">
+                <form method="POST" action="/logout">
+                    <button type="submit" class="btn-logout-text">로그아웃</button>
+                </form>
+                <span class="user-name">
+                    {#if data.user.title}
+                        <span class="user-title">{data.user.title.title_name}</span>
+                    {/if}
+                    <strong>{data.user.name}</strong> 님
+                </span>
+            </div>
+        {:else}
+            <a href="/login" class="btn-login-text">로그인</a>
+        {/if}
+    </div>
     <SettingsPanel bind:open={showSettings} />
 
     {#if data.user}
@@ -491,10 +407,6 @@
             <button class="tab-item" class:active={activeTab === 'titles'} on:click={() => activeTab = 'titles'}>
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="7"></circle><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"></polyline></svg>
                 칭호
-            </button>
-            <button class="tab-item" class:active={activeTab === 'history'} on:click={() => activeTab = 'history'}>
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
-                활동 기록
             </button>
             <button class="tab-item" class:active={activeTab === 'parties'} on:click={() => activeTab = 'parties'}>
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
@@ -526,55 +438,6 @@
                         <div class="pass-expired-date">{expiredPass.expiredDate} 만료</div>
                     </div>
                 {/if}
-
-                <div class="stats-overview">
-                    <div class="stats-row primary">
-                        <div class="stat-card">
-                            <span class="stat-value">{filteredTotalGames}</span>
-                            <span class="stat-label">플레이</span>
-                        </div>
-                        <div class="stat-card highlight">
-                            <span class="stat-value">{filteredTotalWins}</span>
-                            <span class="stat-label">승리</span>
-                        </div>
-                    </div>
-                    
-                    {#if filteredTotalGames > 0}
-                        <div class="analysis-row">
-                            <!-- Top Opponents -->
-                            <div class="analysis-card">
-                                <h2>자주 만난 친구</h2>
-                                <ul>
-                                    {#each topOpponents as [name, count]}
-                                        <li>
-                                            <span class="name text-truncate" title={name}>{name}</span>
-                                            <span class="count">{count}회</span>
-                                        </li>
-                                    {:else}
-                                        <li class="empty">-</li>
-                                    {/each}
-                                </ul>
-                            </div>
-
-                            <!-- Top Games -->
-                            <div class="analysis-card">
-                                <h2>
-                                    최애 게임
-                                </h2>
-                                <ul>
-                                    {#each topGames as [game, count]}
-                                        <li>
-                                            <span class="name text-truncate" title={game}>{game}</span>
-                                            <span class="count">{count}회</span>
-                                        </li>
-                                    {:else}
-                                        <li class="empty">-</li>
-                                    {/each}
-                                </ul>
-                            </div>
-                        </div>
-                    {/if}
-                </div>
 
                 <div class="devices-section">
                     <div class="section-header">
@@ -624,6 +487,23 @@
                             </div>
                         {/if}
                     </div>
+                </div>
+
+                <div class="settings-section">
+                    <button class="btn-settings-block" on:click={() => showSettings = true}>
+                        <div class="settings-content">
+                            <span class="settings-icon">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+                            </span>
+                            <span class="text-group">
+                                <span class="settings-title">설정</span>
+                                <span class="settings-subtitle">알림, 화면 등 앱 설정</span>
+                            </span>
+                        </div>
+                        <span class="settings-arrow">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+                        </span>
+                    </button>
                 </div>
 
                 <div class="feedback-section">
@@ -823,115 +703,6 @@
             </div>
         {/if}
 
-        {#if activeTab === 'history'}
-            <div class="tab-content">
-                <div class="history-section">
-                    <div class="section-header">
-                        <h2>
-                            활동 기록
-                        </h2>
-                        <div class="filters">
-                            <!-- Year Dropdown -->
-                            <div class="custom-select" on:click|stopPropagation={toggleYear} role="button" tabindex="0" on:keydown={(e) => e.key === 'Enter' && toggleYear()}>
-                                <div class="select-trigger">
-                                    {selectedYear === 'all' ? '전체 년도' : `${selectedYear}년`}
-                                    <span class="chevron">▼</span>
-                                </div>
-                                {#if isYearOpen}
-                                    <div class="options">
-                                        <div class="option-item" 
-                                            class:selected={selectedYear === 'all'}
-                                            role="button" tabindex="0" on:keydown={(e) => e.key === 'Enter' && selectYear('all')}
-                                            on:click|stopPropagation={() => selectYear('all')}>
-                                            전체 년도
-                                        </div>
-                                        {#each availableYears as year}
-                                            <div class="option-item" 
-                                                class:selected={selectedYear === year}
-                                                role="button" tabindex="0" on:keydown={(e) => e.key === 'Enter' && selectYear(year)}
-                                                on:click|stopPropagation={() => selectYear(year)}>
-                                                {year}년
-                                            </div>
-                                        {/each}
-                                    </div>
-                                {/if}
-                            </div>
-
-                            <!-- Month Dropdown -->
-                            <div class="custom-select" on:click|stopPropagation={toggleMonth} role="button" tabindex="0" on:keydown={(e) => e.key === 'Enter' && toggleMonth()}>
-                                <div class="select-trigger">
-                                    {selectedMonth === 'all' ? '전체 월' : `${selectedMonth}월`}
-                                    <span class="chevron">▼</span>
-                                </div>
-                                {#if isMonthOpen}
-                                    <div class="options">
-                                        <div class="option-item" 
-                                            class:selected={selectedMonth === 'all'}
-                                            role="button" tabindex="0" on:keydown={(e) => e.key === 'Enter' && selectMonth('all')}
-                                            on:click|stopPropagation={() => selectMonth('all')}>
-                                            전체 월
-                                        </div>
-                                        {#each Array(12) as _, i}
-                                            <div class="option-item" 
-                                                class:selected={selectedMonth === (i + 1).toString()}
-                                                role="button" tabindex="0" on:keydown={(e) => e.key === 'Enter' && selectMonth((i + 1).toString())}
-                                                on:click|stopPropagation={() => selectMonth((i + 1).toString())}>
-                                                {i + 1}월
-                                            </div>
-                                        {/each}
-                                    </div>
-                                {/if}
-                            </div>
-                        </div>
-                    </div>
-                
-                    <div class="history-list">
-                        {#if filteredHistory.length > 0}
-                            {#each filteredHistory.slice(0, visibleCount) as game}
-                            <div class="history-card" class:winner={game.is_winner}>
-                                <div class="history-header">
-                                    <div class="game-info">
-                                        <span class="game-name" title={game.game_name}>{game.game_name}</span>
-                                        <div class="my-result">
-                                            {#if game.is_winner}
-                                                <span class="result-badge win">승리</span>
-                                            {/if}
-                                            {#if game.my_score && game.my_score !== 0}
-                                                <span class="score">{game.my_score}점</span>
-                                            {/if}
-                                        </div>
-                                    </div>
-                                    <span class="game-date">{new Date(game.end_time).toLocaleDateString()}</span>
-                                </div>
-                                {#if game.opponents && game.opponents.length > 0}
-                                    <div class="history-body">
-                                        <div class="opponents">
-                                            함께:
-                                            {#each game.opponents as opp, i}
-                                                <span class="opp-name">
-                                                    {opp.name}
-                                                    {#if opp.score}({opp.score}){/if}
-                                                    {i < game.opponents.length - 1 ? ', ' : ''}
-                                                </span>
-                                            {/each}
-                                        </div>
-                                    </div>
-                                {/if}
-                            </div>
-                        {/each}
-
-                        {#if filteredHistory.length > visibleCount}
-                            <button class="btn-load-more" on:click={loadMore}>더보기 ({filteredHistory.length - visibleCount}개 남음)</button>
-                        {/if}
-                    {:else}
-                        <div class="empty-state">
-                            <p>아직 플레이 기록이 없습니다.</p>
-                        </div>
-                    {/if}
-                </div>
-            </div>
-        </div>
-        {/if}
     {/if}
 </div>
 
@@ -1180,29 +951,6 @@
 <style>
     /* ... existing styles ... */
     
-    .btn-load-more {
-        width: 100%;
-        padding: 0.9rem;
-        background: var(--bg-primary);
-        border: 1px solid var(--border-default);
-        border-radius: 12px;
-        color: var(--text-darker);
-        font-weight: 600;
-        cursor: pointer;
-        margin-top: 0.5rem;
-        transition: all 0.2s;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 0.5rem;
-    }
-    
-    .btn-load-more:hover {
-        background: var(--bg-secondary);
-        color: var(--text-primary);
-        border-color: var(--border-medium);
-    }
-
     .mypage-container {
         max-width: 600px;
         margin: 0 auto;
@@ -1259,13 +1007,10 @@
 
     .page-header {
         display: flex;
-        flex-wrap: wrap;
         justify-content: space-between;
         align-items: center;
         gap: 0.5rem;
-        margin-bottom: 2rem;
-        padding-bottom: 1rem;
-        border-bottom: 1px solid var(--border-light);
+        margin-bottom: 0.75rem;
         position: relative;
         z-index: 10;
     }
@@ -1275,38 +1020,39 @@
         color: var(--text-primary);
         white-space: nowrap;
     }
-    .header-right {
+    .header-icons {
         display: flex;
         align-items: center;
-        gap: 0.75rem;
-        flex-wrap: wrap;
+        gap: 0.5rem;
+        flex-shrink: 0;
+    }
+    .user-status-row {
+        display: flex;
         justify-content: flex-end;
-    }
-    .header-settings-btn {
-        background: none;
-        border: none;
-        padding: 6px;
-        cursor: pointer;
-        color: var(--text-secondary);
-        display: flex;
-        align-items: center;
-        border-radius: 8px;
-        transition: all 0.2s;
-    }
-    .header-settings-btn:hover {
-        background: var(--bg-hover);
-        color: var(--text-primary);
+        margin-bottom: 2rem;
+        padding-bottom: 1rem;
+        border-bottom: 1px solid var(--border-light);
     }
     .user-simple {
         display: flex;
         align-items: center;
         gap: 1rem;
         font-size: 0.95rem;
+        max-width: 100%;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        row-gap: 0.25rem;
     }
     .user-name {
         color: var(--text-darker);
     }
     .user-title {
+        display: inline-block;
+        max-width: 40vw;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        vertical-align: bottom;
         font-size: 0.7rem;
         font-weight: 700;
         color: var(--color-achievement-text);
@@ -1395,110 +1141,6 @@
         }
     }
 
-    /* Stats */
-    .stats-overview {
-        margin-bottom: 2rem;
-    }
-    .stats-row.primary {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 1rem;
-        margin-bottom: 1rem;
-    }
-    .stat-card {
-        background: var(--bg-primary);
-        padding: 1.75rem 1.5rem;
-        border-radius: 16px;
-        text-align: center;
-        box-shadow: 0 4px 16px var(--shadow-sm);
-    }
-    .stat-card.highlight {
-        /* 승리 카드: 이 페이지의 활동 기록 탭이 승리 표시에 이미 쓰는
-           amber 톤(.history-card.winner)을 그대로 가져와, "승리 = 금빛"이라는
-           같은 브랜드 언어를 대시보드 첫 화면에서도 반복한다 */
-        background: linear-gradient(135deg, var(--color-warning-bg) 0%, var(--bg-primary) 70%);
-        box-shadow: 0 6px 20px var(--shadow-md);
-    }
-    .stat-value {
-        display: block;
-        font-size: 3rem;
-        font-weight: 800;
-        line-height: 1;
-        letter-spacing: -0.02em;
-        font-variant-numeric: tabular-nums;
-        color: var(--color-blue);
-        margin-bottom: 0.35rem;
-    }
-    .stat-card.highlight .stat-value {
-        /* amber-darker는 그라데이션의 크림색 쪽 끝에서 3:1 미만으로 떨어진다 */
-        color: var(--color-achievement-text);
-    }
-    .stat-label {
-        color: var(--text-secondary);
-        font-size: 0.85rem;
-        font-weight: 600;
-        letter-spacing: 0.01em;
-    }
-
-    .analysis-row {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 1rem;
-    }
-    .analysis-card {
-        background: var(--bg-primary);
-        padding: 1rem;
-        border-radius: 12px;
-        box-shadow: 0 2px 10px var(--shadow-sm);
-        font-size: 0.9rem;
-    }
-    .analysis-card h2 {
-        margin: 0 0 0.8rem 0;
-        font-size: 0.95rem;
-        color: var(--text-darker);
-        border-bottom: 1px solid var(--border-light);
-        padding-bottom: 0.5rem;
-    }
-    .analysis-card ul {
-        list-style: none;
-        padding: 0;
-        margin: 0;
-    }
-    .analysis-card li {
-        display: flex;
-        justify-content: space-between;
-        margin-bottom: 0.4rem;
-        color: var(--text-primary);
-    }
-    .analysis-card li:last-child {
-        margin-bottom: 0;
-    }
-    .analysis-card .count {
-        font-weight: bold;
-        color: var(--text-tertiary);
-        font-size: 0.8rem;
-        flex-shrink: 0;
-    }
-    .analysis-card .empty {
-        color: var(--border-medium);
-        text-align: center;
-    }
-    .text-truncate {
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        display: inline-block;
-        vertical-align: middle;
-        max-width: 110px; /* Mobile default */
-    }
-    
-    @media (min-width: 600px) {
-        .text-truncate {
-            max-width: 200px; /* PC/Tablet */
-        }
-    }
-
-
     /* History Headers & Filters */
     .section-header {
         display: flex;
@@ -1535,148 +1177,6 @@
     .btn-register:hover {
         background: var(--color-blue);
     }
-    .filters {
-        display: flex;
-        gap: 0.5rem;
-    }
-
-
-    /* History List */
-    .history-list {
-        display: flex;
-        flex-direction: column;
-        gap: 1rem;
-    }
-    .history-card {
-        background: var(--bg-primary);
-        padding: 1.2rem;
-        border-radius: 12px;
-        box-shadow: 0 2px 8px var(--shadow-sm);
-        border: 1px solid var(--bg-elevated);
-    }
-    .history-card.winner {
-        border-left: 4px solid var(--color-amber);
-        background: linear-gradient(to right, var(--color-warning-bg) 0%, var(--bg-primary) 20%);
-    }
-    .history-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: flex-start;
-        margin-bottom: 0.8rem;
-        gap: 0.5rem;
-    }
-    .game-info {
-        display: flex;
-        flex-direction: row;
-        align-items: center;
-        gap: 0.5rem;
-        min-width: 0; /* game-name의 ellipsis가 실제로 부딪힐 때만 걸리게 함 */
-        flex: 1 1 auto;
-    }
-    .game-name {
-        font-weight: 700;
-        font-size: 1.1rem;
-        color: var(--text-primary);
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-        min-width: 0;
-    }
-    .game-date {
-        font-size: 0.8rem;
-        color: var(--text-tertiary);
-        white-space: nowrap;
-        flex-shrink: 0;
-    }
-    .history-body {
-        display: flex;
-        flex-direction: column;
-        gap: 0.5rem;
-    }
-    .my-result {
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-        flex-shrink: 0;
-    }
-    .result-badge {
-        font-size: 0.8rem;
-        padding: 0.15rem 0.5rem;
-        border-radius: 4px;
-        font-weight: bold;
-    }
-    .result-badge.win {
-        background: var(--color-amber-darker);
-        color: var(--text-primary); 
-    }
-    .score {
-        font-weight: bold;
-        color: var(--text-primary);
-    }
-    .opponents {
-        font-size: 0.85rem;
-        color: var(--text-secondary);
-    }
-    .opp-name {
-        display: inline-block;
-    }
-    .empty-state {
-        text-align: center;
-        padding: 3rem;
-        color: var(--text-tertiary);
-    }
-    
-    /* Custom Select Styles */
-    .custom-select {
-        position: relative;
-        font-size: 0.85rem;
-        min-width: 90px;
-    }
-    .select-trigger {
-        background: var(--bg-primary);
-        border: 1px solid var(--border-default);
-        border-radius: 8px;
-        padding: 0.4rem 0.6rem;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 0.5rem;
-        cursor: pointer;
-        color: var(--text-darker);
-    }
-    .select-trigger .chevron {
-        font-size: 0.6rem;
-        color: var(--text-muted);
-    }
-    .options {
-        position: absolute;
-        top: 100%;
-        right: 0; /* Align right */
-        margin-top: 4px;
-        background: var(--bg-primary);
-        border: 1px solid var(--border-light);
-        border-radius: 8px;
-        box-shadow: 0 4px 12px var(--shadow-md);
-        max-height: 200px;
-        overflow-y: auto;
-        z-index: 100;
-        min-width: 100px;
-    }
-    .option-item {
-        padding: 0.5rem 0.8rem;
-        cursor: pointer;
-        color: var(--text-darker);
-        white-space: nowrap;
-    }
-    .option-item:hover {
-        background: var(--bg-secondary);
-    }
-    .option-item.selected {
-        background: var(--color-info-bg);
-        color: var(--text-primary);
-        font-weight: bold;
-    }
-
     /* Devices Section */
     .devices-section {
         margin-bottom: 2rem;
@@ -2072,6 +1572,59 @@
         color: var(--text-tertiary);
     }
     .feedback-arrow {
+        color: var(--border-medium);
+    }
+
+    /* 헤더에 있던 설정 아이콘을 대시보드 안으로 옮김 — 서비스 건의함과 같은 블록 스타일 */
+    .settings-section {
+        margin-top: 1rem;
+        margin-bottom: 1rem;
+    }
+    .btn-settings-block {
+        width: 100%;
+        background: var(--bg-primary);
+        border: 1px solid var(--border-light);
+        border-radius: 12px;
+        padding: 1.2rem;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        cursor: pointer;
+        transition: all 0.2s;
+        box-shadow: 0 2px 8px var(--shadow-sm);
+        text-align: left;
+    }
+    .btn-settings-block:hover {
+        border-color: var(--color-blue);
+        background: var(--bg-secondary);
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+    }
+    .settings-content {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+    }
+    .settings-icon {
+        width: 40px;
+        height: 40px;
+        background: var(--color-info-bg);
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--color-blue);
+    }
+    .settings-title {
+        font-weight: 700;
+        color: var(--text-primary);
+        font-size: 1rem;
+    }
+    .settings-subtitle {
+        font-size: 0.85rem;
+        color: var(--text-tertiary);
+    }
+    .settings-arrow {
         color: var(--border-medium);
     }
 

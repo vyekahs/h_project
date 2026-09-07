@@ -78,7 +78,7 @@
         {#if showVisitPrompt}
             <div class="visit-prompt">
                 <div class="visit-icon">🏠</div>
-                <div class="visit-text">카페를 방문하시면 기록을 저장하고<br>랭킹에 도전할 수 있어요!</div>
+                <div class="visit-text">혼놀에 방문하시면 기록을 저장하고<br>랭킹에 도전할 수 있어요!</div>
             </div>
         {/if}
 

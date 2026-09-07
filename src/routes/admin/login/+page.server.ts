@@ -14,7 +14,14 @@ export const actions: Actions = {
     default: async ({ request, cookies }) => {
         const data = await request.formData();
         const password = data.get('password');
-        const adminPassword = env.ADMIN_PASSWORD || 'admin1234';
+        const adminPassword = env.ADMIN_PASSWORD;
+
+        // 공개 저장소에 알려진 기본값으로 몰래 폴백하지 않고, 설정 안 됐으면 아예 막는다
+        // (예전에 ADMIN_PASSWORD 미설정 시 'admin1234'로 폴백하던 게 실제로 노출된 적 있음)
+        if (!adminPassword) {
+            console.error('[Admin Login] ADMIN_PASSWORD 환경변수가 설정되지 않았습니다. .env를 확인하세요.');
+            return fail(500, { error: '서버 설정 오류입니다. 관리자에게 문의하세요.' });
+        }
 
         if (password !== adminPassword) {
             return fail(400, { error: '비밀번호가 올바르지 않습니다.' });
