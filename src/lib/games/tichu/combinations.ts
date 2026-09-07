@@ -235,9 +235,15 @@ function detectStraight(cards: Card[], normalCards: NormalCard[], hasPhoenix: bo
 		// Try every possible base rank for the straight window.
 		// Phoenix can fill a missing rank either inside [sorted[0]..sorted[last]]
 		// or extend below sorted[0] / above sorted[last].
+		//
+		// **높은 쪽부터** 훑는다. 봉황은 스트레이트에서 어떤 값도 될 수 있으므로 여러
+		// 해석이 가능한데(10·J·Q·K+봉황 → 9-10-J-Q-K 또는 10-J-Q-K-A), 낮은 쪽부터
+		// 훑으면 항상 약한 해석이 먼저 걸린다. 실제로 A탑이 되어야 할 패가 K탑으로
+		// 판정됐다. 높은 해석은 낮은 해석이 이기는 모든 것을 이기므로 언제나 최소한
+		// 같거나 유리하다.
 		const minBase = Math.max(1, sorted[0] - (needed - 1));
 		const maxBase = sorted[0];
-		for (let base = minBase; base <= maxBase; base++) {
+		for (let base = maxBase; base >= minBase; base--) {
 			const highRank = base + needed - 1;
 			if (highRank > 14) continue; // A is max in straights
 			if (highRank < sorted[sorted.length - 1]) continue; // window must cover all real ranks
@@ -436,9 +442,10 @@ export function getPhoenixSubstituteRank(cards: Card[]): number | null {
 		const needed = cards.length;
 
 		if (sorted.length === needed - 1) {
+			// detectStraight와 같은 순서로 훑어야 표시되는 봉황 값이 실제 판정과 일치한다
 			const minBase = Math.max(1, sorted[0] - (needed - 1));
 			const maxBase = sorted[0];
-			for (let base = minBase; base <= maxBase; base++) {
+			for (let base = maxBase; base >= minBase; base--) {
 				const highRank = base + needed - 1;
 				if (highRank > 14) continue;
 				if (highRank < sorted[sorted.length - 1]) continue;
