@@ -232,6 +232,12 @@ export function decideSmallTichu(hand: Card[], weights: PersonalityWeights, cont
 	return true;
 }
 
+/**
+ * 파트너가 이 랭크 이하로 이기고 있으면 "낮은 패"로 본다.
+ * 상대가 같은 낮은 대역의 카드로 쉽게 덮을 수 있는 구간.
+ */
+const PARTNER_LOW_TRICK_RANK = 7;
+
 // ===== Exchange Card Selection =====
 
 /** 리드를 이겨 선을 되찾을 수 있는 카드 수 (용 · A · 폭탄) */
@@ -524,13 +530,22 @@ export function decidePlay(
 		// 파트너가 티츄를 불렀으면 파트너가 1등으로 나가야 하므로 내가 먼저 나가면
 		// 그 티츄는 확정 실패다.
 		const partnerDeclaredTichu = partner.grandTichu === true || partner.smallTichu;
+
+		// 파트너가 **낮은 패**로 이기고 있으면 그냥 넘기지 않는다.
+		// 낮은 패 위에는 상대도 낮은 패를 얹을 수 있다. 양보하면 상대가 손에 쌓인
+		// 쓸모없는 낮은 카드를 헐값에 털어내는 걸 도와주는 꼴이 된다.
+		// 이 경우 아래 일반 로직에 맡긴다 — 거기서는 A/K/봉황을 쓰지 않고,
+		// "지킬 수 있는" 카드가 있을 때만 덮고 없으면 그대로 패스한다.
+		const partnerPlayIsLow = lastCombo.rank <= PARTNER_LOW_TRICK_RANK;
+
 		if (partner.finishOrder === null && partnerDeclaredTichu) {
-			return 'pass';
-		}
-		// 파트너 카드 ≤3장: 티츄가 걸린 게 아니므로 내가 1장이면 같이 나가는 편이 낫다
-		// (원투 성립) → 기존대로 hand.length > 1 일 때만 양보
-		if (hand.length > 1 && partner.finishOrder === null && partner.hand.length <= 3) {
-			return 'pass';
+			// 손패 1장이면 덮는 순간 내가 먼저 나가 티츄가 확정 실패 → 무조건 양보
+			if (hand.length <= 1) return 'pass';
+			if (!partnerPlayIsLow) return 'pass';
+		} else if (hand.length > 1 && partner.finishOrder === null && partner.hand.length <= 3) {
+			// 파트너 카드 ≤3장: 티츄가 걸린 게 아니므로 내가 1장이면 같이 나가는 편이 낫다
+			// (원투 성립) → 기존대로 hand.length > 1 일 때만 양보
+			if (!partnerPlayIsLow) return 'pass';
 		}
 
 		// If I can finish by playing on partner's trick, do it
@@ -570,6 +585,9 @@ export function decidePlay(
 		//  변칙적 팀 라운드 평균 21점 vs 밸런스 52점)
 		const trackerForSteal = buildCardTracker(context);
 		const holdable = beatableForPartner
+			// 파트너 티츄가 걸려 있으면 이 수로 내 손패가 비면 안 된다
+			.filter(c => !(partnerDeclaredTichu && partner.finishOrder === null &&
+				c.cards.length === hand.length))
 			.filter(c => comboLikelyToWin(c, trackerForSteal, hand) >= 0.6)
 			.sort((a, b) => a.rank - b.rank);
 		if (holdable.length === 0) {
@@ -1346,41 +1364,26 @@ export function decideWish(
 		hand.filter(c => c.type === 'normal').map(c => (c as NormalCard).rank as number)
 	);
 
-	const normalCards = hand.filter(c => c.type === 'normal') as NormalCard[];
-	const rankCounts = new Map<number, number>();
-	for (const c of normalCards) {
-		rankCounts.set(c.rank, (rankCounts.get(c.rank) || 0) + 1);
+	// **내가 가지고 있지 않은** 랭크 중 가장 높은 것을 부른다.
+	//
+	// 소원은 상대뿐 아니라 나 자신도 구속한다 — 부른 랭크를 들고 있으면 낼 수 있는
+	// 첫 순간에 반드시 내야 한다. 기존 로직은 "내가 가진 랭크" 중에서 고르면서
+	// 점수식이 보유 장수를 우대했기 때문에(count * 5), 에이스를 쥔 채로 A를 소원해
+	// 자기 에이스를 먼저 버리는 일이 계속 벌어졌다. 실측 분포도 A 52% / K 29%로
+	// 높은 랭크에 몰려 있었고, 그게 대부분 자기 손패를 겨눈 것이었다.
+	//
+	// 절제 실험 (팀 A에만 적용, 좌석 순회, 설정당 3000라운드 이상):
+	//   기존 로직            팀 점수차 -1.0
+	//   소원 아예 안 부름     -1.1
+	//   내가 안 가진 최고 랭크 +4.1   ← 채택
+	// (표본 1300라운드짜리 1차 측정에서도 -5.9 / -1.1 / +3.2로 방향이 같았다)
+	for (let rank = 14; rank >= 4; rank--) {
+		if (myRanks.has(rank)) continue;
+		if ((tracker.remainingByRank.get(rank) ?? 0) >= 1) return rank;
 	}
 
-	// Strategy 1: 내가 가진 랭크 + 상대도 가지고 있을 가능성 높은 랭크
-	const goodWishRanks: { rank: number; score: number }[] = [];
-	for (const [rank, count] of rankCounts) {
-		if (rank <= 3) continue; // 2,3은 너무 낮아서 제외
-		const stillOut = tracker.remainingByRank.get(rank) || 0;
-		if (count >= 1 && stillOut >= 1) {
-			// 높은 랭크 + 내가 많이 가진 + 밖에 많이 남은 → 좋은 소원
-			goodWishRanks.push({ rank, score: rank * 2 + count * 5 + stillOut * 3 });
-		}
-	}
-
-	if (goodWishRanks.length > 0) {
-		goodWishRanks.sort((a, b) => b.score - a.score);
-		return goodWishRanks[0].rank;
-	}
-
-	// Strategy 2: 내가 안 가진 높은 랭크 → 상대가 강제로 내게 됨
-	const highRanks = [14, 13, 12, 11];
-	for (const rank of highRanks) {
-		if (!myRanks.has(rank)) {
-			const stillOut = tracker.remainingByRank.get(rank) || 0;
-			if (stillOut >= 1) {
-				return rank;
-			}
-		}
-	}
-
-	// 여기까지 왔다면 A/K/Q/J가 전부 내 손패에 있거나 이미 소진된 상태 →
-	// 아무도 채울 수 없는 "죽은 소원"이 되므로 소원 생략
+	// 쓸 만한 랭크가 전부 내 손패에 있거나 이미 소진됨 →
+	// 아무도 채울 수 없는 "죽은 소원"이 되므로 생략
 	return null;
 }
 

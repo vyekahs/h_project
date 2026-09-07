@@ -260,9 +260,41 @@ export class LocalGameEngine {
 	resumeAfterRestore(): void {
 		this.notifyStateChange();
 
-		// 복원 시점에 AI 턴이면 AI 처리 시작
-		if (this.state.phase === 'playing' && this.state.round?.currentSeat !== HUMAN_SEAT) {
-			this.processAiTurns();
+		// 복원 시점의 단계에 맞춰 AI를 다시 깨운다.
+		//
+		// 기존에는 'playing'만 처리했다. 그런데 저장 가능한 단계는 5개고, 나머지 4개는
+		// 저장 시점에 AI 처리가 async로 진행 중이던 경우가 많다. 복원하면 그 흐름이
+		// 사라진 채 아무도 이어받지 않아 게임이 그대로 멈춘다.
+		// (예: 교환 단계에서 저장 → 복원 → 사람이 카드를 내도 AI 제출이 null이라
+		//  processExchanges가 영원히 호출되지 않음)
+		const round = this.state.round;
+		switch (this.state.phase) {
+			case 'grand_tichu_window':
+				if (this.grandTichuDecisions.some((d, i) => i !== HUMAN_SEAT && d === null)) {
+					this.processAiGrandTichu();
+				}
+				break;
+			case 'exchange':
+				if (this.exchangeSubmissions.some((e, i) => i !== HUMAN_SEAT && e === null)) {
+					this.processAiExchange();
+				}
+				break;
+			case 'wish_declare': {
+				// 마작을 낸 사람이 소원을 정한다 — 진행 중인 트릭의 마지막 플레이어
+				const seat = round?.trick?.plays[round.trick.plays.length - 1]?.seat;
+				if (seat !== undefined && seat !== HUMAN_SEAT) this.processAiWish(seat);
+				break;
+			}
+			case 'dragon_gift': {
+				const seat = round?.dragonGiftSeat;
+				if (seat !== null && seat !== undefined && seat !== HUMAN_SEAT) {
+					this.processAiDragonGift(seat);
+				}
+				break;
+			}
+			case 'playing':
+				if (round?.currentSeat !== HUMAN_SEAT) this.processAiTurns();
+				break;
 		}
 	}
 
@@ -352,6 +384,9 @@ export class LocalGameEngine {
 			const seat = i as SeatIndex;
 			const ai = this.aiPlayers.get(seat);
 			if (!ai) continue;
+			// 이미 결정한 자리는 건너뛴다 — 세이브 복원 후 재호출될 수 있고,
+			// 그때 다시 선언 이벤트를 쏘면 알림이 두 번 뜬다.
+			if (this.grandTichuDecisions[seat] !== null) continue;
 
 			await this.delay();
 			if (this.destroyed) return;
