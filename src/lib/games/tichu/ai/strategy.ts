@@ -18,7 +18,7 @@ import {
 	hasOpponentDeclaredTichu,
 	type CardTracker
 } from './cardTracker';
-import { searchBestPlay, calcExitRate } from './playSearchGrid';
+import { searchBestPlay, calcExitRate, isForcedOutIfLeading } from './playSearchGrid';
 import { buildSampleWorlds, evaluateLeadSafety, evaluateTwoTurnFinish, getUnseenCards, type SampledWorld } from './monteCarlo';
 
 // ===== Hand Analysis Helpers =====
@@ -747,8 +747,13 @@ function pickBestFollow(
 	const partnerTichuLive = context.players[getPartnerSeat(context.currentSeat)].finishOrder === null &&
 		(context.players[getPartnerSeat(context.currentSeat)].grandTichu === true ||
 			context.players[getPartnerSeat(context.currentSeat)].smallTichu);
-	if (partnerTichuLive && bestResult.combo.cards.length === hand.length) {
-		return 'pass';
+	if (partnerTichuLive) {
+		const rem = hand.filter(c => !bestResult.combo.cards.some(cc => cc.id === c.id));
+		// 손패가 비거나, 남은 패가 "선을 잡으면 나갈 수밖에 없는" 상태면 트릭을 먹지 않는다.
+		// 이 트릭을 이겨서 선을 잡는 순간 다음 리드가 강제되기 때문이다.
+		if (rem.length === 0 || isForcedOutIfLeading(rem, tracker)) {
+			return 'pass';
+		}
 	}
 
 	// 나갈 수 있으면 무조건 냄

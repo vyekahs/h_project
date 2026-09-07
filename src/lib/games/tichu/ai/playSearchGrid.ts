@@ -9,7 +9,7 @@ import type { AiDecisionContext, PersonalityWeights } from './types';
 import type { PresetBehavior } from './presets/types';
 import type { CardTracker } from './cardTracker';
 import { comboLikelyToWin, rankStrengthInContext } from './cardTracker';
-import { findAllPlayableCombinations, findOptimalPartition } from './handEvaluator';
+import { findAllPlayableCombinations, findLeadPlays, findOptimalPartition } from './handEvaluator';
 import { isBomb, detectCombination } from '../combinations';
 import { getTeam, getPartnerSeat, getNextActiveSeat } from '../constants';
 
@@ -165,6 +165,30 @@ interface ExitInfo {
 	rate: number;
 	turns: number;
 }
+
+/**
+ * "선을 잡으면 나갈 수밖에 없는 손패"인지 판정.
+ *
+ * 리드는 패스가 불가능하다. 그래서 내가 내는 리드를 **아무도 못 이기면** 선이 계속
+ * 나에게 돌아오고, 손패는 그대로 소진되어 결국 나가게 된다. 파트너가 티츄를
+ * 불렀다면 그건 파트너의 티츄를 확정 실패시키는 것이므로, 애초에 그 트릭을
+ * 먹지 않는 편이 낫다.
+ *
+ * 개(dog)를 쥐고 있으면 선을 파트너에게 통째로 넘길 수 있으므로 강제되지 않는다.
+ * (단 개가 마지막 한 장이면 그걸 내는 순간 나가므로 예외가 아니다)
+ */
+export function isForcedOutIfLeading(hand: Card[], tracker: CardTracker): boolean {
+	if (hand.length <= 1) return hand.length === 1;
+	if (hand.some(c => c.type === 'special' && c.special === 'dog')) return false;
+
+	// 손패를 다 쓰지 않는 리드 중 하나라도 "남이 이길 만한" 것이 있으면 선을 넘길 수 있다
+	const leads = findLeadPlays(hand).filter(c => c.cards.length < hand.length);
+	if (leads.length === 0) return true;
+	return !leads.some(c => comboLikelyToWin(c, tracker, hand) < FORCED_OUT_BEATABLE_THRESHOLD);
+}
+
+/** 이 확률보다 낮게 이기는 리드가 있으면 "선을 넘길 수 있다"로 본다 */
+const FORCED_OUT_BEATABLE_THRESHOLD = 0.75;
 
 /**
  * 남은 손패로 나가기 효율 계산.
@@ -343,12 +367,11 @@ function calcContextModifier(
 			if (combo.rank <= 6) mod += partnerGrand ? 0.14 : 0.08;
 			else mod -= combo.rank * (partnerGrand ? 0.018 : 0.01);
 
-			// 손패를 1장만 남기지 않는다.
-			// 리드는 패스가 불가능하므로, 1장 남은 채로 선을 잡으면 다음 리드에서
-			// **강제로** 나가게 되어 파트너의 티츄가 확정 실패한다.
-			// (계측상 파트너 티츄 중 나가버린 수는 전부 "손패 1장 리드"였다. 다만 이
-			//  보정의 효과 자체는 노이즈 범위 — 이미 늦은 시점이라 크게 못 줄인다.)
-			if (remainingHand.length === 1) mod -= partnerGrand ? 0.5 : 0.3;
+			// 이 리드 뒤에 "선을 잡으면 나갈 수밖에 없는" 손패가 되면 감점.
+			// 단순히 1장 남기는 것만이 아니라, 남은 패를 아무도 못 이기는 경우까지 포함한다.
+			if (remainingHand.length > 0 && isForcedOutIfLeading(remainingHand, tracker)) {
+				mod -= partnerGrand ? 0.5 : 0.3;
+			}
 		}
 
 		// 파트너 카드 1~3장 → 낮은 리드로 지원
@@ -497,7 +520,7 @@ function calcContextModifier(
 			if (partnerDeclaredTichu && !partnerFinished) {
 				// 파트너 티츄: 나가기 보너스 대신 패널티 (파트너보다 먼저 나가면 안 됨)
 				// 그랜드 티츄는 판돈이 2배라 더 강하게 억제
-				if (afterCombo || remainingHand.length === 1) {
+				if (afterCombo || isForcedOutIfLeading(remainingHand, tracker)) {
 					mod -= partner.grandTichu === true ? 0.3 : 0.15;
 				}
 			} else {
