@@ -154,6 +154,9 @@ export function decideGrandTichu(hand8: Card[], weights: PersonalityWeights, beh
 
 // ===== Small Tichu Decision =====
 
+/** 스몰 티츄 선언에 요구하는 최소 나가기 효율 */
+const SMALL_TICHU_MIN_EXIT_RATE = 0.5;
+
 /**
  * Decide whether to declare Small Tichu based on full 14-card hand.
  */
@@ -203,9 +206,26 @@ export function decideSmallTichu(hand: Card[], weights: PersonalityWeights, cont
 	// If we can empty in few turns, boost confidence
 	// 할인폭이 -10이면 임계값이 통째로 무너져(실효 21~29) 약한 손패 선언이 대량으로
 	// 새어나왔다. 빨리 비울 수 있다는 건 분명 이점이지만 그 정도는 아니다.
-	if (plan.turnsToEmpty <= 5) return strength >= (threshold - 4);
-
-	return strength >= threshold;
+	// === 판정의 주축은 강도가 아니라 나가기 효율(exitRate)이다 ===
+	//
+	// 스몰 티츄는 14장을 다 보고 부르는데 8장 블라인드인 그랜드보다 성공률이 낮았다
+	// (67.4% vs 79.0%). 더 많은 정보를 쥐고 더 못 맞히는 건 판정이 그 정보를
+	// 안 쓰고 있다는 뜻이다. 실제로 두 판정 모두 evaluateHandStrength 하나만 봤다.
+	//
+	// 선언 후 플레이를 exitRate 최대화로 바꾼 뒤부터는(TICHU_EXIT_WEIGHT) 선언 시점의
+	// exitRate가 곧 "이 손패로 실제 낼 수 있는 계획의 품질"이 됐다. 그래서 강도는
+	// 최소 조건으로만 두고 exitRate를 주 기준으로 삼는다.
+	//
+	// 실측(설정당 약 1500라운드, 두 번 재현):
+	//   현재 방식               70.9% (좌석당 2.74%)
+	//   exitRate>=0.46          67.5% (3.28%)
+	//   exitRate>=0.50          77.9% (2.45%)  ← 채택. 그랜드(73.3%)를 앞선다
+	//   exitRate>=0.54          75.3% (1.33%)
+	//   강도 문턱 -18로 완화     65.7% (4.27%)
+	//   강도 문턱 -6로 강화      69.0% (0.96%)
+	if (strength < threshold - 12) return false;
+	if (calcExitRate(hand, buildCardTracker(context)).rate < SMALL_TICHU_MIN_EXIT_RATE) return false;
+	return true;
 }
 
 // ===== Exchange Card Selection =====
