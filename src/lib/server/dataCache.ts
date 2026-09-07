@@ -93,6 +93,18 @@ async function fetchSharedData(): Promise<SharedData> {
             LEFT JOIN minigame_user_points up ON a.id = up.user_id
             LEFT JOIN minigame_titles t ON up.equipped_title_id = t.id
             WHERE dvp.plan_date = CURRENT_DATE
+              -- 이미 와 있는 사람은 "갈 예정"에 보이면 안 된다.
+              -- 체크인 시 행을 지우는 경로가 여러 곳(자동/QR/관리자)이라 하나만
+              -- 빠져도 남은 행이 그대로 노출됐다(실제로 자동 체크인 경로에서
+              -- 누락된 적이 있다). 쓰기 경로가 전부 완벽하기를 기대하는 대신
+              -- 보여줄 때 한 번 더 거른다.
+              AND a.status <> 'present'
+              AND NOT EXISTS (
+                  SELECT 1 FROM visits v
+                  WHERE v.attendee_id = a.id
+                    AND v.departure_time IS NULL
+                    AND v.arrival_time::date = (NOW() AT TIME ZONE 'Asia/Seoul')::date
+              )
             ORDER BY dvp.created_at ASC
         `),
         db.execute(sql`

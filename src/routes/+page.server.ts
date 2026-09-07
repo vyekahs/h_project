@@ -304,16 +304,45 @@ export const actions: Actions = {
                 if (isToday) {
                     const gameTime = new Date(scheduledAt).toTimeString().slice(0, 5);
                     const allPlayerIds = creatorId ? [creatorId.toString(), ...playerIds] : [...playerIds];
-                    const uniqueIds = [...new Set(allPlayerIds)].filter(Boolean);
-                    for (const pid of uniqueIds) {
-                        await db.execute(sql`
+                    const uniqueIds = [...new Set(allPlayerIds)]
+                        .map((id) => parseInt(String(id)))
+                        .filter((id) => Number.isInteger(id) && id > 0);
+
+                    if (uniqueIds.length > 0) {
+                        // 이미 혼놀에 와 있는 사람은 "갈 예정"에 넣지 않는다.
+                        // joinScheduledGame/toggleVisitPlan은 이미 막고 있었는데 여기만
+                        // 빠져 있어서, 게임을 마치고 다음 일정을 만들면 현장에 있는
+                        // 사람까지 "나도 갈래요"에 표시됐다.
+                        //
+                        // status만 보지 않고 "오늘 아직 안 끝난 방문 기록"도 함께 확인한다.
+                        // status는 수동 처리나 캐시 때문에 실제와 어긋날 수 있어서,
+                        // 원본인 visits를 같이 보는 쪽이 안전하다.
+                        //
+                        // 이미 갈 예정이 있으면 DO NOTHING으로 건드리지 않는다 — 본인이
+                        // 직접 정한 시간을 게임 시간으로 덮어쓰지 않기 위해서다.
+                        //
+                        // 참여자마다 INSERT를 돌리던 것을 한 번에 처리한다(N쿼리 → 1쿼리).
+                        const idList = sql.join(uniqueIds.map((id) => sql`${id}`), sql`, `);
+                        const inserted = await db.execute(sql`
                             INSERT INTO daily_visit_plans (attendee_id, plan_date, planned_time)
-                            VALUES (${parseInt(pid)}, CURRENT_DATE, ${gameTime})
-                            ON CONFLICT (attendee_id, plan_date) DO UPDATE SET
-                                planned_time = COALESCE(daily_visit_plans.planned_time, EXCLUDED.planned_time)
+                            SELECT a.id, CURRENT_DATE, ${gameTime}
+                            FROM attendees a
+                            WHERE a.id IN (${idList})
+                              AND a.status <> 'present'
+                              AND NOT EXISTS (
+                                  SELECT 1 FROM visits v
+                                  WHERE v.attendee_id = a.id
+                                    AND v.departure_time IS NULL
+                                    AND v.arrival_time::date = (NOW() AT TIME ZONE 'Asia/Seoul')::date
+                              )
+                            ON CONFLICT (attendee_id, plan_date) DO NOTHING
+                            RETURNING attendee_id
                         `);
+                        // 실제로 추가된 사람이 있을 때만 갱신을 알린다.
+                        // emitLiveEvent는 공유 캐시 재조회(쿼리 10개)를 유발하므로
+                        // 아무것도 안 바뀐 경우에 부르면 낭비다.
+                        if (inserted.length > 0) emitLiveEvent('visitors');
                     }
-                    if (uniqueIds.length > 0) emitLiveEvent('visitors');
                 }
             }
 
