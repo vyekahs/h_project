@@ -232,6 +232,12 @@ export function decideSmallTichu(hand: Card[], weights: PersonalityWeights, cont
 	return true;
 }
 
+/**
+ * 파트너가 이 랭크 이하로 이기고 있으면 "낮은 패"로 본다.
+ * 상대가 같은 낮은 대역의 카드로 쉽게 덮을 수 있는 구간.
+ */
+const PARTNER_LOW_TRICK_RANK = 7;
+
 // ===== Exchange Card Selection =====
 
 /** 리드를 이겨 선을 되찾을 수 있는 카드 수 (용 · A · 폭탄) */
@@ -524,13 +530,22 @@ export function decidePlay(
 		// 파트너가 티츄를 불렀으면 파트너가 1등으로 나가야 하므로 내가 먼저 나가면
 		// 그 티츄는 확정 실패다.
 		const partnerDeclaredTichu = partner.grandTichu === true || partner.smallTichu;
+
+		// 파트너가 **낮은 패**로 이기고 있으면 그냥 넘기지 않는다.
+		// 낮은 패 위에는 상대도 낮은 패를 얹을 수 있다. 양보하면 상대가 손에 쌓인
+		// 쓸모없는 낮은 카드를 헐값에 털어내는 걸 도와주는 꼴이 된다.
+		// 이 경우 아래 일반 로직에 맡긴다 — 거기서는 A/K/봉황을 쓰지 않고,
+		// "지킬 수 있는" 카드가 있을 때만 덮고 없으면 그대로 패스한다.
+		const partnerPlayIsLow = lastCombo.rank <= PARTNER_LOW_TRICK_RANK;
+
 		if (partner.finishOrder === null && partnerDeclaredTichu) {
-			return 'pass';
-		}
-		// 파트너 카드 ≤3장: 티츄가 걸린 게 아니므로 내가 1장이면 같이 나가는 편이 낫다
-		// (원투 성립) → 기존대로 hand.length > 1 일 때만 양보
-		if (hand.length > 1 && partner.finishOrder === null && partner.hand.length <= 3) {
-			return 'pass';
+			// 손패 1장이면 덮는 순간 내가 먼저 나가 티츄가 확정 실패 → 무조건 양보
+			if (hand.length <= 1) return 'pass';
+			if (!partnerPlayIsLow) return 'pass';
+		} else if (hand.length > 1 && partner.finishOrder === null && partner.hand.length <= 3) {
+			// 파트너 카드 ≤3장: 티츄가 걸린 게 아니므로 내가 1장이면 같이 나가는 편이 낫다
+			// (원투 성립) → 기존대로 hand.length > 1 일 때만 양보
+			if (!partnerPlayIsLow) return 'pass';
 		}
 
 		// If I can finish by playing on partner's trick, do it
@@ -570,6 +585,9 @@ export function decidePlay(
 		//  변칙적 팀 라운드 평균 21점 vs 밸런스 52점)
 		const trackerForSteal = buildCardTracker(context);
 		const holdable = beatableForPartner
+			// 파트너 티츄가 걸려 있으면 이 수로 내 손패가 비면 안 된다
+			.filter(c => !(partnerDeclaredTichu && partner.finishOrder === null &&
+				c.cards.length === hand.length))
 			.filter(c => comboLikelyToWin(c, trackerForSteal, hand) >= 0.6)
 			.sort((a, b) => a.rank - b.rank);
 		if (holdable.length === 0) {
