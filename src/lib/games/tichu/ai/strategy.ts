@@ -196,6 +196,17 @@ export function decideSmallTichu(hand: Card[], weights: PersonalityWeights, cont
 
 // ===== Exchange Card Selection =====
 
+/** 리드를 이겨 선을 되찾을 수 있는 카드 수 (용 · A · 폭탄) */
+function countLeadWinners(hand: Card[]): number {
+	let n = 0;
+	for (const c of hand) {
+		if (c.type === 'special' && c.special === 'dragon') n++;
+		else if (c.type === 'normal' && (c as NormalCard).rank === 14) n++;
+	}
+	n += findBombs(hand).length; // 폭탄은 어떤 리드든 되찾을 수 있으므로 1회분
+	return n;
+}
+
 /**
  * 티츄를 부른 플레이어가 파트너에게 넘길 카드를 고른다.
  *
@@ -208,8 +219,27 @@ export function decideSmallTichu(hand: Card[], weights: PersonalityWeights, cont
  * 둘 다에 걸리지 않는 카드를 "필요 없는 카드"로 보고 그중 가장 높은 것을 반환한다.
  * (파트너에게 가는 카드이므로 높을수록 팀에 이롭다.)
  */
-function pickDispensableCardForTichu(hand: Card[]): Card | null {
+function pickDispensableCardForTichu(hand: Card[], isGrand: boolean): Card | null {
 	const partition = findOptimalPartition(hand);
+
+	// === 개(dog) 예외 ===
+	// 개는 파트너에게 선을 넘기는 카드라, 티츄를 부른 쪽이 들고 있으면 한 턴이 통째로
+	// 낭비된다. 파트너에게 넘기면 파트너가 그걸 내서 나에게 선을 돌려줄 수 있어
+	// 교과서적으로는 좋은 수지만, 매번 넘기면 "개를 상납한다"는 인상이 강하다.
+	// 그래서 **그랜드 티츄**를 부르고, **개를 넘겨야만 턴 수가 맞아떨어질 때**로 한정한다.
+	if (isGrand) {
+		const dog = hand.find(c => c.type === 'special' && c.special === 'dog');
+		if (dog) {
+			// T턴에 나가려면 중간에 선을 T-1번 되찾아야 하고, 그건 리드를 이길 수 있는
+			// 카드(용·A·폭탄) 수로 가늠한다.
+			const control = countLeadWinners(hand);
+			const needWith = partition.turns - 1;      // 개를 든 채로 필요한 선 확보 횟수
+			const needWithout = partition.turns - 2;   // 개를 넘기면 턴이 하나 줄어든다
+			// 든 채로는 부족하고, 넘기면 충족되는 경우에만 넘긴다
+			if (control < needWith && control >= needWithout) return dog;
+		}
+	}
+
 	const needed = new Set<string>();
 
 	// 1) 다장 조합에 속한 카드는 구조상 필요
@@ -228,6 +258,12 @@ function pickDispensableCardForTichu(hand: Card[]): Card | null {
 	// 마작은 소원 권한 때문에 유지
 	const mahjong = hand.find(c => c.type === 'special' && c.special === 'mahjong');
 	if (mahjong) needed.add(mahjong.id);
+
+	// 개는 위 예외 경로로만 넘긴다. 여기서 빼두지 않으면 "필요 없는 카드 중 최고"
+	// 규칙에 그대로 걸려서(개의 정렬 순위가 낮은 숫자패보다 높다) 예외를 좁게 만든
+	// 의미가 사라진다.
+	const dogCard = hand.find(c => c.type === 'special' && c.special === 'dog');
+	if (dogCard) needed.add(dogCard.id);
 
 	const dispensable = hand.filter(c => !needed.has(c.id));
 	if (dispensable.length === 0) return null; // 호출부가 기본 로직으로 폴백
@@ -252,7 +288,9 @@ export function selectExchangeCards(
 	 * 이전에는 이 정보가 교환 결정에 전혀 전달되지 않아서, 티츄를 부른 AI가
 	 * 자기 용/봉/A를 그대로 파트너에게 넘기고 스스로 나갈 수단을 잃었다.
 	 */
-	selfDeclaredTichu: boolean = false
+	selfDeclaredTichu: boolean = false,
+	/** 그랜드 티츄인지 — 개(dog)를 넘기는 예외 판단에만 쓴다 */
+	selfDeclaredGrandTichu: boolean = false
 ): ExchangeCards {
 	const normalCards = hand.filter(c => c.type === 'normal') as NormalCard[];
 	const rankGroups = new Map<number, NormalCard[]>();
@@ -309,7 +347,7 @@ export function selectExchangeCards(
 	// 손패를 비우는 최소 턴 수(T)를 실제로 계산해서, 그 계획에 필요 없는 카드 중
 	// 가장 높은 것을 준다. 파트너에게도 쓸모 있는 카드가 가고, 내 계획은 유지된다.
 	if (!toPartner && selfDeclaredTichu) {
-		toPartner = pickDispensableCardForTichu(hand);
+		toPartner = pickDispensableCardForTichu(hand, selfDeclaredGrandTichu);
 	}
 
 	// 파트너에게는 무조건 최고 카드를 줌 (페어/트리플이든 상관없이)
@@ -442,10 +480,18 @@ export function decidePlay(
 			}
 		}
 
-		// 파트너 티츄 선언 or 파트너 카드 ≤3장이면 → 나갈 기회도 양보하고 패스
+		// 파트너 티츄 선언 → 손패가 1장이어도 양보하고 패스.
+		// 기존에는 hand.length > 1 조건이 붙어 있어서, 1장 남은 상태로 파트너의 트릭을
+		// 덮어 내며 **내가 먼저 나가버리는** 구멍이 있었다(바로 아래 hand.length === 1 분기).
+		// 파트너가 티츄를 불렀으면 파트너가 1등으로 나가야 하므로 내가 먼저 나가면
+		// 그 티츄는 확정 실패다.
 		const partnerDeclaredTichu = partner.grandTichu === true || partner.smallTichu;
-		if (hand.length > 1 && partner.finishOrder === null &&
-			(partnerDeclaredTichu || partner.hand.length <= 3)) {
+		if (partner.finishOrder === null && partnerDeclaredTichu) {
+			return 'pass';
+		}
+		// 파트너 카드 ≤3장: 티츄가 걸린 게 아니므로 내가 1장이면 같이 나가는 편이 낫다
+		// (원투 성립) → 기존대로 hand.length > 1 일 때만 양보
+		if (hand.length > 1 && partner.finishOrder === null && partner.hand.length <= 3) {
 			return 'pass';
 		}
 
@@ -693,6 +739,17 @@ function pickBestFollow(
 
 	// 근소한 차이의 후보 중 무작위 선택 (사람처럼 매번 같은 수를 두지 않도록)
 	const bestResult = pickAmongNearBest(gridResults, weights);
+
+	// 파트너 티츄가 살아있는데 이 수로 내 손패가 비면 패스한다.
+	// 아래 mustPlay(상대 차단·고득점 트릭) 예외보다도 우선한다: 상대가 먼저 나가도
+	// 파트너 티츄는 실패하지만 그건 어디까지나 **가능성**이고, 내가 나가는 것은
+	// **확정 실패**다. 패스는 파트너가 먼저 나갈 여지를 남기므로 지배적이다.
+	const partnerTichuLive = context.players[getPartnerSeat(context.currentSeat)].finishOrder === null &&
+		(context.players[getPartnerSeat(context.currentSeat)].grandTichu === true ||
+			context.players[getPartnerSeat(context.currentSeat)].smallTichu);
+	if (partnerTichuLive && bestResult.combo.cards.length === hand.length) {
+		return 'pass';
+	}
 
 	// 나갈 수 있으면 무조건 냄
 	if (iAmClose) {

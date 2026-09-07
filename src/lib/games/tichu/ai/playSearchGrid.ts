@@ -342,6 +342,13 @@ function calcContextModifier(
 			const partnerGrand = partner.grandTichu === true;
 			if (combo.rank <= 6) mod += partnerGrand ? 0.14 : 0.08;
 			else mod -= combo.rank * (partnerGrand ? 0.018 : 0.01);
+
+			// 손패를 1장만 남기지 않는다.
+			// 리드는 패스가 불가능하므로, 1장 남은 채로 선을 잡으면 다음 리드에서
+			// **강제로** 나가게 되어 파트너의 티츄가 확정 실패한다.
+			// (계측상 파트너 티츄 중 나가버린 수는 전부 "손패 1장 리드"였다. 다만 이
+			//  보정의 효과 자체는 노이즈 범위 — 이미 늦은 시점이라 크게 못 줄인다.)
+			if (remainingHand.length === 1) mod -= partnerGrand ? 0.5 : 0.3;
 		}
 
 		// 파트너 카드 1~3장 → 낮은 리드로 지원

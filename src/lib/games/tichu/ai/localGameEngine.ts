@@ -455,7 +455,7 @@ export class LocalGameEngine {
 			const partnerDeclaredTichu = partnerPlayer.grandTichu === true || partnerPlayer.smallTichu === true;
 			const self = this.state.players[seat];
 			const selfDeclaredTichu = self.grandTichu === true || self.smallTichu === true;
-			const exchange = ai.makeExchangeDecision(self.hand, partnerDeclaredTichu, selfDeclaredTichu);
+			const exchange = ai.makeExchangeDecision(self.hand, partnerDeclaredTichu, selfDeclaredTichu, self.grandTichu === true);
 			this.exchangeSubmissions[seat] = exchange;
 		}
 

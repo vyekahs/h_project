@@ -143,7 +143,8 @@ export async function simulateGame(opts: SimOptions): Promise<SimResult> {
 					engine.humanSubmitExchange(ai0.makeExchangeDecision(
 						p0.hand,
 						partner.grandTichu === true || partner.smallTichu === true,
-						p0.grandTichu === true || p0.smallTichu === true));
+						p0.grandTichu === true || p0.smallTichu === true,
+						p0.grandTichu === true));
 				}
 				continue;
 			}
