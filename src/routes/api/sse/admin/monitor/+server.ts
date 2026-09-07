@@ -161,14 +161,35 @@ export async function GET({ request, cookies }: { request: Request; cookies: any
 				send(': heartbeat\n\n');
 			}
 
+			// 지표 수집이 한 번 실패했다고 스트림을 닫지 않는다.
+			//
+			// 예전에는 실패 즉시 cleanup()으로 스트림을 끊었다. 그러면 클라이언트가
+			// 폴백 폴링(/api/admin/monitor)을 켜고 3초 뒤 재연결하는데, 이 과정에서
+			// SSE와 REST가 한동안 같은 데이터를 중복으로 가져간다. DB가 잠깐
+			// 느려졌을 뿐인데 모니터링 부하가 오히려 늘어나는 셈이다.
+			//
+			// 한 틱 건너뛰는 편이 낫다. 다음 5초에 다시 시도하면 되고, 그 사이
+			// 클라이언트는 마지막 값을 그대로 보여준다. 계속 실패하면 그때는
+			// 정말 무언가 잘못된 것이므로 스트림을 닫아 클라이언트가 재연결하게 한다.
+			let consecutiveFailures = 0;
+			const MAX_CONSECUTIVE_FAILURES = 5;
+
 			async function pushMetrics() {
 				if (closed) return;
 				try {
 					const metrics = await collectMetrics();
+					consecutiveFailures = 0;
 					sendData(metrics);
 				} catch (e) {
-					console.error('[Monitor SSE] Failed to collect metrics:', e);
-					cleanup();
+					consecutiveFailures++;
+					console.error(
+						`[Monitor SSE] 지표 수집 실패 (${consecutiveFailures}/${MAX_CONSECUTIVE_FAILURES} 연속):`,
+						e
+					);
+					if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+						console.error('[Monitor SSE] 연속 실패가 이어져 스트림을 닫는다');
+						cleanup();
+					}
 				}
 			}
 
