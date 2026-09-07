@@ -181,6 +181,7 @@ async function runOneGame(gameIdx: number, problems: string[]): Promise<number> 
 		// 모든 동기 변경이 끝난 시점(매크로태스크 경계)에서만 검사한다.
 		// onStateChange는 변경 도중에도 불리므로 순간적으로 어긋난 상태를 본다.
 		checkState(engine, problems);
+
 		const rc = engine.state.completedRounds.length;
 		while (seen < rc) { checkRound(engine.state.completedRounds[seen], problems); seen++; rounds++; }
 		const phase: GamePhase = engine.state.phase;
