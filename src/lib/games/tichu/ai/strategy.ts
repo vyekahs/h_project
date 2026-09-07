@@ -704,10 +704,26 @@ export function decidePlay(
 			// 우리 티츄면 계속 상대에게 주도권을 내주는 게 우리 완주 타이밍에 불리하다.
 			// 내가 직접 선언한 경우엔 폭탄 사용이 트릭 승리 + 내 손패 4장 이상 소모(완주 전진)를
 			// 동시에 달성하므로 더더욱 아낄 이유가 없다.
-			const tichuOverridesHold = lastPlayerTichuActive || ourTichuActiveInFollow;
-			if (weights.bombHolding > 0.7 && !opponentAboutToFinish && trickPoints < 15 && !tichuOverridesHold) {
-				return 'pass'; // Hold bomb for later
-			}
+			// 폭탄은 결정적인 순간에만 쓴다. 기본은 아끼고 패스.
+			//
+			// 기존에는 아끼는 조건이 bombHolding > 0.7이어서 전략적(0.9)·수비적(0.8)만
+			// 아꼈고, 공격적(0.3)·밸런스(0.5)·변칙적(0.4)은 상대가 낮은 페어나 짧은
+			// 스트레이트를 내기만 해도(= 내 일반 카드로 못 받는 상황) 그냥 폭탄을 던졌다.
+			// 3·5짜리 무가치한 트릭에 폭탄이 날아가는 원인.
+			// 여기서 패스해도 잃는 건 그 트릭뿐이고, 그 트릭은 애초에 가치가 없다.
+			const decisive =
+				opponentAboutToFinish ||        // 상대가 곧 나감
+				lastPlayerAboutToFinish ||      // 이 트릭 리더가 곧 나감 (원투 위협 포함)
+				lastPlayerTichuActive ||        // 상대 티츄 차단
+				ourTichuActiveInFollow ||       // 우리 쪽 티츄 완주 타이밍 확보
+				hand.length <= 4 ||             // 엔드게임 — 더 아낄 '나중'이 없다
+				// 트릭 점수 문턱은 성향에만 연동한다.
+				// (공격적 4.5점 / 밸런스 7.5점 / 변칙적 6점 / 수비적 12점 / 전략적 13.5점)
+				// 여기에 상수 하한을 더 얹어봤지만(4, 10) 폭탄 품질은 그대로인 채
+				// 라운드 점수만 145.4 → 143.1 → 141.4로 깎였다. 실제로 일을 하는 것은
+				// 위의 '결정적' 조건들이지 점수 문턱이 아니다.
+				trickPoints >= weights.bombHolding * 15;
+			if (!decisive) return 'pass';
 			return bombPlays.sort((a, b) => a.rank - b.rank)[0].cards.map(c => c.id);
 		}
 		return 'pass';
