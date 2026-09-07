@@ -110,6 +110,25 @@ CREATE TABLE IF NOT EXISTS visits (
     departure_time TIMESTAMP WITH TIME ZONE
 );
 
+-- 미니게임 월별 플레이 집계. minigame_play_log는 하루 수백 행씩 쌓이고 조회는
+-- 최근 1개월까지만 하므로, 오래된 원본은 지우되 월별로 압축해 남긴다.
+-- (월별 '점수 합계'는 minigame_monthly_rankings에 따로 있어 중복하지 않는다)
+CREATE TABLE IF NOT EXISTS minigame_monthly_play_stats (
+    month_key       VARCHAR(7)  NOT NULL,
+    game_id         VARCHAR(50) NOT NULL,
+    difficulty      VARCHAR(20) NOT NULL DEFAULT '',
+    user_id         INTEGER     NOT NULL,
+    start_count     INTEGER     NOT NULL DEFAULT 0,
+    clear_count     INTEGER     NOT NULL DEFAULT 0,
+    best_score      INTEGER,
+    best_clear_time INTEGER,
+    last_played_at  TIMESTAMP,
+    aggregated_at   TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (month_key, game_id, difficulty, user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_minigame_monthly_play_stats_user
+    ON minigame_monthly_play_stats (user_id, month_key DESC);
+
 -- 자동 체크아웃 이력. 판정 근거(마지막 감지 후 경과 시간, 그때의 임계값)를 함께
 -- 남겨야 "아슬아슬하게 넘겼다"와 "한참 못 잡았다"를 사후에 구분할 수 있다.
 CREATE TABLE IF NOT EXISTS auto_checkout_logs (
