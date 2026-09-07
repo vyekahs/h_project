@@ -29,7 +29,7 @@ honnol.org {
         import active_app.caddy
     }
 }
-damonAnki.mooo.com {
+damonanki.mooo.com {
       encode zstd gzip
 
       header {
