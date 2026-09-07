@@ -937,6 +937,7 @@
 -->
 {#if $recentActions.length > 0}
     <div class="recent-actions">
+        <div class="recent-head">
         <button
             type="button"
             class="recent-toggle"
@@ -947,6 +948,15 @@
             <span class="recent-caret" aria-hidden="true">{recentOpen ? '▾' : '▸'}</span>
             되돌릴 수 있는 조치 {$recentActions.length}
         </button>
+        <!--
+            10분 창이 끝날 때까지 지울 방법이 없었다. 무를 생각이 없는 조치까지
+            그 시간 내내 화면 위에 앉아 있으면, 되돌리기를 담은 자리가 치우고
+            싶은 것이 된다. 서버 창은 그대로 두고 화면에서만 거둔다.
+        -->
+        <button type="button" class="recent-clear" onclick={() => $recentActions.forEach((a) => forgetAction(a.id))}>
+            모두 지우기
+        </button>
+        </div>
         {#if recentOpen}
             <ul class="recent-list" id="recent-actions-list">
                 {#each $recentActions as a (a.id)}
@@ -956,6 +966,8 @@
                         <button type="button" class="btn-role is-secondary recent-undo" onclick={() => a.run()}>
                             되돌리기<span class="sr-only"> — {a.label}</span>
                         </button>
+                        <button type="button" class="recent-dismiss" onclick={() => forgetAction(a.id)}
+                            aria-label="목록에서 지우기 — {a.label}">×</button>
                     </li>
                 {/each}
             </ul>
@@ -964,14 +976,14 @@
 {/if}
 
 <!--
-    넓은 화면에서 게임·큐·사람이 같은 화면에 들어오도록 2열로 묶는다.
-    왼쪽 열에 게임과 큐가 쌓이고 오른쪽 열은 명단이 통째로 쓴다.
+    넓은 화면에서 방의 네 질문이 같은 화면에 들어오도록 2열로 묶는다.
+    왼쪽 열에 게임 → 시작 예정 → 오늘 갈 예정이 쌓이고, 오른쪽 열은 명단이
+    통째로 쓴다.
 
-    DOM 순서는 게임 → 명단 → 큐다. 데스크톱에서 보이는 순서(왼쪽 위→아래,
-    오른쪽)와 어긋나지만, 이 순서가 접히는 폰에서는 명단이 큐보다 먼저 와야
-    한다 — 게임 → 큐 → 명단으로 쌓으면 큐가 591px이라 375x812에서 사람이
-    한 명도 접힌 선 위에 남지 않는다. 세 섹션 모두 랜드마크라 보조기술은
-    순서와 무관하게 건너뛴다.
+    DOM 순서는 명단 → 게임 → 시작 예정 → 오늘 갈 예정이다. 폰에서 한 열로
+    접힐 때 방에 서 있는 운영자가 먼저 봐야 하는 것이 사람이기 때문이다 —
+    테이블은 눈으로 보이지만 페널티·블랙·대기 여부는 화면에만 있다.
+    데스크톱의 열 배치는 이것과 다르므로 아래 CSS가 넷 다 명시한다.
 -->
 <!--
     손이 필요한 예약 한 묶음. 진행 중 게임 행과 예정 게임 행이 같은 걸 쓴다 —
@@ -2437,17 +2449,54 @@
         「최근 조치」 패널. 스트립과 방 사이에 끼지만 접힌 상태의 높이는
         한 줄(40px)이고, 되돌릴 것이 없으면 아예 렌더되지 않는다.
     */
+    .recent-clear {
+        flex: 0 0 auto;
+        margin-right: var(--space-2);
+        min-height: 44px;
+        padding: 0 var(--space-2);
+        border: 1px solid transparent;
+        border-radius: var(--radius-control);
+        background: none;
+        color: var(--text-secondary);
+        font-size: var(--text-xs);
+        cursor: pointer;
+    }
+    .recent-clear:hover {
+        background: var(--bg-hover);
+        color: var(--text-primary);
+    }
+    .recent-dismiss {
+        min-width: 44px;
+        min-height: 44px;
+        padding: 0;
+        border: 1px solid transparent;
+        border-radius: var(--radius-control);
+        background: none;
+        color: var(--text-secondary);
+        font-size: 1.1rem;
+        line-height: 1;
+        cursor: pointer;
+    }
+    .recent-dismiss:hover {
+        background: var(--bg-hover);
+        color: var(--text-primary);
+    }
     .recent-actions {
         margin-bottom: var(--space-5);
         border: 1px solid var(--border-light);
         border-radius: var(--radius-control);
         background: var(--bg-secondary);
     }
+    .recent-head {
+        display: flex;
+        align-items: center;
+    }
     .recent-toggle {
         display: flex;
         align-items: center;
         gap: var(--space-2);
-        width: 100%;
+        flex: 1 1 auto;
+        min-width: 0;
         padding: var(--space-2) var(--space-4);
         border: none;
         border-radius: var(--radius-control);

@@ -31,6 +31,16 @@
 					}}>{toast.action.label}</button
 				>
 			{/if}
+			<!--
+				되돌리기가 달린 토스트는 30초를 산다. 무를 생각이 없는데 30초를
+				기다려야 하면, 알림이 아니라 방해다. 읽었으면 치울 수 있어야 한다.
+			-->
+			<button
+				type="button"
+				class="toast-close"
+				onclick={() => dismissToast(toast.id)}
+				aria-label="알림 닫기{toast.action ? ` — ${toast.message}` : ''}"
+			>×</button>
 		</div>
 	{/each}
 </div>
@@ -124,6 +134,24 @@
 		font-weight: var(--weight-medium, 600);
 		white-space: nowrap;
 		cursor: pointer;
+	}
+	.toast-close {
+		flex: 0 0 auto;
+		min-width: 44px;
+		min-height: 44px;
+		padding: 0;
+		border: 1px solid transparent;
+		border-radius: var(--radius-control, 6px);
+		background: none;
+		color: inherit;
+		opacity: 0.7;
+		font-size: 1.25rem;
+		line-height: 1;
+		cursor: pointer;
+	}
+	.toast-close:hover {
+		opacity: 1;
+		background: rgba(255, 255, 255, 0.16);
 	}
 	.toast-action:hover {
 		background: rgba(255, 255, 255, 0.16);
