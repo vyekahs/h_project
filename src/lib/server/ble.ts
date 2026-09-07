@@ -545,16 +545,21 @@ export async function checkAutoCheckout() {
                     // 재시작하면 사라져서 사후 분석이 불가능했다.
                     // idle_seconds가 있으면 "임계값을 아슬아슬하게 넘겼다"와
                     // "몇 시간째 못 잡았다"를 구분할 수 있다 — 원인이 전혀 다르다.
+                    // 시각은 Date 객체가 아니라 ISO 문자열로 넘긴다.
+                    // tx.execute(sql`...`)는 postgres.js의 unsafe()로 내려가 파라미터
+                    // 타입 추론을 하지 않기 때문에, Date를 그대로 주면 Bind 단계에서
+                    // ERR_INVALID_ARG_TYPE로 던진다. 이 INSERT는 위의 UPDATE 두 개와
+                    // 같은 트랜잭션이므로, 실패하면 체크아웃 자체가 롤백된다.
                     await tx.execute(sql`
                         INSERT INTO auto_checkout_logs
                             (attendee_id, last_seen_at, last_source, ble_seen_at, wifi_seen_at,
                              idle_seconds, timeout_seconds)
                         VALUES (
                             ${attendee.id},
-                            ${lastSeen > 0 ? new Date(lastSeen) : null},
+                            ${lastSeen > 0 ? new Date(lastSeen).toISOString() : null},
                             ${lastSource},
-                            ${bleSeen > 0 ? new Date(bleSeen) : null},
-                            ${wifiSeen > 0 ? new Date(wifiSeen) : null},
+                            ${bleSeen > 0 ? new Date(bleSeen).toISOString() : null},
+                            ${wifiSeen > 0 ? new Date(wifiSeen).toISOString() : null},
                             ${lastSeen > 0 ? Math.round((now - lastSeen) / 1000) : null},
                             ${Math.round(CHECKOUT_TIMEOUT_MS / 1000)}
                         )
