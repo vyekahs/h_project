@@ -224,7 +224,11 @@ export function decideSmallTichu(hand: Card[], weights: PersonalityWeights, cont
 	//   강도 문턱 -18로 완화     65.7% (4.27%)
 	//   강도 문턱 -6로 강화      69.0% (0.96%)
 	if (strength < threshold - 12) return false;
-	if (calcExitRate(hand, buildCardTracker(context)).rate < SMALL_TICHU_MIN_EXIT_RATE) return false;
+	// 문턱을 성향에 따라 움직인다. 고정값(0.5)으로 두면 이 게이트가 판정을 지배해서
+	// 프리셋별 tichoPropensity가 묻힌다 — 실제로 '공격적'(0.8)과 '밸런스'(0.5)의
+	// 선언율이 5.2%로 같아져 "티츄를 적극 선언합니다"라는 설명과 어긋났다.
+	const exitGate = SMALL_TICHU_MIN_EXIT_RATE - (weights.tichoPropensity - 0.5) * 0.12;
+	if (calcExitRate(hand, buildCardTracker(context)).rate < exitGate) return false;
 	return true;
 }
 
