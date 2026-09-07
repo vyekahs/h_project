@@ -268,6 +268,38 @@ export function createTichuGameState() {
 		stateVersion++;
 	}
 
+	/**
+	 * 판 사이/복원 시 남으면 안 되는 화면 상태를 한 번에 지운다.
+	 *
+	 * 이 모듈의 상태는 컴포넌트가 아니라 모듈 스코프라 화면을 나갔다 와도 살아남는다.
+	 * 그런데 cleanup()은 타이머만 지우고 상태는 그대로 뒀기 때문에, 배너·모달이 떠 있는
+	 * 동안 나가면 그걸 지워줄 타이머가 사라진 채 상태만 남아 다시 들어왔을 때 계속 떠 있었다.
+	 * (예: "AI 아랭 승리" 트릭 배너, AI 티츄 선언 모달)
+	 * 각 진입점에서 lastEvent 하나만 초기화하던 것을 여기로 모은다.
+	 */
+	function resetTransientUi() {
+		if (lastEventTimer) { clearTimeout(lastEventTimer); lastEventTimer = null; }
+		if (aiTichuDeclareTimer) { clearTimeout(aiTichuDeclareTimer); aiTichuDeclareTimer = null; }
+		lastEvent = null;
+		aiTichuDeclareInfo = null;
+		showDragonGiftModal = false;
+		showWishModal = false;
+		showRoundEndModal = false;
+		showGameOverModal = false;
+		showExitConfirmModal = false;
+		roundResult = null;
+		gameEndData = null;
+		lastTrickPlay = null;
+		exchangeResultData = null;
+		exchangePartner = null;
+		exchangeLeft = null;
+		exchangeRight = null;
+		actionInProgress = false;
+		rankingResult = null;
+		newTitleName = null;
+		scoreSubmitting = false;
+	}
+
 	function handleEvent(event: GameEvent) {
 		// AI tichu declaration → show modal
 		if (event.type === 'tichu_declare') {
@@ -313,7 +345,7 @@ export function createTichuGameState() {
 		});
 
 		lastPhase = null;
-		lastEvent = null;
+		resetTransientUi();
 		view = 'game';
 		engine.startGame();
 	}
@@ -337,7 +369,7 @@ export function createTichuGameState() {
 		engine = LocalGameEngine.restore(save, handleStateChange, handleEvent);
 
 		lastPhase = null; // null로 설정하여 $effect가 복원된 phase를 감지 → 소원/드래곤 모달 표시
-		lastEvent = null;
+		resetTransientUi();
 		selectedCards = new Set();
 		view = 'game';
 		engine.resumeAfterRestore();
@@ -438,9 +470,8 @@ export function createTichuGameState() {
 	}
 
 	function cleanup() {
-		if (lastEventTimer) clearTimeout(lastEventTimer);
-		if (aiTichuDeclareTimer) clearTimeout(aiTichuDeclareTimer);
 		saveNow();
+		resetTransientUi();
 		if (engine) {
 			engine.destroy();
 			engine = null;
@@ -467,7 +498,7 @@ export function createTichuGameState() {
 		highlightCardIds = new Set();
 		selectedCards = new Set();
 		lastPhase = null;
-		lastEvent = null;
+		resetTransientUi();
 
 		tutorialEngine = new TutorialEngine({
 			lesson,
@@ -530,7 +561,7 @@ export function createTichuGameState() {
 		tutorialLessonId = null;
 		selectedCards = new Set();
 		lastPhase = null;
-		lastEvent = null;
+		resetTransientUi();
 		stateVersion = 0;
 		view = 'setup';
 	}
