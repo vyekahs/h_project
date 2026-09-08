@@ -1507,8 +1507,8 @@
         {#each (showAllScheduled ? (scheduledGames || []) : (scheduledGames || []).slice(0, 5)) as game (game.id)}
             {@const g = game as GameSession}
             {@const waiting = pendingFor(g.id)}
-            <li class="game-row" class:has-pending={waiting.length > 0 || (g.participants || []).length > 0}>
-                <button type="button" class="game-list-item" onclick={() => { selectedScheduledGame = g; resetParticipantSearch(); }}>
+            <li class="game-row has-pending">
+                <button type="button" class="game-list-item scheduled-item" onclick={() => { selectedScheduledGame = g; resetParticipantSearch(); }}>
                     {#if g.image_url}
                         <img src={g.image_url} alt={g.game_name} width="32" height="32" class="list-thumb" />
                     {:else}
@@ -1519,24 +1519,29 @@
                     <span class="list-name" title={g.game_name}>{g.game_name}</span>
                     <span class="list-metas">
                         <span class="list-meta">{formatScheduledTime(g.scheduled_at)}</span>
-                        <span class="list-meta">{(g.participants || []).length}/{g.max_players}</span>
                     </span>
                     <span class="list-arrow" aria-hidden="true">›</span>
                 </button>
                 <!--
-                    누가 오기로 했는지가 「1/4」이라는 숫자 뒤에 숨어 있었다.
-                    예정 게임의 판단은 「자리가 남았나」와 「누가 오나」 둘인데,
-                    후자를 보려면 시트를 열어야 했다. 칩은 버튼 밖에 둔다 —
-                    행을 누르면 시트가 열리는데, 그 안에 또 다른 표적을 넣으면
-                    무엇을 누른 것인지 흐려진다.
+                    두 줄이다: 무엇을 언제 하는가 / 누가 몇 명 오는가.
+                    「1/4」이 날짜 옆에 있을 때는 정원이 시각의 부속처럼 읽혔는데,
+                    실제로는 아래 이름들의 머리말이다. 자리 수와 이름이 한 줄에 선다.
+
+                    칩은 버튼 밖에 둔다 — 행을 누르면 시트가 열리는데, 그 안에
+                    또 다른 표적을 넣으면 무엇을 누른 것인지 흐려진다.
                 -->
-                {#if (g.participants || []).length > 0}
-                    <ul class="scheduled-players">
-                        {#each g.participants as p (p.id ?? p.name)}
-                            <li class="player-chip" class:is-guest={p.is_guest}>{p.name}{#if p.is_guest}<span class="chip-guest" aria-label="게스트">G</span>{/if}</li>
-                        {/each}
-                    </ul>
-                {/if}
+                <div class="scheduled-players">
+                    <span class="players-count">{(g.participants || []).length}/{g.max_players}</span>
+                    {#if (g.participants || []).length > 0}
+                        <ul class="player-chips">
+                            {#each g.participants as p (p.id ?? p.name)}
+                                <li class="player-chip" class:is-guest={p.is_guest}>{p.name}{#if p.is_guest}<span class="chip-guest" aria-label="게스트">G</span>{/if}</li>
+                            {/each}
+                        </ul>
+                    {:else}
+                        <span class="players-empty">아직 참가자가 없습니다</span>
+                    {/if}
+                </div>
                 {#if waiting.length > 0}
                     {@render pendingRows(waiting, g.game_name)}
                 {/if}
@@ -4454,15 +4459,40 @@
         묶어 목록임을 형태로 말한다. 게임 행과 같은 들여쓰기를 써서 어느
         판에 붙은 것인지가 위치로 드러난다.
     */
+    /*
+        예정 게임의 둘째 줄. 첫 줄은 무엇을 언제 하는가(이름·날짜),
+        둘째 줄은 누가 몇 명 오는가(정원·이름). 「1/4」이 날짜 옆에 있을 때는
+        정원이 시각의 부속처럼 읽혔는데, 실제로는 이름들의 머리말이다.
+    */
     .scheduled-players {
         grid-column: 1 / -1;
         display: flex;
         flex-wrap: wrap;
-        gap: var(--space-1);
-        list-style: none;
+        align-items: center;
+        gap: var(--space-1) var(--space-2);
         margin: var(--space-2) 0 0;
         padding: var(--space-2) 0 0 var(--space-5);
         border-top: 1px solid var(--border-light);
+    }
+    .players-count {
+        flex: 0 0 auto;
+        font-size: var(--text-xs);
+        font-weight: var(--weight-medium);
+        color: var(--text-secondary);
+        font-variant-numeric: var(--numeric);
+    }
+    .player-chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--space-1);
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        min-width: 0;
+    }
+    .players-empty {
+        font-size: var(--text-xs);
+        color: var(--text-hint);
     }
     .player-chip {
         display: inline-flex;
@@ -4585,6 +4615,29 @@
     }
     .game-list-item .list-arrow {
         grid-area: arrow;
+    }
+    /*
+        예정 행만 첫 줄이 「이름 · 날짜」다. 기본 그리드(이름 / 메타 두 줄)를
+        여기서 덮으므로 그 규칙 뒤에 와야 한다 — 앞에 두었을 때는 같은 특이도라
+        순서에 밀려 아무 효과가 없었다.
+    */
+    .scheduled-item {
+        display: flex;
+        flex-wrap: nowrap;
+        align-items: center;
+        gap: var(--space-3);
+    }
+    .scheduled-item .list-name {
+        flex: 0 1 auto;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .scheduled-item .list-metas {
+        flex: 0 0 auto;
+    }
+    .scheduled-item .list-arrow {
+        margin-left: auto;
     }
     @media (min-width: 1100px) {
         .attendee-info {
