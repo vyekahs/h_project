@@ -25,6 +25,129 @@ async function getTitlesList(): Promise<TitleDef[]> {
 }
 
 export const TitleService = {
+    /**
+     * '오락실 마스터'의 주인을 지금 순위로 다시 계산해 칭호 행을 맞추고, 그 결과를 돌려준다.
+     *
+     * checkAndAssignTitles는 호출한 본인만 판정한다. 게임별 칭호는 그걸로 충분하다 —
+     * 1위를 뺏으려면 본인이 기록을 내야 하니 판정 시점이 자연히 따라온다.
+     *
+     * 그런데 이 칭호는 '남들과 비교한 결과'라서, 자격이 생기는 순간에 본인이 아무것도
+     * 하고 있지 않을 수 있다. 실제로 배포 직후 이미 자격을 갖춘 사람이 있었는데도
+     * 그 사람이 다음 날 게임을 할 때까지 칭호가 아무에게도 부여되지 않아, 오락실
+     * 배너가 하루 내내 비어 있었다.
+     *
+     * 그래서 칭호가 걸리는 화면(오락실)을 열 때 여기서 맞춘다. 누가 들어오든
+     * 주인이 바로잡히므로 표시가 늦지 않는다.
+     *
+     * 판정 규칙은 checkAndAssignTitles와 같다 — 최소 개수를 넘어야 하고, 동점이면
+     * 현재 보유자가 지킨다. 규칙이 갈라지면 "배너에는 내 이름인데 칭호는 없다"가 된다.
+     */
+    async syncArcadeMaster(): Promise<{ name: string; firstCount: number } | null> {
+        try {
+            const now = new Date();
+            const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+            const rows = (await db.execute(sql`
+                WITH def AS (
+                    SELECT id, condition_value FROM minigame_titles WHERE title_code = 'arcade_master'
+                ),
+                excluded AS (
+                    SELECT json_array_elements_text(
+                        COALESCE((SELECT condition_value->'excludeGames' FROM def), '[]'::json)
+                    ) AS game_id
+                ),
+                firsts AS (
+                    SELECT user_id, count(*)::int AS cnt
+                    FROM (
+                        SELECT user_id,
+                               RANK() OVER (PARTITION BY game_id ORDER BY total_score DESC) AS rnk
+                        FROM minigame_monthly_rankings
+                        WHERE month_key = ${monthKey}
+                          AND game_id::text NOT IN (SELECT game_id FROM excluded)
+                    ) r
+                    WHERE rnk = 1
+                    GROUP BY user_id
+                ),
+                holder AS (
+                    SELECT ut.user_id FROM minigame_user_titles ut JOIN def ON def.id = ut.title_id
+                ),
+                top AS (
+                    SELECT max(cnt) AS cnt FROM firsts
+                )
+                SELECT
+                    (SELECT id FROM def)                                          AS title_id,
+                    COALESCE((SELECT (condition_value->>'min_count')::int FROM def), 1) AS min_count,
+                    (SELECT user_id FROM holder)                                  AS holder_id,
+                    COALESCE((SELECT cnt FROM firsts WHERE user_id = (SELECT user_id FROM holder)), 0) AS holder_count,
+                    COALESCE((SELECT cnt FROM top), 0)                            AS top_count,
+                    (SELECT count(*)::int FROM firsts WHERE cnt = (SELECT cnt FROM top)) AS top_tie,
+                    (SELECT user_id FROM firsts WHERE cnt = (SELECT cnt FROM top) LIMIT 1) AS top_user
+            `)) as any[];
+
+            const row = rows[0];
+            // 칭호가 아직 등록되지 않았으면(배포 전) 아무것도 하지 않는다.
+            if (!row || row.title_id === null || row.title_id === undefined) return null;
+
+            const titleId = Number(row.title_id);
+            const minCount = Number(row.min_count);
+            const holderId = row.holder_id === null ? null : Number(row.holder_id);
+            const holderCount = Number(row.holder_count);
+            const topCount = Number(row.top_count);
+            const topTie = Number(row.top_tie);
+            const topUser = row.top_user === null ? null : Number(row.top_user);
+
+            let rightfulId: number | null;
+            if (topCount < minCount) {
+                rightfulId = null;
+            } else if (holderId !== null && holderCount === topCount) {
+                // 동점이면 현재 보유자가 지킨다. 새로 오르려면 확실히 앞서야 한다.
+                rightfulId = holderId;
+            } else if (topTie === 1) {
+                rightfulId = topUser;
+            } else {
+                // 선두가 여럿인데 그중 현 보유자가 없다 — 아무도 '확실히 앞서지' 못했다.
+                rightfulId = null;
+            }
+
+            if (rightfulId !== holderId) {
+                await db.transaction(async (tx) => {
+                    await tx.execute(sql`
+                        UPDATE minigame_user_points SET equipped_title_id = NULL
+                        WHERE equipped_title_id = ${titleId}
+                    `);
+                    await tx.execute(sql`
+                        DELETE FROM minigame_user_titles WHERE title_id = ${titleId}
+                    `);
+                    if (rightfulId !== null) {
+                        // announced_at은 넣지 않는다(NULL). 오락실 페이지가 이 값을 보고
+                        // 축하 팝업을 띄우므로, 여기서 채우면 알림이 사라진다.
+                        await tx.execute(sql`
+                            INSERT INTO minigame_user_titles (user_id, title_id)
+                            VALUES (${rightfulId}, ${titleId})
+                            ON CONFLICT DO NOTHING
+                        `);
+                    }
+                });
+            }
+
+            if (rightfulId === null) return null;
+
+            const nameRows = (await db.execute(sql`
+                SELECT name FROM attendees WHERE id = ${rightfulId}
+            `)) as any[];
+            const name = nameRows[0]?.name;
+            if (!name) return null;
+
+            return {
+                name: name as string,
+                firstCount: rightfulId === holderId ? holderCount : topCount
+            };
+        } catch (e) {
+            console.error('[Title] 오락실 마스터 동기화 실패', e);
+            return null;
+        }
+    },
+
     async checkAndAssignTitles(userId: number) {
         const assignedTitles: string[] = [];
 

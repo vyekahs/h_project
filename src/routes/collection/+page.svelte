@@ -18,7 +18,8 @@
         })
     );
 
-    // 혼놀 보유 여부와 무관하게, 본인이 직접 소장 중이라고 체크한 게임.
+    // 혼놀 보유 여부와 무관하게, 본인도 이 게임을 갖고 있다고 체크한 목록.
+    // 장식장의 그 물건이 내 것이라는 뜻이 아니다 — 같은 게임을 여러 사람이 각자 체크한다.
     const ownedGameIds = $derived(new Set<number>(data.ownedGameIds));
     function isOwned(gameId: number) {
         return ownedGameIds.has(gameId);
@@ -330,7 +331,7 @@
             </div>
             <label class="owned-only-toggle">
                 <input type="checkbox" bind:checked={showOwnedOnly} />
-                내가 보유한 것만 보기
+                내가 갖고 있는 것만
             </label>
         {:else}
             <!-- 게임별 보기의 검색창과 같은 자리에 둬서, 뷰를 전환해도 손가락이 다시
@@ -431,7 +432,7 @@
                 {#if searchQuery.trim()}
                     <p>"{searchQuery}"에 맞는 게임이 없어요.</p>
                 {:else if showOwnedOnly}
-                    <p>내가 보유한 것으로 표시한 게임이 없어요.</p>
+                    <p>갖고 있다고 표시한 게임이 없어요.</p>
                 {:else}
                     <p>조건에 맞는 게임이 없어요.</p>
                 {/if}
@@ -440,7 +441,7 @@
             <p class="shelf-legend">
                 <span class="legend-item">
                     <svg class="legend-star" width="10" height="10" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 21 12 17.77 5.82 21 7 14.14l-5-4.87 6.91-1.01L12 2z"/></svg>
-                    내 소장
+                    내가 갖고 있음
                 </span>
                 <span class="legend-item"><span class="legend-swatch unplayed" aria-hidden="true"></span>아직 플레이 안 함</span>
             </p>
@@ -454,7 +455,7 @@
                         class:played={!!played}
                         class:locked={!played}
                         onclick={() => openGameModal(game)}
-                        aria-label="{game.name}{played ? ` — ${played.length}회 플레이` : ' — 아직 플레이하지 않음'}{owned ? ', 내 소장 게임' : ''}"
+                        aria-label="{game.name}{played ? ` — ${played.length}회 플레이` : ' — 아직 플레이하지 않음'}{owned ? ', 내가 갖고 있는 게임' : ''}"
                     >
                         <div class="cover">
                             {#if game.image_url}
@@ -465,7 +466,7 @@
                                 </div>
                             {/if}
                             {#if owned}
-                                <span class="owned-badge" title="내 소장 게임" aria-hidden="true">
+                                <span class="owned-badge" title="내가 갖고 있는 게임" aria-hidden="true">
                                     <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 21 12 17.77 5.82 21 7 14.14l-5-4.87 6.91-1.01L12 2z"/></svg>
                                 </span>
                             {/if}
@@ -550,7 +551,11 @@
                 <input type="hidden" name="owned" value={(!isOwned(selectedGame.id)).toString()} />
                 <button type="submit" class="btn-ownership-toggle" class:active={isOwned(selectedGame.id)}>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill={isOwned(selectedGame.id) ? 'currentColor' : 'none'} stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
-                    {isOwned(selectedGame.id) ? '내가 소장 중' : '내 소장 게임으로 표시'}
+                    <!-- 눌린 상태는 사실("갖고 있음"), 안 눌린 상태는 누르면 할 말("나도 갖고 있어요").
+                         예전 문구 '내 소장 게임으로 표시'는 장식장의 그 물건을 내 것으로
+                         지정하는 것처럼 읽혔다. 실제로는 같은 게임을 여러 사람이 각자
+                         체크하는 개인 표시다. -->
+                    {isOwned(selectedGame.id) ? '갖고 있음' : '나도 갖고 있어요'}
                 </button>
             </form>
 
