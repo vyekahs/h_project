@@ -162,6 +162,15 @@
         </div>
     </header>
 
+    {#if data.arcadeMaster}
+        <div class="arcade-master-banner">
+            <span class="am-crown" aria-hidden="true">👑</span>
+            <span class="am-label">오락실 마스터</span>
+            <span class="am-name">{data.arcadeMaster.name}</span>
+            <span class="am-count">{data.arcadeMaster.firstCount}개 게임 1위</span>
+        </div>
+    {/if}
+
     <div class="ticker-wrapper">
         <ActivityTicker activities={data.activityFeed} />
     </div>
@@ -740,5 +749,37 @@
         .title-announce-backdrop,
         .title-announce-card,
         .title-announce-sparkles span { animation: none; }
+    }
+
+    /* 현재 오락실 마스터 — 모두에게 보이는 명예의 자리 */
+    .arcade-master-banner {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin: 0 0 12px;
+        padding: 10px 14px;
+        border-radius: 14px;
+        background: linear-gradient(135deg, rgba(251, 191, 36, 0.14) 0%, rgba(245, 158, 11, 0.07) 100%);
+        border: 1px solid rgba(251, 191, 36, 0.28);
+    }
+    .am-crown { font-size: 1rem; line-height: 1; }
+    .am-label {
+        font-size: 0.68rem;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        color: #fcd34d;
+    }
+    .am-name {
+        font-size: 1rem;
+        font-weight: 800;
+        color: #fde68a;
+    }
+    .am-count {
+        margin-left: auto;
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: rgba(255, 255, 255, 0.6);
+        white-space: nowrap;
     }
 </style>
