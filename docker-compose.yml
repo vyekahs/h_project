@@ -67,7 +67,10 @@ services:
     volumes:
       - db-data:/var/lib/postgresql/data
       - ./database/schema.sql:/docker-entrypoint-initdb.d/00_init.sql
-      - ./database/migrations:/docker-entrypoint-initdb.d/migrations
+      # migrations는 여기에 마운트해도 적용되지 않는다 — Postgres 엔트리포인트는
+      # 하위 디렉터리를 훑지 않고, initdb 훅은 최초 1회만 돈다.
+      # 실제 적용은 앱 컨테이너 기동 시(start.sh → migrate_sql_files.js)와
+      # 배포 시(scripts/run-migrations.sh)에 이뤄진다.
     ports:
       - "5432:5432"
     restart: always

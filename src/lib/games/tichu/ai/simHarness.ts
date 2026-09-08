@@ -33,6 +33,11 @@ export interface SimOptions {
 	/** 라운드 완료 시 훅 */
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	onRound?: (result: any, engine: any) => void;
+	/**
+	 * 고정 덱 목록. 주면 매 라운드 순서대로 사용한다.
+	 * 변형끼리 **같은 카드로** 비교할 수 있어 딜 분산이 사라진다.
+	 */
+	decks?: Card[][];
 	/** 좌석별 PresetBehavior를 가공 (절제 실험용). 반환값이 실제 사용될 behavior. */
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	patchBehavior?: (seat: SeatIndex, behavior: any) => any;
@@ -104,6 +109,10 @@ export async function simulateGame(opts: SimOptions): Promise<SimResult> {
 		onEvent: (e: SimEvent) => opts.onEvent?.(e, engine)
 	}) as any;
 
+	if (opts.decks && opts.decks.length > 0) {
+		let di = 0;
+		engine.deckProvider = () => [...opts.decks![di++ % opts.decks!.length]];
+	}
 	engine.waitForBombWindow = () => Promise.resolve();
 	engine.delay = () => Promise.resolve();
 	engine.aiPlayers.set(1 as SeatIndex, patchAi(new AiPlayer(1 as SeatIndex, opts.presets[1], false), 1 as SeatIndex, opts));
@@ -131,7 +140,7 @@ export async function simulateGame(opts: SimOptions): Promise<SimResult> {
 			if (phase === 'grand_tichu_window') {
 				const p0 = engine.state.players[0];
 				if (p0.grandTichu === null) {
-					if (ai0.makeGrandTichuDecision(p0.hand)) engine.humanDeclareGrandTichu();
+					if (ai0.makeGrandTichuDecision(p0.hand, engine.createAiContext(0))) engine.humanDeclareGrandTichu();
 					else engine.humanPassGrandTichu();
 				}
 				continue;

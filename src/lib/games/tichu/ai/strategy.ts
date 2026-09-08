@@ -1,4 +1,5 @@
 import type { Card, Combination, SeatIndex, ExchangeCards, WishState, NormalCard } from '../types';
+import { __deterministic } from './determinism';
 import type { AiDecisionContext, PersonalityWeights } from './types';
 import type { PresetBehavior } from './presets/types';
 import { getTeam, getPartnerSeat, getLeftSeat, getRightSeat, getNextActiveSeat } from '../constants';
@@ -19,7 +20,7 @@ import {
 	type CardTracker
 } from './cardTracker';
 import { searchBestPlay, calcExitRate, isForcedOutIfLeading } from './playSearchGrid';
-import { buildSampleWorlds, evaluateLeadSafety, evaluateTwoTurnFinish, getUnseenCards, type SampledWorld } from './monteCarlo';
+import { buildSampleWorlds, evaluateLeadSafety, evaluateTwoTurnFinish, getUnseenCards, estimateGoOutFirstProb, estimateGrandTichuQuality, type SampledWorld } from './monteCarlo';
 
 // ===== Hand Analysis Helpers =====
 
@@ -134,7 +135,7 @@ function getTrickPoints(cards: Card[]): number {
 /**
  * Decide whether to declare Grand Tichu based on 8-card hand.
  */
-export function decideGrandTichu(hand8: Card[], weights: PersonalityWeights, behavior: PresetBehavior = {}): boolean {
+export function decideGrandTichu(hand8: Card[], weights: PersonalityWeights, behavior: PresetBehavior = {}, context?: AiDecisionContext): boolean {
 	// Behavior hook
 	const override = behavior.shouldDeclareGrandTichu?.(hand8);
 	if (override !== null && override !== undefined) return override;
@@ -149,23 +150,53 @@ export function decideGrandTichu(hand8: Card[], weights: PersonalityWeights, beh
 	// 그랜드는 ±200점이라 60%도 기대값은 양수지만, 부르는 값어치를 내려면 65% 선이 맞다.
 	// 48 - p*14 → 공격적 36.8 / 변칙적 39.6 / 밸런스·전략적 41 / 수비적 45.9
 	const threshold = 48 - weights.tichoPropensity * 14;
-	return strength >= threshold;
+	if (!(strength >= threshold)) return false;
+
+	// 8장만 보고 부르지만 실제로는 6장을 더 받고 교환까지 거친다.
+	// 그 과정을 표본으로 돌려 최종 14장의 순수 승률을 보고 판단한다.
+	//
+	// 검증 (고정 덱 + 결정론, 덱 세트 2개 × 800게임, 팀 A에만 적용)
+	//   강도만(기존)   선언 251건 성공률 72.1%  점수차 +1.74
+	//   순수 0.45      선언 135건 성공률 74.1%  점수차 +0.60   ← 채택
+	//   순수 0.52      선언  35건 성공률 80.0%  점수차 -1.66
+	// 그랜드는 기준선 성공률이 이미 높아 스몰만큼 개선 여지가 없다. 0.52는
+	// 1600게임에 35건이라 사실상 안 부르는 수준이라 0.45를 택했다 —
+	// 실패가 70건 → 35건으로 절반이 되고, ±200점이라 진폭 감소 효과가 크다.
+	if (context) {
+		const q = estimateGrandTichuQuality(context, 16);
+		if (q >= 0 && q < GRAND_TICHU_MIN_PURE_WIN) return false;
+	}
+	return true;
 }
 
 // ===== Small Tichu Decision =====
 
 /** 스몰 티츄 선언에 요구하는 최소 나가기 효율 */
-// 0.5 → 0.4.
-// 정석에서는 "먼저 나갈 확률이 51%만 넘으면 부를 가치가 있다"고 본다
-// (scv.bu.edu 티츄 전략). 실측도 같은 방향이었다 — 문턱을 낮추면 성공률은
-// 조금 떨어지지만 선언이 크게 늘어 총이득이 커진다.
-// 팀 A에만 적용, 시드 3~4개 × 약 4000라운드:
-//   0.50(대조군) 점수차 +3.9 / -0.2
-//   0.44                +2.9
-//   0.40                +12.4 / +7.3   ← 채택 (두 번 다 최대)
-//   0.36                +10.7 / +4.1
-// 0.40에서 선언은 2.4배로 늘고 성공률은 65.6% → 63.9%로 소폭만 내려간다.
-const SMALL_TICHU_MIN_EXIT_RATE = 0.4;
+/**
+ * 선언에 요구하는 최소 **순수 승률**(보너스 미포함).
+ *
+ * 실제 온라인 플레이어 6명(총 8,990라운드)의 누적 기록과 비교해 맞춘 값이다.
+ *   사람: 좌석당 선언율 12.3% (개인별 6.7~16.9%), 성공률 76.1%
+ *
+ * 우리 AI의 곡선 (고정 덱 + 결정론, 900게임):
+ *   0.52 / 확률 0.30   선언율 1.84%  성공률 69.2%  라운드총점 134.4
+ *   0.44 / 확률 0.30        3.26%        69.4%          137.6
+ *   0.36 / 확률 0.30        4.82%        67.3%          138.3   ← 채택
+ *   0.28 / 확률 0.20        6.34%        64.7%          139.5
+ *   게이트 전부 해제        13.31%        53.2%          137.4
+ *
+ * 사람 빈도(12.3%)에 맞추면 성공률이 53.2%로 떨어진다. 사람은 같은 빈도에서
+ * 76.1%를 내므로, 손패 평가 자체가 사람보다 약하다는 뜻이다. 빈도와 품질을
+ * 동시에 맞출 수 없어 중간을 택했다 — 빈도는 2.6배로 올리고 성공률은
+ * 2%p만 내주며 라운드 총점은 오히려 오른다.
+ */
+const SMALL_TICHU_MIN_PURE_WIN = 0.36;
+
+/** 그랜드 티츄 — 교환까지 시뮬레이션한 최종 손패에 요구하는 최소 순수 승률 */
+const GRAND_TICHU_MIN_PURE_WIN = 0.45;
+
+/** 표본 세계에서 "내가 가장 빠르다"로 나와야 하는 최소 비율 */
+const SMALL_TICHU_MIN_RACE_PROB = 0.3;
 
 /**
  * Decide whether to declare Small Tichu based on full 14-card hand.
@@ -237,8 +268,28 @@ export function decideSmallTichu(hand: Card[], weights: PersonalityWeights, cont
 	// 문턱을 성향에 따라 움직인다. 고정값(0.5)으로 두면 이 게이트가 판정을 지배해서
 	// 프리셋별 tichoPropensity가 묻힌다 — 실제로 '공격적'(0.8)과 '밸런스'(0.5)의
 	// 선언율이 5.2%로 같아져 "티츄를 적극 선언합니다"라는 설명과 어긋났다.
-	const exitGate = SMALL_TICHU_MIN_EXIT_RATE - (weights.tichoPropensity - 0.5) * 0.12;
-	if (calcExitRate(hand, buildCardTracker(context)).rate < exitGate) return false;
+	// 보너스를 뺀 **순수 승률**로 판단한다.
+	//
+	// calcExitRate의 rate는 승률 평균에 "큰 조합이 많으면 좋다"는 보너스를 40% 섞은
+	// 값이라(턴 효율 0.25 + 콤보 비율 0.15), 선을 몇 번 잡을 수 있는지와 무관한
+	// 요소가 판단을 좌우했다. 예를 들어 6턴이 필요한데 A 트리플과 K 페어뿐이라
+	// 선을 두 번밖에 못 잡는 손패도, 조합이 크다는 이유로 문턱을 통과했다.
+	const exitGate = SMALL_TICHU_MIN_PURE_WIN - (weights.tichoPropensity - 0.5) * 0.12;
+	if (calcExitRate(hand, buildCardTracker(context)).pureWinRate < exitGate) return false;
+
+	// "내가 먼저 나갈 수 있나"를 실제로 시뮬레이션한다.
+	//
+	// 위의 calcExitRate는 **내 손패만** 본다. 5턴에 비울 수 있는 패가 좋은지 나쁜지는
+	// 상대가 몇 턴에 비우느냐에 달렸는데, 그 비교가 없었다. 안 보이는 카드를 여러 번
+	// 나눠 돌려서 상대들의 나가기 효율과 직접 비교한다.
+	//
+	// 검증 (고정 덱 + 결정론, 덱 세트 2개 × 800게임, 팀 A에만 적용)
+	//   기준        성공률 64.9% / 63.1%   선언 373건 / 377건
+	//   문턱 0.30   성공률 68.4% / 66.4%   선언 285건 / 304건
+	// 성공률은 두 세트 모두 +3.4%p 정도 오른다. 팀 점수는 +1.33 / -1.27로 중립 —
+	// 걸러낸 선언들이 기대값 0 근처였다는 뜻이라 총점은 그대로고 판단만 정확해진다.
+	const raceProb = estimateGoOutFirstProb(context, 24);
+	if (raceProb >= 0 && raceProb < SMALL_TICHU_MIN_RACE_PROB) return false;
 	return true;
 }
 
@@ -999,7 +1050,18 @@ function decideLead(
 	const partnerForEndgame = context.players[getPartnerSeat(context.currentSeat)];
 	const partnerTichuActive = partnerForEndgame.finishOrder === null &&
 		(partnerForEndgame.grandTichu === true || partnerForEndgame.smallTichu);
-	if (hand.length <= 5 && !partnerTichuActive) {
+	// 몬테카를로 엔드게임 탐색 범위: 5장 → 7장.
+	//
+	// 이 게임에서 AI는 이 구간에서만 여러 수 앞을 내다보고, 나머지는 1수 앞만 보는
+	// 휴리스틱이다. 범위를 넓히는 것이 가장 직접적인 실력 향상이었다.
+	//
+	// 고정 덱 + 결정론 모드, 팀 A에만 적용 (덱 세트마다 기준선을 따로 측정)
+	//   덱 7200개 / 600게임:   5장 -8.3 → 7장 +0.7   (+9.0)
+	//   덱 12000개 / 1000게임:  5장 +0.3 → 7장 +5.4   (+5.0)
+	// 8장 이상은 오히려 나빠지고(+1.2), 10장 -3.7, 전 구간 적용은 -8.1이다.
+	// 표본 20개로는 손패가 커질수록 추정이 흐려지고, "2턴 완성" 탐색의 전제도 깨진다.
+	// 실행 시간은 3400라운드 기준 38초 → 39초로 사실상 동일하다.
+	if (hand.length <= 7 && !partnerTichuActive) {
 		const endgameResult = decideLeadEndgame(hand, plan, weights, context, behavior);
 		if (endgameResult.length > 0) return endgameResult;
 	}
@@ -1329,11 +1391,16 @@ export function findTwoStepFinishScored(
  * 허용 폭은 riskTolerance에 비례 — 안정적인 성격(수비적 0.2)은 거의 최선만 두고,
  * 변칙적(0.9)은 폭이 넓어 실제로 '변칙적'으로 보인다.
  */
+// 결정론 스위치는 determinism.ts에 있다(monteCarlo.ts와 순환 import를 피하기 위해).
+// 기존 호출부 호환을 위해 여기서 다시 내보낸다.
+export { __deterministic } from './determinism';
+
 function pickAmongNearBest<T extends { totalScore: number }>(
 	sortedDesc: T[],
 	weights: PersonalityWeights
 ): T {
 	if (sortedDesc.length <= 1) return sortedDesc[0];
+	if (__deterministic.on) return sortedDesc[0];
 	// 허용 폭 주의: totalScore의 실질 범위는 약 0~1.3이다. 처음에 0.03~0.07로 잡았더니
 	// "근소한 차이"가 아니라 명백히 나쁜 수까지 포함되어 실력이 크게 떨어졌다
 	// (riskTolerance에 비례해 하락: 수비적 -3.7, 공격적 -35.9 점/라운드).
@@ -1394,7 +1461,7 @@ export function decideWish(
 	const mahjongPlay = context.trick?.plays[0]?.combination;
 	if (mahjongPlay && mahjongPlay.type !== 'single') {
 		// 조합: aggressiveness 기반 확률로 스킵 가능
-		if (Math.random() > weights.aggressiveness + 0.3) return null;
+		if (!__deterministic.on && Math.random() > weights.aggressiveness + 0.3) return null;
 	}
 
 	const tracker = buildCardTracker(context);

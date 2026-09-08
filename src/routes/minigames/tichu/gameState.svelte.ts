@@ -10,6 +10,9 @@ import { getLessonById, LESSONS } from '$lib/games/tichu/tutorial/tutorialScenar
 import type { TutorialStep } from '$lib/games/tichu/tutorial/tutorialTypes';
 import { getPhoenixSubstituteRank } from '$lib/games/tichu/combinations';
 import { trackGameStart } from '$lib/games/utils';
+import {
+	resetDecisionLog, noteGrandTichuHand, noteHandAtPlayStart, commitRound, flushDecisionLog
+} from './decisionLog';
 
 export type GameView = 'setup' | 'game' | 'tutorial';
 export type ToastType = 'info' | 'success' | 'error' | 'warning';
@@ -179,6 +182,11 @@ export function createTichuGameState() {
 			// Reset selection on phase change
 			selectedCards = new Set();
 
+			// 선언 판단 기록 — 그랜드 시점(8장)
+			if (currentPhase === 'grand_tichu_window' && s?.round && !isTutorialMode) {
+				noteGrandTichuHand(s.round.roundNumber, s.players[0].hand);
+			}
+
 			if (currentPhase === 'exchange') {
 				exchangePartner = null;
 				exchangeLeft = null;
@@ -188,6 +196,11 @@ export function createTichuGameState() {
 			// Show exchange result when transitioning from exchange to playing
 			if (currentPhase === 'playing' && prevPhase === 'exchange' && engine?.exchangeResult) {
 				exchangeResultData = engine.exchangeResult;
+			}
+
+			// 선언 판단 기록 — 교환 후 14장. 스몰 티츄 판단의 기준 시점이다.
+			if (currentPhase === 'playing' && prevPhase === 'exchange' && s?.round && engine && !isTutorialMode) {
+				noteHandAtPlayStart(s.round.roundNumber, s.players[0].hand, engine);
 			}
 
 			if (currentPhase === 'wish_declare' && s?.round?.currentSeat === 0 && (!isTutorialMode || tutorialEngine?.freePlayMode)) {
@@ -216,7 +229,19 @@ export function createTichuGameState() {
 				if (rounds.length > 0) {
 					roundResult = rounds[rounds.length - 1];
 					showRoundEndModal = true;
+
+					// 선언 판단 기록 — 실제 판단과 결과 확정
+					const r = roundResult;
+					const declared: 'none' | 'small' | 'grand' =
+						r.grandTichuDeclarations.some(d => d.seat === 0) ? 'grand'
+						: r.smallTichuDeclarations.some(d => d.seat === 0) ? 'small'
+						: 'none';
+					commitRound(r.roundNumber, declared, r.finishOrder[0] === 0, r.teamAScore, partnerStrategy);
 				}
+			}
+
+			if (currentPhase === 'game_end' && !isTutorialMode) {
+				flushDecisionLog();
 			}
 
 			if (currentPhase === 'game_end' && s && s.winner && !isTutorialMode) {
@@ -346,6 +371,7 @@ export function createTichuGameState() {
 
 		lastPhase = null;
 		resetTransientUi();
+		resetDecisionLog();
 		view = 'game';
 		engine.startGame();
 	}
