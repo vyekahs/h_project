@@ -1148,39 +1148,43 @@
     <h2 id="sec-attendees">현재 참여 인원</h2>
     {#snippet attendeeRow(a: Attendee)}
             <li>
+                <!--
+                    한 사람이 한 줄이다. 이름 · 상태 · 시각이 두 줄로 나뉘어
+                    있었는데, 명단에서 훑는 단위는 사람이지 속성이 아니다.
+
+                    매니저는 이름에 붙는 성질이므로 배지를 떼고 이름 자체에
+                    입힌다. 채움이 아니라 틴트인 이유는 이름이 링크이기 때문이다 —
+                    채움 파랑은 이 콘솔에서 주 동작(새 게임 시작·승인)의 색이라,
+                    누르면 뭔가 실행될 것처럼 읽힌다.
+
+                    페널티는 느낌표 개수로 센다. 배지 「페널티 2/3」이 이름 옆에서
+                    행의 절반을 쓰고 있었다. 보이는 것은 개수지만 접근 이름에는
+                    실제 점수와 임계를 남긴다 — 개수만으로는 「3이 한계」임을
+                    배워야 알 수 있고, 색과 개수로만 나르면 보조기술에는 아무것도
+                    남지 않는다. 범례는 목록 아래에 있다.
+                -->
                 <div class="attendee-info">
-                    <div class="name-row">
-                        <a href="/admin/attendees/{a.id}" class="attendee-link">{a.name}</a>
-                        {#if a.is_blacklisted}
-                            <span class="badge blacklist">
-                                <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:2px; vertical-align:middle;"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
-                                블랙
-                            </span>
-                        {/if}
-                        {#if a.can_manage_games}
-                            <!-- 게임을 만들 수 있는 사람인지가 시트를 열어야만 보였다 -->
-                            <span class="badge manager">매니저</span>
-                        {/if}
-                        {#if a.penalty_points > 0}
-                            <span class="badge penalty" class:blocked={a.penalty_points >= penaltyThreshold}>
-                                <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:2px; vertical-align:middle;"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                                페널티 {a.penalty_points}/{penaltyThreshold}
-                            </span>
-                        {/if}
-                    </div>
-                    <!--
-                        좌석을 별도 열로 두면 좁은 열에서 이름·배지·시각과 3단으로
-                        겹쳐 뭉개진다. 메타 한 줄로 합쳐 자연스럽게 줄바꿈시킨다.
-                        종료 시각은 서버가 같은 행에서 준다 — 이름으로 찾으면 같은
-                        이름의 판이 둘일 때 엉뚱한 시간이 붙는다.
-                    -->
-                    <span class="attendee-meta">
-                        <span class="arrival-time">{formatTime(a.arrival_time)} 입장</span>
-                        {#if a.is_playing && a.game_name}
-                            <span class="seat-game" title={a.game_name}>· {a.game_name}</span>
-                            {#if a.game_end_time}<span class="seat-time" class:is-over={isSettling(a)}>{getTimeRemaining(a.game_end_time, now)}</span>{/if}
-                        {/if}
-                    </span>
+                    <a href="/admin/attendees/{a.id}" class="attendee-link" class:is-manager={a.can_manage_games}
+                        title={a.can_manage_games ? `${a.name} — 매니저` : undefined}>{a.name}</a>
+                    {#if a.penalty_points > 0}
+                        <span class="penalty-marks" class:blocked={a.penalty_points >= penaltyThreshold}
+                            aria-label="페널티 {a.penalty_points}/{penaltyThreshold}점{a.penalty_points >= penaltyThreshold ? ' — 예약 제한 중' : ''}">
+                            <span aria-hidden="true">{'!'.repeat(Math.min(a.penalty_points, penaltyThreshold))}</span>
+                        </span>
+                    {/if}
+                    {#if a.is_blacklisted}
+                        <span class="badge blacklist">
+                            <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:2px; vertical-align:middle;"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
+                            블랙
+                        </span>
+                    {/if}
+                    <!-- 종료 시각은 서버가 같은 행에서 준다 — 이름으로 찾으면
+                         같은 이름의 판이 둘일 때 엉뚱한 시간이 붙는다. -->
+                    {#if a.is_playing && a.game_name}
+                        <span class="seat-game" title={a.game_name}>{a.game_name}</span>
+                        {#if a.game_end_time}<span class="seat-time" class:is-over={isSettling(a)}>{getTimeRemaining(a.game_end_time, now)}</span>{/if}
+                    {/if}
+                    <span class="arrival-time">{formatTime(a.arrival_time)} 입장</span>
                 </div>
                 <!--
                     퇴장은 명단에서 가장 잦은 조치인데 관리 시트 안에 있었다.
@@ -1257,6 +1261,16 @@
                 {#each busyAttendees as a (a.id)}{@render attendeeRow(a as Attendee)}{/each}
             </ul>
         {/if}
+        <!--
+            느낌표와 이름 배경은 규칙을 알아야 읽힌다. 목록 아래에 두어 배우는
+            데는 있고 훑는 데는 방해가 되지 않게 한다. 배지를 걷어낸 자리보다
+            훨씬 작다.
+        -->
+        <p class="roster-legend">
+            <span class="legend-item"><span class="attendee-link is-manager legend-swatch">이름</span> 매니저</span>
+            <span class="legend-item"><span class="penalty-marks"><span aria-hidden="true">!</span></span> 페널티 1점</span>
+            <span class="legend-item"><span class="penalty-marks blocked"><span aria-hidden="true">{'!'.repeat(penaltyThreshold)}</span></span> {penaltyThreshold}점 — 예약 제한</span>
+        </p>
     {/if}
 
     <div class="add-row">
@@ -2684,22 +2698,27 @@
     .attendee-list li:last-child {
         border-bottom: none;
     }
+    /* 한 사람이 한 줄. 좁아지면 자연스럽게 접히되 기본은 한 줄이다. */
     .attendee-info {
-        display: flex;
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 2px;
-        min-width: 0;
-        flex: 1 1 auto;
-    }
-    .attendee-meta {
         display: flex;
         flex-wrap: wrap;
         align-items: baseline;
-        gap: var(--space-1);
+        gap: var(--space-1) var(--space-2);
         min-width: 0;
+        flex: 1 1 auto;
+    }
+    /* 메타 래퍼가 사라지고 자식들이 행에 직접 선다 */
+    .attendee-info .arrival-time,
+    .attendee-info .seat-game,
+    .attendee-info .seat-time {
         font-size: var(--text-xs);
         color: var(--text-secondary);
+        min-width: 0;
+    }
+    /* 입장 시각은 셋 중 가장 덜 급하다 — 좁아지면 먼저 밀린다 */
+    .attendee-info .arrival-time {
+        margin-left: auto;
+        white-space: nowrap;
     }
     .attendee-link {
         text-decoration: none;
@@ -3340,18 +3359,54 @@
     }
 
     /* New Admin UI Styles */
-    .name-row {
+    /*
+        매니저는 이름에 붙는 성질이라 이름 자체가 진다. 틴트인 이유는 이름이
+        링크이기 때문이다 — 채움 파랑은 주 동작의 색이고, 링크가 그 색을 입으면
+        누르면 뭔가 실행될 것처럼 읽힌다.
+    */
+    .attendee-link.is-manager {
+        background: var(--tint-blue-bg);
+        color: var(--color-blue-bright);
+        border-radius: var(--radius-control);
+        font-weight: var(--weight-medium);
+    }
+    /*
+        「페널티 2/3」 배지가 이름 옆에서 행의 절반을 썼다. 개수로 센다.
+        3점(임계)은 예약이 막히는 상태이므로 색이 더 세진다.
+    */
+    .penalty-marks {
+        flex-shrink: 0;
+        font-weight: 700;
+        font-size: var(--text-sm);
+        letter-spacing: 0.08em;
+        color: var(--color-orange-text);
+        line-height: 1;
+    }
+    .penalty-marks.blocked {
+        color: var(--color-red-dark);
+    }
+    .roster-legend {
         display: flex;
         flex-wrap: wrap;
         align-items: center;
-        gap: var(--space-1) var(--space-2);
-        min-width: 0;
-        max-width: 100%;
+        gap: var(--space-1) var(--space-4);
+        margin: var(--space-3) 0 0;
+        padding-top: var(--space-2);
+        border-top: 1px dashed var(--border-light);
+        font-size: var(--text-xs);
+        color: var(--text-secondary);
     }
-    .name-row .attendee-link {
-        min-width: 0;
+    .legend-item {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--space-1);
     }
-    .name-row .badge {
+    .legend-swatch {
+        padding: 0 var(--space-1);
+        font-size: var(--text-xs);
+        text-decoration: none;
+    }
+    .attendee-info .badge {
         flex-shrink: 0;
     }
     .badge {
@@ -3571,7 +3626,7 @@
         최소 폭을 준다 — 옆의 「관리」는 떠나지 않는 버튼이라 오조작 비용이 크다.
     */
     .sq-who .attendee-link,
-    .name-row .attendee-link {
+    .attendee-info .attendee-link {
         padding-block: var(--space-1);
         padding-inline: var(--space-2);
         margin-block: calc(-1 * var(--space-1));
