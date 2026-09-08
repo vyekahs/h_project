@@ -2289,11 +2289,12 @@
 {/if}
 
 <style>
+    /* 섹션은 카드다. 컨트롤 반경을 쓰고 있어서 가장 큰 면들이 가장 각졌다. */
     section {
         margin-bottom: var(--space-6);
         padding: var(--space-5);
         border: 1px solid var(--border-light);
-        border-radius: var(--radius-control);
+        border-radius: var(--radius-card);
         background: var(--bg-primary);
     }
     /* 라벨이 데이터를 이기지 않도록 — 32px은 숫자 전용으로 비워 둔다 */
@@ -2667,13 +2668,21 @@
         list-style: none;
         padding: 0;
     }
+    /*
+        한 사람이 60px을 썼다. 안쪽 여백 8px×2에 44px 버튼이 얹혀 있었는데,
+        이름·배지·메타는 그 안에서 43px이면 충분하다. 여백을 줄이고 버튼이
+        행 높이를 정하게 둔다 — 표적 크기는 그대로다.
+    */
     .attendee-list li {
         display: flex;
         justify-content: space-between;
         align-items: center;
         gap: var(--space-3);
-        padding: var(--space-2);
-        border-bottom: 1px solid var(--border-default);
+        padding: var(--space-1) var(--space-2);
+        border-bottom: 1px solid var(--border-light);
+    }
+    .attendee-list li:last-child {
+        border-bottom: none;
     }
     .attendee-info {
         display: flex;
@@ -3565,6 +3574,7 @@
     .name-row .attendee-link {
         padding-block: var(--space-1);
         padding-inline: var(--space-2);
+        margin-block: calc(-1 * var(--space-1));
         margin-inline: calc(-1 * var(--space-2));
         min-width: 2.75rem;
         display: inline-block;
