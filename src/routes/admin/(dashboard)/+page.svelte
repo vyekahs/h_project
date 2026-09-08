@@ -651,7 +651,7 @@
         image_url: string | null;
         min_players: number;
         max_players: number;
-        participants: { id: number; name: string }[];
+        participants: { id: number; name: string; is_guest?: boolean }[];
         players: { id: number; name: string }[];
         scheduled_at: string;
     }
@@ -1432,43 +1432,44 @@
                             <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1"/><circle cx="15.5" cy="15.5" r="1"/><circle cx="15.5" cy="8.5" r="1"/><circle cx="8.5" cy="15.5" r="1"/></svg>
                         </div>
                     {/if}
-                    <span class="list-name">{game.game_name}</span>
-                    <span class="list-meta">{game.players.length}명</span>
-                    <span class="list-meta time-remaining">{getTimeRemaining(game.end_time, now)}</span>
+                    <span class="list-name" title={game.game_name}>{game.game_name}</span>
+                    <span class="list-metas">
+                        <span class="list-meta">{game.players.length}명</span>
+                        <span class="list-meta time-remaining">{getTimeRemaining(game.end_time, now)}</span>
+                    </span>
                     <span class="list-arrow" aria-hidden="true">›</span>
                 </button>
-                {#if expired}
-                    <!--
-                        시간이 지나도 게임은 playing으로 남는다 — autoClose는 마감 때만 닫는다.
-                        승자 기록은 선택이므로 여기서 한 번에 닫을 수 있어야 한다.
-                        승자를 남기려면 행을 눌러 종료 모달로 간다.
-                    -->
-                    <!--
-                        이 행에서 유일하게 확인창 없이 서버를 바꾸던 버튼이다.
-                        그리고 같은 행의 나머지 90%는 상세 시트를 여는 탭 타깃이라,
-                        시끄러운 방에서 한 손으로 누르면 열려던 것이 끝나 있었다.
-                        되돌리기가 있지만 그건 마지막 방어선이고, 이 콘솔의 다른
-                        파괴적 동작은 전부 확인을 거친다.
-                        잦은 경우(여러 판이 한꺼번에 만료)는 위의 일괄 종료가 받는다.
-                    -->
-                    <form method="POST" action="?/endGame" class="row-end-form" use:enhance={confirmSubmit({
-                        title: '게임 종료',
-                        message: () =>
-                            `${game.game_name}을(를) 종료합니다. 참여자 ${game.players.length}명의 세션이 닫히고 승자는 기록되지 않습니다.`,
-                        confirmLabel: '종료',
-                        severity: 'destructive',
-                        handle: async ({ result, update }: any) => {
-                            if (!reportResult(result)) {
-                                const d = (result?.data as any) ?? {};
-                                toastUndoable(`${d.endedName ?? game.game_name} 종료됨 · 승자는 기록하지 않았습니다`, d.undo);
-                            }
-                            await update();
+                <!--
+                    시간이 지나도 게임은 playing으로 남는다 — autoClose는 마감 때만 닫는다.
+                    만료된 판에만 이 버튼을 냈더니, 예정보다 일찍 끝난 판은 행에서
+                    닫을 수 없어 시트를 열어야 했다. 판이 언제 끝나는지는 시계가
+                    아니라 사람이 정한다. 승자를 남기려면 행을 눌러 종료 모달로 간다.
+                -->
+                <!--
+                    이 행에서 유일하게 확인창 없이 서버를 바꾸던 버튼이다.
+                    그리고 같은 행의 나머지 90%는 상세 시트를 여는 탭 타깃이라,
+                    시끄러운 방에서 한 손으로 누르면 열려던 것이 끝나 있었다.
+                    되돌리기가 있지만 그건 마지막 방어선이고, 이 콘솔의 다른
+                    파괴적 동작은 전부 확인을 거친다.
+                    잦은 경우(여러 판이 한꺼번에 만료)는 위의 일괄 종료가 받는다.
+                -->
+                <form method="POST" action="?/endGame" class="row-end-form" use:enhance={confirmSubmit({
+                    title: '게임 종료',
+                    message: () =>
+                        `${game.game_name}을(를) 종료합니다. 참여자 ${game.players.length}명의 세션이 닫히고 승자는 기록되지 않습니다.`,
+                    confirmLabel: '종료',
+                    severity: 'destructive',
+                    handle: async ({ result, update }: any) => {
+                        if (!reportResult(result)) {
+                            const d = (result?.data as any) ?? {};
+                            toastUndoable(`${d.endedName ?? game.game_name} 종료됨 · 승자는 기록하지 않았습니다`, d.undo);
                         }
-                    })}>
-                        <input type="hidden" name="id" value={game.id} />
-                        <button type="submit" class="btn-row-end">게임 종료</button>
-                    </form>
-                {/if}
+                        await update();
+                    }
+                })}>
+                    <input type="hidden" name="id" value={game.id} />
+                    <button type="submit" class="btn-row-end">게임 종료</button>
+                </form>
                 {#if waiting.length > 0}
                     {@render pendingRows(waiting, game.game_name)}
                 {/if}
@@ -1506,7 +1507,7 @@
         {#each (showAllScheduled ? (scheduledGames || []) : (scheduledGames || []).slice(0, 5)) as game (game.id)}
             {@const g = game as GameSession}
             {@const waiting = pendingFor(g.id)}
-            <li class="game-row" class:has-pending={waiting.length > 0}>
+            <li class="game-row" class:has-pending={waiting.length > 0 || (g.participants || []).length > 0}>
                 <button type="button" class="game-list-item" onclick={() => { selectedScheduledGame = g; resetParticipantSearch(); }}>
                     {#if g.image_url}
                         <img src={g.image_url} alt={g.game_name} width="32" height="32" class="list-thumb" />
@@ -1515,11 +1516,27 @@
                             <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1"/><circle cx="15.5" cy="15.5" r="1"/><circle cx="15.5" cy="8.5" r="1"/><circle cx="8.5" cy="15.5" r="1"/></svg>
                         </div>
                     {/if}
-                    <span class="list-name">{g.game_name}</span>
-                    <span class="list-meta">{formatScheduledTime(g.scheduled_at)}</span>
-                    <span class="list-meta">{(g.participants || []).length}/{g.max_players}</span>
+                    <span class="list-name" title={g.game_name}>{g.game_name}</span>
+                    <span class="list-metas">
+                        <span class="list-meta">{formatScheduledTime(g.scheduled_at)}</span>
+                        <span class="list-meta">{(g.participants || []).length}/{g.max_players}</span>
+                    </span>
                     <span class="list-arrow" aria-hidden="true">›</span>
                 </button>
+                <!--
+                    누가 오기로 했는지가 「1/4」이라는 숫자 뒤에 숨어 있었다.
+                    예정 게임의 판단은 「자리가 남았나」와 「누가 오나」 둘인데,
+                    후자를 보려면 시트를 열어야 했다. 칩은 버튼 밖에 둔다 —
+                    행을 누르면 시트가 열리는데, 그 안에 또 다른 표적을 넣으면
+                    무엇을 누른 것인지 흐려진다.
+                -->
+                {#if (g.participants || []).length > 0}
+                    <ul class="scheduled-players">
+                        {#each g.participants as p (p.id ?? p.name)}
+                            <li class="player-chip" class:is-guest={p.is_guest}>{p.name}{#if p.is_guest}<span class="chip-guest" aria-label="게스트">G</span>{/if}</li>
+                        {/each}
+                    </ul>
+                {/if}
                 {#if waiting.length > 0}
                     {@render pendingRows(waiting, g.game_name)}
                 {/if}
@@ -4432,9 +4449,48 @@
         white-space: nowrap;
         flex: 0 0 auto;
     }
-    /* 한 줄일 때 이름이 남는 폭을 갖고 메타는 오른쪽에 모인다 */
-    .list-name + .list-meta {
-        margin-left: auto;
+    /*
+        예정 게임의 참석자. 이름만 나열하면 「1/4」과 겹쳐 읽히므로 칩으로
+        묶어 목록임을 형태로 말한다. 게임 행과 같은 들여쓰기를 써서 어느
+        판에 붙은 것인지가 위치로 드러난다.
+    */
+    .scheduled-players {
+        grid-column: 1 / -1;
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--space-1);
+        list-style: none;
+        margin: var(--space-2) 0 0;
+        padding: var(--space-2) 0 0 var(--space-5);
+        border-top: 1px solid var(--border-light);
+    }
+    .player-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 2px;
+        padding: 0.15rem var(--space-2);
+        border-radius: var(--radius-pill);
+        background: var(--bg-hover);
+        color: var(--text-primary);
+        font-size: var(--text-xs);
+        white-space: nowrap;
+    }
+    .player-chip.is-guest {
+        background: var(--bg-secondary);
+        color: var(--text-secondary);
+    }
+    .chip-guest {
+        font-size: 0.625rem;
+        font-weight: 700;
+        color: var(--text-muted);
+    }
+    /* 인원과 시간은 한 덩어리로 왼쪽에 붙는다 */
+    .list-metas {
+        display: flex;
+        align-items: baseline;
+        justify-content: flex-start;
+        gap: var(--space-3);
+        min-width: 0;
     }
     /* 20px bold라 큰 글씨 기준 3:1이 적용되고, 방향 지시자라 1.4.11로도 3:1이다.
        --text-muted(#999)로는 흰 배경 2.85 · 만료 행 hover 위 2.46이었다. */
@@ -4497,18 +4553,38 @@
     .attendee-info .attendee-meta {
         justify-content: flex-start;
     }
+    /*
+        두 줄일 때는 그리드다. 전에는 wrap + 「이름 100%」로 접었는데, 그러면
+        섬네일이 이름에 밀려 메타와 같은 줄로 내려가 자리가 어긋난다. 그래서
+        좁은 화면에서는 섬네일을 아예 숨기고 있었다 — 조명이 나쁜 방에서 판을
+        가장 빨리 알아보는 단서를 폰에서만 빼고 있었던 셈이다.
+        섬네일이 두 줄을 세로로 가로지르고, 이름과 메타가 그 오른쪽에 쌓인다.
+    */
     .game-list-item {
-        flex-wrap: wrap;
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr) auto;
+        grid-template-areas:
+            'thumb name arrow'
+            'thumb metas arrow';
+        column-gap: var(--space-3);
         row-gap: 2px;
     }
-    .game-list-item .list-name {
-        flex: 1 0 100%;
-        order: -1;
-        white-space: normal;
-        overflow: visible;
-    }
     .game-list-item .list-thumb {
-        display: none;
+        grid-area: thumb;
+    }
+    /* 이름이 접히면 행 높이가 이름 길이를 따라간다 — 목록이 다시 들쭉날쭉해진다.
+       판은 섬네일·인원·시간이 함께 특정하므로 앞 몇 글자면 충분하다. 전체는 title에. */
+    .game-list-item .list-name {
+        grid-area: name;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .game-list-item .list-metas {
+        grid-area: metas;
+    }
+    .game-list-item .list-arrow {
+        grid-area: arrow;
     }
     @media (min-width: 1100px) {
         .attendee-info {
@@ -4524,17 +4600,23 @@
             justify-content: flex-end;
         }
         .game-list-item {
+            display: flex;
             flex-wrap: nowrap;
+            align-items: center;
+            gap: var(--space-3);
         }
         .game-list-item .list-name {
             flex: 0 1 auto;
-            order: 0;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
         }
-        .game-list-item .list-thumb {
-            display: flex;
+        .game-list-item .list-metas {
+            flex: 0 0 auto;
+        }
+        /* 인원·시간은 이름 바로 뒤에 붙고, 화살표만 오른쪽 끝으로 간다 */
+        .game-list-item .list-arrow {
+            margin-left: auto;
         }
     }
     @container room-card (max-width: 560px) {
