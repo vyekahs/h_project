@@ -52,6 +52,13 @@ export const POST: RequestHandler = async ({ request, locals, cookies }) => {
                     .filter((r: any) => {
                         const cond = r.condition_value;
                         if (!cond) return false;
+                        // 다른 화면에서 알리기로 한 칭호는 여기서 뺀다.
+                        // '오락실 마스터'는 특정 게임에 속하지 않아 어느 게임의 결과창에
+                        // 띄워도 어색하므로 오락실 페이지 진입 시에 알린다
+                        // (src/routes/minigames/+page.server.ts).
+                        // 이 필터가 없으면 gameId가 없고 rank가 있다는 이유로 아래 조건을
+                        // 그대로 통과해 결과창에 뜬다.
+                        if (cond.announceOn && cond.announceOn !== 'game') return false;
                         // Exclude non-game titles (account_age, gift_count, etc.)
                         if (!cond.gameId && !cond.rank && cond.type !== 'total_points' && cond.type !== 'play_count') return false;
                         // Exclude titles for a different game

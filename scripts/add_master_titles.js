@@ -16,7 +16,14 @@ async function main() {
                 ('water_sort_master', '워터소트 마스터', '워터소트 월간 랭킹 1위', 'ranking', '{"gameId": "water-sort", "rank": 1}'),
                 ('block_blaster_master', '블럭마스터', '블럭블라스터 월간 랭킹 1위', 'ranking', '{"gameId": "block-blaster", "rank": 1}'),
                 ('freecell_master', '프리셀 마스터', '프리셀 월간 랭킹 1위', 'ranking', '{"gameId": "freecell", "rank": 1}'),
-                ('2048_master', '2048 마스터', '2048 월간 랭킹 1위', 'ranking', '{"gameId": "2048", "rank": 1}')
+                ('2048_master', '2048 마스터', '2048 월간 랭킹 1위', 'ranking', '{"gameId": "2048", "rank": 1}'),
+                -- 게임별 마스터 위에 얹히는 칭호. 개별 게임이 아니라 '월간 1위를 몇 개
+                -- 가졌는가'로 겨루고, 동점이면 현재 보유자가 지킨다(titleService 참고).
+                --
+                -- excludeGames는 '오락실 화면에 노출하지 않는 게임'이다. 그리드에서 내린
+                -- 게임의 1위로 칭호를 다투면, 다른 사람은 그 게임을 열 수조차 없어
+                -- 뺏을 방법이 없다. 매치크래쉬는 아직 출시 전이라 기록 자체가 없어 뺐다.
+                ('arcade_master', '오락실 마스터', '오락실 게임 월간 1위를 가장 많이 보유 (최소 2개)', 'ranking', '{"type": "arcade_master", "rank": 1, "min_count": 2, "excludeGames": ["unblock-me", "regicide"], "announceOn": "arcade"}')
             ON CONFLICT (title_code) DO NOTHING;
         `);
         console.log('Done!');

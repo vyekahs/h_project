@@ -63,8 +63,22 @@ const queries = [
         user_id         INTEGER NOT NULL REFERENCES attendees(id) ON DELETE CASCADE,
         title_id        BIGINT NOT NULL REFERENCES minigame_titles(id),
         acquired_at     TIMESTAMP DEFAULT NOW(),
+        announced_at    TIMESTAMPTZ,
         is_displayed    BOOLEAN DEFAULT TRUE
     );`,
+
+    // 획득을 아직 사용자에게 알리지 않았으면 announced_at이 NULL이다.
+    // 대부분의 칭호는 게임 결과창에서 바로 알리지만, '오락실 마스터'처럼 특정
+    // 게임에 속하지 않는 칭호는 어느 게임의 결과창에 띄워도 어색해서 오락실
+    // 페이지 진입 시에 알린다. 그때 "이미 알렸는지"를 남겨두지 않으면 페이지에
+    // 올 때마다 반복해서 뜬다.
+    //
+    // 기존 행 백필은 컬럼을 '방금 추가한 경우에만' 한다. 매번 돌리면 칭호를 딴 뒤
+    // 오락실에 들르기 전에 컨테이너가 재시작됐을 때 알림이 조용히 사라진다.
+    `DO $$ BEGIN
+        ALTER TABLE minigame_user_titles ADD COLUMN announced_at TIMESTAMPTZ;
+        UPDATE minigame_user_titles SET announced_at = COALESCE(acquired_at, NOW());
+     EXCEPTION WHEN duplicate_column THEN null; END $$;`,
     `DO $$ BEGIN
         ALTER TABLE minigame_user_titles DROP CONSTRAINT IF EXISTS fk_user_titles_attendees;
         ALTER TABLE minigame_user_titles ADD CONSTRAINT fk_user_titles_attendees FOREIGN KEY (user_id) REFERENCES attendees(id) ON DELETE CASCADE;

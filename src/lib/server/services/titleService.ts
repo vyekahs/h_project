@@ -184,6 +184,57 @@ export const TitleService = {
                             qualified = false;
                         }
                     }
+                    else if (cond.type === 'arcade_master') {
+                        // 오락실 게임 중 월간 1위를 몇 개 가졌는지로 겨룬다.
+                        //
+                        // 동점을 순위로만 판정하면(RANK() <= 1) 동점자가 모두 자격을 얻는데,
+                        // 이 칭호는 보유자가 한 명뿐이라(unique_user_title_holder) 누가 기록을
+                        // 낼 때마다 서로 뺏는 핑퐁이 된다. 실제로 이번 달에도 1위 2개로 세 명이
+                        // 동점이다. 그래서 '엄격히 더 많을 때만' 새로 가져가고, 동점이면 현재
+                        // 보유자가 그대로 지킨다(왕좌 방어). 새로 오르려면 확실히 앞서야 한다.
+                        // 집계에서 뺄 게임은 조건값(excludeGames)에 둔다. 코드에 박아두면
+                        // 대상이 바뀔 때마다 배포해야 한다.
+                        const excludeGames: string[] = Array.isArray(cond.excludeGames)
+                            ? cond.excludeGames.filter((g: unknown) => typeof g === 'string')
+                            : [];
+                        const excludeClause =
+                            excludeGames.length > 0
+                                ? sql`AND game_id NOT IN (${sql.join(
+                                      excludeGames.map((g) => sql`${g}`),
+                                      sql`, `
+                                  )})`
+                                : sql``;
+
+                        const res = await db.execute(sql`
+                            WITH firsts AS (
+                                SELECT user_id, count(*)::int AS cnt
+                                FROM (
+                                    SELECT user_id,
+                                           RANK() OVER (PARTITION BY game_id ORDER BY total_score DESC) AS rnk
+                                    FROM minigame_monthly_rankings
+                                    WHERE month_key = ${monthKey}
+                                    ${excludeClause}
+                                ) r
+                                WHERE rnk = 1
+                                GROUP BY user_id
+                            )
+                            SELECT
+                                COALESCE((SELECT cnt FROM firsts WHERE user_id = ${userId}), 0) AS my_count,
+                                COALESCE((SELECT max(cnt) FROM firsts WHERE user_id <> ${userId}), 0) AS best_other
+                        `);
+
+                        const row = (res as any[])[0] ?? {};
+                        const myCount = parseInt(String(row.my_count ?? 0));
+                        const bestOther = parseInt(String(row.best_other ?? 0));
+                        // 1위 하나만으로 '오락실 마스터'가 되면 이름값을 못 한다.
+                        // 참여자가 적은 달에 아무나 가져가는 것도 막는다.
+                        const minCount = cond.min_count || 1;
+
+                        qualified =
+                            myCount >= minCount &&
+                            (myCount > bestOther ||
+                                (myCount === bestOther && ownedTitleIds.has(title.id)));
+                    }
                     else if (cond.type === 'total_points' || title.titleCode === 'rich_person' || title.titleCode === 'high_scorer' || title.titleCode === 'puzzle_god') {
                         const targetRank = cond.rank || (title.titleCode === 'high_scorer' ? 5 : 1);
                         qualified = myPointRank <= targetRank;
@@ -201,7 +252,11 @@ export const TitleService = {
 
             if (qualified) {
                 const cond: any = title.conditionValue;
-                const isMasterTitle = cond.gameId && !cond.difficulty && cond.rank === 1;
+                // 보유자가 한 명뿐인 칭호. 자격을 얻으면 기존 보유자에게서 회수한다.
+                // (게임별 월간 1위 칭호 + 오락실 마스터)
+                const isMasterTitle =
+                    (cond.gameId && !cond.difficulty && cond.rank === 1) ||
+                    cond.type === 'arcade_master';
 
                 if (isMasterTitle) {
                     try {
