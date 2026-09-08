@@ -464,15 +464,15 @@
             border: 0;
         }
     }
+    /*
+        두 버튼을 헤더의 양 끝으로 민다. 고정 간격(32px)일 때는 둘이 오른쪽에
+        모여 한 덩어리로 읽혔다 — 나가는 링크와 하루를 닫는 버튼은 결과가
+        정반대인데. display:contents로 래퍼를 지우면 둘이 .header의 직접
+        자식이 되어, 이미 space-between인 그 컨테이너가 제목·메인으로·마감을
+        고르게 벌린다.
+    */
     .header-actions {
-        display: flex;
-        align-items: center;
-        /*
-            「메인으로」가 테두리를 버린 뒤로 둘 사이가 더 좁아 보였다 —
-            고스트 버튼은 자기 패딩이 여백으로 읽히지 않는다. 나가는 링크와
-            하루를 닫는 버튼 사이는 오조작을 막을 만큼 떨어져 있어야 한다.
-        */
-        gap: var(--space-6);
+        display: contents;
     }
     /*
         「메인으로」와 「마감 하기」가 픽셀 단위로 같은 버튼이었고 16px 떨어져
@@ -607,9 +607,14 @@
            탭 타깃(200px)으로 만들었다 — 옆의 「메인으로」(127px)보다 크다.
            하루 한 번 쓰는 파괴적 동작이 헤더에서 가장 누르기 쉬우면 안 된다.
            내용 크기로 두면 높이는 46px 그대로라 손가락에는 충분하다. */
+        /* 폰에서는 헤더가 세로로 접히므로 래퍼가 다시 필요하다 */
         .header-actions {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
             width: 100%;
             flex-wrap: wrap;
+            gap: var(--space-3);
         }
 
         /* Show Bottom Nav */
