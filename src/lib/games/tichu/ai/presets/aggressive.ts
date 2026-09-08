@@ -26,46 +26,16 @@ export const aggressiveBehavior: PresetBehavior = {
 		return selectBestPartnerCard(hand, singletons, rankGroups, protectedIds);
 	},
 
-	scoreLeadCandidate(combo, hand, context) {
-		// 큰 콤보 우선 (빨리 패 줄이기)
-		let score = 0;
+	// scoreLeadCandidate 오버라이드는 제거했다.
+	//
+	// "멀티카드 콤보 크기에 큰 보너스(cards.length * 8) + 싱글 후순위"였는데,
+	// 큰 조합을 먼저 털게 만들어 강한 자산을 이른 트릭에 낭비했다.
+	// 기본 리드 로직은 나가기 효율(exitRate)과 승률을 함께 보고 고르는데
+	// 이 훅이 그걸 덮어썼다.
+	// (절제 실험: 팀 A=공격적 / 팀 B=밸런스 고정, 1230라운드 —
+	//  훅 켬 팀 점수차 +13.8 → 훅 끔 +33.2, 약 5.7σ)
+	// "빠르게 나간다"는 성격은 aggressiveness·tichoPropensity 가중치가 표현한다.
 
-		// 멀티카드 콤보: 크기에 큰 보너스
-		score += combo.cards.length * 8;
-
-		// 폭탄은 보존 (공격적이어도 폭탄은 아껴둠)
-		if (isBomb(combo)) {
-			score -= 30;
-		}
-
-		// 싱글은 우선순위 낮음 (큰 콤보를 먼저 내고 싶음)
-		if (combo.type === 'single') {
-			const card = combo.cards[0];
-			if (card.type === 'special' && card.special === 'mahjong') {
-				score += 20; // 마작은 선 잡기용
-			} else if (card.type === 'special' && card.special === 'dragon') {
-				score -= 10; // 드래곤은 나중에
-			} else {
-				score -= 5; // 일반 싱글은 후순위
-				score -= combo.rank; // 낮은 싱글부터 (A는 나중에)
-			}
-		} else {
-			// 멀티카드 콤보는 랭크 높아도 OK (빨리 처리)
-			score += combo.rank * 0.5;
-		}
-
-		// 스트레이트/계단: 많은 카드를 한 번에 내므로 보너스
-		if (combo.type === 'straight' || combo.type === 'stairs') {
-			score += combo.cards.length * 3;
-		}
-
-		// 풀하우스: 5장 한 번에
-		if (combo.type === 'full_house') {
-			score += 12;
-		}
-
-		return score;
-	},
 
 	scoreFollowCandidate(play, hand, context, trickPoints, opponentWinning) {
 		// 적극적으로 뺏음
