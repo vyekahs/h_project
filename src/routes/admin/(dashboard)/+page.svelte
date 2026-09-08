@@ -1098,6 +1098,50 @@
 {/snippet}
 
 <div class="room-columns">
+<!--
+    두 열을 실제 컨테이너로 만든다. 전에는 명단이 모든 행을 span해서 왼쪽 열이
+    독립적으로 흐를 수 있었는데, 오른쪽에 두 섹션이 서면 그 트릭이 깨진다 —
+    그리드 행은 열을 가로질러 정렬되므로 「오늘 갈 예정」(211px) 아래에
+    게임 카드 높이만큼 빈 땅이 생긴다. 열마다 자기 흐름을 준다.
+
+    DOM 순서는 사람 열 → 판 열이고, 각 열 안은 오늘 갈 예정 → 명단 /
+    게임 → 시작 예정이다. 폰에서 한 열로 접히면 그대로 쌓인다.
+    넓은 화면에서는 판 열이 왼쪽, 사람 열이 오른쪽으로 간다.
+-->
+<div class="room-col room-col-people">
+<section class="visit-plan-section room-col-visit" aria-labelledby="sec-visitplan">
+    <h2 id="sec-visitplan">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        오늘 갈 예정 ({mergedVisitPlans.length})
+    </h2>
+    <!--
+        비어 있어도 남는다. 이 섹션의 일은 "오늘 누가 오나"에 답하는 것이고,
+        "아직 아무도 없다"는 답이지 없음이 아니다. 조건부로 숨기면 운영자는
+        답을 못 본 것인지 답이 없는 것인지 구별할 수 없다.
+    -->
+    {#if mergedVisitPlans.length === 0}
+        <p class="empty-state">아직 온다고 한 사람이 없습니다. 회원이 「나도 갈래요」를 누르거나 예정 게임에 예약하면 여기에 뜹니다.</p>
+    {:else}
+    <div class="visit-plan-grid">
+        {#each mergedVisitPlans as plan}
+            <div class="visit-plan-chip">
+                <span class="vp-name">{plan.name}</span>
+                {#if (plan as any).is_party}
+                    <span class="vp-party">팟</span>
+                {/if}
+                <span class="vp-time">
+                    {#if plan.planned_time}
+                        {formatVisitTime(plan.planned_time)}~
+                    {:else}
+                        상황봐서
+                    {/if}
+                </span>
+            </div>
+        {/each}
+    </div>
+    {/if}
+</section>
+
 <section class="section-primary room-col-roster" aria-labelledby="sec-attendees">
     <!-- 「대기 중 n」은 스트립이 헤드라인으로 들고, 이 섹션 안에서는 바로 아래
          그룹 라벨이 같은 말을 한다. 제목에서까지 세면 한 화면에 세 번이 된다. -->
@@ -1255,7 +1299,9 @@
         </div>
     {/if}
 </section>
+</div>
 
+<div class="room-col room-col-tables">
 <section class="section-primary room-col-games" aria-labelledby="sec-playing">
     <div class="section-header">
         <!-- 「정리 대기 n」은 스트립이 헤드라인으로 든다. 여기서 또 세면 같은 숫자가
@@ -1426,39 +1472,7 @@
         </button>
     {/if}
 </section>
-
-<section class="visit-plan-section room-col-visit" aria-labelledby="sec-visitplan">
-    <h2 id="sec-visitplan">
-        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-        오늘 갈 예정 ({mergedVisitPlans.length})
-    </h2>
-    <!--
-        비어 있어도 남는다. 이 섹션의 일은 "오늘 누가 오나"에 답하는 것이고,
-        "아직 아무도 없다"는 답이지 없음이 아니다. 조건부로 숨기면 운영자는
-        답을 못 본 것인지 답이 없는 것인지 구별할 수 없다.
-    -->
-    {#if mergedVisitPlans.length === 0}
-        <p class="empty-state">아직 온다고 한 사람이 없습니다. 회원이 「나도 갈래요」를 누르거나 예정 게임에 예약하면 여기에 뜹니다.</p>
-    {:else}
-    <div class="visit-plan-grid">
-        {#each mergedVisitPlans as plan}
-            <div class="visit-plan-chip">
-                <span class="vp-name">{plan.name}</span>
-                {#if (plan as any).is_party}
-                    <span class="vp-party">팟</span>
-                {/if}
-                <span class="vp-time">
-                    {#if plan.planned_time}
-                        {formatVisitTime(plan.planned_time)}~
-                    {:else}
-                        상황봐서
-                    {/if}
-                </span>
-            </div>
-        {/each}
-    </div>
-    {/if}
-</section>
+</div>
 </div>
 
 
@@ -2349,10 +2363,8 @@
     /*
         게임 목록을 담은 카드는 자기 폭을 질의할 수 있어야 한다 — 아래
         @container room-card 규칙이 좁을 때 이름에 온전한 한 줄을 내준다.
-        예정 게임 섹션은 2열 밖에 있어 이 선언이 없었고, 그래서 375px에서
-        긴 이름이 형제 메타(시각·정원)에 폭을 뺏겨 홀로 잘렸다.
     */
-    .room-columns > section {
+    .room-col > section {
         container: room-card / inline-size;
     }
     .room-columns {
@@ -2362,49 +2374,43 @@
         grid-template-columns: minmax(0, 1fr);
         gap: var(--space-5);
     }
+    /*
+        열은 자기 흐름을 갖는다. 그리드 행은 열을 가로질러 정렬되므로, 한 열에
+        두 섹션을 놓으면 짧은 쪽 아래에 다른 열의 카드 높이만큼 빈 땅이 생긴다.
+        전에는 명단이 모든 행을 span해서 그걸 피했는데, 오른쪽에 두 섹션이
+        서면 그 트릭을 쓸 수 없다.
+    */
+    .room-col {
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-5);
+        min-width: 0;
+    }
+    .room-col > section {
+        margin-bottom: 0;
+    }
     /* 두 번째 조건은 가로로 든 폰·짧은 창이다 — 거기서 희소한 자원은 세로이고,
        나란히 놓아야 게임과 사람이 한 화면에 들어온다. */
     @media (min-width: 1100px), (min-width: 820px) and (max-height: 560px) {
         .room-columns {
-            /*
-                게임 카드 하나와 801px짜리 명단을 1:1로 짝지으면 왼쪽 열 아래가
-                빈 땅으로 남는다. 왼쪽에 세 칸(게임 · 시작 예정 · 오늘 갈 예정)을
-                쌓고 오른쪽 명단이 그 높이를 함께 쓴다. 명단이 이름·배지·메타를
-                한 줄에 담아야 하므로 오른쪽에 1.1을 준다.
-            */
+            /* 명단이 이름·배지·메타를 한 줄에 담아야 하므로 사람 열에 1.1을 준다. */
             grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
-            /* 행을 명시해야 아래 grid-row의 -1이 가리킬 줄이 생긴다.
-               암묵 행만 있으면 -1이 첫 줄로 접혀 span이 사라진다. */
-            grid-template-rows: auto auto auto;
             align-items: start;
         }
-        .room-columns > section {
-            margin-bottom: 0;
-        }
         /*
-            DOM 순서는 명단 → 게임 → 시작 예정 → 오늘 갈 예정이다. 폰에서 한 열로
-            쌓일 때 방에 서 있는 운영자가 먼저 봐야 하는 것은 판이 아니라 사람이다 —
-            테이블은 눈으로 보이지만 페널티·블랙·대기 여부는 화면에만 있다.
-            그 전에는 게임 카드 539px가 첫 화면을 다 써서 접힌 선 위에 사람이
-            한 명도 없었다.
-            넓은 화면의 열 배치는 DOM과 다르므로 넷 다 명시한다 — 왼쪽은 시간 축
-            (지금 도는 판 → 곧 시작할 판 → 오늘 올 사람), 오른쪽은 지금 방.
+            DOM 순서는 사람 열(오늘 갈 예정 → 명단) → 판 열(게임 → 시작 예정)이다.
+            폰에서 한 열로 쌓일 때 방에 서 있는 운영자가 먼저 봐야 하는 것은 판이
+            아니라 사람이기 때문이다 — 테이블은 눈으로 보이지만 페널티·블랙·대기
+            여부는 화면에만 있다.
+            넓은 화면에서는 판 열이 왼쪽, 사람 열이 오른쪽으로 간다.
         */
-        .room-col-games {
+        .room-col-tables {
             grid-column: 1;
             grid-row: 1;
         }
-        .room-col-scheduled {
-            grid-column: 1;
-            grid-row: 2;
-        }
-        .room-col-visit {
-            grid-column: 1;
-            grid-row: 3;
-        }
-        .room-col-roster {
+        .room-col-people {
             grid-column: 2;
-            grid-row: 1 / -1;
+            grid-row: 1;
         }
     }
     .rs-stat {
