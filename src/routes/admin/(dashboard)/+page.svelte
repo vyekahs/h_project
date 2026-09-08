@@ -768,6 +768,33 @@
     const settlingAttendees = $derived((attendees || []).filter((a: Attendee) => isSettling(a)));
     const busyAttendees = $derived((attendees || []).filter((a: Attendee) => a.is_playing && !isSettling(a)));
     /* 판을 짤 수 있는 사람 = 대기 중 + 정리 대기. 후자는 손에 카드가 없다. */
+    /*
+        명단은 방이 붐비면 그대로 길어진다 — 20명이면 카드 하나가 900px이고,
+        그 아래 「인원 추가」와 범례까지 스크롤로 밀린다. 게임 목록이 이미 쓰는
+        「+n개 더보기」와 같은 규칙을 쓴다.
+
+        7명은 그룹을 가로질러 센다. 대기 중이 먼저 차고, 남으면 정리 대기,
+        그다음 게임 중이다 — 판을 짤 수 있는 사람이 먼저 보여야 한다.
+        그룹 제목의 숫자는 접힌 상태에서도 전체를 말한다.
+    */
+    const ROSTER_CAP = 7;
+    let showAllAttendees = $state(false);
+    const rosterView = $derived.by(() => {
+        if (showAllAttendees) {
+            return { free: freeAttendees, settling: settlingAttendees, busy: busyAttendees, hidden: 0 };
+        }
+        let left = ROSTER_CAP;
+        const take = (arr: Attendee[]) => {
+            const t = arr.slice(0, Math.max(0, left));
+            left -= t.length;
+            return t;
+        };
+        const free = take(freeAttendees);
+        const settling = take(settlingAttendees);
+        const busy = take(busyAttendees);
+        return { free, settling, busy, hidden: attendeeCount - (free.length + settling.length + busy.length) };
+    });
+
     const seatableAttendees = $derived((attendees || []).filter((a: Attendee) => !a.is_playing || isSettling(a)));
 
     // 종료 임박 순 정렬 — "진행 중인 게임" 목록에서 끝나가는 게임을 위로
@@ -1200,6 +1227,9 @@
                     기존 선택 모달로 간다.
                 -->
                 <div class="attendee-actions">
+                    <button type="button" class="btn-manage" onclick={() => openManage(a)}>
+                        관리<span class="sr-only"> — {a.name}</span>
+                    </button>
                     {#if a.is_playing}
                         <button type="button" class="btn-row-exit" onclick={() => handleRemove(a)}>
                             퇴장<span class="sr-only"> — {a.name} · 게임 중</span>
@@ -1220,9 +1250,6 @@
                             </button>
                         </form>
                     {/if}
-                    <button type="button" class="btn-manage" onclick={() => openManage(a)}>
-                        관리<span class="sr-only"> — {a.name}</span>
-                    </button>
                 </div>
             </li>
     {/snippet}
@@ -1233,7 +1260,7 @@
         <!-- 판을 짤 수 있는 사람이 먼저 온다 -->
         <p class="roster-group-label">대기 중 {freeAttendees.length}</p>
         <ul class="attendee-list">
-            {#each freeAttendees as a (a.id)}{@render attendeeRow(a as Attendee)}{/each}
+            {#each rosterView.free as a (a.id)}{@render attendeeRow(a as Attendee)}{/each}
             {#if freeAttendees.length === 0}
                 <!-- 정리 대기가 따로 서게 된 뒤로 「모두 게임 중」은 참이 아닐 수 있다.
                      그 사람들은 앉힐 수 있으므로, 빈 상태가 그 사실을 가리켜야 한다. -->
@@ -1249,17 +1276,22 @@
             비어 있다 — 스트립의 「정리 대기 n판」이 가리키는 테이블에 앉아 있던
             바로 그 사람들이고, 새 게임에도 앉힐 수 있다.
         -->
-        {#if settlingAttendees.length > 0}
+        {#if rosterView.settling.length > 0}
             <p class="roster-group-label">정리 대기 {settlingAttendees.length}</p>
             <ul class="attendee-list">
-                {#each settlingAttendees as a (a.id)}{@render attendeeRow(a as Attendee)}{/each}
+                {#each rosterView.settling as a (a.id)}{@render attendeeRow(a as Attendee)}{/each}
             </ul>
         {/if}
-        {#if busyAttendees.length > 0}
+        {#if rosterView.busy.length > 0}
             <p class="roster-group-label">게임 중 {busyAttendees.length}</p>
             <ul class="attendee-list">
-                {#each busyAttendees as a (a.id)}{@render attendeeRow(a as Attendee)}{/each}
+                {#each rosterView.busy as a (a.id)}{@render attendeeRow(a as Attendee)}{/each}
             </ul>
+        {/if}
+        {#if rosterView.hidden > 0 || showAllAttendees}
+            <button class="show-more-btn" onclick={() => showAllAttendees = !showAllAttendees}>
+                {showAllAttendees ? '접기' : `+${rosterView.hidden}명 더보기`}
+            </button>
         {/if}
         <!--
             느낌표와 이름 배경은 규칙을 알아야 읽힌다. 목록 아래에 두어 배우는
@@ -2698,14 +2730,46 @@
     .attendee-list li:last-child {
         border-bottom: none;
     }
-    /* 한 사람이 한 줄. 좁아지면 자연스럽게 접히되 기본은 한 줄이다. */
+    /*
+        한 사람이 한 줄. 접히게 두었더니 「글룸헤이븐 죽음의 아가리 확장판」 같은
+        이름에서 폰의 행이 57 → 74px로 자랐다 — 한 줄로 보자는 목적이 정작 세로가
+        희소한 기기에서 깨졌다. 줄바꿈을 막고, 줄어들 몫을 게임 이름이 지게 한다.
+
+        어느 판인지는 「글룸헤이븐 죽음…」으로도 알 수 있다. 방에 도는 판이
+        한 손에 꼽히므로 앞 몇 글자면 테이블이 특정된다. 전체 이름은 title에 있다.
+    */
     .attendee-info {
         display: flex;
-        flex-wrap: wrap;
+        flex-wrap: nowrap;
         align-items: baseline;
-        gap: var(--space-1) var(--space-2);
+        gap: var(--space-2);
         min-width: 0;
         flex: 1 1 auto;
+    }
+    /* 사람 이름은 마지막에 줄어든다 — 행의 주어다 */
+    .attendee-info .attendee-link {
+        flex: 0 1 auto;
+        min-width: 3rem;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    /*
+        게임 이름이 남는 폭을 갖고, 모자라면 먼저 줄어든다. 다만 바닥이 있다 —
+        min-width가 0이면 320px에서 폭이 0이 되어 어느 판인지가 화면에서
+        아예 사라졌다. 다섯 글자쯤은 남겨야 테이블이 특정된다.
+    */
+    .attendee-info .seat-game {
+        flex: 1 1 auto;
+        min-width: 4.5rem;
+        max-width: none;
+        color: var(--text-primary);
+    }
+    .attendee-info .penalty-marks,
+    .attendee-info .badge,
+    .attendee-info .seat-time,
+    .attendee-info .arrival-time {
+        flex: 0 0 auto;
     }
     /* 메타 래퍼가 사라지고 자식들이 행에 직접 선다 */
     .attendee-info .arrival-time,
@@ -3657,9 +3721,15 @@
         것(블랙 등록)에만 예약돼 있다. 관리와 붙지 않게 간격을 두어, 시트를
         열려다 사람을 내보내는 일이 없게 한다.
     */
+    /*
+        명단은 행이 많다. 44px 표적 둘이 한 행의 높이를 정하고 있었고, 7명이면
+        그것만으로 350px이다. 36px으로 내린다 — WCAG 2.5.8의 최소(24x24)는
+        넉넉히 넘고, 이 두 버튼은 이름·상태와 함께 넓은 여백 안에 서 있다.
+        방 밖의 컨트롤(모달·헤더·토스트)은 44를 그대로 지킨다.
+    */
     .btn-row-exit {
-        min-height: 44px;
-        padding: 0 var(--space-3);
+        min-height: 36px;
+        padding: 0 var(--space-2);
         background: var(--bg-primary);
         color: var(--color-red-dark);
         border: 1px solid var(--color-red-dark);
@@ -3673,11 +3743,11 @@
         background: var(--color-error-bg);
     }
     .btn-manage {
-        min-height: 44px;
+        min-height: 36px;
         background: var(--bg-primary);
         color: var(--text-primary);
         border: 1px solid var(--border-control);
-        padding: 0.3rem 0.7rem;
+        padding: 0 var(--space-2);
         border-radius: var(--radius-control);
         font-size: var(--text-xs);
         cursor: pointer;
@@ -3784,8 +3854,13 @@
        한 파일에 .btn-* 21종이 흩어져 있었고 같은 모달 안에서 높이 정책이
        26 / 28 / 44px 세 가지로 갈렸다. 시각적 무게는 결과의 무게를 따라간다. */
     /* 모든 어드민 버튼/입력의 바닥.
-       폼 컨트롤은 폰트를 상속하지 않아 UA 기본 13.33px이 스케일 밖으로 새어나온다. */
-    button:not(.game-list-item):not(.kpi-card):not(.bottom-nav-item) {
+       폼 컨트롤은 폰트를 상속하지 않아 UA 기본 13.33px이 스케일 밖으로 새어나온다.
+
+       명단 행의 「관리」·「퇴장」은 예외다. 이 둘은 사람 수만큼 반복되므로
+       44px 둘이 행 높이를 정하고, 열 명이면 그것만으로 530px이다. 36px로
+       내린다 — WCAG 2.5.8의 최소(24x24)는 넉넉히 넘고, 두 버튼 사이에 12px,
+       바깥으로 넉넉한 여백이 있다. 반복되지 않는 컨트롤은 44를 지킨다. */
+    button:not(.game-list-item):not(.kpi-card):not(.bottom-nav-item):not(.btn-row-exit):not(.btn-manage) {
         min-height: 44px;
     }
     button,
@@ -4308,6 +4383,28 @@
         1280px 화면에서도 열이 471px이고, 만료 행은 「게임 종료」에 87px을 내주므로
         이름에 남는 자리가 폰과 비슷해진다.
     */
+    /*
+        좁은 카드에서는 한 줄을 고집하지 않는다. nowrap으로 버티면 이름과 게임
+        이름이 서로를 밀어 둘 다 못 읽게 된다. 입장 시각이 먼저 아랫줄로 내려가고,
+        행 높이는 버튼이 정하므로 대가가 거의 없다.
+
+        임계가 560이면 안 된다 — 명단 카드는 1280에서도 493px이라 항상 걸려서,
+        넓은 화면에서도 한 줄이 되지 않았다.
+
+        컨테이너 쿼리는 콘텐츠 상자를 재므로 카드 폭에서 좌우 패딩(48px)이
+        빠진다. 400은 카드 448px 언저리에 해당한다 — 데스크톱(493)은 한 줄로
+        남고, 가로 폰(413)과 세로 폰(343)은 접힌다.
+        접히는 대가는 작다. 행 높이를 버튼이 정하므로 45 → 55px(가로 폰),
+        58 → 58px(세로 폰)에 그치고, 대신 이름이 잘리지 않는다.
+    */
+    @container room-card (max-width: 400px) {
+        .attendee-info {
+            flex-wrap: wrap;
+        }
+        .attendee-info .arrival-time {
+            margin-left: 0;
+        }
+    }
     @container room-card (max-width: 560px) {
         /*
             가로로 든 폰은 폭이 844px이라 ≤768px 규칙에 안 걸리는데, 2열이라
@@ -4569,9 +4666,13 @@
         select {
             min-height: 44px;
         }
+        /* 명단 행 버튼을 넓은 화면에서는 36px로 내렸지만, 여기서는 아니다.
+           서서 한 손으로 쓰는 장면에서 표적을 깎으면 스크롤을 아끼려다
+           오탭을 산다. 폰의 세로는 「+n명 더보기」가 아낀다. */
         .chip-add,
         .toggle-header,
-        .btn-manage {
+        .btn-manage,
+        .btn-row-exit {
             min-height: 44px;
         }
         .attendee-list li {
