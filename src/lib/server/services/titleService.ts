@@ -192,6 +192,19 @@ export const TitleService = {
                         // 낼 때마다 서로 뺏는 핑퐁이 된다. 실제로 이번 달에도 1위 2개로 세 명이
                         // 동점이다. 그래서 '엄격히 더 많을 때만' 새로 가져가고, 동점이면 현재
                         // 보유자가 그대로 지킨다(왕좌 방어). 새로 오르려면 확실히 앞서야 한다.
+                        // 집계에서 뺄 게임은 조건값(excludeGames)에 둔다. 코드에 박아두면
+                        // 대상이 바뀔 때마다 배포해야 한다.
+                        const excludeGames: string[] = Array.isArray(cond.excludeGames)
+                            ? cond.excludeGames.filter((g: unknown) => typeof g === 'string')
+                            : [];
+                        const excludeClause =
+                            excludeGames.length > 0
+                                ? sql`AND game_id NOT IN (${sql.join(
+                                      excludeGames.map((g) => sql`${g}`),
+                                      sql`, `
+                                  )})`
+                                : sql``;
+
                         const res = await db.execute(sql`
                             WITH firsts AS (
                                 SELECT user_id, count(*)::int AS cnt
@@ -200,6 +213,7 @@ export const TitleService = {
                                            RANK() OVER (PARTITION BY game_id ORDER BY total_score DESC) AS rnk
                                     FROM minigame_monthly_rankings
                                     WHERE month_key = ${monthKey}
+                                    ${excludeClause}
                                 ) r
                                 WHERE rnk = 1
                                 GROUP BY user_id
