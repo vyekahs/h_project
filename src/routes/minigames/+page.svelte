@@ -121,7 +121,34 @@
     const filteredGames = $derived(
         selectedCategory === '전체' ? games : games.filter(g => g.category === selectedCategory)
     );
+
+    // 오락실 마스터처럼 특정 게임에 속하지 않는 칭호는 게임 결과창이 아니라 여기서 알린다.
+    // 서버가 이미 '알림 완료'로 표시하고 내려주므로(+page.server.ts) 새로고침해도
+    // 다시 뜨지 않는다. 닫기는 화면에서 치우는 것뿐이다.
+    let titleAnnouncement = $state(data.pendingTitle);
 </script>
+
+{#if titleAnnouncement}
+    <div
+        class="title-announce-backdrop"
+        role="button"
+        tabindex="0"
+        onclick={() => (titleAnnouncement = null)}
+        onkeydown={(e) => { if (e.key === 'Enter' || e.key === ' ' || e.key === 'Escape') titleAnnouncement = null; }}
+    >
+        <div class="title-announce-card">
+            <div class="title-announce-sparkles">
+                <span>✦</span><span>✦</span><span>✦</span>
+            </div>
+            <div class="title-announce-label">칭호 획득!</div>
+            <div class="title-announce-name">{titleAnnouncement.name}</div>
+            {#if titleAnnouncement.description}
+                <div class="title-announce-desc">{titleAnnouncement.description}</div>
+            {/if}
+            <button class="title-announce-close" onclick={() => (titleAnnouncement = null)}>확인</button>
+        </div>
+    </div>
+{/if}
 
 <div class="page-background"></div>
 
@@ -627,5 +654,91 @@
         .game-icon-item {
             max-width: 120px;
         }
+    }
+
+    /* 칭호 획득 알림 — 게임 결과창(GameResultModal)의 연출과 톤을 맞춘다.
+       오락실 마스터처럼 특정 게임에 속하지 않는 칭호를 여기서 알린다. */
+    .title-announce-backdrop {
+        position: fixed;
+        inset: 0;
+        z-index: 200;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        background: rgba(0, 0, 0, 0.6);
+        backdrop-filter: blur(6px);
+        animation: announceFadeIn 0.25s ease both;
+    }
+    .title-announce-card {
+        width: min(340px, 100%);
+        padding: 28px 24px 22px;
+        border-radius: 20px;
+        text-align: center;
+        background: linear-gradient(135deg, rgba(251, 191, 36, 0.16) 0%, rgba(245, 158, 11, 0.1) 100%),
+                    rgba(24, 24, 32, 0.96);
+        border: 1px solid rgba(251, 191, 36, 0.35);
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5), 0 0 30px rgba(251, 191, 36, 0.12);
+        animation: announcePopIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+    }
+    .title-announce-sparkles {
+        display: flex;
+        justify-content: center;
+        gap: 10px;
+        margin-bottom: 8px;
+    }
+    .title-announce-sparkles span {
+        font-size: 1rem;
+        color: #fbbf24;
+        animation: announceSparkle 1.5s ease-in-out infinite;
+    }
+    .title-announce-sparkles span:nth-child(2) { animation-delay: 0.3s; }
+    .title-announce-sparkles span:nth-child(3) { animation-delay: 0.6s; }
+    .title-announce-label {
+        font-size: 0.72rem;
+        font-weight: 600;
+        color: #fcd34d;
+        letter-spacing: 0.12em;
+        margin-bottom: 6px;
+    }
+    .title-announce-name {
+        font-size: 1.6rem;
+        font-weight: 800;
+        color: #fde68a;
+        margin-bottom: 8px;
+    }
+    .title-announce-desc {
+        font-size: 0.85rem;
+        line-height: 1.5;
+        color: rgba(255, 255, 255, 0.65);
+        margin-bottom: 20px;
+    }
+    .title-announce-close {
+        width: 100%;
+        padding: 12px;
+        border: none;
+        border-radius: 12px;
+        font-size: 0.95rem;
+        font-weight: 700;
+        color: #1c1917;
+        background: linear-gradient(135deg, #fbbf24, #f59e0b);
+        cursor: pointer;
+    }
+    .title-announce-close:hover { filter: brightness(1.08); }
+
+    @keyframes announceFadeIn { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes announcePopIn {
+        from { opacity: 0; transform: scale(0.85) translateY(12px); }
+        to   { opacity: 1; transform: scale(1) translateY(0); }
+    }
+    @keyframes announceSparkle {
+        0%, 100% { opacity: 0.4; transform: scale(0.9); }
+        50%      { opacity: 1;   transform: scale(1.15); }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .title-announce-backdrop,
+        .title-announce-card,
+        .title-announce-sparkles span { animation: none; }
     }
 </style>

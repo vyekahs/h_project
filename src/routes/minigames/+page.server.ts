@@ -1,6 +1,8 @@
 import { redirect } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
 import { RankingService } from '$lib/server/services/rankingService';
+import { db } from '$lib/server/db/index';
+import { sql } from 'drizzle-orm';
 
 // +page.svelte의 games 배열에서 실제로 노출 중인 게임과 맞춰둔다 —
 // 여기 있던 unblock-me/regicide/match-crash는 +page.svelte에서는 이미
@@ -15,13 +17,49 @@ export const load: PageServerLoad = async ({ locals }) => {
 
     const userId = locals.user.id;
 
-    const [activityFeed, userRanks] = await Promise.all([
+    const [activityFeed, userRanks, pendingTitle] = await Promise.all([
         RankingService.getRecentActivity(1, GAME_IDS),
-        RankingService.getUserRanksForGames(userId, GAME_IDS)
+        RankingService.getUserRanksForGames(userId, GAME_IDS),
+        claimPendingTitleAnnouncement(userId)
     ]);
 
     return {
         activityFeed: activityFeed as any[],
-        userRanks
+        userRanks,
+        pendingTitle
     };
 };
+
+/**
+ * 아직 알리지 않은 칭호 획득을 하나 가져오면서 동시에 '알림 완료'로 표시한다.
+ *
+ * '오락실 마스터'처럼 특정 게임에 속하지 않는 칭호는 게임 결과창에 띄우면 어색해서
+ * (어느 게임 덕분에 받은 건지 말할 수 없다) 여기 오락실 페이지에서 알린다.
+ *
+ * 조회와 표시를 한 UPDATE ... RETURNING으로 처리한다. 읽고 나서 따로 표시하면
+ * 그 사이에 다른 탭이 같은 행을 읽어 알림이 두 번 뜬다. 이렇게 하면 먼저 도착한
+ * 요청만 행을 가져가므로 정확히 한 번만 뜬다.
+ *
+ * 실패해도 페이지는 정상적으로 그려야 한다 — 축하 문구 하나 때문에 오락실
+ * 전체가 안 열리면 곤란하다.
+ */
+async function claimPendingTitleAnnouncement(userId: number) {
+    try {
+        const rows = (await db.execute(sql`
+            UPDATE minigame_user_titles ut
+            SET announced_at = NOW()
+            FROM minigame_titles t
+            WHERE ut.title_id = t.id
+              AND ut.user_id = ${userId}
+              AND ut.announced_at IS NULL
+              AND t.condition_value->>'announceOn' = 'arcade'
+            RETURNING t.title_name, t.description
+        `)) as any[];
+
+        const row = rows[0];
+        return row ? { name: row.title_name as string, description: row.description as string | null } : null;
+    } catch (e) {
+        console.error('[Minigames] 칭호 알림 조회 실패', e);
+        return null;
+    }
+}

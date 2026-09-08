@@ -59,6 +59,9 @@ export const minigameUserTitles = pgTable('minigame_user_titles', {
 	userId: integer('user_id').notNull().references(() => attendees.id, { onDelete: 'cascade' }),
 	titleId: integer('title_id').notNull().references(() => minigameTitles.id),
 	acquiredAt: timestamp('acquired_at').defaultNow(),
+	// 아직 사용자에게 알리지 않은 획득이면 NULL. 오락실 마스터처럼 게임 결과창이
+	// 아닌 곳에서 알리는 칭호가 중복으로 뜨지 않게 하는 표시다.
+	announcedAt: timestamp('announced_at', { withTimezone: true }),
 	isDisplayed: boolean('is_displayed').default(true),
 }, (table) => [
 	unique('unique_user_title_holder').on(table.titleId),
