@@ -1,4 +1,5 @@
 import type { Card, Combination, SeatIndex, ExchangeCards, WishState, NormalCard } from '../types';
+import { __deterministic } from './determinism';
 import type { AiDecisionContext, PersonalityWeights } from './types';
 import type { PresetBehavior } from './presets/types';
 import { getTeam, getPartnerSeat, getLeftSeat, getRightSeat, getNextActiveSeat } from '../constants';
@@ -1390,12 +1391,9 @@ export function findTwoStepFinishScored(
  * 허용 폭은 riskTolerance에 비례 — 안정적인 성격(수비적 0.2)은 거의 최선만 두고,
  * 변칙적(0.9)은 폭이 넓어 실제로 '변칙적'으로 보인다.
  */
-/**
- * 측정용 결정론 스위치.
- * 사람처럼 보이게 넣은 흔들림은 A/B 측정에서는 순수 노이즈다. 딜을 고정해도
- * 이 흔들림만으로 티츄 성공률이 약 4%p 요동쳐서, 그 이하의 효과를 볼 수 없다.
- */
-export const __deterministic = { on: false };
+// 결정론 스위치는 determinism.ts에 있다(monteCarlo.ts와 순환 import를 피하기 위해).
+// 기존 호출부 호환을 위해 여기서 다시 내보낸다.
+export { __deterministic } from './determinism';
 
 function pickAmongNearBest<T extends { totalScore: number }>(
 	sortedDesc: T[],

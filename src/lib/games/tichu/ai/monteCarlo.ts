@@ -11,7 +11,7 @@
 import type { Card, Combination, SeatIndex } from '../types';
 import type { AiDecisionContext } from './types';
 import { createAllCards } from '../constants';
-import { shuffle } from '../deck';
+import { sampleShuffle } from './determinism';
 import { findBeatablePlays, getCardSortRank } from './handEvaluator';
 import { buildCardTracker } from './cardTracker';
 import { calcExitRate } from './playSearchGrid';
@@ -66,7 +66,7 @@ export function buildSampleWorlds(
 
 	const worlds: SampledWorld[] = [];
 	for (let i = 0; i < sampleCount; i++) {
-		const shuffled = shuffle(unseen);
+		const shuffled = sampleShuffle(unseen, i);
 		const hands = new Map<SeatIndex, Card[]>();
 		let offset = 0;
 		for (const { seat, count } of seatsNeeded) {
@@ -252,7 +252,7 @@ export function estimateGrandTichuQuality(
 
 	let total = 0;
 	for (let i = 0; i < sampleCount; i++) {
-		const d = shuffle(pool);
+		const d = sampleShuffle(pool, i);
 		let my = [...hand8, ...d.slice(0, 6)];
 		const partner = d.slice(6, 20);
 		const oppA = d.slice(20, 34);
