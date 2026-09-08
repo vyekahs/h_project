@@ -999,7 +999,18 @@ function decideLead(
 	const partnerForEndgame = context.players[getPartnerSeat(context.currentSeat)];
 	const partnerTichuActive = partnerForEndgame.finishOrder === null &&
 		(partnerForEndgame.grandTichu === true || partnerForEndgame.smallTichu);
-	if (hand.length <= 5 && !partnerTichuActive) {
+	// 몬테카를로 엔드게임 탐색 범위: 5장 → 7장.
+	//
+	// 이 게임에서 AI는 이 구간에서만 여러 수 앞을 내다보고, 나머지는 1수 앞만 보는
+	// 휴리스틱이다. 범위를 넓히는 것이 가장 직접적인 실력 향상이었다.
+	//
+	// 고정 덱 + 결정론 모드, 팀 A에만 적용 (덱 세트마다 기준선을 따로 측정)
+	//   덱 7200개 / 600게임:   5장 -8.3 → 7장 +0.7   (+9.0)
+	//   덱 12000개 / 1000게임:  5장 +0.3 → 7장 +5.4   (+5.0)
+	// 8장 이상은 오히려 나빠지고(+1.2), 10장 -3.7, 전 구간 적용은 -8.1이다.
+	// 표본 20개로는 손패가 커질수록 추정이 흐려지고, "2턴 완성" 탐색의 전제도 깨진다.
+	// 실행 시간은 3400라운드 기준 38초 → 39초로 사실상 동일하다.
+	if (hand.length <= 7 && !partnerTichuActive) {
 		const endgameResult = decideLeadEndgame(hand, plan, weights, context, behavior);
 		if (endgameResult.length > 0) return endgameResult;
 	}
