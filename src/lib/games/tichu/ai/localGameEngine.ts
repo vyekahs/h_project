@@ -406,7 +406,7 @@ export class LocalGameEngine {
 			if (this.destroyed) return;
 			if (this.state.phase !== 'grand_tichu_window') return; // Phase already changed
 
-			const decide = ai.makeGrandTichuDecision(this.state.players[seat].hand);
+			const decide = ai.makeGrandTichuDecision(this.state.players[seat].hand, this.createAiContext(seat));
 			this.state.players[seat].grandTichu = decide;
 			this.grandTichuDecisions[seat] = decide;
 			if (decide) {

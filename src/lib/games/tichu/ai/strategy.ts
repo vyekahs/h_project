@@ -19,7 +19,7 @@ import {
 	type CardTracker
 } from './cardTracker';
 import { searchBestPlay, calcExitRate, isForcedOutIfLeading } from './playSearchGrid';
-import { buildSampleWorlds, evaluateLeadSafety, evaluateTwoTurnFinish, getUnseenCards, estimateGoOutFirstProb, type SampledWorld } from './monteCarlo';
+import { buildSampleWorlds, evaluateLeadSafety, evaluateTwoTurnFinish, getUnseenCards, estimateGoOutFirstProb, estimateGrandTichuQuality, type SampledWorld } from './monteCarlo';
 
 // ===== Hand Analysis Helpers =====
 
@@ -134,7 +134,7 @@ function getTrickPoints(cards: Card[]): number {
 /**
  * Decide whether to declare Grand Tichu based on 8-card hand.
  */
-export function decideGrandTichu(hand8: Card[], weights: PersonalityWeights, behavior: PresetBehavior = {}): boolean {
+export function decideGrandTichu(hand8: Card[], weights: PersonalityWeights, behavior: PresetBehavior = {}, context?: AiDecisionContext): boolean {
 	// Behavior hook
 	const override = behavior.shouldDeclareGrandTichu?.(hand8);
 	if (override !== null && override !== undefined) return override;
@@ -149,7 +149,23 @@ export function decideGrandTichu(hand8: Card[], weights: PersonalityWeights, beh
 	// 그랜드는 ±200점이라 60%도 기대값은 양수지만, 부르는 값어치를 내려면 65% 선이 맞다.
 	// 48 - p*14 → 공격적 36.8 / 변칙적 39.6 / 밸런스·전략적 41 / 수비적 45.9
 	const threshold = 48 - weights.tichoPropensity * 14;
-	return strength >= threshold;
+	if (!(strength >= threshold)) return false;
+
+	// 8장만 보고 부르지만 실제로는 6장을 더 받고 교환까지 거친다.
+	// 그 과정을 표본으로 돌려 최종 14장의 순수 승률을 보고 판단한다.
+	//
+	// 검증 (고정 덱 + 결정론, 덱 세트 2개 × 800게임, 팀 A에만 적용)
+	//   강도만(기존)   선언 251건 성공률 72.1%  점수차 +1.74
+	//   순수 0.45      선언 135건 성공률 74.1%  점수차 +0.60   ← 채택
+	//   순수 0.52      선언  35건 성공률 80.0%  점수차 -1.66
+	// 그랜드는 기준선 성공률이 이미 높아 스몰만큼 개선 여지가 없다. 0.52는
+	// 1600게임에 35건이라 사실상 안 부르는 수준이라 0.45를 택했다 —
+	// 실패가 70건 → 35건으로 절반이 되고, ±200점이라 진폭 감소 효과가 크다.
+	if (context) {
+		const q = estimateGrandTichuQuality(context, 16);
+		if (q >= 0 && q < GRAND_TICHU_MIN_PURE_WIN) return false;
+	}
+	return true;
 }
 
 // ===== Small Tichu Decision =====
@@ -167,6 +183,9 @@ export function decideGrandTichu(hand8: Card[], weights: PersonalityWeights, beh
  * 유리하다. 여기서는 점수 최적점 대신 "무모하게 부르지 않는" 쪽을 택했다.
  */
 const SMALL_TICHU_MIN_PURE_WIN = 0.52;
+
+/** 그랜드 티츄 — 교환까지 시뮬레이션한 최종 손패에 요구하는 최소 순수 승률 */
+const GRAND_TICHU_MIN_PURE_WIN = 0.45;
 
 /** 표본 세계에서 "내가 가장 빠르다"로 나와야 하는 최소 비율 */
 const SMALL_TICHU_MIN_RACE_PROB = 0.3;

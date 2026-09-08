@@ -51,8 +51,8 @@ export class AiPlayer {
 		this.weights = weights;
 	}
 
-	makeGrandTichuDecision(hand8: Card[]): boolean {
-		return decideGrandTichu(hand8, this.weights, this.behavior);
+	makeGrandTichuDecision(hand8: Card[], context?: AiDecisionContext): boolean {
+		return decideGrandTichu(hand8, this.weights, this.behavior, context);
 	}
 
 	makeSmallTichuDecision(hand: Card[], context: AiDecisionContext): boolean {

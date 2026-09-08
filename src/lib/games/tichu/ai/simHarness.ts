@@ -140,7 +140,7 @@ export async function simulateGame(opts: SimOptions): Promise<SimResult> {
 			if (phase === 'grand_tichu_window') {
 				const p0 = engine.state.players[0];
 				if (p0.grandTichu === null) {
-					if (ai0.makeGrandTichuDecision(p0.hand)) engine.humanDeclareGrandTichu();
+					if (ai0.makeGrandTichuDecision(p0.hand, engine.createAiContext(0))) engine.humanDeclareGrandTichu();
 					else engine.humanPassGrandTichu();
 				}
 				continue;

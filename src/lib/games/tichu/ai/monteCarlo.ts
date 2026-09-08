@@ -12,7 +12,7 @@ import type { Card, Combination, SeatIndex } from '../types';
 import type { AiDecisionContext } from './types';
 import { createAllCards } from '../constants';
 import { shuffle } from '../deck';
-import { findBeatablePlays } from './handEvaluator';
+import { findBeatablePlays, getCardSortRank } from './handEvaluator';
 import { buildCardTracker } from './cardTracker';
 import { calcExitRate } from './playSearchGrid';
 
@@ -226,4 +226,51 @@ export function estimateGoOutFirstProb(
 		if (faster === 0) wins += 1 / (1 + tie);
 	}
 	return wins / worlds.length;
+}
+
+
+/**
+ * 그랜드 티츄용 — 8장 시점에서 "최종 14장이 얼마나 좋을까"를 추정한다.
+ *
+ * 그랜드는 8장만 보고 부르지만 실제로는 6장을 더 받고 교환까지 거친다.
+ * 그 과정을 표본으로 돌려서 최종 손패의 순수 승률(보너스 미포함)을 평균낸다.
+ *
+ * 교환 근사:
+ *  - 내가 주는 3장: 가장 낮은 3장 (특수 카드 제외)
+ *  - 파트너에게서 받는 1장: 표본 세계에서 파트너의 최고 카드
+ *    (그랜드를 부르면 파트너는 최고 카드를 준다)
+ *  - 상대 2명에게서 받는 2장: 각자의 최저 카드
+ */
+export function estimateGrandTichuQuality(
+	context: AiDecisionContext,
+	sampleCount = 16
+): number {
+	const hand8 = context.hand;
+	const seen = new Set(hand8.map(c => c.id));
+	const pool = createAllCards().filter(c => !seen.has(c.id));
+	if (pool.length < 6 + 8 * 3) return -1;
+
+	let total = 0;
+	for (let i = 0; i < sampleCount; i++) {
+		const d = shuffle(pool);
+		let my = [...hand8, ...d.slice(0, 6)];
+		const partner = d.slice(6, 20);
+		const oppA = d.slice(20, 34);
+		const oppB = d.slice(34, 48);
+
+		// 내가 주는 3장 = 가장 낮은 3장
+		const sorted = [...my].sort((a, b) => getCardSortRank(a) - getCardSortRank(b));
+		const giveIds = new Set(sorted.slice(0, 3).map(c => c.id));
+		my = my.filter(c => !giveIds.has(c.id));
+
+		// 받는 3장
+		const best = (cards: Card[]) =>
+			cards.reduce((x, y) => (getCardSortRank(y) > getCardSortRank(x) ? y : x));
+		const worst = (cards: Card[]) =>
+			cards.reduce((x, y) => (getCardSortRank(y) < getCardSortRank(x) ? y : x));
+		my.push(best(partner), worst(oppA), worst(oppB));
+
+		total += calcExitRate(my, buildCardTracker({ ...context, hand: my })).pureWinRate;
+	}
+	return total / sampleCount;
 }
