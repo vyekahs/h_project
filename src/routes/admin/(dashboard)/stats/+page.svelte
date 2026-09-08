@@ -263,16 +263,26 @@
 {/if}
 
 <style>
+    /*
+        ── 세로 리듬 ──
+        .stats-page 직계 자식 사이 간격은 --space 스케일 두 단계만 쓴다.
+          묶음과 묶음 사이 : --space-6 (32px)
+          한 묶음 안쪽     : --space-4 (16px)
+        예전에는 32 / 32 / 48 / 24 라 단계가 없었고, 「인기 게임 Top 5 보기」가
+        위 32 · 아래 48 로 떠서 KPI 카드에도 유저 현황에도 붙지 않았다.
+        지금은 위 16 · 아래 32 라 자기가 파고드는 KPI 카드 쪽에 붙는다.
+        제목은 위(32)가 아래(16)보다 넓어야 자기 아래 내용을 거느린다.
+    */
     .header {
         margin-bottom: var(--space-6);
     }
-    
+
     /* KPI Grid */
     .kpi-grid {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
         gap: var(--space-5);
-        margin-bottom: var(--space-6);
+        margin-bottom: var(--space-4);
     }
     .kpi-card {
         background: white;
@@ -280,6 +290,15 @@
         border-radius: var(--radius-card);
         text-align: center;
         border: 1px solid var(--border-light);
+        /*
+            같은 줄의 카드 중 일부는 <button>이다. 버튼은 내용을 세로 가운데로
+            모으는데 <div>는 위에 붙여서, 나란히 놓인 카드끼리 제목·숫자 줄이
+            어긋났다. 둘 다 같은 흐름을 쓰도록 못박는다.
+        */
+        display: flex;
+        flex-direction: column;
+        justify-content: flex-start;
+        align-items: stretch;
     }
     .kpi-card h3 {
         margin: 0;
@@ -292,10 +311,21 @@
         font-weight: bold;
         color: var(--text-primary);
         margin: var(--space-2) 0;
+        /*
+            한글이 섞인 값(「12시간 26분」)은 숫자만 있는 값보다 줄 상자가 높아서
+            같은 줄의 카드끼리 캡션이 4px 어긋났다. 줄 높이를 못박아 맞춘다.
+        */
+        line-height: 1.2;
     }
     .kpi-card .label {
         font-size: var(--text-xs);
         color: var(--text-muted);
+        /*
+            한 줄짜리 캡션과 두 줄짜리 캡션이 한 줄에 섞여 있다(유저 현황 4장 중 2장).
+            두 줄분을 미리 잡아 두지 않으면 카드마다 아래 여백이 달라진다.
+        */
+        line-height: 1.5;
+        min-height: 3em;
     }
 
     /* Line Chart */
@@ -303,7 +333,7 @@
         position: relative;
         height: 240px; /* Increased height for labels */
         display: block;
-        padding-bottom: 30px;
+        padding-bottom: var(--space-6);
     }
     .line-chart svg {
         width: 100%;
@@ -320,7 +350,7 @@
     .x-axis {
         position: relative;
         height: 30px;
-        margin-top: 10px;
+        margin-top: var(--space-2);
     }
     .x-axis .label {
         position: absolute;
@@ -336,7 +366,7 @@
         display: flex;
         align-items: flex-end;
         gap: 4px;
-        padding-bottom: 20px;
+        padding-bottom: var(--space-5);
     }
     .bar-group {
         flex: 1;
@@ -421,8 +451,8 @@
         display: flex;
         align-items: baseline;
         gap: var(--space-3);
-        margin-top: 3rem;
-        margin-bottom: var(--space-5);
+        margin-top: var(--space-6);
+        margin-bottom: var(--space-4);
     }
     .section-header h2 {
         margin: 0;
@@ -453,12 +483,16 @@
     /* Clickable KPI card */
     button.kpi-card {
         font: inherit;
-        text-align: left;
+        /*
+            text-align 은 못박지 않는다 — .kpi-card 의 center 가 그대로 오게 둔다.
+            left 로 덮여 있던 탓에 같은 줄에서 버튼 카드만 왼쪽, div 카드만
+            가운데로 갈라져 있었다.
+        */
         width: 100%;
         color: inherit;
     }
     .kpi-extra-actions {
-        margin: var(--space-3) 0 0;
+        margin: 0 0 var(--space-6);
     }
     .btn-drilldown {
         min-height: 44px;

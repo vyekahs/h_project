@@ -161,8 +161,16 @@
     --space-6: 2rem;
 
     /* ── Radius ── 컨트롤과 카드 두 종류 + 알약 */
-    --radius-control: 6px;
-    --radius-card: 12px;
+    /*
+        각진 느낌을 줄인다. 컨트롤 6px은 "모서리를 깎았다"에 가깝지 "둥글다"가
+        아니었고, 카드 12px은 섹션이 그걸 쓰지도 않았다(section이 control 값을
+        쓰고 있었다).
+    */
+    /* 작은 정사각 컨트롤용. 큰 반경을 그대로 쓰면 변의 대부분이 깎여
+       상자의 비례가 글자 덩어리의 비례로 읽힌다. */
+    --radius-control-sm: 6px;
+    --radius-control: 10px;
+    --radius-card: 16px;
     --radius-pill: 999px;
 
     /* ── Font ── 한 벌만 쓴다 (이전에는 sans-serif / Arial / -apple-system 혼재) */

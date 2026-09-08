@@ -372,8 +372,8 @@
                             난이도{#if sortKey === 'complexity'}<span aria-hidden="true">{sortAsc ? ' ↑' : ' ↓'}</span>{/if}
                         </button>
                     </th>
-                    <th>확장</th>
-                    <th class="col-actions"><span class="sr-only">동작</span></th>
+                    <th class="col-dlc">확장</th>
+                    <th class="col-actions">동작</th>
                 </tr>
             </thead>
             <tbody>
@@ -398,21 +398,23 @@
                         <td class="col-num">{game.complexity ?? EMPTY}</td>
                         <td class="col-dlc">{game.included_dlcs || '—'}</td>
                         <td class="col-actions">
-                            <button class="btn-edit" onclick={() => openEditModal(game)}>수정</button>
-                            {#if game.is_active}
-                                <button class="btn-quiet" onclick={() => (confirmAction = { kind: 'deactivate', game })}>비활성화</button>
-                            {:else}
-                                <form method="POST" action="?/reactivate" use:enhance={() => async ({ result, update }) => {
-                                    reportResult(result, `${game.name}을(를) 복구했습니다.`);
-                                    await update();
-                                }}>
-                                    <input type="hidden" name="id" value={game.id} />
-                                    <button type="submit" class="btn-quiet">복구</button>
-                                </form>
-                            {/if}
-                            {#if !game.has_history}
-                                <button class="btn-danger-quiet" onclick={() => (confirmAction = { kind: 'delete', game })}>완전 삭제</button>
-                            {/if}
+                            <div class="row-actions">
+                                <button class="btn-quiet" onclick={() => openEditModal(game)}>수정</button>
+                                {#if game.is_active}
+                                    <button class="btn-quiet" onclick={() => (confirmAction = { kind: 'deactivate', game })}>비활성화</button>
+                                {:else}
+                                    <form method="POST" action="?/reactivate" use:enhance={() => async ({ result, update }) => {
+                                        reportResult(result, `${game.name}을(를) 복구했습니다.`);
+                                        await update();
+                                    }}>
+                                        <input type="hidden" name="id" value={game.id} />
+                                        <button type="submit" class="btn-quiet">복구</button>
+                                    </form>
+                                {/if}
+                                {#if !game.has_history}
+                                    <button class="btn-danger-quiet" onclick={() => (confirmAction = { kind: 'delete', game })}>완전 삭제</button>
+                                {/if}
+                            </div>
                         </td>
                     </tr>
                 {/each}
@@ -476,7 +478,7 @@
                         <p class="desc">{game.description}</p>
                     {/if}
                     <div class="actions">
-                        <button class="btn-edit" onclick={(e) => { e.stopPropagation(); openEditModal(game); }}>수정</button>
+                        <button class="btn-quiet" onclick={(e) => { e.stopPropagation(); openEditModal(game); }}>수정</button>
                         {#if game.is_active}
                             <button class="btn-quiet" onclick={(e) => { e.stopPropagation(); confirmAction = { kind: 'deactivate', game }; }}>
                                 비활성화
@@ -1053,11 +1055,33 @@
         white-space: nowrap;
         color: var(--text-secondary);
     }
+    /*
+        동작 열은 폭을 고정한다. 예전에는 열이 내용에 맞춰 늘어났고,
+        text-align:right 도 .games-table td 의 left 에 특정도로 눌려서
+        (0,2,0 대 0,1,0) 실제로는 왼쪽 정렬이었다. 그래서 「완전 삭제」가
+        붙는 행만 오른쪽으로 74px 더 뻗어 나가고(1120px 대 1194px),
+        오른쪽 끝이 어느 행에서도 맞지 않았다.
+        3.5+4.5+4.75rem + 간격 2칸 + 셀 좌우 패딩 = 15.25rem.
+    */
     .col-actions {
-        text-align: right;
+        width: 15.25rem;
         white-space: nowrap;
     }
-    .col-actions form { display: inline; }
+    /*
+        세 자리를 항상 잡아 둔다. 「완전 삭제」는 플레이 기록이 없는 게임에만
+        붙는 드문 버튼이라, 자리를 비워 두지 않으면 그 한 행 때문에 앞의 두
+        버튼까지 밀린다. 자리를 고정하면 수정·비활성화·완전 삭제가 각각
+        같은 x 에서 시작하고 끝난다.
+    */
+    .row-actions {
+        display: grid;
+        grid-template-columns: 3.5rem 4.5rem 4.75rem;
+        gap: var(--space-2);
+        align-items: center;
+    }
+    /* form 은 복구 버튼을 감싸는 껍데기일 뿐이라 그리드 자리를 차지하면 안 된다 */
+    .row-actions form { display: contents; }
+    .row-actions button { width: 100%; }
     .thumb {
         width: 40px;
         height: 40px;
@@ -1248,7 +1272,17 @@
     @media (max-width: 768px) {
         .col-dlc, .col-thumb { display: none; }
         .games-table th, .games-table td { padding: var(--space-2); }
-        .col-actions { white-space: normal; }
+        /*
+            폰에서는 390px 안에 15.25rem 짜리 열이 들어가지 않는다. 가로로 못 늘리는
+            대신 세로로 쌓되, 열 폭은 「완전 삭제」가 한 줄에 들어가는 값으로 고정한다.
+            폭을 auto 로 두면 표가 이 열을 min-content(글자 한 자)까지 짜부라뜨려
+            버튼 글자가 「수 / 정」처럼 세로로 쪼개졌다.
+        */
+        .col-actions { width: 6.5rem; white-space: normal; }
+        .row-actions {
+            grid-template-columns: 1fr;
+            gap: var(--space-1);
+        }
     }
 
     .header {

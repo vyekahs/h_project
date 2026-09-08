@@ -165,7 +165,7 @@
      */
     type ConfirmSeverity = 'irreversible' | 'destructive' | 'neutral';
     let confirmState:
-        | { title: string; message: string; confirmLabel: string; severity: ConfirmSeverity; handle?: (opts: any) => Promise<void> }
+        | { title: string; message: string; confirmLabel: string; cancelLabel: string; severity: ConfirmSeverity; handle?: (opts: any) => Promise<void> }
         | null = $state(null);
     let pendingForm: HTMLFormElement | null = null;
 
@@ -178,6 +178,12 @@
         title: string;
         message: string | (() => string);
         confirmLabel?: string;
+        /*
+            물러나는 버튼은 늘 「취소」였다. 그런데 동작 자체가 「게임 취소」인
+            확인창에서는 두 버튼이 같은 말을 하게 된다 — 하나는 판을 없애고
+            하나는 아무 일도 하지 않는데. 그런 창만 이 이름을 바꿔 든다.
+        */
+        cancelLabel?: string;
         severity?: ConfirmSeverity;
         handle?: (opts: any) => Promise<void>;
         success?: string | ((data: any) => string);
@@ -212,6 +218,7 @@
                 // 문구는 "지금" 계산한다 — 액션 생성 시점의 값은 오래됐을 수 있다
                 message: typeof opts.message === 'function' ? opts.message() : opts.message,
                 confirmLabel: opts.confirmLabel ?? '확인',
+                cancelLabel: opts.cancelLabel ?? '취소',
                 severity: opts.severity ?? 'neutral',
                 handle: opts.handle
             };
@@ -512,12 +519,49 @@
         }
     }
 
-    function selectGame(game: { name: string, id: number, playtime_min: number }) {
+    /*
+        게임마다 정원이 있는데 모달이 그걸 받지 않아, 4인용 판에 일곱 명을
+        앉힐 수 있었다. 라이브러리에서 고른 게임만 정원을 안다 — 이름을 직접
+        친 판은 상한이 없다(그때는 null).
+    */
+    let newGameMax: number | null = $state(null);
+    let newGameMin: number | null = $state(null);
+    function selectGame(game: { name: string, id: number, playtime_min: number, min_players?: number, max_players?: number }) {
         selectedGameName = game.name;
         selectedGameId = String(game.id);
-        selectedDuration = String(game.playtime_min);
+        // 진행시간·정원은 이름을 보고 따라오는 효과 한 곳에서만 정한다.
+        // 여기서도 대입하면 "직접 친 시간을 지키는" 규칙이 두 벌이 된다.
         dropdownOpen = false;
     }
+
+    /*
+        라이브러리 게임을 고르면 기본 진행시간이 따라오는데, 그게 운영자가 손으로
+        친 시간을 말없이 덮었다. 만진 칸의 주인은 운영자다 — 덮지 않고, 기본값이
+        따로 있다는 것만 옆에서 말하고 한 번에 받을 길을 낸다.
+    */
+    let durationTouched = $state(false);
+    let durationSuggestion: { name: string, minutes: string } | null = $state(null);
+    function applyGameDuration(minutes: string, gameName: string) {
+        if (durationTouched && selectedDuration.trim() !== '' && selectedDuration !== minutes) {
+            if (durationSuggestion?.name !== gameName || durationSuggestion?.minutes !== minutes) {
+                durationSuggestion = { name: gameName, minutes };
+            }
+            return;
+        }
+        selectedDuration = minutes;
+        durationSuggestion = null;
+    }
+    /* 자리 수. 게스트도 자리를 차지한다. */
+    const seatsTaken = $derived(selectedPlayerIds.length + (Number(guestCount) || 0));
+    const seatsLeft = $derived(newGameMax === null ? Infinity : newGameMax - seatsTaken);
+    const seatsFull = $derived(seatsLeft <= 0);
+    /*
+        최소 인원은 막지 않는다 — 두 자리를 먼저 잡아두고 시작한 뒤 「참여」로
+        채우는 판이 실제로 있다(진행 중 게임의 「추가」 = joinGame). 막는 대신 모자란다는 것을
+        시작 버튼 바로 위에서 말한다. 빈 폼에서는 말하지 않는다 — 아직 아무도
+        고르지 않은 것은 모자란 게 아니라 시작하지 않은 것이다.
+    */
+    const seatsShort = $derived(newGameMin !== null && seatsTaken > 0 && seatsTaken < newGameMin);
 
     function handleInputClick() {
         dropdownOpen = true;
@@ -589,12 +633,20 @@
         
         if (libraryGame) {
             selectedGameId = String(libraryGame.id);
-            selectedDuration = String(libraryGame.playtime_min);
+            applyGameDuration(String(libraryGame.playtime_min), libraryGame.name);
+            // 정원도 여기서 따라온다 — 드롭다운으로 골랐든 이름을 그대로 쳤든 같다.
+            newGameMax = libraryGame.max_players ?? null;
+            newGameMin = libraryGame.min_players ?? null;
         } else if (historyGame && !libraryGame) { // Only fallback if not in library
             selectedGameId = '';
-            selectedDuration = String(historyGame.duration);
+            applyGameDuration(String(historyGame.duration), historyGame.game_name);
+            newGameMax = null;
+            newGameMin = null;
         } else if (!libraryGame) {
             selectedGameId = '';
+            newGameMax = null;
+            newGameMin = null;
+            durationSuggestion = null;
         }
     });
 
@@ -620,6 +672,34 @@
 
     function formatTime(dateString: string) {
         return new Date(dateString).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+    }
+
+    /*
+        예정 게임을 시작하는 버튼이 상세 모달 안에 있었다. 목록에서 판이 다 보이는데
+        시작하려면 모달을 한 번 열어야 했고, 모달이 하는 일(참여자 붙이기·일정 고치기)과
+        시작은 다른 종류의 일이다. 버튼을 행으로 꺼낸다.
+
+        꺼내면서 「예상(분)」 입력칸은 함께 사라진다 — 행에 숫자칸까지 둘 폭이 없다.
+        대신 도감의 playtime_min을 기본으로 잡는다. 시작한 뒤 진행 중 시트의
+        시간 조정(−10/+10/+30)에서 고칠 수 있으므로 잃는 것은 없다.
+    */
+    function scheduledDuration(g: any): number {
+        const lib = (data.allGames as any[])?.find((x: any) => x.id === g.game_id);
+        const mins = Number(lib?.playtime_min);
+        return mins > 0 ? mins : 60;
+    }
+    /*
+        날이 오지 않은 판을 눌러 시작하면 내일 판이 오늘 방에 들어앉는다.
+        당일 전에는 누를 수 없게 한다. 날짜가 지난 판은 막지 않는다 — 막으면
+        어제 남은 판을 치울 길이 취소밖에 없어진다.
+    */
+    function startableAt(dateString: string | null, nowTs: number): boolean {
+        if (!dateString) return true;
+        const d = new Date(dateString);
+        const n = new Date(nowTs);
+        const day = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+        const today = new Date(n.getFullYear(), n.getMonth(), n.getDate()).getTime();
+        return day <= today;
     }
 
     function formatScheduledTime(dateString: string) {
@@ -655,7 +735,7 @@
         image_url: string | null;
         min_players: number;
         max_players: number;
-        participants: { id: number; name: string }[];
+        participants: { id: number; name: string; is_guest?: boolean }[];
         players: { id: number; name: string }[];
         scheduled_at: string;
     }
@@ -772,6 +852,33 @@
     const settlingAttendees = $derived((attendees || []).filter((a: Attendee) => isSettling(a)));
     const busyAttendees = $derived((attendees || []).filter((a: Attendee) => a.is_playing && !isSettling(a)));
     /* 판을 짤 수 있는 사람 = 대기 중 + 정리 대기. 후자는 손에 카드가 없다. */
+    /*
+        명단은 방이 붐비면 그대로 길어진다 — 20명이면 카드 하나가 900px이고,
+        그 아래 「인원 추가」와 범례까지 스크롤로 밀린다. 게임 목록이 이미 쓰는
+        「+n개 더보기」와 같은 규칙을 쓴다.
+
+        7명은 그룹을 가로질러 센다. 대기 중이 먼저 차고, 남으면 정리 대기,
+        그다음 게임 중이다 — 판을 짤 수 있는 사람이 먼저 보여야 한다.
+        그룹 제목의 숫자는 접힌 상태에서도 전체를 말한다.
+    */
+    const ROSTER_CAP = 7;
+    let showAllAttendees = $state(false);
+    const rosterView = $derived.by(() => {
+        if (showAllAttendees) {
+            return { free: freeAttendees, settling: settlingAttendees, busy: busyAttendees, hidden: 0 };
+        }
+        let left = ROSTER_CAP;
+        const take = (arr: Attendee[]) => {
+            const t = arr.slice(0, Math.max(0, left));
+            left -= t.length;
+            return t;
+        };
+        const free = take(freeAttendees);
+        const settling = take(settlingAttendees);
+        const busy = take(busyAttendees);
+        return { free, settling, busy, hidden: attendeeCount - (free.length + settling.length + busy.length) };
+    });
+
     const seatableAttendees = $derived((attendees || []).filter((a: Attendee) => !a.is_playing || isSettling(a)));
 
     // 종료 임박 순 정렬 — "진행 중인 게임" 목록에서 끝나가는 게임을 위로
@@ -825,6 +932,45 @@
         return m === '00' ? `${parseInt(h)}시` : `${parseInt(h)}시${parseInt(m)}분`;
     }
 </script>
+
+<!--
+    참여자 목록 — 예정/진행 두 게임 상세 모달이 공유한다.
+
+    쉼표로 이은 한 줄이었다. 읽기에는 짧지만 그 줄에서는 아무것도 할 수 없어서,
+    잘못 붙인 게스트를 뺄 자리가 없었다. 한 사람을 한 칩으로 세우고 게스트에만
+    빼는 ×를 단다 — 회원 자리에는 예약이 매달려 있어 같은 ×로 처리하면
+    예약·대기 상태가 조용히 어긋난다.
+-->
+{#snippet participantChips(sessionId: number, list: any[], refresh: () => void)}
+    {#if list.length === 0}
+        <p class="detail-participants">없음</p>
+    {:else}
+        <ul class="detail-chips">
+            {#each list as p (p.id)}
+                <li class="detail-chip" class:is-guest={p.is_guest}>
+                    <span class="detail-chip-name">{p.name}</span>
+                    {#if p.is_guest}
+                        <span class="chip-guest" aria-hidden="true">G</span>
+                        <form method="POST" action="?/removeGuestFromGame" use:enhance={() => {
+                            return async ({ result, update }) => {
+                                if (!reportResult(result)) {
+                                    const d = (result as any)?.data ?? {};
+                                    showToast(`${d.removedName ?? p.name}을(를) 뺐습니다`);
+                                }
+                                await update();
+                                refresh();
+                            };
+                        }}>
+                            <input type="hidden" name="sessionId" value={sessionId} />
+                            <input type="hidden" name="participantId" value={p.id} />
+                            <button type="submit" class="detail-chip-x" aria-label="{p.name} 빼기">×</button>
+                        </form>
+                    {/if}
+                </li>
+            {/each}
+        </ul>
+    {/if}
+{/snippet}
 
 <!-- 참여자 검색 셀렉트 — 예정/진행 두 게임 상세 모달이 공유한다 -->
 {#snippet participantPicker()}
@@ -1102,45 +1248,107 @@
 {/snippet}
 
 <div class="room-columns">
+<!--
+    두 열을 실제 컨테이너로 만든다. 전에는 명단이 모든 행을 span해서 왼쪽 열이
+    독립적으로 흐를 수 있었는데, 오른쪽에 두 섹션이 서면 그 트릭이 깨진다 —
+    그리드 행은 열을 가로질러 정렬되므로 「오늘 갈 예정」(211px) 아래에
+    게임 카드 높이만큼 빈 땅이 생긴다. 열마다 자기 흐름을 준다.
+
+    DOM 순서는 사람 열 → 판 열이고, 각 열 안은 오늘 갈 예정 → 명단 /
+    게임 → 시작 예정이다. 폰에서 한 열로 접히면 그대로 쌓인다.
+    넓은 화면에서는 판 열이 왼쪽, 사람 열이 오른쪽으로 간다.
+-->
+<div class="room-col room-col-people">
+<section class="visit-plan-section room-col-visit" aria-labelledby="sec-visitplan">
+    <h2 id="sec-visitplan">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        오늘 갈 예정 ({mergedVisitPlans.length})
+    </h2>
+    <!--
+        비어 있어도 남는다. 이 섹션의 일은 "오늘 누가 오나"에 답하는 것이고,
+        "아직 아무도 없다"는 답이지 없음이 아니다. 조건부로 숨기면 운영자는
+        답을 못 본 것인지 답이 없는 것인지 구별할 수 없다.
+    -->
+    {#if mergedVisitPlans.length === 0}
+        <p class="empty-state">아직 온다고 한 사람이 없습니다. 회원이 「나도 갈래요」를 누르거나 예정 게임에 예약하면 여기에 뜹니다.</p>
+    {:else}
+    <div class="visit-plan-grid">
+        {#each mergedVisitPlans as plan}
+            <div class="visit-plan-chip">
+                <span class="vp-name">{plan.name}</span>
+                {#if (plan as any).is_party}
+                    <span class="vp-party">팟</span>
+                {/if}
+                <span class="vp-time">
+                    {#if plan.planned_time}
+                        {formatVisitTime(plan.planned_time)}~
+                    {:else}
+                        상황봐서
+                    {/if}
+                </span>
+            </div>
+        {/each}
+    </div>
+    {/if}
+</section>
+
 <section class="section-primary room-col-roster" aria-labelledby="sec-attendees">
     <!-- 「대기 중 n」은 스트립이 헤드라인으로 들고, 이 섹션 안에서는 바로 아래
          그룹 라벨이 같은 말을 한다. 제목에서까지 세면 한 화면에 세 번이 된다. -->
     <h2 id="sec-attendees">현재 참여 인원</h2>
     {#snippet attendeeRow(a: Attendee)}
             <li>
+                <!--
+                    두 줄로 나눈다: 첫 줄은 사람, 둘째 줄은 그 사람이 앉은 판.
+                    입장 시각은 사람에 붙는 사실인데 게임 이름 옆에 있어서
+                    「몇 시에 시작한 판인가」처럼 읽혔다.
+                    판이 없는 사람은 둘째 줄도 없다 — 없는 것을 빈 줄로 말하지 않는다.
+
+                    매니저는 이름에 붙는 성질이므로 배지를 떼고 이름 자체에
+                    입힌다. 채움이 아니라 틴트인 이유는 이름이 링크이기 때문이다 —
+                    채움 파랑은 이 콘솔에서 주 동작(새 게임 시작·승인)의 색이라,
+                    누르면 뭔가 실행될 것처럼 읽힌다.
+
+                    페널티는 느낌표 개수로 센다. 배지 「페널티 2/3」이 이름 옆에서
+                    행의 절반을 쓰고 있었다. 보이는 것은 개수지만 접근 이름에는
+                    실제 점수와 임계를 남긴다 — 개수만으로는 「3이 한계」임을
+                    배워야 알 수 있고, 색과 개수로만 나르면 보조기술에는 아무것도
+                    남지 않는다. 범례는 목록 아래에 있다.
+                -->
                 <div class="attendee-info">
-                    <div class="name-row">
-                        <a href="/admin/attendees/{a.id}" class="attendee-link">{a.name}</a>
-                        {#if a.is_blacklisted}
-                            <span class="badge blacklist">
-                                <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:2px; vertical-align:middle;"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
-                                블랙
-                            </span>
-                        {/if}
-                        {#if a.can_manage_games}
-                            <!-- 게임을 만들 수 있는 사람인지가 시트를 열어야만 보였다 -->
-                            <span class="badge manager">매니저</span>
-                        {/if}
-                        {#if a.penalty_points > 0}
-                            <span class="badge penalty" class:blocked={a.penalty_points >= penaltyThreshold}>
-                                <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:2px; vertical-align:middle;"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                                페널티 {a.penalty_points}/{penaltyThreshold}
-                            </span>
-                        {/if}
-                    </div>
                     <!--
-                        좌석을 별도 열로 두면 좁은 열에서 이름·배지·시각과 3단으로
-                        겹쳐 뭉개진다. 메타 한 줄로 합쳐 자연스럽게 줄바꿈시킨다.
-                        종료 시각은 서버가 같은 행에서 준다 — 이름으로 찾으면 같은
-                        이름의 판이 둘일 때 엉뚱한 시간이 붙는다.
+                        이름 묶음은 한 덩어리다. 좁은 폭에서 행을 세로로 세울 때
+                        이 래퍼가 없으면 이름·느낌표·블랙이 각각 자기 줄을 차지해
+                        행마다 2~4줄로 갈린다 — 목록이 들쭉날쭉해지는 원인이었다.
                     -->
-                    <span class="attendee-meta">
-                        <span class="arrival-time">{formatTime(a.arrival_time)} 입장</span>
-                        {#if a.is_playing && a.game_name}
-                            <span class="seat-game" title={a.game_name}>· {a.game_name}</span>
-                            {#if a.game_end_time}<span class="seat-time" class:is-over={isSettling(a)}>{getTimeRemaining(a.game_end_time, now)}</span>{/if}
-                        {/if}
+                    <span class="name-row">
+                    <a href="/admin/attendees/{a.id}" class="attendee-link" class:is-manager={a.can_manage_games}
+                        title={a.can_manage_games ? `${a.name} — 매니저` : undefined}>{a.name}</a>
+                    {#if a.penalty_points > 0}
+                        <span class="penalty-marks" class:blocked={a.penalty_points >= penaltyThreshold}
+                            aria-label="페널티 {a.penalty_points}/{penaltyThreshold}점{a.penalty_points >= penaltyThreshold ? ' — 예약 제한 중' : ''}">
+                            <span aria-hidden="true">{'!'.repeat(Math.min(a.penalty_points, penaltyThreshold))}</span>
+                        </span>
+                    {/if}
+                    {#if a.is_blacklisted}
+                        <span class="badge blacklist">
+                            <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:2px; vertical-align:middle;"><circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/></svg>
+                            블랙
+                        </span>
+                    {/if}
+                    <span class="arrival-time">{formatTime(a.arrival_time)} 입장</span>
                     </span>
+                    <!--
+                        둘째 줄은 판에 관한 것만 든다. 종료 시각은 서버가 같은
+                        행에서 준다 — 이름으로 찾으면 같은 이름의 판이 둘일 때
+                        엉뚱한 시간이 붙는다.
+                    -->
+                    {#if a.is_playing && a.game_name}
+                        <span class="attendee-meta">
+                            <span class="seat-game" title={a.game_name}>{a.game_name}</span>
+                            {#if a.game_end_time}<span class="seat-time" class:is-over={isSettling(a)}>{getTimeRemaining(a.game_end_time, now)}</span>{/if}
+                        </span>
+                    {/if}
                 </div>
                 <!--
                     퇴장은 명단에서 가장 잦은 조치인데 관리 시트 안에 있었다.
@@ -1156,6 +1364,9 @@
                     기존 선택 모달로 간다.
                 -->
                 <div class="attendee-actions">
+                    <button type="button" class="btn-manage" onclick={() => openManage(a)}>
+                        관리<span class="sr-only"> — {a.name}</span>
+                    </button>
                     {#if a.is_playing}
                         <button type="button" class="btn-row-exit" onclick={() => handleRemove(a)}>
                             퇴장<span class="sr-only"> — {a.name} · 게임 중</span>
@@ -1176,9 +1387,6 @@
                             </button>
                         </form>
                     {/if}
-                    <button type="button" class="btn-manage" onclick={() => openManage(a)}>
-                        관리<span class="sr-only"> — {a.name}</span>
-                    </button>
                 </div>
             </li>
     {/snippet}
@@ -1189,7 +1397,7 @@
         <!-- 판을 짤 수 있는 사람이 먼저 온다 -->
         <p class="roster-group-label">대기 중 {freeAttendees.length}</p>
         <ul class="attendee-list">
-            {#each freeAttendees as a (a.id)}{@render attendeeRow(a as Attendee)}{/each}
+            {#each rosterView.free as a (a.id)}{@render attendeeRow(a as Attendee)}{/each}
             {#if freeAttendees.length === 0}
                 <!-- 정리 대기가 따로 서게 된 뒤로 「모두 게임 중」은 참이 아닐 수 있다.
                      그 사람들은 앉힐 수 있으므로, 빈 상태가 그 사실을 가리켜야 한다. -->
@@ -1205,18 +1413,33 @@
             비어 있다 — 스트립의 「정리 대기 n판」이 가리키는 테이블에 앉아 있던
             바로 그 사람들이고, 새 게임에도 앉힐 수 있다.
         -->
-        {#if settlingAttendees.length > 0}
+        {#if rosterView.settling.length > 0}
             <p class="roster-group-label">정리 대기 {settlingAttendees.length}</p>
             <ul class="attendee-list">
-                {#each settlingAttendees as a (a.id)}{@render attendeeRow(a as Attendee)}{/each}
+                {#each rosterView.settling as a (a.id)}{@render attendeeRow(a as Attendee)}{/each}
             </ul>
         {/if}
-        {#if busyAttendees.length > 0}
+        {#if rosterView.busy.length > 0}
             <p class="roster-group-label">게임 중 {busyAttendees.length}</p>
             <ul class="attendee-list">
-                {#each busyAttendees as a (a.id)}{@render attendeeRow(a as Attendee)}{/each}
+                {#each rosterView.busy as a (a.id)}{@render attendeeRow(a as Attendee)}{/each}
             </ul>
         {/if}
+        {#if rosterView.hidden > 0 || showAllAttendees}
+            <button class="show-more-btn" onclick={() => showAllAttendees = !showAllAttendees}>
+                {showAllAttendees ? '접기' : `+${rosterView.hidden}명 더보기`}
+            </button>
+        {/if}
+        <!--
+            느낌표와 이름 배경은 규칙을 알아야 읽힌다. 목록 아래에 두어 배우는
+            데는 있고 훑는 데는 방해가 되지 않게 한다. 배지를 걷어낸 자리보다
+            훨씬 작다.
+        -->
+        <p class="roster-legend">
+            <span class="legend-item"><span class="attendee-link is-manager legend-swatch">이름</span> 매니저</span>
+            <span class="legend-item"><span class="penalty-marks"><span aria-hidden="true">!</span></span> 페널티 1점</span>
+            <span class="legend-item"><span class="penalty-marks blocked"><span aria-hidden="true">{'!'.repeat(penaltyThreshold)}</span></span> {penaltyThreshold}점 — 예약 제한</span>
+        </p>
     {/if}
 
     <div class="add-row">
@@ -1259,7 +1482,9 @@
         </div>
     {/if}
 </section>
+</div>
 
+<div class="room-col room-col-tables">
 <section class="section-primary room-col-games" aria-labelledby="sec-playing">
     <div class="section-header">
         <!-- 「정리 대기 n」은 스트립이 헤드라인으로 든다. 여기서 또 세면 같은 숫자가
@@ -1304,7 +1529,11 @@
             showModal = true;
             selectedGameName = '';
             selectedDuration = '60';
+            durationTouched = false;
+            durationSuggestion = null;
             selectedGameId = '';
+            newGameMax = null;
+            newGameMin = null;
             guestCount = 0;
             dropdownOpen = false;
             selectedPlayerIds = [];
@@ -1327,43 +1556,32 @@
                             <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1"/><circle cx="15.5" cy="15.5" r="1"/><circle cx="15.5" cy="8.5" r="1"/><circle cx="8.5" cy="15.5" r="1"/></svg>
                         </div>
                     {/if}
-                    <span class="list-name">{game.game_name}</span>
-                    <span class="list-meta">{game.players.length}명</span>
-                    <span class="list-meta time-remaining">{getTimeRemaining(game.end_time, now)}</span>
+                    <span class="list-name" title={game.game_name}>{game.game_name}</span>
+                    <span class="list-metas">
+                        <span class="list-meta">{game.players.length}명</span>
+                        <span class="list-meta time-remaining">{getTimeRemaining(game.end_time, now)}</span>
+                    </span>
                     <span class="list-arrow" aria-hidden="true">›</span>
                 </button>
-                {#if expired}
-                    <!--
-                        시간이 지나도 게임은 playing으로 남는다 — autoClose는 마감 때만 닫는다.
-                        승자 기록은 선택이므로 여기서 한 번에 닫을 수 있어야 한다.
-                        승자를 남기려면 행을 눌러 종료 모달로 간다.
-                    -->
-                    <!--
-                        이 행에서 유일하게 확인창 없이 서버를 바꾸던 버튼이다.
-                        그리고 같은 행의 나머지 90%는 상세 시트를 여는 탭 타깃이라,
-                        시끄러운 방에서 한 손으로 누르면 열려던 것이 끝나 있었다.
-                        되돌리기가 있지만 그건 마지막 방어선이고, 이 콘솔의 다른
-                        파괴적 동작은 전부 확인을 거친다.
-                        잦은 경우(여러 판이 한꺼번에 만료)는 위의 일괄 종료가 받는다.
-                    -->
-                    <form method="POST" action="?/endGame" class="row-end-form" use:enhance={confirmSubmit({
-                        title: '게임 종료',
-                        message: () =>
-                            `${game.game_name}을(를) 종료합니다. 참여자 ${game.players.length}명의 세션이 닫히고 승자는 기록되지 않습니다.`,
-                        confirmLabel: '종료',
-                        severity: 'destructive',
-                        handle: async ({ result, update }: any) => {
-                            if (!reportResult(result)) {
-                                const d = (result?.data as any) ?? {};
-                                toastUndoable(`${d.endedName ?? game.game_name} 종료됨 · 승자는 기록하지 않았습니다`, d.undo);
-                            }
-                            await update();
-                        }
-                    })}>
-                        <input type="hidden" name="id" value={game.id} />
-                        <button type="submit" class="btn-row-end">게임 종료</button>
-                    </form>
-                {/if}
+                <!--
+                    시간이 지나도 게임은 playing으로 남는다 — autoClose는 마감 때만 닫는다.
+                    만료된 판에만 이 버튼을 냈더니, 예정보다 일찍 끝난 판은 행에서
+                    닫을 수 없어 시트를 열어야 했다. 판이 언제 끝나는지는 시계가
+                    아니라 사람이 정한다. 승자를 남기려면 행을 눌러 종료 모달로 간다.
+                -->
+                <!--
+                    「게임 종료」라는 같은 이름의 버튼이 둘이었고, 서로 다른 일을 했다.
+                    이 행의 것은 확인창을 거쳐 바로 끝내되 승자를 남길 수 없었고
+                    (확인 문구가 「승자는 기록되지 않습니다」로 그걸 예고하는 게
+                    전부였다), 승자를 남기려면 행을 눌러 상세를 열고 거기서 다시
+                    같은 이름의 버튼을 눌러야 했다. 둘을 하나로 합친다 — 이 버튼이
+                    종료 모달을 연다. 거치는 모달 수는 그대로(확인창 → 종료 모달)인데
+                    할 수 있는 일은 늘어난다: 승자는 선택이라 비우고 종료하면
+                    예전 경로와 결과가 같다.
+                -->
+                <div class="row-action">
+                    <button type="button" class="btn-row-end" onclick={() => openEndGameModal(game)}>게임 종료</button>
+                </div>
                 {#if waiting.length > 0}
                     {@render pendingRows(waiting, game.game_name)}
                 {/if}
@@ -1401,8 +1619,9 @@
         {#each (showAllScheduled ? (scheduledGames || []) : (scheduledGames || []).slice(0, 5)) as game (game.id)}
             {@const g = game as GameSession}
             {@const waiting = pendingFor(g.id)}
+            {@const startable = startableAt(g.scheduled_at, now)}
             <li class="game-row" class:has-pending={waiting.length > 0}>
-                <button type="button" class="game-list-item" onclick={() => { selectedScheduledGame = g; resetParticipantSearch(); }}>
+                <button type="button" class="game-list-item scheduled-item" onclick={() => { selectedScheduledGame = g; resetParticipantSearch(); }}>
                     {#if g.image_url}
                         <img src={g.image_url} alt={g.game_name} width="32" height="32" class="list-thumb" />
                     {:else}
@@ -1410,11 +1629,52 @@
                             <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1"/><circle cx="15.5" cy="15.5" r="1"/><circle cx="15.5" cy="8.5" r="1"/><circle cx="8.5" cy="15.5" r="1"/></svg>
                         </div>
                     {/if}
-                    <span class="list-name">{g.game_name}</span>
-                    <span class="list-meta">{formatScheduledTime(g.scheduled_at)}</span>
-                    <span class="list-meta">{(g.participants || []).length}/{g.max_players}</span>
+                    <!--
+                        두 줄이 한 버튼 안에 있다: 무엇을 언제 하는가 / 누가 몇 명
+                        오는가. 「1/4」이 날짜 옆에 있을 때는 정원이 시각의 부속처럼
+                        읽혔는데, 실제로는 이름들의 머리말이다.
+
+                        칩은 ul/li가 아니라 span이다 — button의 내용 모델은
+                        phrasing content이고 ul은 거기 들어갈 수 없다.
+                    -->
+                    <span class="sched-head">
+                        <span class="list-name" title={g.game_name}>{g.game_name}</span>
+                        <span class="list-meta" id="sched-when-{g.id}">{formatScheduledTime(g.scheduled_at)}</span>
+                    </span>
+                    <span class="scheduled-players">
+                        <span class="players-count">{(g.participants || []).length}/{g.max_players}</span>
+                        {#if (g.participants || []).length > 0}
+                            <span class="player-chips">
+                                {#each g.participants as p (p.id ?? p.name)}
+                                    <span class="player-chip" class:is-guest={p.is_guest}>{p.name}{#if p.is_guest}<span class="chip-guest" aria-label="게스트">G</span>{/if}</span>
+                                {/each}
+                            </span>
+                        {:else}
+                            <span class="players-empty">아직 참가자가 없습니다</span>
+                        {/if}
+                    </span>
                     <span class="list-arrow" aria-hidden="true">›</span>
                 </button>
+                <!--
+                    못 누르는 이유를 따로 쓰지 않는다 — 행이 이미 「9/10 19:00」을
+                    보여주고 있고, 그것이 곧 이유다. 비활성 버튼을 그 문구에
+                    연결해 스크린리더도 같은 것을 읽게 한다.
+                -->
+                <div class="row-action">
+                    <form method="POST" action="?/startScheduledGame" use:enhance={() => {
+                        return async ({ result, update }) => {
+                            if (!reportResult(result)) showToast(`${g.game_name} 시작됨 · ${scheduledDuration(g)}분`);
+                            await update();
+                        };
+                    }}>
+                        <input type="hidden" name="sessionId" value={g.id} />
+                        <input type="hidden" name="duration" value={scheduledDuration(g)} />
+                        <button type="submit" class="btn-row-start" disabled={!startable}
+                            aria-describedby={startable ? undefined : `sched-when-${g.id}`}
+                            title={startable ? `${scheduledDuration(g)}분으로 시작합니다` : '예정일 당일부터 시작할 수 있습니다'}
+                        >게임 시작</button>
+                    </form>
+                </div>
                 {#if waiting.length > 0}
                     {@render pendingRows(waiting, g.game_name)}
                 {/if}
@@ -1430,39 +1690,7 @@
         </button>
     {/if}
 </section>
-
-<section class="visit-plan-section room-col-visit" aria-labelledby="sec-visitplan">
-    <h2 id="sec-visitplan">
-        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-        오늘 갈 예정 ({mergedVisitPlans.length})
-    </h2>
-    <!--
-        비어 있어도 남는다. 이 섹션의 일은 "오늘 누가 오나"에 답하는 것이고,
-        "아직 아무도 없다"는 답이지 없음이 아니다. 조건부로 숨기면 운영자는
-        답을 못 본 것인지 답이 없는 것인지 구별할 수 없다.
-    -->
-    {#if mergedVisitPlans.length === 0}
-        <p class="empty-state">아직 온다고 한 사람이 없습니다. 회원이 「나도 갈래요」를 누르거나 예정 게임에 예약하면 여기에 뜹니다.</p>
-    {:else}
-    <div class="visit-plan-grid">
-        {#each mergedVisitPlans as plan}
-            <div class="visit-plan-chip">
-                <span class="vp-name">{plan.name}</span>
-                {#if (plan as any).is_party}
-                    <span class="vp-party">팟</span>
-                {/if}
-                <span class="vp-time">
-                    {#if plan.planned_time}
-                        {formatVisitTime(plan.planned_time)}~
-                    {:else}
-                        상황봐서
-                    {/if}
-                </span>
-            </div>
-        {/each}
-    </div>
-    {/if}
-</section>
+</div>
 </div>
 
 
@@ -1552,17 +1780,40 @@
                         required 
                         min="1" 
                         class="duration-input"
+                        oninput={() => durationTouched = true}
                         aria-invalid={newGameMissing.includes('duration') || undefined}
                         aria-describedby={newGameMissing.includes('duration') ? 'err-duration' : undefined}
                     />
                     {#if newGameMissing.includes('duration')}
                         <p class="field-error" id="err-duration">{MISSING_LABEL.duration}</p>
                     {/if}
+                    <!--
+                        직접 친 시간을 지켰다는 사실 자체를 말한다. 조용히 지키기만
+                        하면 "라이브러리 기본값이 몇 분이었지"를 다시 찾아야 한다.
+                    -->
+                    {#if durationSuggestion}
+                        <p class="hint duration-suggest">
+                            「{durationSuggestion.name}」 기본값은 {durationSuggestion.minutes}분입니다 — 입력한 {selectedDuration}분을 그대로 씁니다.
+                            <button type="button" class="btn-mini" onclick={() => {
+                                selectedDuration = durationSuggestion!.minutes;
+                                durationSuggestion = null;
+                            }}>{durationSuggestion.minutes}분으로</button>
+                        </p>
+                    {/if}
                 </div>
 
                 <div class="player-picker">
                     <div class="pp-head">
-                        <span class="pp-label">참여자 ({selectedPlayerIds.length})</span>
+                        <!--
+                            게스트도 자리를 차지하는데 이 숫자는 회원만 세고 있었다.
+                            그래서 4인용 판에 회원 2 · 게스트 2를 앉히고도 「참여자 2/4」,
+                            즉 자리가 반 남은 것처럼 보였다. 여기가 자리를 세는 유일한
+                            자리이므로 총합을 말하고, 나눠 본 내역은 그 아래에 둔다.
+                        -->
+                        <span class="pp-label">
+                            참여자 {seatsTaken}{#if newGameMax !== null}<span class="pp-cap">/{newGameMax}</span>{/if}
+                            {#if (Number(guestCount) || 0) > 0}<span class="pp-breakdown">회원 {selectedPlayerIds.length} · 게스트 {Number(guestCount)}</span>{/if}
+                        </span>
                         <div class="pp-head-actions">
                             <!-- 조건부로 숨기면 "왜 없지"를 알 수 없다. 못 쓰는 이유를 달고 남긴다. -->
                             <button
@@ -1570,7 +1821,10 @@
                                 class="btn-mini"
                                 disabled={availableAttendees.length === 0}
                                 title={availableAttendees.length === 0 ? '방에 있는 인원이 모두 게임 중입니다' : undefined}
-                                onclick={() => selectedPlayerIds = availableAttendees.map((a) => a.id)}
+                                onclick={() => selectedPlayerIds = (newGameMax === null
+                                    ? availableAttendees
+                                    : availableAttendees.slice(0, Math.max(0, newGameMax - (Number(guestCount) || 0)))
+                                ).map((a) => a.id)}
                             >앉힐 수 있는 전원</button>
                             {#if selectedPlayerIds.length > 0}
                                 <button type="button" class="btn-ghost" onclick={() => selectedPlayerIds = []}>비우기</button>
@@ -1611,18 +1865,33 @@
 
                     <input type="text" class="pp-search" placeholder="이름 검색..." aria-label="참여자 이름 검색" autocomplete="off" bind:value={playerSearch} />
 
+                    <!--
+                        체크박스다. 버튼이었을 때는 한 화면에 사람 수만큼 버튼이
+                        생겨 무엇이 실행이고 무엇이 선택인지 흐려졌다 — 고르는
+                        일은 누르는 일과 다르고, 못 고르는 이유는 disabled가
+                        스스로 말한다.
+                    -->
                     <div class="pp-list">
                         {#each pickerResults as a (a.id)}
                             {@const checked = selectedPlayerIds.includes(a.id)}
-                            <button type="button" class="pp-option" class:checked={checked} aria-pressed={checked} disabled={a.is_playing && !isSettling(a)}
-                                onclick={() => selectedPlayerIds = checked ? selectedPlayerIds.filter((x) => x !== a.id) : [...selectedPlayerIds, a.id]}>
-                                <span class="pp-check" aria-hidden="true">{checked ? '✓' : ''}</span>
+                            {@const playing = a.is_playing && !isSettling(a)}
+                            {@const noSeat = !checked && seatsFull}
+                            <label class="pp-option" class:checked={checked} class:is-disabled={playing || noSeat}>
+                                <input
+                                    type="checkbox"
+                                    {checked}
+                                    disabled={playing || noSeat}
+                                    onchange={() => selectedPlayerIds = checked
+                                        ? selectedPlayerIds.filter((x) => x !== a.id)
+                                        : [...selectedPlayerIds, a.id]}
+                                />
                                 <span class="pp-name">{a.name}</span>
                                 <!-- 정리 대기는 「게임 중」이 아니다. 그 사람은 앉힐 수 있고,
                                      그래서 이 행은 비활성이 아니다 — 이유를 다르게 말해야 한다. -->
                                 {#if isSettling(a)}<span class="status-text">정리 대기</span>
-                                {:else if a.is_playing}<span class="status-text">게임 중</span>{/if}
-                            </button>
+                                {:else if a.is_playing}<span class="status-text">게임 중</span>
+                                {:else if noSeat}<span class="status-text">자리 참</span>{/if}
+                            </label>
                         {/each}
                         {#if pickerResults.length === 0}
                             <!--
@@ -1639,15 +1908,34 @@
                         {/if}
                     </div>
 
+                    <!--
+                        게스트도 같은 정원 안에서 자리를 차지하는데, 폼 아래 따로 서
+                        있을 때는 피커 헤더의 「참여자 2/4」와 게스트 칸의 「남은 자리
+                        2명」이 같은 정원을 두 문장으로 각각 셌다. 자리를 세는 곳은
+                        하나여야 한다 — 헤더가 총합을 말하고 게스트 칸은 그 안으로.
+                    -->
+                    <div class="input-group guest-input-group">
+                        <label for="guestCount">게스트 수</label>
+                        <input type="number" id="guestCount" name="guestCount" bind:value={guestCount} min="0"
+                            max={newGameMax === null ? 20 : Math.max(0, newGameMax - selectedPlayerIds.length)}
+                            class="number-input"
+                            oninput={() => {
+                                const cap = newGameMax === null ? 20 : Math.max(0, newGameMax - selectedPlayerIds.length);
+                                if ((Number(guestCount) || 0) > cap) guestCount = cap;
+                            }} />
+                        <p class="hint">* 회원이 아닌 사람 수 (게스트1, 게스트2… 자동 생성)</p>
+                    </div>
 
-                </div>
+                    <!-- 최소 인원은 시작을 막지 않는다. 막는 대신 무엇이 모자란지와
+                         어떻게 메우는지를 한 줄에서 말한다. -->
+                    {#if seatsShort}
+                        <p class="pp-warn" role="status">
+                            최소 {newGameMin}인 게임입니다 — 지금 {seatsTaken}명. 시작한 뒤 게임을 눌러 「추가」로 더 앉힐 수 있습니다.
+                        </p>
+                    {/if}
 
-                <div class="input-group guest-input-group">
-                    <label for="guestCount">게스트 수</label>
-                    <input type="number" id="guestCount" name="guestCount" bind:value={guestCount} min="0" max="20" class="number-input" />
-                    <p class="hint">* 회원이 아닌 사람 수 (게스트1, 게스트2… 자동 생성)</p>
-                    <!-- 참여자와 게스트 중 하나만 있으면 되므로, 둘 중 뒤에 오는
-                         여기서 한 번만 말한다 -->
+                    <!-- 참여자와 게스트 중 하나만 있으면 되므로, 둘을 함께 담은
+                         이 블록 바닥에서 한 번만 말한다 -->
                     {#if newGameMissing.includes('players')}
                         <p class="field-error">{MISSING_LABEL.players}</p>
                     {/if}
@@ -1691,9 +1979,11 @@
                     if (!reportResult(result)) {
                         endGameModalVisible = false;
                         const d = (result?.data as any) ?? {};
-                        showToast(d.hadWinners
+                        // 유일한 종료 경로가 되었으므로, 행 버튼이 갖고 있던
+                        // 되돌리기가 여기 실려야 한다.
+                        toastUndoable(d.hadWinners
                             ? `${d.endedName ?? '게임'} 종료됨 · 승자를 기록했습니다`
-                            : `${d.endedName ?? '게임'} 종료됨 · 승자는 기록하지 않았습니다`);
+                            : `${d.endedName ?? '게임'} 종료됨 · 승자는 기록하지 않았습니다`, d.undo);
                     }
                     await update();
                 };
@@ -1739,7 +2029,7 @@
             <h3 id="dlg-confirm">{confirmState.title}</h3>
             <p>{confirmState.message}</p>
             <div class="modal-actions">
-                <button class="btn-cancel" data-autofocus onclick={closeConfirm}>취소</button>
+                <button class="btn-cancel" data-autofocus onclick={closeConfirm}>{confirmState.cancelLabel}</button>
                 <button class="btn-confirm-action is-{confirmState.severity}" onclick={runConfirm}>{confirmState.confirmLabel}</button>
             </div>
         </div>
@@ -1832,7 +2122,7 @@
                     <!--
                         3단 사다리의 1단. 채움 빨강은 「되돌릴 수 없는 것」에만 쓰고,
                         이 콘솔에서 그건 블랙 등록 하나뿐이다. 이 약속이 시트 안에서만
-                        지켜지던 동안 마감 하기·게임 폭파·되돌릴 수 있는 1점이 전부
+                        지켜지던 동안 마감 하기·게임 취소·되돌릴 수 있는 1점이 전부
                         같은 빨강이었고, 그래서 그 빨강이 아무것도 말하지 않았다.
                         해제는 파괴적이지 않으므로 2단도 아닌 보조 버튼이다.
                     -->
@@ -2081,16 +2371,29 @@
                 {/if}
                 <div>
                     <h3 id="dlg-scheduled-detail">{g.game_name}</h3>
+                    <!--
+                        「인원: 최소 3 / 최대 5」가 여기 있고, 바로 아래 「참여자 (2)」가
+                        있고, 그 아래 일정 수정 폼에 같은 최소·최대가 고칠 수 있는
+                        칸으로 또 있었다. 한 화면에서 정원을 세 번 말한 셈이다.
+                        고칠 수 있는 값은 폼이 갖고, 지금 얼마나 찼는지는 참여자
+                        줄이 갖는다 — 여기는 언제 하는 판인지만 말한다.
+                    -->
                     <p class="detail-sub">예정: <strong>{formatScheduledTime(g.scheduled_at)}</strong></p>
-                    <p class="detail-sub">인원: 최소 {g.min_players} / 최대 {g.max_players}</p>
                 </div>
             </div>
             <div class="detail-section">
-                <strong>참여자 ({(g.participants || []).length})</strong>
-                <p class="detail-participants">{(g.participants || []).map((p: any) => p.is_guest ? `${p.name}(G)` : p.name).join(', ') || '없음'}</p>
+                <strong>참여자 ({(g.participants || []).length}/{g.max_players})</strong>
+                {@render participantChips(g.id, g.participants || [], refreshSelectedScheduledGame)}
+                <!-- 새 게임 모달과 같은 규칙: 최소 인원은 시작을 막지 않는다.
+                     모자란다는 것과 메우는 길을 같은 줄에서 말한다. -->
+                {#if (g.participants || []).length < g.min_players}
+                    <p class="pp-warn" role="status">
+                        최소 {g.min_players}인 게임입니다 — 지금 {(g.participants || []).length}명. 아래 「추가」로 채우거나 그대로 시작할 수 있습니다.
+                    </p>
+                {/if}
             </div>
             <!--
-                시각을 잘못 친 것을 고칠 방법이 「게임 폭파」뿐이었다. 그런데 폭파는
+                시각을 잘못 친 것을 고칠 방법이 「게임 취소」뿐이었다. 그런데 취소는
                 그 세션의 예약을 전부 취소해 회원들을 공정성 기계에 다시 떨어뜨린다.
                 운영자의 오타 비용을 회원이 내고 있었다.
             -->
@@ -2145,32 +2448,24 @@
                     <input type="hidden" name="sessionId" value={g.id} />
                     <button type="submit" class="btn-mini btn-guest" style="width:100%;">게스트 추가</button>
                 </form>
+                <!--
+                    「게임 시작」은 여기 있지 않다 — 목록의 행이 갖는다.
+                    이 시트는 판을 채우고 고치는 곳이고, 아래 구분선부터는
+                    되돌릴 수 있지만 파괴적인 것만 둔다.
+                -->
                 <hr class="detail-divider" />
-                <form method="POST" action="?/startScheduledGame" use:enhance={() => {
-                    return async ({ result, update }) => {
-                        if (!reportResult(result)) {
-                            selectedScheduledGame = null;
-                            showAlert('게임이 시작되었습니다.', 'success');
-                        }
-                        await update();
-                    };
-                }} class="detail-form-row">
-                    <input type="hidden" name="sessionId" value={g.id} />
-                    <span class="input-label">예상(분):</span>
-                    <input type="number" name="duration" value="60" aria-label="예상 진행 시간(분)" class="duration-input" />
-                    <button type="submit" class="btn-primary">게임 시작</button>
-                </form>
                 <form method="POST" action="?/dissolveScheduledGame" use:enhance={confirmSubmit({
-                    title: '게임 폭파',
-                    message: `"${g.game_name}" 예약 게임을 폭파합니다. 참여자 예약이 모두 취소됩니다.`,
-                    confirmLabel: '폭파',
+                    title: '게임 취소',
+                    message: `"${g.game_name}" 예정 게임을 취소합니다. 참여자 예약이 모두 취소됩니다.`,
+                    confirmLabel: '게임 취소',
+                    cancelLabel: '돌아가기',
                     severity: 'destructive',
                     handle: async ({ result, update }) => {
                         if (!reportResult(result)) {
                             selectedScheduledGame = null;
                             // 성공을 막는 모달로 알리면 되돌리기가 실릴 자리가 없다.
                             const d = (result?.data as any) ?? {};
-                            toastUndoable(`${d.dissolvedName ?? g.game_name} 폭파됨 · 예약이 모두 취소되었습니다`, d.undo);
+                            toastUndoable(`${d.dissolvedName ?? g.game_name} 취소됨 · 예약이 모두 취소되었습니다`, d.undo);
                         }
                         await update();
                     }
@@ -2181,7 +2476,7 @@
                         폰에서 엄지가 놓이는 자리 8px 위에서 모두의 예약을 취소하는
                         버튼이다. 관리 시트에서 이미 고친 패턴을 여기에도 적용한다.
                     -->
-                    <button type="submit" class="btn-delete">게임 폭파</button>
+                    <button type="submit" class="btn-delete">게임 취소</button>
                 </form>
             </div>
             <button class="btn-sheet-close" onclick={() => selectedScheduledGame = null}>닫기</button>
@@ -2212,7 +2507,7 @@
             </div>
             <div class="detail-section">
                 <strong>참여자 ({g.players.length})</strong>
-                <p class="detail-participants">{g.players.map((p: any) => p.is_guest ? `${p.name}(G)` : p.name).join(', ') || '없음'}</p>
+                {@render participantChips(g.id, g.players || [], refreshSelectedPlayingGame)}
             </div>
             <div class="detail-actions">
                 <form method="POST" action="?/joinGame" use:enhance={() => {
@@ -2268,14 +2563,11 @@
                     </div>
                 </div>
                 <!--
-                    「+30분」과 「게임 종료」가 8px 간격 전폭 바로 붙어 있었다.
-                    한 손으로 폰을 볼 때 오탭 한 번이면 두 시간짜리 게임이 끝난다.
-                    구분선으로 끊고, 되돌릴 수 없는 것만 이 아래에 둔다.
+                    「게임 종료」는 여기 있지 않다. 게임 행이 이미 자기 이름을 단
+                    같은 버튼을 갖고 있고, 그 버튼이 이 모달이 열던 바로 그 종료
+                    모달을 연다. 이 시트는 판을 굴리는 곳(참여자·시간)이고,
+                    끝내는 것은 목록에서 한 번에 한다.
                 -->
-                <hr class="detail-divider" />
-                <div class="destructive-row">
-                    <button class="btn-end-session" onclick={() => { openEndGameModal(g); selectedPlayingGame = null; }}>게임 종료</button>
-                </div>
             </div>
             <button class="btn-sheet-close" onclick={() => selectedPlayingGame = null}>닫기</button>
         </div>
@@ -2283,11 +2575,12 @@
 {/if}
 
 <style>
+    /* 섹션은 카드다. 컨트롤 반경을 쓰고 있어서 가장 큰 면들이 가장 각졌다. */
     section {
         margin-bottom: var(--space-6);
         padding: var(--space-5);
         border: 1px solid var(--border-light);
-        border-radius: var(--radius-control);
+        border-radius: var(--radius-card);
         background: var(--bg-primary);
     }
     /* 라벨이 데이터를 이기지 않도록 — 32px은 숫자 전용으로 비워 둔다 */
@@ -2357,10 +2650,8 @@
     /*
         게임 목록을 담은 카드는 자기 폭을 질의할 수 있어야 한다 — 아래
         @container room-card 규칙이 좁을 때 이름에 온전한 한 줄을 내준다.
-        예정 게임 섹션은 2열 밖에 있어 이 선언이 없었고, 그래서 375px에서
-        긴 이름이 형제 메타(시각·정원)에 폭을 뺏겨 홀로 잘렸다.
     */
-    .room-columns > section {
+    .room-col > section {
         container: room-card / inline-size;
     }
     .room-columns {
@@ -2370,49 +2661,43 @@
         grid-template-columns: minmax(0, 1fr);
         gap: var(--space-5);
     }
+    /*
+        열은 자기 흐름을 갖는다. 그리드 행은 열을 가로질러 정렬되므로, 한 열에
+        두 섹션을 놓으면 짧은 쪽 아래에 다른 열의 카드 높이만큼 빈 땅이 생긴다.
+        전에는 명단이 모든 행을 span해서 그걸 피했는데, 오른쪽에 두 섹션이
+        서면 그 트릭을 쓸 수 없다.
+    */
+    .room-col {
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-5);
+        min-width: 0;
+    }
+    .room-col > section {
+        margin-bottom: 0;
+    }
     /* 두 번째 조건은 가로로 든 폰·짧은 창이다 — 거기서 희소한 자원은 세로이고,
        나란히 놓아야 게임과 사람이 한 화면에 들어온다. */
     @media (min-width: 1100px), (min-width: 820px) and (max-height: 560px) {
         .room-columns {
-            /*
-                게임 카드 하나와 801px짜리 명단을 1:1로 짝지으면 왼쪽 열 아래가
-                빈 땅으로 남는다. 왼쪽에 세 칸(게임 · 시작 예정 · 오늘 갈 예정)을
-                쌓고 오른쪽 명단이 그 높이를 함께 쓴다. 명단이 이름·배지·메타를
-                한 줄에 담아야 하므로 오른쪽에 1.1을 준다.
-            */
+            /* 명단이 이름·배지·메타를 한 줄에 담아야 하므로 사람 열에 1.1을 준다. */
             grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
-            /* 행을 명시해야 아래 grid-row의 -1이 가리킬 줄이 생긴다.
-               암묵 행만 있으면 -1이 첫 줄로 접혀 span이 사라진다. */
-            grid-template-rows: auto auto auto;
             align-items: start;
         }
-        .room-columns > section {
-            margin-bottom: 0;
-        }
         /*
-            DOM 순서는 명단 → 게임 → 시작 예정 → 오늘 갈 예정이다. 폰에서 한 열로
-            쌓일 때 방에 서 있는 운영자가 먼저 봐야 하는 것은 판이 아니라 사람이다 —
-            테이블은 눈으로 보이지만 페널티·블랙·대기 여부는 화면에만 있다.
-            그 전에는 게임 카드 539px가 첫 화면을 다 써서 접힌 선 위에 사람이
-            한 명도 없었다.
-            넓은 화면의 열 배치는 DOM과 다르므로 넷 다 명시한다 — 왼쪽은 시간 축
-            (지금 도는 판 → 곧 시작할 판 → 오늘 올 사람), 오른쪽은 지금 방.
+            DOM 순서는 사람 열(오늘 갈 예정 → 명단) → 판 열(게임 → 시작 예정)이다.
+            폰에서 한 열로 쌓일 때 방에 서 있는 운영자가 먼저 봐야 하는 것은 판이
+            아니라 사람이기 때문이다 — 테이블은 눈으로 보이지만 페널티·블랙·대기
+            여부는 화면에만 있다.
+            넓은 화면에서는 판 열이 왼쪽, 사람 열이 오른쪽으로 간다.
         */
-        .room-col-games {
+        .room-col-tables {
             grid-column: 1;
             grid-row: 1;
         }
-        .room-col-scheduled {
-            grid-column: 1;
-            grid-row: 2;
-        }
-        .room-col-visit {
-            grid-column: 1;
-            grid-row: 3;
-        }
-        .room-col-roster {
+        .room-col-people {
             grid-column: 2;
-            grid-row: 1 / -1;
+            grid-row: 1;
         }
     }
     .rs-stat {
@@ -2669,30 +2954,102 @@
         list-style: none;
         padding: 0;
     }
+    /*
+        한 사람이 60px을 썼다. 안쪽 여백 8px×2에 44px 버튼이 얹혀 있었는데,
+        이름·배지·메타는 그 안에서 43px이면 충분하다. 여백을 줄이고 버튼이
+        행 높이를 정하게 둔다 — 표적 크기는 그대로다.
+    */
     .attendee-list li {
         display: flex;
         justify-content: space-between;
         align-items: center;
         gap: var(--space-3);
-        padding: var(--space-2);
-        border-bottom: 1px solid var(--border-default);
+        padding: var(--space-1) var(--space-2);
+        border-bottom: 1px solid var(--border-light);
     }
+    .attendee-list li:last-child {
+        border-bottom: none;
+    }
+    /*
+        한 사람이 한 줄. 접히게 두었더니 「글룸헤이븐 죽음의 아가리 확장판」 같은
+        이름에서 폰의 행이 57 → 74px로 자랐다 — 한 줄로 보자는 목적이 정작 세로가
+        희소한 기기에서 깨졌다. 줄바꿈을 막고, 줄어들 몫을 게임 이름이 지게 한다.
+
+        어느 판인지는 「글룸헤이븐 죽음…」으로도 알 수 있다. 방에 도는 판이
+        한 손에 꼽히므로 앞 몇 글자면 테이블이 특정된다. 전체 이름은 title에 있다.
+    */
     .attendee-info {
         display: flex;
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 2px;
+        flex-wrap: nowrap;
+        align-items: baseline;
+        gap: var(--space-2);
         min-width: 0;
         flex: 1 1 auto;
     }
-    .attendee-meta {
+    /* 사람 이름은 마지막에 줄어든다 — 행의 주어다 */
+    .attendee-info .attendee-link {
+        flex: 0 1 auto;
+        min-width: 3rem;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    /*
+        행의 무게를 둘로 줄인다 — 어두운 것은 이름 하나뿐이고 나머지는 하나의
+        회색 런이다. 게임 이름까지 본문색이면 어디가 사람이고 어디가 판인지
+        한눈에 갈리지 않는다.
+    */
+    /*
+        판 줄은 「무엇을」과 「얼마나 남았나」 둘이다. 붙여 놓으면 어느 쪽이
+        시간인지 매번 읽어야 한다. 양 끝으로 밀어 눈이 같은 자리에서 시간을
+        찾게 한다 — 목록에서는 그 열이 곧 우선순위다.
+    */
+    .attendee-info .attendee-meta {
         display: flex;
-        flex-wrap: wrap;
         align-items: baseline;
-        gap: var(--space-1);
+        justify-content: space-between;
+        gap: var(--space-3);
+        flex: 1 1 auto;
         min-width: 0;
         font-size: var(--text-xs);
         color: var(--text-secondary);
+    }
+    .attendee-meta .seat-game {
+        flex: 0 1 auto;
+        /* 다섯 글자쯤은 남겨야 어느 테이블인지 특정된다 */
+        min-width: 4.5rem;
+        max-width: none;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        color: var(--text-secondary);
+    }
+    .attendee-meta .seat-time {
+        flex: 0 0 auto;
+        white-space: nowrap;
+    }
+    /* 알약 배경이 행에서 가장 작은 것에 가장 센 대비를 줬다 */
+    .name-row .arrival-time {
+        flex: 0 0 auto;
+        background: none;
+        padding: 0;
+        font-size: var(--text-xs);
+        color: var(--text-secondary);
+        white-space: nowrap;
+    }
+    .attendee-info .name-row {
+        display: flex;
+        align-items: center;
+        gap: var(--space-2);
+        min-width: 0;
+        flex: 0 1 auto;
+        /* 배지가 붙은 행만 2~4px 높아져 목록이 미세하게 들쭉날쭉했다.
+           가장 키 큰 내용(블랙 배지)에 맞춰 줄 높이를 고정한다. */
+        min-height: 1.5rem;
+    }
+    .name-row .penalty-marks,
+    .name-row .badge {
+        flex: 0 0 auto;
     }
     .attendee-link {
         text-decoration: none;
@@ -2921,7 +3278,7 @@
         background: var(--color-slate-dark);
         color: var(--bg-primary);
     }
-    /* 예약 게임 폭파·게임 종료 및 퇴장. 파괴적이지만 되돌릴 수 있다 —
+    /* 예정 게임 취소·게임 종료 및 퇴장. 파괴적이지만 되돌릴 수 있다 —
        게임은 다시 만들고 사람은 다시 입장시킨다. 2단(테두리 빨강)이다. */
     .btn-delete {
         background: var(--danger-outline-bg);
@@ -2946,7 +3303,6 @@
         padding-top: var(--space-2);
     }
     .destructive-row > button,
-    .destructive-row .btn-end-session,
     .destructive-row .btn-delete {
         width: auto;
         min-width: 8rem;
@@ -2969,20 +3325,6 @@
         color: var(--text-primary);
     }
 
-    /* 되돌릴 수 없는 유일한 동작. 이 모달에서 강한 색을 쓰는 것은 이것뿐이다. */
-    .btn-end-session {
-        width: 100%;
-        background: var(--bg-primary);
-        color: var(--color-red-dark);
-        border: 1px solid var(--color-red-dark);
-        padding: var(--space-3) var(--space-4);
-        border-radius: var(--radius-control);
-        cursor: pointer;
-        font-weight: 700;
-    }
-    .btn-end-session:hover {
-        background: var(--color-error-bg);
-    }
     .btn-warning {
         background: var(--color-warning-bg);
         color: var(--text-darker);
@@ -3060,6 +3402,23 @@
         display: flex;
         gap: 0.35rem;
     }
+    /* 총합 옆의 내역. 숫자는 헤더가 갖고, 이건 그 숫자를 풀어 쓴 것이라 약하게. */
+    .pp-breakdown {
+        margin-left: var(--space-2);
+        font-weight: 400;
+        font-size: var(--text-xs);
+        color: var(--text-secondary);
+    }
+    /* 막지 않는 경고 — 빨강이 아니다. 시작 버튼은 그대로 눌린다. */
+    .pp-warn {
+        margin: var(--space-2) 0 0;
+        padding: var(--space-2);
+        border-radius: var(--radius-control);
+        background: var(--color-warning-bg);
+        color: var(--color-orange-text);
+        font-size: var(--text-sm);
+        line-height: 1.5;
+    }
     .pp-chips {
         display: flex;
         flex-wrap: wrap;
@@ -3115,8 +3474,8 @@
         border-radius: var(--radius-control);
         font-size: var(--text-sm);
     }
-    .pp-option:hover:not(:disabled),
-    .pp-option:focus-visible {
+    .pp-option:hover:not(.is-disabled),
+    .pp-option:focus-within {
         background: var(--bg-tertiary);
     }
     .pp-option.checked {
@@ -3124,35 +3483,28 @@
         color: var(--color-blue-bright);
         font-weight: 600;
     }
-    .pp-option:disabled {
+    /* 못 고르는 이유는 disabled가 스스로 말한다 — 직접 그린 체크 상자를
+       쓰던 때는 그 상태를 손으로 흉내 내야 했다. */
+    .pp-option.is-disabled {
         color: var(--text-secondary);
         cursor: not-allowed;
     }
-    /* 체크 표시만 있으면 고르지 않은 행은 그냥 텍스트로 보인다.
-       빈 상자를 항상 그려 "고를 수 있는 목록"임을 알린다. */
-    .pp-check {
+    .pp-option input[type='checkbox'] {
         width: 1.1rem;
         height: 1.1rem;
+        min-height: 0;
         flex-shrink: 0;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        border: 1px solid var(--border-medium);
-        border-radius: 3px;
-        background: var(--bg-primary);
-        font-size: var(--text-xs);
-        line-height: 1;
-        color: var(--color-blue-bright);
-    }
-    .pp-option.checked .pp-check {
-        border-color: var(--color-blue-bright);
-    }
-    .pp-option:disabled .pp-check {
-        background: var(--bg-hover);
-        border-color: var(--border-medium);
+        margin: 0;
+        accent-color: var(--color-blue-bright);
+        cursor: inherit;
     }
     .pp-name {
         flex: 1;
+    }
+    /* 정원은 고른 수의 분모다 — 같은 크기면 둘이 경쟁한다 */
+    .pp-cap {
+        color: var(--text-secondary);
+        font-weight: var(--weight-normal);
     }
     /* 범위 세그먼트 — 목록이 무엇을 보여주는지가 목록 위에서 결정된다 */
     .pp-scope {
@@ -3333,18 +3685,54 @@
     }
 
     /* New Admin UI Styles */
-    .name-row {
+    /*
+        매니저는 이름에 붙는 성질이라 이름 자체가 진다. 틴트인 이유는 이름이
+        링크이기 때문이다 — 채움 파랑은 주 동작의 색이고, 링크가 그 색을 입으면
+        누르면 뭔가 실행될 것처럼 읽힌다.
+    */
+    .attendee-link.is-manager {
+        background: var(--tint-blue-bg);
+        color: var(--color-blue-bright);
+        border-radius: var(--radius-control);
+        font-weight: var(--weight-medium);
+    }
+    /*
+        「페널티 2/3」 배지가 이름 옆에서 행의 절반을 썼다. 개수로 센다.
+        3점(임계)은 예약이 막히는 상태이므로 색이 더 세진다.
+    */
+    .penalty-marks {
+        flex-shrink: 0;
+        font-weight: 700;
+        font-size: var(--text-sm);
+        letter-spacing: 0.08em;
+        color: var(--color-orange-text);
+        line-height: 1;
+    }
+    .penalty-marks.blocked {
+        color: var(--color-red-dark);
+    }
+    .roster-legend {
         display: flex;
         flex-wrap: wrap;
         align-items: center;
-        gap: var(--space-1) var(--space-2);
-        min-width: 0;
-        max-width: 100%;
+        gap: var(--space-1) var(--space-4);
+        margin: var(--space-3) 0 0;
+        padding-top: var(--space-2);
+        border-top: 1px dashed var(--border-light);
+        font-size: var(--text-xs);
+        color: var(--text-secondary);
     }
-    .name-row .attendee-link {
-        min-width: 0;
+    .legend-item {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--space-1);
     }
-    .name-row .badge {
+    .legend-swatch {
+        padding: 0 var(--space-1);
+        font-size: var(--text-xs);
+        text-decoration: none;
+    }
+    .attendee-info .badge {
         flex-shrink: 0;
     }
     .badge {
@@ -3564,9 +3952,10 @@
         최소 폭을 준다 — 옆의 「관리」는 떠나지 않는 버튼이라 오조작 비용이 크다.
     */
     .sq-who .attendee-link,
-    .name-row .attendee-link {
+    .attendee-info .attendee-link {
         padding-block: var(--space-1);
         padding-inline: var(--space-2);
+        margin-block: calc(-1 * var(--space-1));
         margin-inline: calc(-1 * var(--space-2));
         min-width: 2.75rem;
         display: inline-block;
@@ -3594,13 +3983,38 @@
         것(블랙 등록)에만 예약돼 있다. 관리와 붙지 않게 간격을 두어, 시트를
         열려다 사람을 내보내는 일이 없게 한다.
     */
+    /*
+        명단은 행이 많다. 44px 표적 둘이 한 행의 높이를 정하고 있었고, 7명이면
+        그것만으로 350px이다. 36px으로 내린다 — WCAG 2.5.8의 최소(24x24)는
+        넉넉히 넘고, 이 두 버튼은 이름·상태와 함께 넓은 여백 안에 서 있다.
+        방 밖의 컨트롤(모달·헤더·토스트)은 44를 그대로 지킨다.
+    */
+    /*
+        두 글자 라벨에 좌우 패딩이 붙어 가로가 세로보다 길었다(39x36).
+        정사각으로 맞춘다 — 두 버튼이 나란히 서므로 형태가 어긋나면 눈에 띈다.
+        aspect-ratio로 묶어두면 폰에서 높이가 44로 올라갈 때 폭도 함께 간다.
+    */
+    .btn-row-exit,
+    .btn-manage {
+        aspect-ratio: 1;
+        padding: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        /*
+            반경은 요소 크기에 비례해야 한다. 36px 상자에 카드와 같은 10px을
+            쓰면 각 변의 28%가 깎여 남는 직선이 16px뿐이고, 그 안의 「관리」는
+            가로 24px·세로 12px짜리 가로 덩어리다. 상자는 정확히 정사각인데
+            (실측 36x36) 가로로 읽혔다. 작은 정사각에는 작은 반경.
+        */
+        border-radius: var(--radius-control-sm);
+    }
     .btn-row-exit {
-        min-height: 44px;
-        padding: 0 var(--space-3);
+        min-height: 36px;
         background: var(--bg-primary);
         color: var(--color-red-dark);
         border: 1px solid var(--color-red-dark);
-        border-radius: var(--radius-control);
+        border-radius: var(--radius-control-sm);
         font-size: var(--text-xs);
         font-weight: var(--weight-medium);
         white-space: nowrap;
@@ -3609,13 +4023,19 @@
     .btn-row-exit:hover {
         background: var(--color-error-bg);
     }
+    /*
+        두 버튼은 같은 36x36인데 「관리」만 덜 정사각으로 보였다. 상자가 아니라
+        글자 무게가 달랐다 — 「퇴장」은 600, 「관리」는 기본 400. 옅고 가는 글자가
+        든 상자는 헐렁하게, 그래서 더 넓게 읽힌다. 나란히 서는 둘은 같은 무게를
+        가져야 같은 형태로 읽힌다.
+    */
     .btn-manage {
-        min-height: 44px;
+        min-height: 36px;
         background: var(--bg-primary);
         color: var(--text-primary);
         border: 1px solid var(--border-control);
-        padding: 0.3rem 0.7rem;
-        border-radius: var(--radius-control);
+        font-weight: var(--weight-medium);
+        border-radius: var(--radius-control-sm);
         font-size: var(--text-xs);
         cursor: pointer;
     }
@@ -3721,8 +4141,13 @@
        한 파일에 .btn-* 21종이 흩어져 있었고 같은 모달 안에서 높이 정책이
        26 / 28 / 44px 세 가지로 갈렸다. 시각적 무게는 결과의 무게를 따라간다. */
     /* 모든 어드민 버튼/입력의 바닥.
-       폼 컨트롤은 폰트를 상속하지 않아 UA 기본 13.33px이 스케일 밖으로 새어나온다. */
-    button:not(.game-list-item):not(.kpi-card):not(.bottom-nav-item) {
+       폼 컨트롤은 폰트를 상속하지 않아 UA 기본 13.33px이 스케일 밖으로 새어나온다.
+
+       명단 행의 「관리」·「퇴장」은 예외다. 이 둘은 사람 수만큼 반복되므로
+       44px 둘이 행 높이를 정하고, 열 명이면 그것만으로 530px이다. 36px로
+       내린다 — WCAG 2.5.8의 최소(24x24)는 넉넉히 넘고, 두 버튼 사이에 12px,
+       바깥으로 넉넉한 여백이 있다. 반복되지 않는 컨트롤은 44를 지킨다. */
+    button:not(.game-list-item):not(.kpi-card):not(.bottom-nav-item):not(.btn-row-exit):not(.btn-manage) {
         min-height: 44px;
     }
     button,
@@ -3957,11 +4382,6 @@
         color: var(--color-orange-text);
         font-weight: 700;
     }
-    .input-label {
-        font-size: var(--text-sm);
-        font-weight: 600;
-        color: var(--text-darker);
-    }
     .guest-badge {
         display: inline-flex;
         align-items: center;
@@ -3980,6 +4400,13 @@
         margin-top: var(--space-2);
         padding-top: var(--space-2);
         border-top: 1px solid var(--border-light);
+    }
+    /* 지킨 값과 버려도 되는 기본값이 한 줄에 있다 — 버튼이 문장 흐름을 타게 둔다. */
+    .duration-suggest {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: var(--space-2);
     }
     .number-input {
         width: 80px;
@@ -4182,10 +4609,12 @@
         color: var(--color-orange-text);
         font-weight: 700;
     }
-    .row-end-form {
+    .row-action {
         flex-shrink: 0;
     }
-    .btn-row-end {
+    /* 시작과 종료는 같은 자리에 서는 같은 층위의 행 동작이다 — 같은 형태를 쓴다. */
+    .btn-row-end,
+    .btn-row-start {
         min-height: 36px;
         padding: 0 var(--space-3);
         border: 1px solid var(--border-control);
@@ -4197,8 +4626,16 @@
         white-space: nowrap;
         cursor: pointer;
     }
-    .btn-row-end:hover {
+    .btn-row-end:hover,
+    .btn-row-start:not(:disabled):hover {
         background: var(--bg-hover);
+    }
+    /* 아직 날이 아니다. 회색으로 죽이지 않고 테두리로 세운다 —
+       이 콘솔의 다른 비활성 버튼과 같은 규칙. */
+    .btn-row-start:disabled {
+        color: var(--text-secondary);
+        border-style: dashed;
+        cursor: not-allowed;
     }
     .list-thumb {
         width: 32px;
@@ -4227,6 +4664,78 @@
         font-size: var(--text-xs);
         color: var(--text-secondary);
         white-space: nowrap;
+        flex: 0 0 auto;
+    }
+    /*
+        예정 게임의 참석자. 이름만 나열하면 「1/4」과 겹쳐 읽히므로 칩으로
+        묶어 목록임을 형태로 말한다. 게임 행과 같은 들여쓰기를 써서 어느
+        판에 붙은 것인지가 위치로 드러난다.
+    */
+    /*
+        예정 게임의 둘째 줄. 첫 줄은 무엇을 언제 하는가(이름·날짜),
+        둘째 줄은 누가 몇 명 오는가(정원·이름). 「1/4」이 날짜 옆에 있을 때는
+        정원이 시각의 부속처럼 읽혔는데, 실제로는 이름들의 머리말이다.
+    */
+    /*
+        참가자 줄은 버튼 안에 있다. 섬네일이 두 줄을 세로로 가로지르므로
+        들여쓰기를 손으로 계산할 필요가 없다 — 그리드가 이름과 같은 열에 놓는다.
+    */
+    .scheduled-players {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: var(--space-1) var(--space-2);
+        margin: 0;
+        padding: 0;
+        min-width: 0;
+    }
+    .players-count {
+        flex: 0 0 auto;
+        font-size: var(--text-xs);
+        font-weight: var(--weight-medium);
+        color: var(--text-secondary);
+        font-variant-numeric: var(--numeric);
+    }
+    .player-chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--space-1);
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        min-width: 0;
+    }
+    .players-empty {
+        font-size: var(--text-xs);
+        color: var(--text-hint);
+    }
+    .player-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 2px;
+        padding: 0.15rem var(--space-2);
+        border-radius: var(--radius-pill);
+        background: var(--bg-hover);
+        color: var(--text-primary);
+        font-size: var(--text-xs);
+        white-space: nowrap;
+    }
+    .player-chip.is-guest {
+        background: var(--bg-secondary);
+        color: var(--text-secondary);
+    }
+    .chip-guest {
+        font-size: 0.625rem;
+        font-weight: 700;
+        color: var(--text-muted);
+    }
+    /* 인원과 시간은 한 덩어리로 왼쪽에 붙는다 */
+    .list-metas {
+        display: flex;
+        align-items: baseline;
+        justify-content: flex-start;
+        gap: var(--space-3);
+        min-width: 0;
     }
     /* 20px bold라 큰 글씨 기준 3:1이 적용되고, 방향 지시자라 1.4.11로도 3:1이다.
        --text-muted(#999)로는 흰 배경 2.85 · 만료 행 hover 위 2.46이었다. */
@@ -4245,6 +4754,147 @@
         1280px 화면에서도 열이 471px이고, 만료 행은 「게임 종료」에 87px을 내주므로
         이름에 남는 자리가 폰과 비슷해진다.
     */
+    /*
+        좁은 카드에서는 한 줄을 고집하지 않는다. nowrap으로 버티면 이름과 게임
+        이름이 서로를 밀어 둘 다 못 읽게 된다. 입장 시각이 먼저 아랫줄로 내려가고,
+        행 높이는 버튼이 정하므로 대가가 거의 없다.
+
+        임계가 560이면 안 된다 — 명단 카드는 1280에서도 493px이라 항상 걸려서,
+        넓은 화면에서도 한 줄이 되지 않았다.
+
+        컨테이너 쿼리는 콘텐츠 상자를 재므로 카드 폭에서 좌우 패딩(48px)이
+        빠진다. 400은 카드 448px 언저리에 해당한다 — 데스크톱(493)은 한 줄로
+        남고, 가로 폰(413)과 세로 폰(343)은 접힌다.
+        접히는 대가는 작다. 행 높이를 버튼이 정하므로 45 → 55px(가로 폰),
+        58 → 58px(세로 폰)에 그치고, 대신 이름이 잘리지 않는다.
+    */
+    /*
+        명단과 게임이 같은 임계를 쓴다. 카드 콘텐츠 폭 기준 380px —
+        1280의 명단(445)·게임(401)은 한 줄로 남고, 가로 폰(327)과 세로 폰(310)은
+        두 줄이 된다. 양쪽에 20~50px 여유가 있어 패딩이 조금 바뀌어도 뒤집히지 않는다.
+    */
+    /*
+        줄 수는 두 줄이 기본이고, 넓은 화면에서만 한 줄이 된다.
+
+        이 결정만 카드 폭이 아니라 뷰포트를 본다. 명단과 게임 카드는 1fr : 1.1fr
+        이라 폭이 다르고, 844(가로 폰)에서 콘텐츠가 각각 388.8px과 351.2px으로
+        갈린다 — 카드 폭 임계로는 둘을 같은 편에 두는 여유가 6px밖에 없어
+        패딩이 조금만 바뀌어도 한쪽만 뒤집힌다. 2열 전환점(1100px)이 곧
+        「넓은 화면」의 정의이므로 그 선을 그대로 쓴다.
+
+        wrap은 「필요하면 접는다」이고 필요 여부는 행마다 다르다 — 「3432 !!!」는
+        밀리고 「qwer !!」는 안 밀려서 같은 목록에 한 줄과 두 줄이 섞였다.
+        내용이 아니라 폭이 정한다.
+    */
+    .attendee-info {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 2px;
+    }
+    .attendee-info .name-row,
+    .attendee-info .attendee-meta {
+        width: 100%;
+    }
+    /*
+        두 줄일 때는 그리드다. 전에는 wrap + 「이름 100%」로 접었는데, 그러면
+        섬네일이 이름에 밀려 메타와 같은 줄로 내려가 자리가 어긋난다. 그래서
+        좁은 화면에서는 섬네일을 아예 숨기고 있었다 — 조명이 나쁜 방에서 판을
+        가장 빨리 알아보는 단서를 폰에서만 빼고 있었던 셈이다.
+        섬네일이 두 줄을 세로로 가로지르고, 이름과 메타가 그 오른쪽에 쌓인다.
+    */
+    .game-list-item {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr) auto;
+        grid-template-areas:
+            'thumb name arrow'
+            'thumb metas arrow';
+        column-gap: var(--space-3);
+        row-gap: 2px;
+    }
+    .game-list-item .list-thumb {
+        grid-area: thumb;
+    }
+    /* 이름이 접히면 행 높이가 이름 길이를 따라간다 — 목록이 다시 들쭉날쭉해진다.
+       판은 섬네일·인원·시간이 함께 특정하므로 앞 몇 글자면 충분하다. 전체는 title에. */
+    .game-list-item .list-name {
+        grid-area: name;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .game-list-item .list-metas {
+        grid-area: metas;
+    }
+    .game-list-item .list-arrow {
+        grid-area: arrow;
+    }
+    /*
+        예정 행은 두 줄이 한 버튼 안에 있다. 첫 줄 「이름 · 날짜」, 둘째 줄
+        「정원 · 참가자」. 기본 그리드(이름 / 메타)를 여기서 덮으므로 그 규칙
+        뒤에 와야 한다 — 앞에 두었을 때는 같은 특이도라 순서에 밀렸다.
+    */
+    .scheduled-item {
+        grid-template-areas:
+            'thumb head arrow'
+            'thumb players arrow';
+        align-items: center;
+        row-gap: var(--space-1);
+    }
+    .sched-head {
+        grid-area: head;
+        display: flex;
+        align-items: baseline;
+        gap: var(--space-3);
+        min-width: 0;
+    }
+    .sched-head .list-name {
+        flex: 0 1 auto;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .sched-head .list-meta {
+        flex: 0 0 auto;
+    }
+    .scheduled-item .scheduled-players {
+        grid-area: players;
+    }
+    .scheduled-item .list-arrow {
+        grid-area: arrow;
+    }
+    @media (min-width: 1100px) {
+        .attendee-info {
+            flex-direction: row;
+            align-items: baseline;
+            gap: var(--space-2);
+        }
+        .attendee-info .name-row {
+            width: auto;
+        }
+        .attendee-info .attendee-meta {
+            width: auto;
+        }
+        /* 예정 행은 넓은 화면에서도 두 줄이다 — 참가자 줄이 버튼 안에 있다 */
+        .game-list-item:not(.scheduled-item) {
+            display: flex;
+            flex-wrap: nowrap;
+            align-items: center;
+            gap: var(--space-3);
+        }
+        .game-list-item .list-name {
+            flex: 0 1 auto;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .game-list-item .list-metas {
+            flex: 0 0 auto;
+        }
+        /* 인원·시간은 이름 바로 뒤에 붙고, 화살표만 오른쪽 끝으로 간다 */
+        .game-list-item .list-arrow {
+            margin-left: auto;
+        }
+    }
     @container room-card (max-width: 560px) {
         /*
             가로로 든 폰은 폭이 844px이라 ≤768px 규칙에 안 걸리는데, 2열이라
@@ -4263,19 +4913,6 @@
         /* 버튼은 자기 내용 폭을 지킨다 — 늘리면 전폭 파란 바가 된다 */
         .section-header > button {
             flex: 0 0 auto;
-        }
-        .game-list-item {
-            flex-wrap: wrap;
-            row-gap: 2px;
-        }
-        .game-list-item .list-name {
-            flex: 1 0 100%;
-            order: -1;
-            white-space: normal;
-            overflow: visible;
-        }
-        .game-list-item .list-thumb {
-            display: none;
         }
         /*
             좁은 카드에서는 들여쓰기와 버튼 두 개가 이름 칸을 6px까지 짓눌러
@@ -4358,11 +4995,14 @@
         font-size: var(--text-sm);
         color: var(--text-secondary);
     }
+    /*
+        패딩 12px에 모달과 똑같은 --bg-primary 배경이라, 카드로도 보이지 않으면서
+        안쪽 내용만 12px 밀어냈다. 그래서 한 시트 안에 왼쪽 끝이 둘이었다 —
+        헤더·액션은 모달 여백에, 참여자·일정 수정은 그보다 12px 안쪽에.
+        보이지 않는 상자를 없애고 하나의 왼쪽 끝으로 세운다.
+    */
     .detail-section {
         margin-bottom: var(--space-4);
-        padding: var(--space-3);
-        background: var(--bg-primary);
-        border-radius: var(--radius-control);
     }
     .detail-section strong {
         font-size: var(--text-sm);
@@ -4404,6 +5044,62 @@
         margin: var(--space-1) 0 0;
         font-size: var(--text-sm);
         color: var(--text-primary);
+    }
+    .detail-chips {
+        list-style: none;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.35rem;
+        margin: var(--space-2) 0 0;
+        padding: 0;
+    }
+    .detail-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.25rem;
+        padding: 0.2rem var(--space-2);
+        border-radius: var(--radius-pill);
+        background: var(--bg-hover);
+        color: var(--text-primary);
+        font-size: var(--text-sm);
+        white-space: nowrap;
+    }
+    /* 게스트는 회원과 다른 종류의 자리다 — 뺄 수 있는 것도 이쪽뿐이다. */
+    .detail-chip.is-guest {
+        background: var(--bg-secondary);
+        color: var(--text-secondary);
+        padding-right: 0.2rem;
+    }
+    .detail-chip form {
+        display: flex;
+    }
+    /*
+        44px 타깃을 칩 안에 넣으면 칩이 목록을 지배한다. 손가락이 닿는 넓이는
+        의사 요소로 칩 밖에 깔고, 보이는 것은 작게 둔다.
+    */
+    .detail-chip-x {
+        position: relative;
+        all: unset;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        color: var(--text-secondary);
+        font-size: var(--text-sm);
+        line-height: 1;
+        cursor: pointer;
+    }
+    .detail-chip-x::after {
+        content: '';
+        position: absolute;
+        inset: -12px;
+    }
+    .detail-chip-x:hover,
+    .detail-chip-x:focus-visible {
+        background: var(--color-error-bg);
+        color: var(--color-red-dark);
     }
     .detail-actions {
         display: flex;
@@ -4506,9 +5202,13 @@
         select {
             min-height: 44px;
         }
+        /* 명단 행 버튼을 넓은 화면에서는 36px로 내렸지만, 여기서는 아니다.
+           서서 한 손으로 쓰는 장면에서 표적을 깎으면 스크롤을 아끼려다
+           오탭을 산다. 폰의 세로는 「+n명 더보기」가 아낀다. */
         .chip-add,
         .toggle-header,
-        .btn-manage {
+        .btn-manage,
+        .btn-row-exit {
             min-height: 44px;
         }
         .attendee-list li {
@@ -4520,7 +5220,6 @@
         .badge { font-size: var(--text-xs); padding: 0.05rem 0.3rem; }
         .arrival-time { font-size: var(--text-xs); }
         .duration-input { width: 50px; }
-        .input-label { font-size: var(--text-xs); }
         .chip-container { font-size: var(--text-xs); }
         .chip-link { font-size: var(--text-xs); }
         .chip-add { font-size: var(--text-xs); padding: 0.2rem 0.6rem; }
