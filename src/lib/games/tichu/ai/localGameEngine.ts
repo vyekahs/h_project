@@ -490,7 +490,13 @@ export class LocalGameEngine {
 			const partnerDeclaredTichu = partnerPlayer.grandTichu === true || partnerPlayer.smallTichu === true;
 			const self = this.state.players[seat];
 			const selfDeclaredTichu = self.grandTichu === true || self.smallTichu === true;
-			const exchange = ai.makeExchangeDecision(self.hand, partnerDeclaredTichu, selfDeclaredTichu, self.grandTichu === true);
+			const leftSeat = getLeftSeat(seat) as SeatIndex;
+			const rightSeat = getRightSeat(seat) as SeatIndex;
+			const gtOpp: 'left' | 'right' | null =
+				this.state.players[leftSeat].grandTichu === true ? 'left'
+				: this.state.players[rightSeat].grandTichu === true ? 'right'
+				: null;
+			const exchange = ai.makeExchangeDecision(self.hand, partnerDeclaredTichu, selfDeclaredTichu, self.grandTichu === true, gtOpp);
 			this.exchangeSubmissions[seat] = exchange;
 		}
 

@@ -334,7 +334,9 @@ export function selectExchangeCards(
 	 */
 	selfDeclaredTichu: boolean = false,
 	/** 그랜드 티츄인지 — 개(dog)를 넘기는 예외 판단에만 쓴다 */
-	selfDeclaredGrandTichu: boolean = false
+	selfDeclaredGrandTichu: boolean = false,
+	/** 그랜드 티츄를 선언한 상대가 왼쪽인지 오른쪽인지 (없으면 null) */
+	grandTichuOpponent: 'left' | 'right' | null = null
 ): ExchangeCards {
 	const normalCards = hand.filter(c => c.type === 'normal') as NormalCard[];
 	const rankGroups = new Map<number, NormalCard[]>();
@@ -478,6 +480,19 @@ export function selectExchangeCards(
 		while (giveToOpponent.length < 2 && sorted.length > 0) {
 			giveToOpponent.push(sorted.shift()!);
 		}
+	}
+
+	// 그랜드 티츄를 부른 상대에게는 개를 준다.
+	// 티츄를 부른 쪽은 선을 쥐고 있어야 하는데, 개를 내는 순간 파트너에게 선이 넘어간다.
+	// (Board Game Arena 팁: "send that player the Dog — a player who calls Tichu
+	//  wants to control the lead")
+	const dogForOpp = grandTichuOpponent
+		? hand.find(c => c.type === 'special' && c.special === 'dog' &&
+			c.id !== toPartner!.id && !giveToOpponent.some(g => g.id === c.id))
+		: undefined;
+	if (dogForOpp) {
+		const idx = grandTichuOpponent === 'left' ? 0 : 1;
+		giveToOpponent[idx] = dogForOpp;
 	}
 
 	return {
