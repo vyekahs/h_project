@@ -752,6 +752,9 @@
     }
 
     /* 현재 오락실 마스터 — 모두에게 보이는 명예의 자리 */
+    /* 옅은 앰버/흰색 계열로 하드코딩돼 있어 어두운 배경에서만 읽혔다.
+       오락실은 라이트 테마에서 밝은 배경이라 대비가 1.0~1.4:1까지 떨어졌다.
+       배너는 앰버 컨테이너로 두고 글자는 테마 텍스트색을 쓴다. */
     .arcade-master-banner {
         display: flex;
         align-items: center;
@@ -760,26 +763,28 @@
         margin: 0 0 12px;
         padding: 10px 14px;
         border-radius: 14px;
-        background: linear-gradient(135deg, rgba(251, 191, 36, 0.14) 0%, rgba(245, 158, 11, 0.07) 100%);
-        border: 1px solid rgba(251, 191, 36, 0.28);
+        background: var(--color-warning-bg);
+        border: 1px solid var(--border-warning);
     }
     .am-crown { font-size: 1rem; line-height: 1; }
     .am-label {
         font-size: 0.68rem;
         font-weight: 700;
         letter-spacing: 0.08em;
-        color: #fcd34d;
+        /* 앰버 그대로는 옅은 앰버 배경 위에서 2.9:1로 미달이라, 테마 텍스트색을
+           섞어 어둡게 만든다. 다크로 바뀌어도 자동으로 밝은 쪽으로 섞인다. */
+        color: color-mix(in srgb, var(--color-amber-darker) 55%, var(--text-primary));
     }
     .am-name {
         font-size: 1rem;
         font-weight: 800;
-        color: #fde68a;
+        color: var(--text-primary);
     }
     .am-count {
         margin-left: auto;
         font-size: 0.75rem;
         font-weight: 600;
-        color: rgba(255, 255, 255, 0.6);
+        color: var(--text-secondary);
         white-space: nowrap;
     }
 </style>
