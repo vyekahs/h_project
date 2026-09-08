@@ -165,7 +165,7 @@
      */
     type ConfirmSeverity = 'irreversible' | 'destructive' | 'neutral';
     let confirmState:
-        | { title: string; message: string; confirmLabel: string; severity: ConfirmSeverity; handle?: (opts: any) => Promise<void> }
+        | { title: string; message: string; confirmLabel: string; cancelLabel: string; severity: ConfirmSeverity; handle?: (opts: any) => Promise<void> }
         | null = $state(null);
     let pendingForm: HTMLFormElement | null = null;
 
@@ -178,6 +178,12 @@
         title: string;
         message: string | (() => string);
         confirmLabel?: string;
+        /*
+            물러나는 버튼은 늘 「취소」였다. 그런데 동작 자체가 「게임 취소」인
+            확인창에서는 두 버튼이 같은 말을 하게 된다 — 하나는 판을 없애고
+            하나는 아무 일도 하지 않는데. 그런 창만 이 이름을 바꿔 든다.
+        */
+        cancelLabel?: string;
         severity?: ConfirmSeverity;
         handle?: (opts: any) => Promise<void>;
         success?: string | ((data: any) => string);
@@ -212,6 +218,7 @@
                 // 문구는 "지금" 계산한다 — 액션 생성 시점의 값은 오래됐을 수 있다
                 message: typeof opts.message === 'function' ? opts.message() : opts.message,
                 confirmLabel: opts.confirmLabel ?? '확인',
+                cancelLabel: opts.cancelLabel ?? '취소',
                 severity: opts.severity ?? 'neutral',
                 handle: opts.handle
             };
@@ -518,13 +525,39 @@
     function selectGame(game: { name: string, id: number, playtime_min: number, min_players?: number, max_players?: number }) {
         selectedGameName = game.name;
         selectedGameId = String(game.id);
-        selectedDuration = String(game.playtime_min);
+        // 진행시간·정원은 이름을 보고 따라오는 효과 한 곳에서만 정한다.
+        // 여기서도 대입하면 "직접 친 시간을 지키는" 규칙이 두 벌이 된다.
         dropdownOpen = false;
+    }
+
+    /*
+        라이브러리 게임을 고르면 기본 진행시간이 따라오는데, 그게 운영자가 손으로
+        친 시간을 말없이 덮었다. 만진 칸의 주인은 운영자다 — 덮지 않고, 기본값이
+        따로 있다는 것만 옆에서 말하고 한 번에 받을 길을 낸다.
+    */
+    let durationTouched = $state(false);
+    let durationSuggestion: { name: string, minutes: string } | null = $state(null);
+    function applyGameDuration(minutes: string, gameName: string) {
+        if (durationTouched && selectedDuration.trim() !== '' && selectedDuration !== minutes) {
+            if (durationSuggestion?.name !== gameName || durationSuggestion?.minutes !== minutes) {
+                durationSuggestion = { name: gameName, minutes };
+            }
+            return;
+        }
+        selectedDuration = minutes;
+        durationSuggestion = null;
     }
     /* 자리 수. 게스트도 자리를 차지한다. */
     const seatsTaken = $derived(selectedPlayerIds.length + (Number(guestCount) || 0));
     const seatsLeft = $derived(newGameMax === null ? Infinity : newGameMax - seatsTaken);
     const seatsFull = $derived(seatsLeft <= 0);
+    /*
+        최소 인원은 막지 않는다 — 두 자리를 먼저 잡아두고 시작한 뒤 「참여」로
+        채우는 판이 실제로 있다(진행 중 게임의 「추가」 = joinGame). 막는 대신 모자란다는 것을
+        시작 버튼 바로 위에서 말한다. 빈 폼에서는 말하지 않는다 — 아직 아무도
+        고르지 않은 것은 모자란 게 아니라 시작하지 않은 것이다.
+    */
+    const seatsShort = $derived(newGameMin !== null && seatsTaken > 0 && seatsTaken < newGameMin);
 
     function handleInputClick() {
         dropdownOpen = true;
@@ -596,19 +629,20 @@
         
         if (libraryGame) {
             selectedGameId = String(libraryGame.id);
-            selectedDuration = String(libraryGame.playtime_min);
+            applyGameDuration(String(libraryGame.playtime_min), libraryGame.name);
             // 정원도 여기서 따라온다 — 드롭다운으로 골랐든 이름을 그대로 쳤든 같다.
             newGameMax = libraryGame.max_players ?? null;
             newGameMin = libraryGame.min_players ?? null;
         } else if (historyGame && !libraryGame) { // Only fallback if not in library
             selectedGameId = '';
-            selectedDuration = String(historyGame.duration);
+            applyGameDuration(String(historyGame.duration), historyGame.game_name);
             newGameMax = null;
             newGameMin = null;
         } else if (!libraryGame) {
             selectedGameId = '';
             newGameMax = null;
             newGameMin = null;
+            durationSuggestion = null;
         }
     });
 
@@ -634,6 +668,34 @@
 
     function formatTime(dateString: string) {
         return new Date(dateString).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+    }
+
+    /*
+        예정 게임을 시작하는 버튼이 상세 모달 안에 있었다. 목록에서 판이 다 보이는데
+        시작하려면 모달을 한 번 열어야 했고, 모달이 하는 일(참여자 붙이기·일정 고치기)과
+        시작은 다른 종류의 일이다. 버튼을 행으로 꺼낸다.
+
+        꺼내면서 「예상(분)」 입력칸은 함께 사라진다 — 행에 숫자칸까지 둘 폭이 없다.
+        대신 도감의 playtime_min을 기본으로 잡는다. 시작한 뒤 진행 중 시트의
+        시간 조정(−10/+10/+30)에서 고칠 수 있으므로 잃는 것은 없다.
+    */
+    function scheduledDuration(g: any): number {
+        const lib = (data.allGames as any[])?.find((x: any) => x.id === g.game_id);
+        const mins = Number(lib?.playtime_min);
+        return mins > 0 ? mins : 60;
+    }
+    /*
+        날이 오지 않은 판을 눌러 시작하면 내일 판이 오늘 방에 들어앉는다.
+        당일 전에는 누를 수 없게 한다. 날짜가 지난 판은 막지 않는다 — 막으면
+        어제 남은 판을 치울 길이 취소밖에 없어진다.
+    */
+    function startableAt(dateString: string | null, nowTs: number): boolean {
+        if (!dateString) return true;
+        const d = new Date(dateString);
+        const n = new Date(nowTs);
+        const day = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+        const today = new Date(n.getFullYear(), n.getMonth(), n.getDate()).getTime();
+        return day <= today;
     }
 
     function formatScheduledTime(dateString: string) {
@@ -866,6 +928,45 @@
         return m === '00' ? `${parseInt(h)}시` : `${parseInt(h)}시${parseInt(m)}분`;
     }
 </script>
+
+<!--
+    참여자 목록 — 예정/진행 두 게임 상세 모달이 공유한다.
+
+    쉼표로 이은 한 줄이었다. 읽기에는 짧지만 그 줄에서는 아무것도 할 수 없어서,
+    잘못 붙인 게스트를 뺄 자리가 없었다. 한 사람을 한 칩으로 세우고 게스트에만
+    빼는 ×를 단다 — 회원 자리에는 예약이 매달려 있어 같은 ×로 처리하면
+    예약·대기 상태가 조용히 어긋난다.
+-->
+{#snippet participantChips(sessionId: number, list: any[], refresh: () => void)}
+    {#if list.length === 0}
+        <p class="detail-participants">없음</p>
+    {:else}
+        <ul class="detail-chips">
+            {#each list as p (p.id)}
+                <li class="detail-chip" class:is-guest={p.is_guest}>
+                    <span class="detail-chip-name">{p.name}</span>
+                    {#if p.is_guest}
+                        <span class="chip-guest" aria-hidden="true">G</span>
+                        <form method="POST" action="?/removeGuestFromGame" use:enhance={() => {
+                            return async ({ result, update }) => {
+                                if (!reportResult(result)) {
+                                    const d = (result as any)?.data ?? {};
+                                    showToast(`${d.removedName ?? p.name}을(를) 뺐습니다`);
+                                }
+                                await update();
+                                refresh();
+                            };
+                        }}>
+                            <input type="hidden" name="sessionId" value={sessionId} />
+                            <input type="hidden" name="participantId" value={p.id} />
+                            <button type="submit" class="detail-chip-x" aria-label="{p.name} 빼기">×</button>
+                        </form>
+                    {/if}
+                </li>
+            {/each}
+        </ul>
+    {/if}
+{/snippet}
 
 <!-- 참여자 검색 셀렉트 — 예정/진행 두 게임 상세 모달이 공유한다 -->
 {#snippet participantPicker()}
@@ -1424,6 +1525,8 @@
             showModal = true;
             selectedGameName = '';
             selectedDuration = '60';
+            durationTouched = false;
+            durationSuggestion = null;
             selectedGameId = '';
             newGameMax = null;
             newGameMin = null;
@@ -1463,30 +1566,18 @@
                     아니라 사람이 정한다. 승자를 남기려면 행을 눌러 종료 모달로 간다.
                 -->
                 <!--
-                    이 행에서 유일하게 확인창 없이 서버를 바꾸던 버튼이다.
-                    그리고 같은 행의 나머지 90%는 상세 시트를 여는 탭 타깃이라,
-                    시끄러운 방에서 한 손으로 누르면 열려던 것이 끝나 있었다.
-                    되돌리기가 있지만 그건 마지막 방어선이고, 이 콘솔의 다른
-                    파괴적 동작은 전부 확인을 거친다.
-                    잦은 경우(여러 판이 한꺼번에 만료)는 위의 일괄 종료가 받는다.
+                    「게임 종료」라는 같은 이름의 버튼이 둘이었고, 서로 다른 일을 했다.
+                    이 행의 것은 확인창을 거쳐 바로 끝내되 승자를 남길 수 없었고
+                    (확인 문구가 「승자는 기록되지 않습니다」로 그걸 예고하는 게
+                    전부였다), 승자를 남기려면 행을 눌러 상세를 열고 거기서 다시
+                    같은 이름의 버튼을 눌러야 했다. 둘을 하나로 합친다 — 이 버튼이
+                    종료 모달을 연다. 거치는 모달 수는 그대로(확인창 → 종료 모달)인데
+                    할 수 있는 일은 늘어난다: 승자는 선택이라 비우고 종료하면
+                    예전 경로와 결과가 같다.
                 -->
-                <form method="POST" action="?/endGame" class="row-end-form" use:enhance={confirmSubmit({
-                    title: '게임 종료',
-                    message: () =>
-                        `${game.game_name}을(를) 종료합니다. 참여자 ${game.players.length}명의 세션이 닫히고 승자는 기록되지 않습니다.`,
-                    confirmLabel: '종료',
-                    severity: 'destructive',
-                    handle: async ({ result, update }: any) => {
-                        if (!reportResult(result)) {
-                            const d = (result?.data as any) ?? {};
-                            toastUndoable(`${d.endedName ?? game.game_name} 종료됨 · 승자는 기록하지 않았습니다`, d.undo);
-                        }
-                        await update();
-                    }
-                })}>
-                    <input type="hidden" name="id" value={game.id} />
-                    <button type="submit" class="btn-row-end">게임 종료</button>
-                </form>
+                <div class="row-action">
+                    <button type="button" class="btn-row-end" onclick={() => openEndGameModal(game)}>게임 종료</button>
+                </div>
                 {#if waiting.length > 0}
                     {@render pendingRows(waiting, game.game_name)}
                 {/if}
@@ -1524,6 +1615,7 @@
         {#each (showAllScheduled ? (scheduledGames || []) : (scheduledGames || []).slice(0, 5)) as game (game.id)}
             {@const g = game as GameSession}
             {@const waiting = pendingFor(g.id)}
+            {@const startable = startableAt(g.scheduled_at, now)}
             <li class="game-row" class:has-pending={waiting.length > 0}>
                 <button type="button" class="game-list-item scheduled-item" onclick={() => { selectedScheduledGame = g; resetParticipantSearch(); }}>
                     {#if g.image_url}
@@ -1543,7 +1635,7 @@
                     -->
                     <span class="sched-head">
                         <span class="list-name" title={g.game_name}>{g.game_name}</span>
-                        <span class="list-meta">{formatScheduledTime(g.scheduled_at)}</span>
+                        <span class="list-meta" id="sched-when-{g.id}">{formatScheduledTime(g.scheduled_at)}</span>
                     </span>
                     <span class="scheduled-players">
                         <span class="players-count">{(g.participants || []).length}/{g.max_players}</span>
@@ -1559,6 +1651,26 @@
                     </span>
                     <span class="list-arrow" aria-hidden="true">›</span>
                 </button>
+                <!--
+                    못 누르는 이유를 따로 쓰지 않는다 — 행이 이미 「9/10 19:00」을
+                    보여주고 있고, 그것이 곧 이유다. 비활성 버튼을 그 문구에
+                    연결해 스크린리더도 같은 것을 읽게 한다.
+                -->
+                <div class="row-action">
+                    <form method="POST" action="?/startScheduledGame" use:enhance={() => {
+                        return async ({ result, update }) => {
+                            if (!reportResult(result)) showToast(`${g.game_name} 시작됨 · ${scheduledDuration(g)}분`);
+                            await update();
+                        };
+                    }}>
+                        <input type="hidden" name="sessionId" value={g.id} />
+                        <input type="hidden" name="duration" value={scheduledDuration(g)} />
+                        <button type="submit" class="btn-row-start" disabled={!startable}
+                            aria-describedby={startable ? undefined : `sched-when-${g.id}`}
+                            title={startable ? `${scheduledDuration(g)}분으로 시작합니다` : '예정일 당일부터 시작할 수 있습니다'}
+                        >게임 시작</button>
+                    </form>
+                </div>
                 {#if waiting.length > 0}
                     {@render pendingRows(waiting, g.game_name)}
                 {/if}
@@ -1664,18 +1776,39 @@
                         required 
                         min="1" 
                         class="duration-input"
+                        oninput={() => durationTouched = true}
                         aria-invalid={newGameMissing.includes('duration') || undefined}
                         aria-describedby={newGameMissing.includes('duration') ? 'err-duration' : undefined}
                     />
                     {#if newGameMissing.includes('duration')}
                         <p class="field-error" id="err-duration">{MISSING_LABEL.duration}</p>
                     {/if}
+                    <!--
+                        직접 친 시간을 지켰다는 사실 자체를 말한다. 조용히 지키기만
+                        하면 "라이브러리 기본값이 몇 분이었지"를 다시 찾아야 한다.
+                    -->
+                    {#if durationSuggestion}
+                        <p class="hint duration-suggest">
+                            「{durationSuggestion.name}」 기본값은 {durationSuggestion.minutes}분입니다 — 입력한 {selectedDuration}분을 그대로 씁니다.
+                            <button type="button" class="btn-mini" onclick={() => {
+                                selectedDuration = durationSuggestion!.minutes;
+                                durationSuggestion = null;
+                            }}>{durationSuggestion.minutes}분으로</button>
+                        </p>
+                    {/if}
                 </div>
 
                 <div class="player-picker">
                     <div class="pp-head">
+                        <!--
+                            게스트도 자리를 차지하는데 이 숫자는 회원만 세고 있었다.
+                            그래서 4인용 판에 회원 2 · 게스트 2를 앉히고도 「참여자 2/4」,
+                            즉 자리가 반 남은 것처럼 보였다. 여기가 자리를 세는 유일한
+                            자리이므로 총합을 말하고, 나눠 본 내역은 그 아래에 둔다.
+                        -->
                         <span class="pp-label">
-                            참여자 {selectedPlayerIds.length}{#if newGameMax !== null}<span class="pp-cap">/{newGameMax}</span>{/if}
+                            참여자 {seatsTaken}{#if newGameMax !== null}<span class="pp-cap">/{newGameMax}</span>{/if}
+                            {#if (Number(guestCount) || 0) > 0}<span class="pp-breakdown">회원 {selectedPlayerIds.length} · 게스트 {Number(guestCount)}</span>{/if}
                         </span>
                         <div class="pp-head-actions">
                             <!-- 조건부로 숨기면 "왜 없지"를 알 수 없다. 못 쓰는 이유를 달고 남긴다. -->
@@ -1771,24 +1904,34 @@
                         {/if}
                     </div>
 
+                    <!--
+                        게스트도 같은 정원 안에서 자리를 차지하는데, 폼 아래 따로 서
+                        있을 때는 피커 헤더의 「참여자 2/4」와 게스트 칸의 「남은 자리
+                        2명」이 같은 정원을 두 문장으로 각각 셌다. 자리를 세는 곳은
+                        하나여야 한다 — 헤더가 총합을 말하고 게스트 칸은 그 안으로.
+                    -->
+                    <div class="input-group guest-input-group">
+                        <label for="guestCount">게스트 수</label>
+                        <input type="number" id="guestCount" name="guestCount" bind:value={guestCount} min="0"
+                            max={newGameMax === null ? 20 : Math.max(0, newGameMax - selectedPlayerIds.length)}
+                            class="number-input"
+                            oninput={() => {
+                                const cap = newGameMax === null ? 20 : Math.max(0, newGameMax - selectedPlayerIds.length);
+                                if ((Number(guestCount) || 0) > cap) guestCount = cap;
+                            }} />
+                        <p class="hint">* 회원이 아닌 사람 수 (게스트1, 게스트2… 자동 생성)</p>
+                    </div>
 
-                </div>
+                    <!-- 최소 인원은 시작을 막지 않는다. 막는 대신 무엇이 모자란지와
+                         어떻게 메우는지를 한 줄에서 말한다. -->
+                    {#if seatsShort}
+                        <p class="pp-warn" role="status">
+                            최소 {newGameMin}인 게임입니다 — 지금 {seatsTaken}명. 시작한 뒤 게임을 눌러 「추가」로 더 앉힐 수 있습니다.
+                        </p>
+                    {/if}
 
-                <div class="input-group guest-input-group">
-                    <label for="guestCount">게스트 수</label>
-                    <!-- 게스트도 자리를 차지한다. 정원이 있는 게임이면 그 안에서만 는다. -->
-                    <input type="number" id="guestCount" name="guestCount" bind:value={guestCount} min="0"
-                        max={newGameMax === null ? 20 : Math.max(0, newGameMax - selectedPlayerIds.length)}
-                        class="number-input"
-                        oninput={() => {
-                            const cap = newGameMax === null ? 20 : Math.max(0, newGameMax - selectedPlayerIds.length);
-                            if ((Number(guestCount) || 0) > cap) guestCount = cap;
-                        }} />
-                    <p class="hint">
-                        * 회원이 아닌 사람 수 (게스트1, 게스트2… 자동 생성){#if newGameMax !== null}{' '}— 남은 자리 {Math.max(0, newGameMax - selectedPlayerIds.length)}명{/if}
-                    </p>
-                    <!-- 참여자와 게스트 중 하나만 있으면 되므로, 둘 중 뒤에 오는
-                         여기서 한 번만 말한다 -->
+                    <!-- 참여자와 게스트 중 하나만 있으면 되므로, 둘을 함께 담은
+                         이 블록 바닥에서 한 번만 말한다 -->
                     {#if newGameMissing.includes('players')}
                         <p class="field-error">{MISSING_LABEL.players}</p>
                     {/if}
@@ -1832,9 +1975,11 @@
                     if (!reportResult(result)) {
                         endGameModalVisible = false;
                         const d = (result?.data as any) ?? {};
-                        showToast(d.hadWinners
+                        // 유일한 종료 경로가 되었으므로, 행 버튼이 갖고 있던
+                        // 되돌리기가 여기 실려야 한다.
+                        toastUndoable(d.hadWinners
                             ? `${d.endedName ?? '게임'} 종료됨 · 승자를 기록했습니다`
-                            : `${d.endedName ?? '게임'} 종료됨 · 승자는 기록하지 않았습니다`);
+                            : `${d.endedName ?? '게임'} 종료됨 · 승자는 기록하지 않았습니다`, d.undo);
                     }
                     await update();
                 };
@@ -1880,7 +2025,7 @@
             <h3 id="dlg-confirm">{confirmState.title}</h3>
             <p>{confirmState.message}</p>
             <div class="modal-actions">
-                <button class="btn-cancel" data-autofocus onclick={closeConfirm}>취소</button>
+                <button class="btn-cancel" data-autofocus onclick={closeConfirm}>{confirmState.cancelLabel}</button>
                 <button class="btn-confirm-action is-{confirmState.severity}" onclick={runConfirm}>{confirmState.confirmLabel}</button>
             </div>
         </div>
@@ -1973,7 +2118,7 @@
                     <!--
                         3단 사다리의 1단. 채움 빨강은 「되돌릴 수 없는 것」에만 쓰고,
                         이 콘솔에서 그건 블랙 등록 하나뿐이다. 이 약속이 시트 안에서만
-                        지켜지던 동안 마감 하기·게임 폭파·되돌릴 수 있는 1점이 전부
+                        지켜지던 동안 마감 하기·게임 취소·되돌릴 수 있는 1점이 전부
                         같은 빨강이었고, 그래서 그 빨강이 아무것도 말하지 않았다.
                         해제는 파괴적이지 않으므로 2단도 아닌 보조 버튼이다.
                     -->
@@ -2218,16 +2363,29 @@
                 {/if}
                 <div>
                     <h3 id="dlg-scheduled-detail">{g.game_name}</h3>
+                    <!--
+                        「인원: 최소 3 / 최대 5」가 여기 있고, 바로 아래 「참여자 (2)」가
+                        있고, 그 아래 일정 수정 폼에 같은 최소·최대가 고칠 수 있는
+                        칸으로 또 있었다. 한 화면에서 정원을 세 번 말한 셈이다.
+                        고칠 수 있는 값은 폼이 갖고, 지금 얼마나 찼는지는 참여자
+                        줄이 갖는다 — 여기는 언제 하는 판인지만 말한다.
+                    -->
                     <p class="detail-sub">예정: <strong>{formatScheduledTime(g.scheduled_at)}</strong></p>
-                    <p class="detail-sub">인원: 최소 {g.min_players} / 최대 {g.max_players}</p>
                 </div>
             </div>
             <div class="detail-section">
-                <strong>참여자 ({(g.participants || []).length})</strong>
-                <p class="detail-participants">{(g.participants || []).map((p: any) => p.is_guest ? `${p.name}(G)` : p.name).join(', ') || '없음'}</p>
+                <strong>참여자 ({(g.participants || []).length}/{g.max_players})</strong>
+                {@render participantChips(g.id, g.participants || [], refreshSelectedScheduledGame)}
+                <!-- 새 게임 모달과 같은 규칙: 최소 인원은 시작을 막지 않는다.
+                     모자란다는 것과 메우는 길을 같은 줄에서 말한다. -->
+                {#if (g.participants || []).length < g.min_players}
+                    <p class="pp-warn" role="status">
+                        최소 {g.min_players}인 게임입니다 — 지금 {(g.participants || []).length}명. 아래 「추가」로 채우거나 그대로 시작할 수 있습니다.
+                    </p>
+                {/if}
             </div>
             <!--
-                시각을 잘못 친 것을 고칠 방법이 「게임 폭파」뿐이었다. 그런데 폭파는
+                시각을 잘못 친 것을 고칠 방법이 「게임 취소」뿐이었다. 그런데 취소는
                 그 세션의 예약을 전부 취소해 회원들을 공정성 기계에 다시 떨어뜨린다.
                 운영자의 오타 비용을 회원이 내고 있었다.
             -->
@@ -2282,32 +2440,24 @@
                     <input type="hidden" name="sessionId" value={g.id} />
                     <button type="submit" class="btn-mini btn-guest" style="width:100%;">게스트 추가</button>
                 </form>
+                <!--
+                    「게임 시작」은 여기 있지 않다 — 목록의 행이 갖는다.
+                    이 시트는 판을 채우고 고치는 곳이고, 아래 구분선부터는
+                    되돌릴 수 있지만 파괴적인 것만 둔다.
+                -->
                 <hr class="detail-divider" />
-                <form method="POST" action="?/startScheduledGame" use:enhance={() => {
-                    return async ({ result, update }) => {
-                        if (!reportResult(result)) {
-                            selectedScheduledGame = null;
-                            showAlert('게임이 시작되었습니다.', 'success');
-                        }
-                        await update();
-                    };
-                }} class="detail-form-row">
-                    <input type="hidden" name="sessionId" value={g.id} />
-                    <span class="input-label">예상(분):</span>
-                    <input type="number" name="duration" value="60" aria-label="예상 진행 시간(분)" class="duration-input" />
-                    <button type="submit" class="btn-primary">게임 시작</button>
-                </form>
                 <form method="POST" action="?/dissolveScheduledGame" use:enhance={confirmSubmit({
-                    title: '게임 폭파',
-                    message: `"${g.game_name}" 예약 게임을 폭파합니다. 참여자 예약이 모두 취소됩니다.`,
-                    confirmLabel: '폭파',
+                    title: '게임 취소',
+                    message: `"${g.game_name}" 예정 게임을 취소합니다. 참여자 예약이 모두 취소됩니다.`,
+                    confirmLabel: '게임 취소',
+                    cancelLabel: '돌아가기',
                     severity: 'destructive',
                     handle: async ({ result, update }) => {
                         if (!reportResult(result)) {
                             selectedScheduledGame = null;
                             // 성공을 막는 모달로 알리면 되돌리기가 실릴 자리가 없다.
                             const d = (result?.data as any) ?? {};
-                            toastUndoable(`${d.dissolvedName ?? g.game_name} 폭파됨 · 예약이 모두 취소되었습니다`, d.undo);
+                            toastUndoable(`${d.dissolvedName ?? g.game_name} 취소됨 · 예약이 모두 취소되었습니다`, d.undo);
                         }
                         await update();
                     }
@@ -2318,7 +2468,7 @@
                         폰에서 엄지가 놓이는 자리 8px 위에서 모두의 예약을 취소하는
                         버튼이다. 관리 시트에서 이미 고친 패턴을 여기에도 적용한다.
                     -->
-                    <button type="submit" class="btn-delete">게임 폭파</button>
+                    <button type="submit" class="btn-delete">게임 취소</button>
                 </form>
             </div>
             <button class="btn-sheet-close" onclick={() => selectedScheduledGame = null}>닫기</button>
@@ -2349,7 +2499,7 @@
             </div>
             <div class="detail-section">
                 <strong>참여자 ({g.players.length})</strong>
-                <p class="detail-participants">{g.players.map((p: any) => p.is_guest ? `${p.name}(G)` : p.name).join(', ') || '없음'}</p>
+                {@render participantChips(g.id, g.players || [], refreshSelectedPlayingGame)}
             </div>
             <div class="detail-actions">
                 <form method="POST" action="?/joinGame" use:enhance={() => {
@@ -2405,14 +2555,11 @@
                     </div>
                 </div>
                 <!--
-                    「+30분」과 「게임 종료」가 8px 간격 전폭 바로 붙어 있었다.
-                    한 손으로 폰을 볼 때 오탭 한 번이면 두 시간짜리 게임이 끝난다.
-                    구분선으로 끊고, 되돌릴 수 없는 것만 이 아래에 둔다.
+                    「게임 종료」는 여기 있지 않다. 게임 행이 이미 자기 이름을 단
+                    같은 버튼을 갖고 있고, 그 버튼이 이 모달이 열던 바로 그 종료
+                    모달을 연다. 이 시트는 판을 굴리는 곳(참여자·시간)이고,
+                    끝내는 것은 목록에서 한 번에 한다.
                 -->
-                <hr class="detail-divider" />
-                <div class="destructive-row">
-                    <button class="btn-end-session" onclick={() => { openEndGameModal(g); selectedPlayingGame = null; }}>게임 종료</button>
-                </div>
             </div>
             <button class="btn-sheet-close" onclick={() => selectedPlayingGame = null}>닫기</button>
         </div>
@@ -3123,7 +3270,7 @@
         background: var(--color-slate-dark);
         color: var(--bg-primary);
     }
-    /* 예약 게임 폭파·게임 종료 및 퇴장. 파괴적이지만 되돌릴 수 있다 —
+    /* 예정 게임 취소·게임 종료 및 퇴장. 파괴적이지만 되돌릴 수 있다 —
        게임은 다시 만들고 사람은 다시 입장시킨다. 2단(테두리 빨강)이다. */
     .btn-delete {
         background: var(--danger-outline-bg);
@@ -3148,7 +3295,6 @@
         padding-top: var(--space-2);
     }
     .destructive-row > button,
-    .destructive-row .btn-end-session,
     .destructive-row .btn-delete {
         width: auto;
         min-width: 8rem;
@@ -3171,20 +3317,6 @@
         color: var(--text-primary);
     }
 
-    /* 되돌릴 수 없는 유일한 동작. 이 모달에서 강한 색을 쓰는 것은 이것뿐이다. */
-    .btn-end-session {
-        width: 100%;
-        background: var(--bg-primary);
-        color: var(--color-red-dark);
-        border: 1px solid var(--color-red-dark);
-        padding: var(--space-3) var(--space-4);
-        border-radius: var(--radius-control);
-        cursor: pointer;
-        font-weight: 700;
-    }
-    .btn-end-session:hover {
-        background: var(--color-error-bg);
-    }
     .btn-warning {
         background: var(--color-warning-bg);
         color: var(--text-darker);
@@ -3261,6 +3393,23 @@
     .pp-head-actions {
         display: flex;
         gap: 0.35rem;
+    }
+    /* 총합 옆의 내역. 숫자는 헤더가 갖고, 이건 그 숫자를 풀어 쓴 것이라 약하게. */
+    .pp-breakdown {
+        margin-left: var(--space-2);
+        font-weight: 400;
+        font-size: var(--text-xs);
+        color: var(--text-secondary);
+    }
+    /* 막지 않는 경고 — 빨강이 아니다. 시작 버튼은 그대로 눌린다. */
+    .pp-warn {
+        margin: var(--space-2) 0 0;
+        padding: var(--space-2);
+        border-radius: var(--radius-control);
+        background: var(--color-warning-bg);
+        color: var(--color-orange-text);
+        font-size: var(--text-sm);
+        line-height: 1.5;
     }
     .pp-chips {
         display: flex;
@@ -4225,11 +4374,6 @@
         color: var(--color-orange-text);
         font-weight: 700;
     }
-    .input-label {
-        font-size: var(--text-sm);
-        font-weight: 600;
-        color: var(--text-darker);
-    }
     .guest-badge {
         display: inline-flex;
         align-items: center;
@@ -4248,6 +4392,13 @@
         margin-top: var(--space-2);
         padding-top: var(--space-2);
         border-top: 1px solid var(--border-light);
+    }
+    /* 지킨 값과 버려도 되는 기본값이 한 줄에 있다 — 버튼이 문장 흐름을 타게 둔다. */
+    .duration-suggest {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: var(--space-2);
     }
     .number-input {
         width: 80px;
@@ -4450,10 +4601,12 @@
         color: var(--color-orange-text);
         font-weight: 700;
     }
-    .row-end-form {
+    .row-action {
         flex-shrink: 0;
     }
-    .btn-row-end {
+    /* 시작과 종료는 같은 자리에 서는 같은 층위의 행 동작이다 — 같은 형태를 쓴다. */
+    .btn-row-end,
+    .btn-row-start {
         min-height: 36px;
         padding: 0 var(--space-3);
         border: 1px solid var(--border-control);
@@ -4465,8 +4618,16 @@
         white-space: nowrap;
         cursor: pointer;
     }
-    .btn-row-end:hover {
+    .btn-row-end:hover,
+    .btn-row-start:not(:disabled):hover {
         background: var(--bg-hover);
+    }
+    /* 아직 날이 아니다. 회색으로 죽이지 않고 테두리로 세운다 —
+       이 콘솔의 다른 비활성 버튼과 같은 규칙. */
+    .btn-row-start:disabled {
+        color: var(--text-secondary);
+        border-style: dashed;
+        cursor: not-allowed;
     }
     .list-thumb {
         width: 32px;
@@ -4826,11 +4987,14 @@
         font-size: var(--text-sm);
         color: var(--text-secondary);
     }
+    /*
+        패딩 12px에 모달과 똑같은 --bg-primary 배경이라, 카드로도 보이지 않으면서
+        안쪽 내용만 12px 밀어냈다. 그래서 한 시트 안에 왼쪽 끝이 둘이었다 —
+        헤더·액션은 모달 여백에, 참여자·일정 수정은 그보다 12px 안쪽에.
+        보이지 않는 상자를 없애고 하나의 왼쪽 끝으로 세운다.
+    */
     .detail-section {
         margin-bottom: var(--space-4);
-        padding: var(--space-3);
-        background: var(--bg-primary);
-        border-radius: var(--radius-control);
     }
     .detail-section strong {
         font-size: var(--text-sm);
@@ -4872,6 +5036,62 @@
         margin: var(--space-1) 0 0;
         font-size: var(--text-sm);
         color: var(--text-primary);
+    }
+    .detail-chips {
+        list-style: none;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.35rem;
+        margin: var(--space-2) 0 0;
+        padding: 0;
+    }
+    .detail-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.25rem;
+        padding: 0.2rem var(--space-2);
+        border-radius: var(--radius-pill);
+        background: var(--bg-hover);
+        color: var(--text-primary);
+        font-size: var(--text-sm);
+        white-space: nowrap;
+    }
+    /* 게스트는 회원과 다른 종류의 자리다 — 뺄 수 있는 것도 이쪽뿐이다. */
+    .detail-chip.is-guest {
+        background: var(--bg-secondary);
+        color: var(--text-secondary);
+        padding-right: 0.2rem;
+    }
+    .detail-chip form {
+        display: flex;
+    }
+    /*
+        44px 타깃을 칩 안에 넣으면 칩이 목록을 지배한다. 손가락이 닿는 넓이는
+        의사 요소로 칩 밖에 깔고, 보이는 것은 작게 둔다.
+    */
+    .detail-chip-x {
+        position: relative;
+        all: unset;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 20px;
+        height: 20px;
+        border-radius: 50%;
+        color: var(--text-secondary);
+        font-size: var(--text-sm);
+        line-height: 1;
+        cursor: pointer;
+    }
+    .detail-chip-x::after {
+        content: '';
+        position: absolute;
+        inset: -12px;
+    }
+    .detail-chip-x:hover,
+    .detail-chip-x:focus-visible {
+        background: var(--color-error-bg);
+        color: var(--color-red-dark);
     }
     .detail-actions {
         display: flex;
@@ -4992,7 +5212,6 @@
         .badge { font-size: var(--text-xs); padding: 0.05rem 0.3rem; }
         .arrival-time { font-size: var(--text-xs); }
         .duration-input { width: 50px; }
-        .input-label { font-size: var(--text-xs); }
         .chip-container { font-size: var(--text-xs); }
         .chip-link { font-size: var(--text-xs); }
         .chip-add { font-size: var(--text-xs); padding: 0.2rem 0.6rem; }

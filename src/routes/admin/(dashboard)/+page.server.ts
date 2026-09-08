@@ -1093,13 +1093,13 @@ export const actions: Actions = {
             });
         } catch (e) {
             console.error('dissolveScheduledGame failed:', e);
-            return fail(500, { error: '게임 폭파에 실패했습니다.' });
+            return fail(500, { error: '게임 취소에 실패했습니다.' });
         }
 
         const undo = await recordUndo(
             'dissolve_game',
             { session: sessRow.row_json, participants, reservations, skip: insertedSkip },
-            `${sessRow.game_name} 폭파`
+            `${sessRow.game_name} 취소`
         );
         emitLiveEvent('games');
         return { success: true, undo, dissolvedName: sessRow.game_name as string };
@@ -1279,7 +1279,16 @@ export const actions: Actions = {
             SELECT guest_name FROM session_participants
             WHERE session_id = ${sessionId} AND attendee_id IS NULL
         `);
-        const nextNum = existingGuests.length + 1;
+        /*
+            개수 + 1로 세면 중간을 빼는 순간 이름이 겹친다 — [게스트1, 게스트2,
+            게스트3]에서 게스트2를 빼면 개수가 2가 되어 다음 게스트도 게스트3이
+            된다. 빼는 길이 생긴 이상 이미 쓴 번호 중 가장 큰 것 다음으로 센다.
+        */
+        const usedNums = (existingGuests as any[]).map((r: any) => {
+            const m = /^게스트(\d+)$/.exec(String(r.guest_name ?? ''));
+            return m ? Number(m[1]) : 0;
+        });
+        const nextNum = (usedNums.length > 0 ? Math.max(...usedNums) : 0) + 1;
         const guestName = customName || `게스트${nextNum}`;
 
         await db.execute(sql`
@@ -1287,7 +1296,50 @@ export const actions: Actions = {
             VALUES (${sessionId}, NULL, ${guestName})
         `);
 
-        return { success: true };
+        emitLiveEvent('games');
+        return { success: true, addedName: guestName };
+    },
+
+    /*
+        게스트를 붙이는 길만 있고 떼는 길이 없었다. 시끄러운 방에서 한 번
+        잘못 누르면 그 판이 끝날 때까지 유령 한 명이 앉아 있고, 정원 계산과
+        종료 모달의 승자 목록에까지 따라 들어갔다.
+
+        회원은 이 액션이 건드리지 않는다 — 회원 자리에는 예약이 매달려 있어서
+        참가자 행만 지우면 예약·대기 상태가 조용히 어긋난다. 그건 별도의 일이다.
+        클라이언트는 게스트를 음수 id(-session_participants.id)로 보낸다.
+    */
+    removeGuestFromGame: async ({ request, cookies }) => {
+        const data = await request.formData();
+        const sessionId = data.get('sessionId');
+        const participantId = Number(data.get('participantId'));
+
+        if (!sessionId || !Number.isFinite(participantId)) {
+            return fail(400, { error: '잘못된 요청입니다.' });
+        }
+        if (participantId >= 0) {
+            return fail(400, { error: '게스트만 뺄 수 있습니다.' });
+        }
+
+        const sessionToken = cookies.get('admin_session');
+        if (!sessionToken || !(await verifyAdminSession(sessionToken))) return fail(403, { error: '권한이 없습니다.' });
+
+        const spId = Math.abs(participantId);
+        const rows = await db.execute(sql`
+            SELECT guest_name FROM session_participants
+            WHERE id = ${spId} AND session_id = ${sessionId} AND attendee_id IS NULL
+        `);
+        const row = (rows as any[])[0];
+        if (!row) return fail(404, { error: '이미 빠졌거나 없는 게스트입니다.' });
+
+        try {
+            await db.execute(sql`DELETE FROM session_participants WHERE id = ${spId}`);
+        } catch (e) {
+            return fail(500, { error: '게스트 제거에 실패했습니다.' });
+        }
+
+        emitLiveEvent('games');
+        return { success: true, removedName: row.guest_name as string };
     },
     addTable: async ({ request }) => {
         const data = await request.formData();
