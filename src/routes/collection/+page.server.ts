@@ -53,7 +53,9 @@ export const load: PageServerLoad = async ({ cookies }) => {
             WHERE sp.attendee_id = ${user.id} AND gs.status = 'finished'
             ORDER BY gs.end_time DESC
         `),
-        // 혼놀 보유 여부와 무관하게 본인이 직접 체크한 "내 소장 게임" 목록
+        // 혼놀 보유 여부와 무관하게, 본인도 그 게임을 갖고 있다고 체크한 목록.
+        // (attendee_id, game_id) 복합키라 같은 게임을 여러 사람이 각자 체크한다 —
+        // 장식장의 그 물건이 누구 것이라는 뜻이 아니다.
         db.execute(sql`SELECT game_id FROM game_ownership WHERE attendee_id = ${user.id}`)
     ]);
 
