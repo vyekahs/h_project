@@ -1191,6 +1191,12 @@
                     남지 않는다. 범례는 목록 아래에 있다.
                 -->
                 <div class="attendee-info">
+                    <!--
+                        이름 묶음은 한 덩어리다. 좁은 폭에서 행을 세로로 세울 때
+                        이 래퍼가 없으면 이름·느낌표·블랙이 각각 자기 줄을 차지해
+                        행마다 2~4줄로 갈린다 — 목록이 들쭉날쭉해지는 원인이었다.
+                    -->
+                    <span class="name-row">
                     <a href="/admin/attendees/{a.id}" class="attendee-link" class:is-manager={a.can_manage_games}
                         title={a.can_manage_games ? `${a.name} — 매니저` : undefined}>{a.name}</a>
                     {#if a.penalty_points > 0}
@@ -1205,6 +1211,7 @@
                             블랙
                         </span>
                     {/if}
+                    </span>
                     <!--
                         메타 셋을 한 덩어리로 묶는다. 낱개로 두었더니 좁은 행에서
                         「10:18 입장」만 혼자 다음 줄로 떨어져 실수처럼 보였고,
@@ -2803,8 +2810,18 @@
         background: none;
         padding: 0;
     }
-    .attendee-info .penalty-marks,
-    .attendee-info .badge {
+    .attendee-info .name-row {
+        display: flex;
+        align-items: center;
+        gap: var(--space-2);
+        min-width: 0;
+        flex: 0 1 auto;
+        /* 배지가 붙은 행만 2~4px 높아져 목록이 미세하게 들쭉날쭉했다.
+           가장 키 큰 내용(블랙 배지)에 맞춰 줄 높이를 고정한다. */
+        min-height: 1.5rem;
+    }
+    .name-row .penalty-marks,
+    .name-row .badge {
         flex: 0 0 auto;
     }
     .attendee-link {
@@ -4446,11 +4463,23 @@
         58 → 58px(세로 폰)에 그치고, 대신 이름이 잘리지 않는다.
     */
     @container room-card (max-width: 400px) {
+        /*
+            wrap은 「필요하면 접는다」이고, 필요 여부는 행마다 다르다 —
+            「3432 !!!」는 밀리고 「qwer !!」는 안 밀려서 같은 목록 안에서 어떤
+            행은 한 줄, 어떤 행은 두 줄이 됐다. 내용이 아니라 폭이 정해야 한다.
+            여기서는 모든 행이 두 줄이다: 이름 줄, 나머지 줄.
+        */
         .attendee-info {
-            flex-wrap: wrap;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 2px;
         }
-        .attendee-info .arrival-time {
-            margin-left: 0;
+        .attendee-info .name-row,
+        .attendee-info .attendee-meta {
+            width: 100%;
+        }
+        .attendee-info .attendee-meta {
+            justify-content: flex-start;
         }
     }
     @container room-card (max-width: 560px) {
