@@ -155,17 +155,18 @@ export function decideGrandTichu(hand8: Card[], weights: PersonalityWeights, beh
 // ===== Small Tichu Decision =====
 
 /** 스몰 티츄 선언에 요구하는 최소 나가기 효율 */
-// 0.5 → 0.4.
-// 정석에서는 "먼저 나갈 확률이 51%만 넘으면 부를 가치가 있다"고 본다
-// (scv.bu.edu 티츄 전략). 실측도 같은 방향이었다 — 문턱을 낮추면 성공률은
-// 조금 떨어지지만 선언이 크게 늘어 총이득이 커진다.
-// 팀 A에만 적용, 시드 3~4개 × 약 4000라운드:
-//   0.50(대조군) 점수차 +3.9 / -0.2
-//   0.44                +2.9
-//   0.40                +12.4 / +7.3   ← 채택 (두 번 다 최대)
-//   0.36                +10.7 / +4.1
-// 0.40에서 선언은 2.4배로 늘고 성공률은 65.6% → 63.9%로 소폭만 내려간다.
-const SMALL_TICHU_MIN_EXIT_RATE = 0.4;
+/**
+ * 선언에 요구하는 최소 **순수 승률**(보너스 미포함).
+ *
+ * 판단 우선 설정이다. 고정 덱 + 결정론, 덱 세트 2개 × 800게임:
+ *   기존 blend 0.4    선언 596건 성공률 63.3%  점수차 +2.07
+ *   순수 0.45         선언 308건 성공률 65.3%  점수차 +0.81
+ *   순수 0.52         선언 167건 성공률 70.7%  점수차 +0.91   ← 채택
+ * 점수는 약 1.2점 손해지만 실패한 티츄가 220건 → 49건으로 78% 줄어든다.
+ * 티츄 선언은 성공률 50%만 넘어도 기대값이 양수라, 점수만 보면 많이 부르는 쪽이
+ * 유리하다. 여기서는 점수 최적점 대신 "무모하게 부르지 않는" 쪽을 택했다.
+ */
+const SMALL_TICHU_MIN_PURE_WIN = 0.52;
 
 /** 표본 세계에서 "내가 가장 빠르다"로 나와야 하는 최소 비율 */
 const SMALL_TICHU_MIN_RACE_PROB = 0.3;
@@ -240,8 +241,14 @@ export function decideSmallTichu(hand: Card[], weights: PersonalityWeights, cont
 	// 문턱을 성향에 따라 움직인다. 고정값(0.5)으로 두면 이 게이트가 판정을 지배해서
 	// 프리셋별 tichoPropensity가 묻힌다 — 실제로 '공격적'(0.8)과 '밸런스'(0.5)의
 	// 선언율이 5.2%로 같아져 "티츄를 적극 선언합니다"라는 설명과 어긋났다.
-	const exitGate = SMALL_TICHU_MIN_EXIT_RATE - (weights.tichoPropensity - 0.5) * 0.12;
-	if (calcExitRate(hand, buildCardTracker(context)).rate < exitGate) return false;
+	// 보너스를 뺀 **순수 승률**로 판단한다.
+	//
+	// calcExitRate의 rate는 승률 평균에 "큰 조합이 많으면 좋다"는 보너스를 40% 섞은
+	// 값이라(턴 효율 0.25 + 콤보 비율 0.15), 선을 몇 번 잡을 수 있는지와 무관한
+	// 요소가 판단을 좌우했다. 예를 들어 6턴이 필요한데 A 트리플과 K 페어뿐이라
+	// 선을 두 번밖에 못 잡는 손패도, 조합이 크다는 이유로 문턱을 통과했다.
+	const exitGate = SMALL_TICHU_MIN_PURE_WIN - (weights.tichoPropensity - 0.5) * 0.12;
+	if (calcExitRate(hand, buildCardTracker(context)).pureWinRate < exitGate) return false;
 
 	// "내가 먼저 나갈 수 있나"를 실제로 시뮬레이션한다.
 	//
