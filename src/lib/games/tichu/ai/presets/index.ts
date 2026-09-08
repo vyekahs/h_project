@@ -40,7 +40,13 @@ const STRATEGY_WEIGHTS: Record<AiStrategy, PersonalityWeights> = {
 		aggressiveness: 0.7,
 		tichoPropensity: 0.6,
 		bombHolding: 0.4,
-		partnerAwareness: 0.3,
+		// 0.3 → 0.5.
+		// 0.3에서는 파트너가 이기는 트릭을 17.3%나 뺏었다(수비적 0.7%의 25배).
+		// 사람은 그렇게까지 하지 않아서 "성격"이 아니라 "고장"으로 읽힌다.
+		// 0.5여도 하드 훅이 없는 프리셋 중에서는 여전히 가장 이기적이다
+		// (파트너 트릭 양보 문턱: 변칙적 9 / 밸런스 8 / 전략적 6).
+		// (밸런스 고정 상대, 시드 3개 × 2200라운드: 팀 점수차 -23.2 → -18.7)
+		partnerAwareness: 0.5,
 		riskTolerance: 0.9
 	}
 };

@@ -155,7 +155,17 @@ export function decideGrandTichu(hand8: Card[], weights: PersonalityWeights, beh
 // ===== Small Tichu Decision =====
 
 /** 스몰 티츄 선언에 요구하는 최소 나가기 효율 */
-const SMALL_TICHU_MIN_EXIT_RATE = 0.5;
+// 0.5 → 0.4.
+// 정석에서는 "먼저 나갈 확률이 51%만 넘으면 부를 가치가 있다"고 본다
+// (scv.bu.edu 티츄 전략). 실측도 같은 방향이었다 — 문턱을 낮추면 성공률은
+// 조금 떨어지지만 선언이 크게 늘어 총이득이 커진다.
+// 팀 A에만 적용, 시드 3~4개 × 약 4000라운드:
+//   0.50(대조군) 점수차 +3.9 / -0.2
+//   0.44                +2.9
+//   0.40                +12.4 / +7.3   ← 채택 (두 번 다 최대)
+//   0.36                +10.7 / +4.1
+// 0.40에서 선언은 2.4배로 늘고 성공률은 65.6% → 63.9%로 소폭만 내려간다.
+const SMALL_TICHU_MIN_EXIT_RATE = 0.4;
 
 /**
  * Decide whether to declare Small Tichu based on full 14-card hand.
@@ -334,7 +344,9 @@ export function selectExchangeCards(
 	 */
 	selfDeclaredTichu: boolean = false,
 	/** 그랜드 티츄인지 — 개(dog)를 넘기는 예외 판단에만 쓴다 */
-	selfDeclaredGrandTichu: boolean = false
+	selfDeclaredGrandTichu: boolean = false,
+	/** 그랜드 티츄를 선언한 상대가 왼쪽인지 오른쪽인지 (없으면 null) */
+	grandTichuOpponent: 'left' | 'right' | null = null
 ): ExchangeCards {
 	const normalCards = hand.filter(c => c.type === 'normal') as NormalCard[];
 	const rankGroups = new Map<number, NormalCard[]>();
@@ -478,6 +490,19 @@ export function selectExchangeCards(
 		while (giveToOpponent.length < 2 && sorted.length > 0) {
 			giveToOpponent.push(sorted.shift()!);
 		}
+	}
+
+	// 그랜드 티츄를 부른 상대에게는 개를 준다.
+	// 티츄를 부른 쪽은 선을 쥐고 있어야 하는데, 개를 내는 순간 파트너에게 선이 넘어간다.
+	// (Board Game Arena 팁: "send that player the Dog — a player who calls Tichu
+	//  wants to control the lead")
+	const dogForOpp = grandTichuOpponent
+		? hand.find(c => c.type === 'special' && c.special === 'dog' &&
+			c.id !== toPartner!.id && !giveToOpponent.some(g => g.id === c.id))
+		: undefined;
+	if (dogForOpp) {
+		const idx = grandTichuOpponent === 'left' ? 0 : 1;
+		giveToOpponent[idx] = dogForOpp;
 	}
 
 	return {
@@ -846,16 +871,30 @@ function pickBestFollow(
 		const trickCards = context.trick!.plays.flatMap(p => p.combination.cards);
 		const trickPoints = getTrickPoints(trickCards);
 
+		// 강제로 내야 하는 상황인지는 **지금 이 트릭을 이기고 있는 사람**을 기준으로 본다.
+		//
+		// 기존에는 "상대 중 아무나 4장 이하" / "상대 중 아무나 티츄 선언"으로 판정했다.
+		// 그래서 티츄를 부르지 않은 다른 상대가 K를 내도 강제로 A를 내버렸다.
+		// 정작 티츄 선언자를 막아야 할 때는 손에 막을 카드가 남아 있지 않게 된다.
+		// (이 코드베이스는 폭탄 쪽에서 이미 같은 원칙을 정리해뒀다 —
+		//  "그 상대가 지금 이 트릭의 리더가 아니면 이 트릭을 이겨봤자 무관하다")
+		// 강제로 내야 하는 상황 판정.
+		//
+		// 티츄 조건은 **지금 이 트릭을 이기고 있는 사람**을 기준으로 본다.
+		// 기존에는 "상대 중 아무나 티츄 선언"으로 판정해서, 티츄를 부르지 않은 다른
+		// 상대가 K를 내도 강제로 A를 내버렸다. 그러면 정작 선언자를 막아야 할 때
+		// 손에 막을 카드가 남아 있지 않다.
+		// (폭탄 쪽에는 이미 같은 원칙이 적용돼 있다 — "그 상대가 지금 이 트릭의 리더가
+		//  아니면 이 트릭을 이겨봤자 그 상대를 막는 것과 무관하다")
+		//
+		// 반면 "나가기 직전 상대"는 트릭 리더가 아니어도 뺏는다. 내가 이겨야 다음 선을
+		// 잡아서 그 상대에게 낼 기회를 주지 않기 때문이다.
+		// (이쪽까지 리더 기준으로 좁혀보니 팀 점수차가 +5.8 → -5.7로 크게 나빠졌다)
+		const leader = context.players[lastPlay.seat];
+		const leaderIsOpponent = getTeam(lastPlay.seat) !== myTeam && leader.finishOrder === null;
 		const mustPlay =
-			// 상대가 나가기 직전이면 뺏어야 함 (4장 이하로 확대)
 			context.players.some(p => getTeam(p.seat) !== myTeam && p.finishOrder === null && p.hand.length <= 4) ||
-			// 티츄 선언 상대가 있으면 반드시 차단
-			context.players.some(p =>
-				getTeam(p.seat) !== myTeam &&
-				(p.grandTichu === true || p.smallTichu) &&
-				p.finishOrder === null
-			) ||
-			// 트릭 포인트가 높으면 뺏어야 함
+			(leaderIsOpponent && (leader.grandTichu === true || leader.smallTichu)) ||
 			(trickPoints >= 15 && getTeam(lastPlay.seat) !== myTeam);
 
 		if (!mustPlay) {

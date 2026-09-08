@@ -47,6 +47,37 @@ export interface PlayCandidate {
  */
 const TICHU_EXIT_WEIGHT = 2.0;
 
+/**
+ * 티츄 선언자 **바로 앞 순서**일 때, 그들이 낮은 패를 헐값에 털지 못하게
+ * 카드를 적당히 높여 낸다.
+ *
+ * 티츄는 마지막 장을 내는 순간 나가는 것이라 그 수를 이겨서는 막을 수 없다.
+ * 막을 수 있는 유일한 길은 **낼 기회 자체를 없애는 것**이고, 그 중 실제로
+ * 통제 가능한 지점이 "선언자 직전 순서"다. 내가 무엇을 내느냐가 그들이
+ * 무엇을 받을 수 있는지를 결정한다.
+ *
+ * 너무 높이면 내 A·용만 낭비되므로 10~13 구간에만 보너스를 주고, 그 위로는
+ * 보너스도 벌점도 없다.
+ */
+const DENY_BONUS = 0.3;
+const DENY_LO = 10;
+const DENY_HI = 13;
+
+function denyModifier(
+	combo: Combination,
+	context: AiDecisionContext,
+	myTeam: string
+): number {
+	const nextSeat = getNextActiveSeat(context.currentSeat, context.players) as SeatIndex;
+	const next = context.players[nextSeat];
+	if (getTeam(nextSeat) === myTeam || next.finishOrder !== null) return 0;
+	const isThreat = next.grandTichu === true || next.smallTichu;
+	if (!isThreat) return 0;
+	if (combo.rank >= DENY_LO && combo.rank <= DENY_HI) return DENY_BONUS;
+	if (combo.rank < DENY_LO) return -DENY_BONUS * 0.6;
+	return 0; // A·용은 아끼되 벌점도 없음
+}
+
 export function searchBestPlay(
 	hand: Card[],
 	candidates: Combination[],
@@ -404,6 +435,8 @@ function calcContextModifier(
 			mod += combo.cards.length * 0.015;
 		}
 
+		mod += denyModifier(combo, context, myTeam);
+
 		// 상대 티츄 선언 + 카드 적으면 → 선 뺏기 위해 강한 리드 보너스
 		if (opponentTichuThreat) {
 			mod += 0.1;
@@ -560,6 +593,8 @@ function calcContextModifier(
 				}
 			}
 		}
+
+		mod += denyModifier(combo, context, myTeam);
 
 		// 상대 티츄 선언 + 카드 적으면 → 적극 차단
 		if (opponentTichuThreat && opponentWinning) {

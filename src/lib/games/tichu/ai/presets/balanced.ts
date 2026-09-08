@@ -24,50 +24,13 @@ export const balancedBehavior: PresetBehavior = {
 		return selectBestPartnerCard(hand, singletons, rankGroups, protectedIds);
 	},
 
-	scoreLeadCandidate(combo, hand, context) {
-		const aggression = getAdaptiveAggression(context, hand);
-		let score = 0;
+	// scoreLeadCandidate 오버라이드는 제거했다.
+	//
+	// 싱글에 +15를 주고 멀티카드 콤보에는 rank * 2를 깎는 식이라, 기본 로직이
+	// 계산한 나가기 효율을 무시하고 리드를 싱글 쪽으로 강하게 편향시켰다.
+	// (절제 실험: 팀 A=밸런스(훅 끔) / 팀 B=밸런스(훅 켬), 1275라운드 —
+	//  팀 점수차 +13.9, 약 4σ. 같은 프리셋끼리의 자기 비교다)
 
-		if (combo.type === 'single') {
-			// 기본: 싱글 보너스
-			score += 15;
-			score -= combo.rank * 1.2;
-
-			// 수비 모드: 싱글 추가 보너스 (낮은 카드 처리)
-			if (aggression < 0.4) {
-				score += 8;
-			}
-		} else {
-			score -= combo.rank * 2;
-
-			// 공격 모드: 멀티카드 콤보 보너스 (빨리 패 줄이기)
-			if (aggression > 0.6) {
-				score += combo.cards.length * 5;
-			}
-		}
-
-		// 스트레이트/계단: 여러 장 처리
-		if (combo.type === 'straight' || combo.type === 'stairs') {
-			score += combo.cards.length * 2;
-		}
-
-		// 풀하우스
-		if (combo.type === 'full_house') {
-			score += 8;
-		}
-
-		// 폭탄 보존
-		if (isBomb(combo)) {
-			score -= 40;
-		}
-
-		// 드래곤 싱글 패널티
-		if (combo.cards.some(c => c.type === 'special' && c.special === 'dragon')) {
-			score -= 15;
-		}
-
-		return score;
-	},
 
 	scoreFollowCandidate(play, hand, context, trickPoints, opponentWinning) {
 		const aggression = getAdaptiveAggression(context, hand);

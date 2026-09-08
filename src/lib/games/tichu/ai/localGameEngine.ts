@@ -490,7 +490,13 @@ export class LocalGameEngine {
 			const partnerDeclaredTichu = partnerPlayer.grandTichu === true || partnerPlayer.smallTichu === true;
 			const self = this.state.players[seat];
 			const selfDeclaredTichu = self.grandTichu === true || self.smallTichu === true;
-			const exchange = ai.makeExchangeDecision(self.hand, partnerDeclaredTichu, selfDeclaredTichu, self.grandTichu === true);
+			const leftSeat = getLeftSeat(seat) as SeatIndex;
+			const rightSeat = getRightSeat(seat) as SeatIndex;
+			const gtOpp: 'left' | 'right' | null =
+				this.state.players[leftSeat].grandTichu === true ? 'left'
+				: this.state.players[rightSeat].grandTichu === true ? 'right'
+				: null;
+			const exchange = ai.makeExchangeDecision(self.hand, partnerDeclaredTichu, selfDeclaredTichu, self.grandTichu === true, gtOpp);
 			this.exchangeSubmissions[seat] = exchange;
 		}
 
@@ -642,7 +648,7 @@ export class LocalGameEngine {
 		const targetTeam = getTeam(targetSeat);
 		if (myTeam === targetTeam) return false;
 
-		if (round.trick) {
+		if (round.trick && round.dragonGiftPending) {
 			const allCards = round.trick.plays.flatMap(p => p.combination.cards);
 			this.state.players[targetSeat].wonCards.push(...allCards);
 		}
@@ -1192,7 +1198,8 @@ export class LocalGameEngine {
 			const context = this.createAiContext(seat);
 			const targetSeat = ai.makeDragonGiftDecision(context);
 
-			if (round.trick) {
+			// 라운드가 먼저 끝나 resolveRound가 이미 이 트릭을 지급했으면 다시 주지 않는다
+			if (round.trick && round.dragonGiftPending) {
 				const allCards = round.trick.plays.flatMap(p => p.combination.cards);
 				this.state.players[targetSeat].wonCards.push(...allCards);
 			}
@@ -1459,6 +1466,14 @@ export class LocalGameEngine {
 			const allCards = round.trick.plays.flatMap(p => p.combination.cards);
 			this.state.players[lastPlay.seat].wonCards.push(...allCards);
 			// trick을 null로 만들지 않고 유지 → UI에서 마지막 플레이가 보임
+			//
+			// 드래곤 선물이 대기 중이었다면 여기서 반드시 꺼야 한다.
+			// 선물 처리는 async(delay 대기)라 라운드가 먼저 끝날 수 있는데, 그때
+			// trick이 살아 있으므로 재개된 선물 처리가 **같은 카드를 한 번 더** 지급한다.
+			// 드래곤은 25점이라 점수가 그대로 이중 계산된다.
+			// (불변식 스윕에서 약 3만 라운드에 1회꼴로 '획득 카드 중복'으로 검출)
+			round.dragonGiftPending = false;
+			round.dragonGiftSeat = null;
 		}
 
 		// Auto-finish remaining
