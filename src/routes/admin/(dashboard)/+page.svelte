@@ -1176,8 +1176,10 @@
     {#snippet attendeeRow(a: Attendee)}
             <li>
                 <!--
-                    한 사람이 한 줄이다. 이름 · 상태 · 시각이 두 줄로 나뉘어
-                    있었는데, 명단에서 훑는 단위는 사람이지 속성이 아니다.
+                    두 줄로 나눈다: 첫 줄은 사람, 둘째 줄은 그 사람이 앉은 판.
+                    입장 시각은 사람에 붙는 사실인데 게임 이름 옆에 있어서
+                    「몇 시에 시작한 판인가」처럼 읽혔다.
+                    판이 없는 사람은 둘째 줄도 없다 — 없는 것을 빈 줄로 말하지 않는다.
 
                     매니저는 이름에 붙는 성질이므로 배지를 떼고 이름 자체에
                     입힌다. 채움이 아니라 틴트인 이유는 이름이 링크이기 때문이다 —
@@ -1211,24 +1213,19 @@
                             블랙
                         </span>
                     {/if}
+                    <span class="arrival-time">{formatTime(a.arrival_time)} 입장</span>
                     </span>
                     <!--
-                        메타 셋을 한 덩어리로 묶는다. 낱개로 두었더니 좁은 행에서
-                        「10:18 입장」만 혼자 다음 줄로 떨어져 실수처럼 보였고,
-                        무게가 셋·크기가 셋이라 이름이 어디인지도 흐려졌다.
-                        접히더라도 「이름」과 「나머지」로 접힌다.
-
-                        종료 시각은 서버가 같은 행에서 준다 — 이름으로 찾으면
-                        같은 이름의 판이 둘일 때 엉뚱한 시간이 붙는다.
+                        둘째 줄은 판에 관한 것만 든다. 종료 시각은 서버가 같은
+                        행에서 준다 — 이름으로 찾으면 같은 이름의 판이 둘일 때
+                        엉뚱한 시간이 붙는다.
                     -->
-                    <span class="attendee-meta">
-                        {#if a.is_playing && a.game_name}
+                    {#if a.is_playing && a.game_name}
+                        <span class="attendee-meta">
                             <span class="seat-game" title={a.game_name}>{a.game_name}</span>
                             {#if a.game_end_time}<span class="seat-time" class:is-over={isSettling(a)}>{getTimeRemaining(a.game_end_time, now)}</span>{/if}
-                            <span class="meta-sep" aria-hidden="true">·</span>
-                        {/if}
-                        <span class="arrival-time">{formatTime(a.arrival_time)} 입장</span>
-                    </span>
+                        </span>
+                    {/if}
                 </div>
                 <!--
                     퇴장은 명단에서 가장 잦은 조치인데 관리 시트 안에 있었다.
@@ -2818,19 +2815,18 @@
         white-space: nowrap;
         color: var(--text-secondary);
     }
-    .attendee-meta .seat-time,
-    .attendee-meta .arrival-time,
-    .attendee-meta .meta-sep {
+    .attendee-meta .seat-time {
         flex: 0 0 auto;
         white-space: nowrap;
     }
-    .attendee-meta .meta-sep {
-        color: var(--text-hint);
-    }
     /* 알약 배경이 행에서 가장 작은 것에 가장 센 대비를 줬다 */
-    .attendee-meta .arrival-time {
+    .name-row .arrival-time {
+        flex: 0 0 auto;
         background: none;
         padding: 0;
+        font-size: var(--text-xs);
+        color: var(--text-secondary);
+        white-space: nowrap;
     }
     .attendee-info .name-row {
         display: flex;
