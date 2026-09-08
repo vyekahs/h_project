@@ -508,12 +508,23 @@
         }
     }
 
-    function selectGame(game: { name: string, id: number, playtime_min: number }) {
+    /*
+        게임마다 정원이 있는데 모달이 그걸 받지 않아, 4인용 판에 일곱 명을
+        앉힐 수 있었다. 라이브러리에서 고른 게임만 정원을 안다 — 이름을 직접
+        친 판은 상한이 없다(그때는 null).
+    */
+    let newGameMax: number | null = $state(null);
+    let newGameMin: number | null = $state(null);
+    function selectGame(game: { name: string, id: number, playtime_min: number, min_players?: number, max_players?: number }) {
         selectedGameName = game.name;
         selectedGameId = String(game.id);
         selectedDuration = String(game.playtime_min);
         dropdownOpen = false;
     }
+    /* 자리 수. 게스트도 자리를 차지한다. */
+    const seatsTaken = $derived(selectedPlayerIds.length + (Number(guestCount) || 0));
+    const seatsLeft = $derived(newGameMax === null ? Infinity : newGameMax - seatsTaken);
+    const seatsFull = $derived(seatsLeft <= 0);
 
     function handleInputClick() {
         dropdownOpen = true;
@@ -586,11 +597,18 @@
         if (libraryGame) {
             selectedGameId = String(libraryGame.id);
             selectedDuration = String(libraryGame.playtime_min);
+            // 정원도 여기서 따라온다 — 드롭다운으로 골랐든 이름을 그대로 쳤든 같다.
+            newGameMax = libraryGame.max_players ?? null;
+            newGameMin = libraryGame.min_players ?? null;
         } else if (historyGame && !libraryGame) { // Only fallback if not in library
             selectedGameId = '';
             selectedDuration = String(historyGame.duration);
+            newGameMax = null;
+            newGameMin = null;
         } else if (!libraryGame) {
             selectedGameId = '';
+            newGameMax = null;
+            newGameMin = null;
         }
     });
 
@@ -1407,6 +1425,8 @@
             selectedGameName = '';
             selectedDuration = '60';
             selectedGameId = '';
+            newGameMax = null;
+            newGameMin = null;
             guestCount = 0;
             dropdownOpen = false;
             selectedPlayerIds = [];
@@ -1654,7 +1674,9 @@
 
                 <div class="player-picker">
                     <div class="pp-head">
-                        <span class="pp-label">참여자 ({selectedPlayerIds.length})</span>
+                        <span class="pp-label">
+                            참여자 {selectedPlayerIds.length}{#if newGameMax !== null}<span class="pp-cap">/{newGameMax}</span>{/if}
+                        </span>
                         <div class="pp-head-actions">
                             <!-- 조건부로 숨기면 "왜 없지"를 알 수 없다. 못 쓰는 이유를 달고 남긴다. -->
                             <button
@@ -1662,7 +1684,10 @@
                                 class="btn-mini"
                                 disabled={availableAttendees.length === 0}
                                 title={availableAttendees.length === 0 ? '방에 있는 인원이 모두 게임 중입니다' : undefined}
-                                onclick={() => selectedPlayerIds = availableAttendees.map((a) => a.id)}
+                                onclick={() => selectedPlayerIds = (newGameMax === null
+                                    ? availableAttendees
+                                    : availableAttendees.slice(0, Math.max(0, newGameMax - (Number(guestCount) || 0)))
+                                ).map((a) => a.id)}
                             >앉힐 수 있는 전원</button>
                             {#if selectedPlayerIds.length > 0}
                                 <button type="button" class="btn-ghost" onclick={() => selectedPlayerIds = []}>비우기</button>
@@ -1703,18 +1728,33 @@
 
                     <input type="text" class="pp-search" placeholder="이름 검색..." aria-label="참여자 이름 검색" autocomplete="off" bind:value={playerSearch} />
 
+                    <!--
+                        체크박스다. 버튼이었을 때는 한 화면에 사람 수만큼 버튼이
+                        생겨 무엇이 실행이고 무엇이 선택인지 흐려졌다 — 고르는
+                        일은 누르는 일과 다르고, 못 고르는 이유는 disabled가
+                        스스로 말한다.
+                    -->
                     <div class="pp-list">
                         {#each pickerResults as a (a.id)}
                             {@const checked = selectedPlayerIds.includes(a.id)}
-                            <button type="button" class="pp-option" class:checked={checked} aria-pressed={checked} disabled={a.is_playing && !isSettling(a)}
-                                onclick={() => selectedPlayerIds = checked ? selectedPlayerIds.filter((x) => x !== a.id) : [...selectedPlayerIds, a.id]}>
-                                <span class="pp-check" aria-hidden="true">{checked ? '✓' : ''}</span>
+                            {@const playing = a.is_playing && !isSettling(a)}
+                            {@const noSeat = !checked && seatsFull}
+                            <label class="pp-option" class:checked={checked} class:is-disabled={playing || noSeat}>
+                                <input
+                                    type="checkbox"
+                                    {checked}
+                                    disabled={playing || noSeat}
+                                    onchange={() => selectedPlayerIds = checked
+                                        ? selectedPlayerIds.filter((x) => x !== a.id)
+                                        : [...selectedPlayerIds, a.id]}
+                                />
                                 <span class="pp-name">{a.name}</span>
                                 <!-- 정리 대기는 「게임 중」이 아니다. 그 사람은 앉힐 수 있고,
                                      그래서 이 행은 비활성이 아니다 — 이유를 다르게 말해야 한다. -->
                                 {#if isSettling(a)}<span class="status-text">정리 대기</span>
-                                {:else if a.is_playing}<span class="status-text">게임 중</span>{/if}
-                            </button>
+                                {:else if a.is_playing}<span class="status-text">게임 중</span>
+                                {:else if noSeat}<span class="status-text">자리 참</span>{/if}
+                            </label>
                         {/each}
                         {#if pickerResults.length === 0}
                             <!--
@@ -1736,8 +1776,17 @@
 
                 <div class="input-group guest-input-group">
                     <label for="guestCount">게스트 수</label>
-                    <input type="number" id="guestCount" name="guestCount" bind:value={guestCount} min="0" max="20" class="number-input" />
-                    <p class="hint">* 회원이 아닌 사람 수 (게스트1, 게스트2… 자동 생성)</p>
+                    <!-- 게스트도 자리를 차지한다. 정원이 있는 게임이면 그 안에서만 는다. -->
+                    <input type="number" id="guestCount" name="guestCount" bind:value={guestCount} min="0"
+                        max={newGameMax === null ? 20 : Math.max(0, newGameMax - selectedPlayerIds.length)}
+                        class="number-input"
+                        oninput={() => {
+                            const cap = newGameMax === null ? 20 : Math.max(0, newGameMax - selectedPlayerIds.length);
+                            if ((Number(guestCount) || 0) > cap) guestCount = cap;
+                        }} />
+                    <p class="hint">
+                        * 회원이 아닌 사람 수 (게스트1, 게스트2… 자동 생성){#if newGameMax !== null}{' '}— 남은 자리 {Math.max(0, newGameMax - selectedPlayerIds.length)}명{/if}
+                    </p>
                     <!-- 참여자와 게스트 중 하나만 있으면 되므로, 둘 중 뒤에 오는
                          여기서 한 번만 말한다 -->
                     {#if newGameMissing.includes('players')}
@@ -3268,8 +3317,8 @@
         border-radius: var(--radius-control);
         font-size: var(--text-sm);
     }
-    .pp-option:hover:not(:disabled),
-    .pp-option:focus-visible {
+    .pp-option:hover:not(.is-disabled),
+    .pp-option:focus-within {
         background: var(--bg-tertiary);
     }
     .pp-option.checked {
@@ -3277,35 +3326,28 @@
         color: var(--color-blue-bright);
         font-weight: 600;
     }
-    .pp-option:disabled {
+    /* 못 고르는 이유는 disabled가 스스로 말한다 — 직접 그린 체크 상자를
+       쓰던 때는 그 상태를 손으로 흉내 내야 했다. */
+    .pp-option.is-disabled {
         color: var(--text-secondary);
         cursor: not-allowed;
     }
-    /* 체크 표시만 있으면 고르지 않은 행은 그냥 텍스트로 보인다.
-       빈 상자를 항상 그려 "고를 수 있는 목록"임을 알린다. */
-    .pp-check {
+    .pp-option input[type='checkbox'] {
         width: 1.1rem;
         height: 1.1rem;
+        min-height: 0;
         flex-shrink: 0;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        border: 1px solid var(--border-medium);
-        border-radius: 3px;
-        background: var(--bg-primary);
-        font-size: var(--text-xs);
-        line-height: 1;
-        color: var(--color-blue-bright);
-    }
-    .pp-option.checked .pp-check {
-        border-color: var(--color-blue-bright);
-    }
-    .pp-option:disabled .pp-check {
-        background: var(--bg-hover);
-        border-color: var(--border-medium);
+        margin: 0;
+        accent-color: var(--color-blue-bright);
+        cursor: inherit;
     }
     .pp-name {
         flex: 1;
+    }
+    /* 정원은 고른 수의 분모다 — 같은 크기면 둘이 경쟁한다 */
+    .pp-cap {
+        color: var(--text-secondary);
+        font-weight: var(--weight-normal);
     }
     /* 범위 세그먼트 — 목록이 무엇을 보여주는지가 목록 위에서 결정된다 */
     .pp-scope {

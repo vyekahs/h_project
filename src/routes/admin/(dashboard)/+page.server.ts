@@ -291,6 +291,23 @@ export const actions: Actions = {
         if (playerIds.length === 0 && guestCount === 0) missing.push('players');
         if (missing.length > 0) return fail(400, { missing });
 
+        /*
+            정원은 게임이 갖고 있다. 화면에서 막아도 폼은 그대로 던질 수 있으므로
+            여기서도 센다 — 게스트도 자리를 차지한다.
+            라이브러리에 없는(직접 친) 이름은 정원을 모르므로 세지 않는다.
+        */
+        if (gameId) {
+            const limits = ((await db.execute(sql`
+                SELECT min_players, max_players FROM games WHERE id = ${gameId}
+            `)) as any[])[0];
+            const seats = playerIds.length + guestCount;
+            if (limits?.max_players && seats > Number(limits.max_players)) {
+                return fail(400, {
+                    error: `${gameName}은(는) 최대 ${limits.max_players}명입니다. 지금 ${seats}명이 선택돼 있습니다.`
+                });
+            }
+        }
+
         try {
             const result = await db.transaction(async (tx) => {
                 // Check if any player is already playing
