@@ -13,6 +13,8 @@ import type { AiDecisionContext } from './types';
 import { createAllCards } from '../constants';
 import { shuffle } from '../deck';
 import { findBeatablePlays } from './handEvaluator';
+import { buildCardTracker } from './cardTracker';
+import { calcExitRate } from './playSearchGrid';
 
 export const DEFAULT_MC_SAMPLES = 20;
 
@@ -185,4 +187,43 @@ export function evaluateTwoTurnFinish(
 		effectiveWinProb: mineRate + PARTNER_SAFE_CREDIT * partnerRate,
 		remainderSafeRate: mine > 0 ? remainderSafe / mine : 0
 	};
+}
+
+
+/**
+ * "내가 먼저 나갈 확률" 추정.
+ *
+ * 티츄 선언은 지금까지 calcExitRate만 보고 결정했는데, 그건 **내 손패만** 본다.
+ * 5턴에 비울 수 있는 패가 좋은지 나쁜지는 상대가 몇 턴에 비우느냐에 달렸다.
+ * 안 보이는 카드를 여러 번 나눠 돌려서 각자의 최소 턴 수를 비교한다.
+ *
+ * 반환값 -1은 표본을 만들 수 없었다는 뜻(호출부는 기존 판단으로 폴백).
+ */
+export function estimateGoOutFirstProb(
+	context: AiDecisionContext,
+	sampleCount = 10
+): number {
+	const worlds = buildSampleWorlds(context, sampleCount);
+	if (worlds.length === 0) return -1;
+	const sharedTracker = buildCardTracker(context);
+	// 나가기 효율이 높을수록 "빠르다" — 부호를 뒤집어 작은 값이 빠른 것으로 통일한다.
+	//
+	// 처음에는 findOptimalPartition의 최소 턴 수로 비교했는데 오히려 나빴다.
+	// 턴 수만으로는 누가 먼저 나가는지 못 맞힌다 — 4턴이 필요하지만 강패가 없는
+	// 손패보다 5턴이 필요해도 A를 여러 장 든 손패가 먼저 나간다.
+	// calcExitRate는 최소 턴 분할에 각 조합의 승률까지 반영한다.
+	const myScore = -calcExitRate(context.hand, sharedTracker).rate;
+	let wins = 0;
+	for (const w of worlds) {
+		let faster = 0;
+		let tie = 0;
+		for (const [, h] of w.hands) {
+			const t = -calcExitRate(h, sharedTracker).rate;
+			if (t < myScore) faster++;
+			else if (t === myScore) tie++;
+		}
+		// 나보다 빠른 사람이 없으면 1등 후보. 동률인 사람 수만큼 나눠 가진다.
+		if (faster === 0) wins += 1 / (1 + tie);
+	}
+	return wins / worlds.length;
 }

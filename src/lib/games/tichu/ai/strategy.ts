@@ -19,7 +19,7 @@ import {
 	type CardTracker
 } from './cardTracker';
 import { searchBestPlay, calcExitRate, isForcedOutIfLeading } from './playSearchGrid';
-import { buildSampleWorlds, evaluateLeadSafety, evaluateTwoTurnFinish, getUnseenCards, type SampledWorld } from './monteCarlo';
+import { buildSampleWorlds, evaluateLeadSafety, evaluateTwoTurnFinish, getUnseenCards, estimateGoOutFirstProb, type SampledWorld } from './monteCarlo';
 
 // ===== Hand Analysis Helpers =====
 
@@ -167,6 +167,9 @@ export function decideGrandTichu(hand8: Card[], weights: PersonalityWeights, beh
 // 0.40에서 선언은 2.4배로 늘고 성공률은 65.6% → 63.9%로 소폭만 내려간다.
 const SMALL_TICHU_MIN_EXIT_RATE = 0.4;
 
+/** 표본 세계에서 "내가 가장 빠르다"로 나와야 하는 최소 비율 */
+const SMALL_TICHU_MIN_RACE_PROB = 0.3;
+
 /**
  * Decide whether to declare Small Tichu based on full 14-card hand.
  */
@@ -239,6 +242,20 @@ export function decideSmallTichu(hand: Card[], weights: PersonalityWeights, cont
 	// 선언율이 5.2%로 같아져 "티츄를 적극 선언합니다"라는 설명과 어긋났다.
 	const exitGate = SMALL_TICHU_MIN_EXIT_RATE - (weights.tichoPropensity - 0.5) * 0.12;
 	if (calcExitRate(hand, buildCardTracker(context)).rate < exitGate) return false;
+
+	// "내가 먼저 나갈 수 있나"를 실제로 시뮬레이션한다.
+	//
+	// 위의 calcExitRate는 **내 손패만** 본다. 5턴에 비울 수 있는 패가 좋은지 나쁜지는
+	// 상대가 몇 턴에 비우느냐에 달렸는데, 그 비교가 없었다. 안 보이는 카드를 여러 번
+	// 나눠 돌려서 상대들의 나가기 효율과 직접 비교한다.
+	//
+	// 검증 (고정 덱 + 결정론, 덱 세트 2개 × 800게임, 팀 A에만 적용)
+	//   기준        성공률 64.9% / 63.1%   선언 373건 / 377건
+	//   문턱 0.30   성공률 68.4% / 66.4%   선언 285건 / 304건
+	// 성공률은 두 세트 모두 +3.4%p 정도 오른다. 팀 점수는 +1.33 / -1.27로 중립 —
+	// 걸러낸 선언들이 기대값 0 근처였다는 뜻이라 총점은 그대로고 판단만 정확해진다.
+	const raceProb = estimateGoOutFirstProb(context, 24);
+	if (raceProb >= 0 && raceProb < SMALL_TICHU_MIN_RACE_PROB) return false;
 	return true;
 }
 
