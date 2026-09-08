@@ -155,7 +155,17 @@ export function decideGrandTichu(hand8: Card[], weights: PersonalityWeights, beh
 // ===== Small Tichu Decision =====
 
 /** 스몰 티츄 선언에 요구하는 최소 나가기 효율 */
-const SMALL_TICHU_MIN_EXIT_RATE = 0.5;
+// 0.5 → 0.4.
+// 정석에서는 "먼저 나갈 확률이 51%만 넘으면 부를 가치가 있다"고 본다
+// (scv.bu.edu 티츄 전략). 실측도 같은 방향이었다 — 문턱을 낮추면 성공률은
+// 조금 떨어지지만 선언이 크게 늘어 총이득이 커진다.
+// 팀 A에만 적용, 시드 3~4개 × 약 4000라운드:
+//   0.50(대조군) 점수차 +3.9 / -0.2
+//   0.44                +2.9
+//   0.40                +12.4 / +7.3   ← 채택 (두 번 다 최대)
+//   0.36                +10.7 / +4.1
+// 0.40에서 선언은 2.4배로 늘고 성공률은 65.6% → 63.9%로 소폭만 내려간다.
+const SMALL_TICHU_MIN_EXIT_RATE = 0.4;
 
 /**
  * Decide whether to declare Small Tichu based on full 14-card hand.
