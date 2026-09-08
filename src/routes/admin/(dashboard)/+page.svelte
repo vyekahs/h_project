@@ -3727,9 +3727,21 @@
         넉넉히 넘고, 이 두 버튼은 이름·상태와 함께 넓은 여백 안에 서 있다.
         방 밖의 컨트롤(모달·헤더·토스트)은 44를 그대로 지킨다.
     */
+    /*
+        두 글자 라벨에 좌우 패딩이 붙어 가로가 세로보다 길었다(39x36).
+        정사각으로 맞춘다 — 두 버튼이 나란히 서므로 형태가 어긋나면 눈에 띈다.
+        aspect-ratio로 묶어두면 폰에서 높이가 44로 올라갈 때 폭도 함께 간다.
+    */
+    .btn-row-exit,
+    .btn-manage {
+        aspect-ratio: 1;
+        padding: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
     .btn-row-exit {
         min-height: 36px;
-        padding: 0 var(--space-2);
         background: var(--bg-primary);
         color: var(--color-red-dark);
         border: 1px solid var(--color-red-dark);
@@ -3747,7 +3759,6 @@
         background: var(--bg-primary);
         color: var(--text-primary);
         border: 1px solid var(--border-control);
-        padding: 0 var(--space-2);
         border-radius: var(--radius-control);
         font-size: var(--text-xs);
         cursor: pointer;
