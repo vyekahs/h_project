@@ -1205,13 +1205,23 @@
                             블랙
                         </span>
                     {/if}
-                    <!-- 종료 시각은 서버가 같은 행에서 준다 — 이름으로 찾으면
-                         같은 이름의 판이 둘일 때 엉뚱한 시간이 붙는다. -->
-                    {#if a.is_playing && a.game_name}
-                        <span class="seat-game" title={a.game_name}>{a.game_name}</span>
-                        {#if a.game_end_time}<span class="seat-time" class:is-over={isSettling(a)}>{getTimeRemaining(a.game_end_time, now)}</span>{/if}
-                    {/if}
-                    <span class="arrival-time">{formatTime(a.arrival_time)} 입장</span>
+                    <!--
+                        메타 셋을 한 덩어리로 묶는다. 낱개로 두었더니 좁은 행에서
+                        「10:18 입장」만 혼자 다음 줄로 떨어져 실수처럼 보였고,
+                        무게가 셋·크기가 셋이라 이름이 어디인지도 흐려졌다.
+                        접히더라도 「이름」과 「나머지」로 접힌다.
+
+                        종료 시각은 서버가 같은 행에서 준다 — 이름으로 찾으면
+                        같은 이름의 판이 둘일 때 엉뚱한 시간이 붙는다.
+                    -->
+                    <span class="attendee-meta">
+                        {#if a.is_playing && a.game_name}
+                            <span class="seat-game" title={a.game_name}>{a.game_name}</span>
+                            {#if a.game_end_time}<span class="seat-time" class:is-over={isSettling(a)}>{getTimeRemaining(a.game_end_time, now)}</span>{/if}
+                            <span class="meta-sep" aria-hidden="true">·</span>
+                        {/if}
+                        <span class="arrival-time">{formatTime(a.arrival_time)} 입장</span>
+                    </span>
                 </div>
                 <!--
                     퇴장은 명단에서 가장 잦은 조치인데 관리 시트 안에 있었다.
@@ -2755,34 +2765,47 @@
         white-space: nowrap;
     }
     /*
-        게임 이름이 남는 폭을 갖고, 모자라면 먼저 줄어든다. 다만 바닥이 있다 —
-        min-width가 0이면 320px에서 폭이 0이 되어 어느 판인지가 화면에서
-        아예 사라졌다. 다섯 글자쯤은 남겨야 테이블이 특정된다.
+        행의 무게를 둘로 줄인다 — 어두운 것은 이름 하나뿐이고 나머지는 하나의
+        회색 런이다. 게임 이름까지 본문색이면 어디가 사람이고 어디가 판인지
+        한눈에 갈리지 않는다.
     */
-    .attendee-info .seat-game {
+    .attendee-info .attendee-meta {
+        display: flex;
+        align-items: baseline;
+        justify-content: flex-end;
+        gap: var(--space-1);
         flex: 1 1 auto;
-        min-width: 4.5rem;
-        max-width: none;
-        color: var(--text-primary);
-    }
-    .attendee-info .penalty-marks,
-    .attendee-info .badge,
-    .attendee-info .seat-time,
-    .attendee-info .arrival-time {
-        flex: 0 0 auto;
-    }
-    /* 메타 래퍼가 사라지고 자식들이 행에 직접 선다 */
-    .attendee-info .arrival-time,
-    .attendee-info .seat-game,
-    .attendee-info .seat-time {
+        min-width: 0;
         font-size: var(--text-xs);
         color: var(--text-secondary);
-        min-width: 0;
     }
-    /* 입장 시각은 셋 중 가장 덜 급하다 — 좁아지면 먼저 밀린다 */
-    .attendee-info .arrival-time {
-        margin-left: auto;
+    .attendee-meta .seat-game {
+        flex: 0 1 auto;
+        /* 다섯 글자쯤은 남겨야 어느 테이블인지 특정된다 */
+        min-width: 4.5rem;
+        max-width: none;
+        overflow: hidden;
+        text-overflow: ellipsis;
         white-space: nowrap;
+        color: var(--text-secondary);
+    }
+    .attendee-meta .seat-time,
+    .attendee-meta .arrival-time,
+    .attendee-meta .meta-sep {
+        flex: 0 0 auto;
+        white-space: nowrap;
+    }
+    .attendee-meta .meta-sep {
+        color: var(--text-hint);
+    }
+    /* 알약 배경이 행에서 가장 작은 것에 가장 센 대비를 줬다 */
+    .attendee-meta .arrival-time {
+        background: none;
+        padding: 0;
+    }
+    .attendee-info .penalty-marks,
+    .attendee-info .badge {
+        flex: 0 0 auto;
     }
     .attendee-link {
         text-decoration: none;
