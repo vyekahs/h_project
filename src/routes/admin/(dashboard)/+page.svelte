@@ -4470,9 +4470,13 @@
         flex-wrap: wrap;
         align-items: center;
         gap: var(--space-1) var(--space-2);
-        margin: var(--space-2) 0 0;
-        padding: var(--space-2) 0 0 var(--space-5);
-        border-top: 1px solid var(--border-light);
+        margin: 0;
+        /*
+            이름 왼쪽 끝에 맞춘다 — 버튼 패딩 + 섬네일 + 열 간격.
+            맨 왼쪽에서 시작하니 같은 항목의 둘째 줄이 아니라 행 아래에 따로
+            붙은 블록으로 읽혔다. 구분선도 그래서 걷는다. 두 줄은 한 덩어리다.
+        */
+        padding: 0 var(--space-2) 0.6rem calc(var(--space-2) + 32px + var(--space-3));
     }
     .players-count {
         flex: 0 0 auto;
