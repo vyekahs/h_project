@@ -3762,13 +3762,20 @@
         display: inline-flex;
         align-items: center;
         justify-content: center;
+        /*
+            반경은 요소 크기에 비례해야 한다. 36px 상자에 카드와 같은 10px을
+            쓰면 각 변의 28%가 깎여 남는 직선이 16px뿐이고, 그 안의 「관리」는
+            가로 24px·세로 12px짜리 가로 덩어리다. 상자는 정확히 정사각인데
+            (실측 36x36) 가로로 읽혔다. 작은 정사각에는 작은 반경.
+        */
+        border-radius: var(--radius-control-sm);
     }
     .btn-row-exit {
         min-height: 36px;
         background: var(--bg-primary);
         color: var(--color-red-dark);
         border: 1px solid var(--color-red-dark);
-        border-radius: var(--radius-control);
+        border-radius: var(--radius-control-sm);
         font-size: var(--text-xs);
         font-weight: var(--weight-medium);
         white-space: nowrap;
@@ -3777,12 +3784,19 @@
     .btn-row-exit:hover {
         background: var(--color-error-bg);
     }
+    /*
+        두 버튼은 같은 36x36인데 「관리」만 덜 정사각으로 보였다. 상자가 아니라
+        글자 무게가 달랐다 — 「퇴장」은 600, 「관리」는 기본 400. 옅고 가는 글자가
+        든 상자는 헐렁하게, 그래서 더 넓게 읽힌다. 나란히 서는 둘은 같은 무게를
+        가져야 같은 형태로 읽힌다.
+    */
     .btn-manage {
         min-height: 36px;
         background: var(--bg-primary);
         color: var(--text-primary);
         border: 1px solid var(--border-control);
-        border-radius: var(--radius-control);
+        font-weight: var(--weight-medium);
+        border-radius: var(--radius-control-sm);
         font-size: var(--text-xs);
         cursor: pointer;
     }

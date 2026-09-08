@@ -166,6 +166,9 @@
         아니었고, 카드 12px은 섹션이 그걸 쓰지도 않았다(section이 control 값을
         쓰고 있었다).
     */
+    /* 작은 정사각 컨트롤용. 큰 반경을 그대로 쓰면 변의 대부분이 깎여
+       상자의 비례가 글자 덩어리의 비례로 읽힌다. */
+    --radius-control-sm: 6px;
     --radius-control: 10px;
     --radius-card: 16px;
     --radius-pill: 999px;
