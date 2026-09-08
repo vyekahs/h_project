@@ -4430,6 +4430,11 @@
         font-size: var(--text-xs);
         color: var(--text-secondary);
         white-space: nowrap;
+        flex: 0 0 auto;
+    }
+    /* 한 줄일 때 이름이 남는 폭을 갖고 메타는 오른쪽에 모인다 */
+    .list-name + .list-meta {
+        margin-left: auto;
     }
     /* 20px bold라 큰 글씨 기준 3:1이 적용되고, 방향 지시자라 1.4.11로도 3:1이다.
        --text-muted(#999)로는 흰 배경 2.85 · 만료 행 hover 위 2.46이었다. */
@@ -4462,24 +4467,74 @@
         접히는 대가는 작다. 행 높이를 버튼이 정하므로 45 → 55px(가로 폰),
         58 → 58px(세로 폰)에 그치고, 대신 이름이 잘리지 않는다.
     */
-    @container room-card (max-width: 400px) {
-        /*
-            wrap은 「필요하면 접는다」이고, 필요 여부는 행마다 다르다 —
-            「3432 !!!」는 밀리고 「qwer !!」는 안 밀려서 같은 목록 안에서 어떤
-            행은 한 줄, 어떤 행은 두 줄이 됐다. 내용이 아니라 폭이 정해야 한다.
-            여기서는 모든 행이 두 줄이다: 이름 줄, 나머지 줄.
-        */
+    /*
+        명단과 게임이 같은 임계를 쓴다. 카드 콘텐츠 폭 기준 380px —
+        1280의 명단(445)·게임(401)은 한 줄로 남고, 가로 폰(327)과 세로 폰(310)은
+        두 줄이 된다. 양쪽에 20~50px 여유가 있어 패딩이 조금 바뀌어도 뒤집히지 않는다.
+    */
+    /*
+        줄 수는 두 줄이 기본이고, 넓은 화면에서만 한 줄이 된다.
+
+        이 결정만 카드 폭이 아니라 뷰포트를 본다. 명단과 게임 카드는 1fr : 1.1fr
+        이라 폭이 다르고, 844(가로 폰)에서 콘텐츠가 각각 388.8px과 351.2px으로
+        갈린다 — 카드 폭 임계로는 둘을 같은 편에 두는 여유가 6px밖에 없어
+        패딩이 조금만 바뀌어도 한쪽만 뒤집힌다. 2열 전환점(1100px)이 곧
+        「넓은 화면」의 정의이므로 그 선을 그대로 쓴다.
+
+        wrap은 「필요하면 접는다」이고 필요 여부는 행마다 다르다 — 「3432 !!!」는
+        밀리고 「qwer !!」는 안 밀려서 같은 목록에 한 줄과 두 줄이 섞였다.
+        내용이 아니라 폭이 정한다.
+    */
+    .attendee-info {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 2px;
+    }
+    .attendee-info .name-row,
+    .attendee-info .attendee-meta {
+        width: 100%;
+    }
+    .attendee-info .attendee-meta {
+        justify-content: flex-start;
+    }
+    .game-list-item {
+        flex-wrap: wrap;
+        row-gap: 2px;
+    }
+    .game-list-item .list-name {
+        flex: 1 0 100%;
+        order: -1;
+        white-space: normal;
+        overflow: visible;
+    }
+    .game-list-item .list-thumb {
+        display: none;
+    }
+    @media (min-width: 1100px) {
         .attendee-info {
-            flex-direction: column;
-            align-items: flex-start;
-            gap: 2px;
+            flex-direction: row;
+            align-items: baseline;
+            gap: var(--space-2);
         }
-        .attendee-info .name-row,
-        .attendee-info .attendee-meta {
-            width: 100%;
+        .attendee-info .name-row {
+            width: auto;
         }
         .attendee-info .attendee-meta {
-            justify-content: flex-start;
+            width: auto;
+            justify-content: flex-end;
+        }
+        .game-list-item {
+            flex-wrap: nowrap;
+        }
+        .game-list-item .list-name {
+            flex: 0 1 auto;
+            order: 0;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .game-list-item .list-thumb {
+            display: flex;
         }
     }
     @container room-card (max-width: 560px) {
@@ -4500,19 +4555,6 @@
         /* 버튼은 자기 내용 폭을 지킨다 — 늘리면 전폭 파란 바가 된다 */
         .section-header > button {
             flex: 0 0 auto;
-        }
-        .game-list-item {
-            flex-wrap: wrap;
-            row-gap: 2px;
-        }
-        .game-list-item .list-name {
-            flex: 1 0 100%;
-            order: -1;
-            white-space: normal;
-            overflow: visible;
-        }
-        .game-list-item .list-thumb {
-            display: none;
         }
         /*
             좁은 카드에서는 들여쓰기와 버튼 두 개가 이름 칸을 6px까지 짓눌러
