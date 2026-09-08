@@ -1329,11 +1329,19 @@ export function findTwoStepFinishScored(
  * 허용 폭은 riskTolerance에 비례 — 안정적인 성격(수비적 0.2)은 거의 최선만 두고,
  * 변칙적(0.9)은 폭이 넓어 실제로 '변칙적'으로 보인다.
  */
+/**
+ * 측정용 결정론 스위치.
+ * 사람처럼 보이게 넣은 흔들림은 A/B 측정에서는 순수 노이즈다. 딜을 고정해도
+ * 이 흔들림만으로 티츄 성공률이 약 4%p 요동쳐서, 그 이하의 효과를 볼 수 없다.
+ */
+export const __deterministic = { on: false };
+
 function pickAmongNearBest<T extends { totalScore: number }>(
 	sortedDesc: T[],
 	weights: PersonalityWeights
 ): T {
 	if (sortedDesc.length <= 1) return sortedDesc[0];
+	if (__deterministic.on) return sortedDesc[0];
 	// 허용 폭 주의: totalScore의 실질 범위는 약 0~1.3이다. 처음에 0.03~0.07로 잡았더니
 	// "근소한 차이"가 아니라 명백히 나쁜 수까지 포함되어 실력이 크게 떨어졌다
 	// (riskTolerance에 비례해 하락: 수비적 -3.7, 공격적 -35.9 점/라운드).
@@ -1394,7 +1402,7 @@ export function decideWish(
 	const mahjongPlay = context.trick?.plays[0]?.combination;
 	if (mahjongPlay && mahjongPlay.type !== 'single') {
 		// 조합: aggressiveness 기반 확률로 스킵 가능
-		if (Math.random() > weights.aggressiveness + 0.3) return null;
+		if (!__deterministic.on && Math.random() > weights.aggressiveness + 0.3) return null;
 	}
 
 	const tracker = buildCardTracker(context);

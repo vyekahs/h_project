@@ -308,12 +308,26 @@ export class LocalGameEngine {
 		this.startDealing();
 	}
 
+	/**
+	 * 테스트용 딜 주입 지점.
+	 *
+	 * AI 변형끼리 비교할 때 난수 시드만 맞추면, 변형마다 난수 소비량이 달라
+	 * 딜이 갈라진다. 그러면 "같은 카드로 다른 로직을 비교"하는 게 아니라
+	 * 서로 다른 카드로 비교하게 되어 딜 분산이 결과를 덮어버린다.
+	 * 이 훅으로 덱을 고정하면 그 분산이 통째로 사라진다.
+	 */
+	deckProvider: (() => Card[]) | null = null;
+
 	private startDealing(): void {
-		// 딜 연출: 접전 유도 + 가끔 화끈한 패 이벤트 (dealDirector 참고)
-		const scoreGap = this.state.cumulativeScoreA - this.state.cumulativeScoreB;
-		const directed = pickDirectedDeck(scoreGap, this.roundsSinceSpecialDeal);
-		this.deck = directed.deck;
-		this.roundsSinceSpecialDeal = directed.special ? 0 : this.roundsSinceSpecialDeal + 1;
+		if (this.deckProvider) {
+			this.deck = this.deckProvider();
+		} else {
+			// 딜 연출: 접전 유도 + 가끔 화끈한 패 이벤트 (dealDirector 참고)
+			const scoreGap = this.state.cumulativeScoreA - this.state.cumulativeScoreB;
+			const directed = pickDirectedDeck(scoreGap, this.roundsSinceSpecialDeal);
+			this.deck = directed.deck;
+			this.roundsSinceSpecialDeal = directed.special ? 0 : this.roundsSinceSpecialDeal + 1;
+		}
 		const { hands, remaining } = dealFirst8(this.deck);
 		this.remainingCards = remaining;
 

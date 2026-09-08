@@ -2,6 +2,7 @@ import type { Card, SeatIndex, ExchangeCards, Combination } from '../types';
 import type { AiStrategy, AiDecisionContext, PersonalityWeights } from './types';
 import type { PresetBehavior } from './presets/types';
 import { getWeightsForStrategy, applyWildVariance, getBehaviorForStrategy } from './presets';
+import { __deterministic } from './strategy';
 import {
 	decideGrandTichu,
 	decideSmallTichu,
@@ -44,7 +45,7 @@ export class AiPlayer {
 
 		let weights = getWeightsForStrategy(strategy);
 		// Apply random variance for the 'wild' strategy
-		if (strategy === 'wild') {
+		if (strategy === 'wild' && !__deterministic.on) {
 			weights = applyWildVariance(weights);
 		}
 		this.weights = weights;
