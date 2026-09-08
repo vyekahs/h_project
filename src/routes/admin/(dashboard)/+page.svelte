@@ -1504,7 +1504,7 @@
         {#each (showAllScheduled ? (scheduledGames || []) : (scheduledGames || []).slice(0, 5)) as game (game.id)}
             {@const g = game as GameSession}
             {@const waiting = pendingFor(g.id)}
-            <li class="game-row has-pending">
+            <li class="game-row" class:has-pending={waiting.length > 0}>
                 <button type="button" class="game-list-item scheduled-item" onclick={() => { selectedScheduledGame = g; resetParticipantSearch(); }}>
                     {#if g.image_url}
                         <img src={g.image_url} alt={g.game_name} width="32" height="32" class="list-thumb" />
@@ -1513,32 +1513,32 @@
                             <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1"/><circle cx="15.5" cy="15.5" r="1"/><circle cx="15.5" cy="8.5" r="1"/><circle cx="8.5" cy="15.5" r="1"/></svg>
                         </div>
                     {/if}
-                    <span class="list-name" title={g.game_name}>{g.game_name}</span>
-                    <span class="list-metas">
+                    <!--
+                        두 줄이 한 버튼 안에 있다: 무엇을 언제 하는가 / 누가 몇 명
+                        오는가. 「1/4」이 날짜 옆에 있을 때는 정원이 시각의 부속처럼
+                        읽혔는데, 실제로는 이름들의 머리말이다.
+
+                        칩은 ul/li가 아니라 span이다 — button의 내용 모델은
+                        phrasing content이고 ul은 거기 들어갈 수 없다.
+                    -->
+                    <span class="sched-head">
+                        <span class="list-name" title={g.game_name}>{g.game_name}</span>
                         <span class="list-meta">{formatScheduledTime(g.scheduled_at)}</span>
+                    </span>
+                    <span class="scheduled-players">
+                        <span class="players-count">{(g.participants || []).length}/{g.max_players}</span>
+                        {#if (g.participants || []).length > 0}
+                            <span class="player-chips">
+                                {#each g.participants as p (p.id ?? p.name)}
+                                    <span class="player-chip" class:is-guest={p.is_guest}>{p.name}{#if p.is_guest}<span class="chip-guest" aria-label="게스트">G</span>{/if}</span>
+                                {/each}
+                            </span>
+                        {:else}
+                            <span class="players-empty">아직 참가자가 없습니다</span>
+                        {/if}
                     </span>
                     <span class="list-arrow" aria-hidden="true">›</span>
                 </button>
-                <!--
-                    두 줄이다: 무엇을 언제 하는가 / 누가 몇 명 오는가.
-                    「1/4」이 날짜 옆에 있을 때는 정원이 시각의 부속처럼 읽혔는데,
-                    실제로는 아래 이름들의 머리말이다. 자리 수와 이름이 한 줄에 선다.
-
-                    칩은 버튼 밖에 둔다 — 행을 누르면 시트가 열리는데, 그 안에
-                    또 다른 표적을 넣으면 무엇을 누른 것인지 흐려진다.
-                -->
-                <div class="scheduled-players">
-                    <span class="players-count">{(g.participants || []).length}/{g.max_players}</span>
-                    {#if (g.participants || []).length > 0}
-                        <ul class="player-chips">
-                            {#each g.participants as p (p.id ?? p.name)}
-                                <li class="player-chip" class:is-guest={p.is_guest}>{p.name}{#if p.is_guest}<span class="chip-guest" aria-label="게스트">G</span>{/if}</li>
-                            {/each}
-                        </ul>
-                    {:else}
-                        <span class="players-empty">아직 참가자가 없습니다</span>
-                    {/if}
-                </div>
                 {#if waiting.length > 0}
                     {@render pendingRows(waiting, g.game_name)}
                 {/if}
@@ -2795,11 +2795,16 @@
         회색 런이다. 게임 이름까지 본문색이면 어디가 사람이고 어디가 판인지
         한눈에 갈리지 않는다.
     */
+    /*
+        판 줄은 「무엇을」과 「얼마나 남았나」 둘이다. 붙여 놓으면 어느 쪽이
+        시간인지 매번 읽어야 한다. 양 끝으로 밀어 눈이 같은 자리에서 시간을
+        찾게 한다 — 목록에서는 그 열이 곧 우선순위다.
+    */
     .attendee-info .attendee-meta {
         display: flex;
         align-items: baseline;
-        justify-content: flex-end;
-        gap: var(--space-1);
+        justify-content: space-between;
+        gap: var(--space-3);
         flex: 1 1 auto;
         min-width: 0;
         font-size: var(--text-xs);
@@ -4460,19 +4465,18 @@
         둘째 줄은 누가 몇 명 오는가(정원·이름). 「1/4」이 날짜 옆에 있을 때는
         정원이 시각의 부속처럼 읽혔는데, 실제로는 이름들의 머리말이다.
     */
+    /*
+        참가자 줄은 버튼 안에 있다. 섬네일이 두 줄을 세로로 가로지르므로
+        들여쓰기를 손으로 계산할 필요가 없다 — 그리드가 이름과 같은 열에 놓는다.
+    */
     .scheduled-players {
-        grid-column: 1 / -1;
         display: flex;
         flex-wrap: wrap;
         align-items: center;
         gap: var(--space-1) var(--space-2);
         margin: 0;
-        /*
-            이름 왼쪽 끝에 맞춘다 — 버튼 패딩 + 섬네일 + 열 간격.
-            맨 왼쪽에서 시작하니 같은 항목의 둘째 줄이 아니라 행 아래에 따로
-            붙은 블록으로 읽혔다. 구분선도 그래서 걷는다. 두 줄은 한 덩어리다.
-        */
-        padding: 0 var(--space-2) 0.6rem calc(var(--space-2) + 32px + var(--space-3));
+        padding: 0;
+        min-width: 0;
     }
     .players-count {
         flex: 0 0 auto;
@@ -4580,9 +4584,6 @@
     .attendee-info .attendee-meta {
         width: 100%;
     }
-    .attendee-info .attendee-meta {
-        justify-content: flex-start;
-    }
     /*
         두 줄일 때는 그리드다. 전에는 wrap + 「이름 100%」로 접었는데, 그러면
         섬네일이 이름에 밀려 메타와 같은 줄로 내려가 자리가 어긋난다. 그래서
@@ -4617,27 +4618,38 @@
         grid-area: arrow;
     }
     /*
-        예정 행만 첫 줄이 「이름 · 날짜」다. 기본 그리드(이름 / 메타 두 줄)를
-        여기서 덮으므로 그 규칙 뒤에 와야 한다 — 앞에 두었을 때는 같은 특이도라
-        순서에 밀려 아무 효과가 없었다.
+        예정 행은 두 줄이 한 버튼 안에 있다. 첫 줄 「이름 · 날짜」, 둘째 줄
+        「정원 · 참가자」. 기본 그리드(이름 / 메타)를 여기서 덮으므로 그 규칙
+        뒤에 와야 한다 — 앞에 두었을 때는 같은 특이도라 순서에 밀렸다.
     */
     .scheduled-item {
-        display: flex;
-        flex-wrap: nowrap;
+        grid-template-areas:
+            'thumb head arrow'
+            'thumb players arrow';
         align-items: center;
-        gap: var(--space-3);
+        row-gap: var(--space-1);
     }
-    .scheduled-item .list-name {
+    .sched-head {
+        grid-area: head;
+        display: flex;
+        align-items: baseline;
+        gap: var(--space-3);
+        min-width: 0;
+    }
+    .sched-head .list-name {
         flex: 0 1 auto;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
     }
-    .scheduled-item .list-metas {
+    .sched-head .list-meta {
         flex: 0 0 auto;
     }
+    .scheduled-item .scheduled-players {
+        grid-area: players;
+    }
     .scheduled-item .list-arrow {
-        margin-left: auto;
+        grid-area: arrow;
     }
     @media (min-width: 1100px) {
         .attendee-info {
@@ -4650,9 +4662,9 @@
         }
         .attendee-info .attendee-meta {
             width: auto;
-            justify-content: flex-end;
         }
-        .game-list-item {
+        /* 예정 행은 넓은 화면에서도 두 줄이다 — 참가자 줄이 버튼 안에 있다 */
+        .game-list-item:not(.scheduled-item) {
             display: flex;
             flex-wrap: nowrap;
             align-items: center;
