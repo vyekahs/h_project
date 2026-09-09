@@ -3,570 +3,524 @@
     import { trapFocus } from '$lib/actions/modal';
     let { data }: { data: PageData } = $props();
 
-    /** 분 단위 수치를 사람이 읽는 형태로 — 799분은 읽히지 않는다 */
-    function formatDuration(mins: number | string): string {
+    const DOW = ['일', '월', '화', '수', '목', '금', '토'];
+    function mdLabel(iso: string) {
+        if (!iso) return '';
+        const [, m, d] = iso.split('-');
+        return `${Number(m)}/${Number(d)}`;
+    }
+    function dowLabel(iso: string) {
+        if (!iso) return '';
+        const [y, m, d] = iso.split('-').map(Number);
+        return DOW[new Date(y, m - 1, d).getDay()];
+    }
+    function formatDuration(mins: number): string {
         const n = Math.round(Number(mins) || 0);
+        if (n <= 0) return '기록 없음';
         if (n < 60) return `${n}분`;
         const h = Math.floor(n / 60);
         const m = n % 60;
         return m === 0 ? `${h}시간` : `${h}시간 ${m}분`;
     }
 
-    // Modal states
-    let showDailyTrendModal = $state(false);
-    let showTopVisitorsModal = $state(false);
-    let showPopularGamesModal = $state(false);
-    let showPeakHoursModal = $state(false);
+    const s = $derived(data.summary);
+    const w = $derived(data.window);
+    /* 하루 평균은 문 연 날로 나눈다 — 닫은 날까지 나누면 실제보다 낮아진다 */
+    const perOpenDay = $derived(
+        w.openDays > 0 ? Math.round((s.windowVisits / w.openDays) * 10) / 10 : 0
+    );
+    const topHours = $derived(data.hourly.filter((h) => h.avg > 0).slice(0, 3));
+    const busiestDow = $derived(
+        [...data.byDow].sort((a, b) => b.avg - a.avg)[0] ?? { dow: 0, avg: 0, count: 0 }
+    );
+    const hasData = $derived(w.openDays > 0);
 
-    // Helper for chart scaling
-    const maxGame = $derived(Math.max(...data.popularGames.map((g: any) => parseInt(g.count)), 1));
-    const maxDailyTrend = $derived(Math.max(...data.dailyTrend.map((d: any) => parseInt(d.count)), 1));
-    const maxHourly = $derived(Math.max(...data.peakHours.map((h: any) => parseInt(h.count)), 1));
-    const maxVisitor = $derived(Math.max(...(data.userStats?.topVisitors || []).map((v: any) => parseInt(v.visit_count)), 1));
-    const activeRate = $derived(data.userStats?.totalUsers > 0 ? Math.round((data.userStats.activeUsers / data.userStats.totalUsers) * 100) : 0);
+    const maxGame = $derived(Math.max(...data.popularGames.map((g) => g.n), 1));
+    const maxVisitor = $derived(Math.max(...data.topVisitors.map((v) => v.n), 1));
+    const minVisitor = $derived(Math.min(...data.topVisitors.map((v) => v.n), Infinity));
+    /* 전원이 같은 값이면 막대는 서열을 그리는 척만 한다 */
+    const visitorBarsUseful = $derived(data.topVisitors.length > 1 && maxVisitor !== minVisitor);
+
+    let showTopVisitors = $state(false);
+    $effect(() => {
+        if (!showTopVisitors) return;
+        const prev = document.body.style.overflow;
+        document.body.style.overflow = 'hidden';
+        return () => { document.body.style.overflow = prev; };
+    });
 </script>
 
+<svelte:head><title>통계 · 어드민</title></svelte:head>
+
 <div class="stats-page">
-    <div class="header">
-        <h1>
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:10px; vertical-align:text-bottom;"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
-            통계
-        </h1>
-    </div>
+    <header class="page-head">
+        <h1>통계</h1>
+        <p class="window-note">
+            <span class="window-range">{mdLabel(w.from)} – {mdLabel(w.to)}</span>
+            최근 {w.days}일 · 문 연 날 {w.openDays}일
+        </p>
+    </header>
 
-    <!-- KPI Cards -->
-    <div class="kpi-grid">
-        <div class="kpi-card">
-            <h3>총 방문 수</h3>
-            <div class="value">{data.kpis.totalVisits}</div>
-            <div class="label">누적 방문 횟수</div>
-        </div>
-        <button type="button" class="kpi-card clickable" onclick={() => showTopVisitorsModal = true}>
-            <h3>등록 멤버</h3>
-            <div class="value">{data.kpis.totalMembers}</div>
-            <div class="label">이번 달 방문 Top 10 보기</div>
-        </button>
-        <div class="kpi-card">
-            <h3>평균 체류</h3>
-            <div class="value">{formatDuration(data.kpis.avgDuration)}</div>
-            <div class="label">1회 방문당 평균 머문 시간</div>
-        </div>
-    </div>
+    {#if data.loadError}
+        <p class="load-error">
+            통계를 불러오지 못했습니다. 새로고침해 주세요 — 계속 실패하면 데이터베이스 상태를 확인해야 합니다.
+        </p>
+    {/if}
 
-    <div class="kpi-extra-actions">
-        <button type="button" class="btn-drilldown" onclick={() => showPopularGamesModal = true}>
-            인기 게임 Top 5 보기
-        </button>
-    </div>
+    <!--
+        차트를 걷어내고 문장으로 바꿨다. 24칸 막대가 실제로 주던 정보량은
+        「저녁에 사람이 있다」 한 줄이었고, 그걸 그리느라 축척이 최댓값에서
+        무너져(100% 막대가 76% 막대보다 짧게 렌더) 캡션과 반대를 그리고 있었다.
+        문장은 축척이 없으므로 그 오류가 존재할 자리가 없다.
 
-    <!-- User Stats Section -->
-    <div class="section-header">
-        <h2>
-            <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:8px; vertical-align:text-bottom;"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-            유저 현황
-        </h2>
-        <span class="section-hint">일반 유저 (관리자 제외)</span>
-    </div>
+        「지금 방에 N명」도 뺐다 — 실시간은 어드민 메인의 일이고, 두 화면이
+        같은 것을 각자 세면 언젠가 서로 다른 수를 말한다.
+    -->
+    <section class="findings" aria-labelledby="sec-pattern">
+        <h2 id="sec-pattern">방의 패턴</h2>
+        {#if !hasData}
+            <p class="empty">최근 {w.days}일 동안 기록된 방문이 없습니다.</p>
+        {:else}
+            <ul class="fact-list">
+                <li>
+                    <span class="fact">{w.days}일 중 <b>{w.openDays}일</b> 문을 열었고, 문 연 날 하루 평균 <b>{perOpenDay}명</b>이 왔습니다.</span>
+                    <span class="fact-sub">이 기간 방문 합계 {s.windowVisits}회 (한 사람이 하루에 두 번 와도 1회)</span>
+                </li>
+                {#if s.peakDay}
+                    <li>
+                        <span class="fact">가장 붐빈 날은 <b>{mdLabel(s.peakDay)}({dowLabel(s.peakDay)})</b>, <b>{s.peakDayCount}명</b>이 왔습니다.</span>
+                    </li>
+                {/if}
+                {#if topHours.length > 0}
+                    <li>
+                        <span class="fact">가장 붐비는 시간은 <b>{topHours[0].hour}시</b>입니다 — 문 연 날 평균 <b>{topHours[0].avg}명</b>이 방에 있었습니다.</span>
+                        {#if topHours.length > 1}
+                            <span class="fact-sub">
+                                그다음은 {#each topHours.slice(1) as h, i}{i > 0 ? ' · ' : ''}{h.hour}시 {h.avg}명{/each}
+                            </span>
+                        {/if}
+                    </li>
+                {/if}
+                <li>
+                    {#if s.staySamples > 0}
+                        <span class="fact">한 번 오면 평균 <b>{formatDuration(s.avgStay)}</b> 머뭅니다.</span>
+                        <span class="fact-sub">퇴장까지 기록된 {s.staySamples}회 기준 · 한 방문당 최대 {w.maxStayHours}시간으로 잘라 계산</span>
+                    {:else}
+                        <span class="fact">체류 시간은 아직 잴 수 없습니다.</span>
+                        <span class="fact-sub">퇴장까지 기록된 방문이 없습니다</span>
+                    {/if}
+                </li>
+                <li>
+                    <!--
+                        표본이 얇을 때 「화요일이 붐빈다」고 말하면 거짓말이다.
+                        문 연 날이 충분히 쌓이기 전에는 그 사실 자체를 말한다.
+                    -->
+                    {#if w.dowReady && busiestDow.avg > 0}
+                        <span class="fact">요일로는 <b>{DOW[busiestDow.dow]}요일</b>이 가장 붐빕니다 — 그 요일 문 연 날 평균 {busiestDow.avg}명.</span>
+                    {:else}
+                        <span class="fact">요일 패턴은 아직 말하기 이릅니다.</span>
+                        <span class="fact-sub">문 연 날이 {w.openDays}일뿐입니다 — 요일별로 나누기에 부족합니다</span>
+                    {/if}
+                </li>
+            </ul>
+        {/if}
+    </section>
 
-    <div class="kpi-grid kpi-grid-4">
-        <button type="button" class="kpi-card clickable" onclick={() => showPeakHoursModal = true}>
-            <h3>평균 주간 방문</h3>
-            <div class="value">{data.userStats.avgWeeklyVisits}<span class="unit">일</span></div>
-            <div class="label">1인당 주 평균 방문 일수 · 시간대별 분포 보기</div>
-        </button>
-        <button type="button" class="kpi-card clickable" onclick={() => showDailyTrendModal = true}>
-            <h3>평균 월간 방문</h3>
-            <div class="value">{data.userStats.avgMonthlyVisits}<span class="unit">일</span></div>
-            <div class="label">1인당 월 평균 방문 일수 · 최근 30일 추이 보기</div>
-        </button>
-        <div class="kpi-card">
-            <h3>활성 유저</h3>
-            <div class="value">{data.userStats.activeUsers}<span class="unit">명</span> <span class="sub-value">({activeRate}%)</span></div>
-            <div class="label">30일 내 2일 이상 방문 / 전체 {data.userStats.totalUsers}명</div>
+    <!--
+        40명짜리 동아리에서 운영을 바꾸는 건 평균이 아니라 이름이다.
+        이 섹션만 「그래서 무엇을 하면 되나」에 답한다.
+    -->
+    <section class="findings" aria-labelledby="sec-people">
+        <h2 id="sec-people">챙길 사람</h2>
+
+        <div class="people-group">
+            <h3>뜸해진 사람</h3>
+            {#if data.lapsed.length === 0}
+                <p class="empty-inline">최근 {w.days}일 안에 안 온 회원이 없습니다.</p>
+            {:else}
+                <ul class="name-list">
+                    {#each data.lapsed as p (p.name + p.meta)}
+                        <li>
+                            <span class="name">{p.name}</span>
+                            <span class="name-meta">마지막 {mdLabel(p.meta ?? '')} · {p.n}일 전</span>
+                        </li>
+                    {/each}
+                </ul>
+                <p class="group-note">전에는 왔는데 최근 {w.days}일 동안 한 번도 안 온 회원입니다. 최근에 끊긴 순서.</p>
+            {/if}
         </div>
-        <div class="kpi-card">
-            <h3>정기권 보유</h3>
-            <div class="value">{data.userStats.seasonPassUsers}<span class="unit">명</span></div>
-            <div class="label">현재 유효한 정기권</div>
+
+        <div class="people-group">
+            <h3>정기권 만료 임박</h3>
+            {#if data.expiring.length === 0}
+                <p class="empty-inline">{w.expirySoonDays}일 안에 만료되는 정기권이 없습니다.</p>
+            {:else}
+                <ul class="name-list">
+                    {#each data.expiring as p (p.name + p.meta)}
+                        <li>
+                            <span class="name">{p.name}</span>
+                            <span class="name-meta">{mdLabel(p.meta ?? '')} 만료 · {p.n}일 남음</span>
+                        </li>
+                    {/each}
+                </ul>
+            {/if}
         </div>
-    </div>
+    </section>
+
+    <section class="findings" aria-labelledby="sec-games">
+        <h2 id="sec-games">많이 나온 게임</h2>
+        {#if data.popularGames.length === 0}
+            <p class="empty">이 기간에 진행된 게임이 없습니다.</p>
+        {:else}
+            <!-- 서수를 붙이지 않는다. 판수가 곧 서열이고, 동점일 때 서수는
+                 없는 순위를 약속한다(전에는 가나다순이 「1위」였다). -->
+            <ul class="rank-list">
+                {#each data.popularGames as game (game.name)}
+                    <li class="rank-item">
+                        <span class="rank-name">{game.name}</span>
+                        <span class="rank-count">{game.n}판</span>
+                        <span class="rank-track" aria-hidden="true">
+                            <span class="rank-fill" style="width: {(game.n / maxGame) * 100}%"></span>
+                        </span>
+                    </li>
+                {/each}
+            </ul>
+        {/if}
+    </section>
+
+    <section class="ledger" aria-labelledby="sec-ledger">
+        <h2 id="sec-ledger">그 밖의 숫자</h2>
+        <dl>
+            <div>
+                <dt>활성 유저</dt>
+                <dd>{s.activeUsers} / {s.totalMembers}명</dd>
+                <p>전체 회원 {s.totalMembers}명 중, 최근 {w.days}일에 2일 이상 온 사람 (운영진·블랙 제외)</p>
+            </div>
+            <div>
+                <dt>정기권 보유</dt>
+                <dd>{s.seasonPassUsers}명</dd>
+                <p>지금 유효한 정기권</p>
+            </div>
+            <div>
+                <dt>누적 방문</dt>
+                <dd>{s.totalVisitsAllTime}회</dd>
+                <p>전체 기간 · 한 사람이 하루에 두 번 와도 1회</p>
+            </div>
+        </dl>
+        <button type="button" class="btn-drilldown" onclick={() => (showTopVisitors = true)}>
+            많이 온 사람 Top 10 보기
+        </button>
+    </section>
 </div>
 
-<!-- Peak Hours Modal -->
-{#if showPeakHoursModal}
-    <!-- 백드롭은 편의용 클릭 영역. 키보드 경로는 모달의 Escape(trapFocus)와 닫기 버튼이 담당한다. -->
+{#if showTopVisitors}
+    <!-- 백드롭은 편의용 클릭 영역. 키보드 경로는 Escape(trapFocus)와 닫기 버튼이 담당한다. -->
     <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
-    <div 
-        class="modal-backdrop" 
-        onclick={() => showPeakHoursModal = false}
-        role="button"
-        tabindex="-1"
-        aria-label="모달 닫기"
-    >
-        <div class="modal-content" use:trapFocus={() => (showPeakHoursModal = false)} onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="dialog" aria-modal="true" tabindex="-1">
-            <div class="modal-header">
-                <h3>시간대별 방문 (혼잡도)</h3>
-                <button class="modal-close" onclick={() => showPeakHoursModal = false}>&times;</button>
+    <div class="modal-backdrop" onclick={() => (showTopVisitors = false)} role="presentation">
+        <div
+            class="modal-content"
+            use:trapFocus={() => (showTopVisitors = false)}
+            onclick={(e) => e.stopPropagation()}
+            onkeydown={(e) => e.stopPropagation()}
+            role="dialog" aria-modal="true" aria-labelledby="dlg-visitors" tabindex="-1"
+        >
+            <div class="modal-head">
+                <h3 id="dlg-visitors">많이 온 사람 Top 10</h3>
+                <button type="button" class="modal-close" aria-label="닫기" onclick={() => (showTopVisitors = false)}>
+                    <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
             </div>
-            <div class="modal-body">
-                <div class="chart-container bar-chart">
-                    {#each data.peakHours as hour}
-                        <div class="bar-group" title="{hour.hour}시: {hour.count}명">
-                            <div class="bar peak" style="height: {(hour.count / maxHourly) * 100}%"></div>
-                            {#if hour.hour % 3 === 0}
-                                <div class="x-label">{hour.hour}</div>
+            <p class="modal-sub">최근 {w.days}일 방문 일수 기준</p>
+            {#if data.topVisitors.length === 0}
+                <p class="empty">이 기간에 기록된 방문이 없습니다.</p>
+            {:else}
+                <ul class="rank-list">
+                    {#each data.topVisitors as v (v.name)}
+                        <li class="rank-item">
+                            <span class="rank-name">{v.name}</span>
+                            <span class="rank-count">{v.n}일</span>
+                            {#if visitorBarsUseful}
+                                <span class="rank-track" aria-hidden="true">
+                                    <span class="rank-fill" style="width: {(v.n / maxVisitor) * 100}%"></span>
+                                </span>
                             {/if}
-                        </div>
+                        </li>
                     {/each}
-                </div>
-            </div>
-        </div>
-    </div>
-{/if}
-
-<!-- Daily Trend Modal (Last 30 days) -->
-{#if showDailyTrendModal}
-    <!-- 백드롭은 편의용 클릭 영역. 키보드 경로는 모달의 Escape(trapFocus)와 닫기 버튼이 담당한다. -->
-    <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
-    <div 
-        class="modal-backdrop" 
-        onclick={() => showDailyTrendModal = false}
-        role="button"
-        tabindex="-1"
-        aria-label="모달 닫기"
-    >
-        <div class="modal-content" use:trapFocus={() => (showDailyTrendModal = false)} onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="dialog" aria-modal="true" tabindex="-1">
-            <div class="modal-header">
-                <h3>최근 30일 방문자 추이</h3>
-                <button class="modal-close" onclick={() => showDailyTrendModal = false}>&times;</button>
-            </div>
-            <div class="modal-body">
-                <div class="chart-container line-chart">
-                    <svg viewBox="0 0 1000 200" preserveAspectRatio="none">
-                        <line x1="0" y1="0" x2="1000" y2="0" stroke="#eee" stroke-width="1" />
-                        <line x1="0" y1="50" x2="1000" y2="50" stroke="#eee" stroke-width="1" />
-                        <line x1="0" y1="100" x2="1000" y2="100" stroke="#eee" stroke-width="1" />
-                        <line x1="0" y1="150" x2="1000" y2="150" stroke="#eee" stroke-width="1" />
-                        <line x1="0" y1="200" x2="1000" y2="200" stroke="#eee" stroke-width="1" />
-                        <polyline
-                            points={data.dailyTrend.map((d, i) => {
-                                const x = (i / (data.dailyTrend.length - 1 || 1)) * 1000;
-                                const y = 200 - (parseInt(d.count) / maxDailyTrend) * 200;
-                                return `${x},${y}`;
-                            }).join(' ')}
-                            fill="none" stroke="var(--color-blue-bright)" stroke-width="2"
-                        />
-                        {#each data.dailyTrend as item, i}
-                            <circle
-                                cx={(i / (data.dailyTrend.length - 1 || 1)) * 1000}
-                                cy={200 - (parseInt(item.count) / maxDailyTrend) * 200}
-                                r="4" fill="var(--color-blue-bright)" stroke="white" stroke-width="2"
-                            >
-                                <title>{item.date}: {item.count}명</title>
-                            </circle>
-                        {/each}
-                    </svg>
-                    <div class="x-axis">
-                        {#each data.dailyTrend as item, i}
-                            {#if data.dailyTrend.length <= 15 || i % Math.ceil(data.dailyTrend.length / 10) === 0}
-                                <div class="label" style="left: {(i / (data.dailyTrend.length - 1 || 1)) * 100}%">
-                                    {item.date.slice(5)}
-                                </div>
-                            {/if}
-                        {/each}
-                    </div>
-                    {#if data.dailyTrend.length === 0}
-                        <div class="empty-chart">데이터가 없습니다.</div>
-                    {/if}
-                </div>
-            </div>
-        </div>
-    </div>
-{/if}
-
-<!-- Top 10 Visitors Modal -->
-{#if showTopVisitorsModal}
-    <!-- 백드롭은 편의용 클릭 영역. 키보드 경로는 모달의 Escape(trapFocus)와 닫기 버튼이 담당한다. -->
-    <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
-    <div 
-        class="modal-backdrop" 
-        onclick={() => showTopVisitorsModal = false}
-        role="button"
-        tabindex="-1"
-        aria-label="모달 닫기"
-    >
-        <div class="modal-content" use:trapFocus={() => (showTopVisitorsModal = false)} onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="dialog" aria-modal="true" tabindex="-1">
-            <div class="modal-header">
-                <h3>이번 달 Top 10 방문자</h3>
-                <button class="modal-close" onclick={() => showTopVisitorsModal = false}>&times;</button>
-            </div>
-            <div class="modal-body">
-                <div class="ranking-list">
-                    {#each data.userStats.topVisitors as visitor, i}
-                        <div class="rank-item">
-                            <div class="rank-info">
-                                <span class="rank-num">{i + 1}</span>
-                                <span class="game-name">{visitor.name}</span>
-                                <span class="play-count">{visitor.visit_count}회</span>
-                            </div>
-                            <div class="progress-bg">
-                                <div class="progress-bar visitor-bar" style="width: {(parseInt(visitor.visit_count) / maxVisitor) * 100}%"></div>
-                            </div>
-                        </div>
-                    {/each}
-                    {#if data.userStats.topVisitors.length === 0}
-                        <div class="empty-chart">데이터가 없습니다.</div>
-                    {/if}
-                </div>
-            </div>
-        </div>
-    </div>
-{/if}
-
-<!-- Popular Games Modal -->
-{#if showPopularGamesModal}
-    <!-- 백드롭은 편의용 클릭 영역. 키보드 경로는 모달의 Escape(trapFocus)와 닫기 버튼이 담당한다. -->
-    <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
-    <div 
-        class="modal-backdrop" 
-        onclick={() => showPopularGamesModal = false}
-        role="button"
-        tabindex="-1"
-        aria-label="모달 닫기"
-    >
-        <div class="modal-content" use:trapFocus={() => (showPopularGamesModal = false)} onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="dialog" aria-modal="true" tabindex="-1">
-            <div class="modal-header">
-                <h3>인기 게임 Top 5</h3>
-                <button class="modal-close" onclick={() => showPopularGamesModal = false}>&times;</button>
-            </div>
-            <div class="modal-body">
-                <div class="ranking-list">
-                    {#each data.popularGames as game, i}
-                        <div class="rank-item">
-                            <div class="rank-info">
-                                <span class="rank-num">{i + 1}</span>
-                                <span class="game-name">{game.game_name}</span>
-                                <span class="play-count">{game.count}회</span>
-                            </div>
-                            <div class="progress-bg">
-                                <div class="progress-bar" style="width: {(game.count / maxGame) * 100}%"></div>
-                            </div>
-                        </div>
-                    {/each}
-                    {#if data.popularGames.length === 0}
-                        <div class="empty-chart">데이터가 없습니다.</div>
-                    {/if}
-                </div>
-            </div>
+                </ul>
+            {/if}
         </div>
     </div>
 {/if}
 
 <style>
-    /*
-        ── 세로 리듬 ──
-        .stats-page 직계 자식 사이 간격은 --space 스케일 두 단계만 쓴다.
-          묶음과 묶음 사이 : --space-6 (32px)
-          한 묶음 안쪽     : --space-4 (16px)
-        예전에는 32 / 32 / 48 / 24 라 단계가 없었고, 「인기 게임 Top 5 보기」가
-        위 32 · 아래 48 로 떠서 KPI 카드에도 유저 현황에도 붙지 않았다.
-        지금은 위 16 · 아래 32 라 자기가 파고드는 KPI 카드 쪽에 붙는다.
-        제목은 위(32)가 아래(16)보다 넓어야 자기 아래 내용을 거느린다.
-    */
-    .header {
-        margin-bottom: var(--space-6);
-    }
-
-    /* KPI Grid */
-    .kpi-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-        gap: var(--space-5);
-        margin-bottom: var(--space-4);
-    }
-    .kpi-card {
-        background: white;
-        padding: var(--space-5);
-        border-radius: var(--radius-card);
-        text-align: center;
-        border: 1px solid var(--border-light);
-        /*
-            같은 줄의 카드 중 일부는 <button>이다. 버튼은 내용을 세로 가운데로
-            모으는데 <div>는 위에 붙여서, 나란히 놓인 카드끼리 제목·숫자 줄이
-            어긋났다. 둘 다 같은 흐름을 쓰도록 못박는다.
-        */
+    .stats-page { max-width: 60rem; }
+    .page-head {
         display: flex;
-        flex-direction: column;
-        justify-content: flex-start;
-        align-items: stretch;
+        align-items: baseline;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: var(--space-2);
+        margin-bottom: var(--space-5);
     }
-    .kpi-card h3 {
-        margin: 0;
-        font-size: var(--text-sm);
-        color: var(--text-secondary);
-        font-weight: normal;
-    }
-    .kpi-card .value {
-        font-size: 2.5rem;
-        font-weight: bold;
+    .page-head h1 { margin: 0; font-size: var(--text-xl); }
+    /* 기간은 여기서 한 번만 말한다 — 예전에는 「최근 28일」이 한 화면에 열 번 있었다 */
+    .window-note { margin: 0; font-size: var(--text-sm); color: var(--text-secondary); }
+    .window-range {
+        font-variant-numeric: var(--numeric);
+        font-weight: var(--weight-medium);
         color: var(--text-primary);
-        margin: var(--space-2) 0;
-        /*
-            한글이 섞인 값(「12시간 26분」)은 숫자만 있는 값보다 줄 상자가 높아서
-            같은 줄의 카드끼리 캡션이 4px 어긋났다. 줄 높이를 못박아 맞춘다.
-        */
-        line-height: 1.2;
     }
-    .kpi-card .label {
-        font-size: var(--text-xs);
-        color: var(--text-muted);
-        /*
-            한 줄짜리 캡션과 두 줄짜리 캡션이 한 줄에 섞여 있다(유저 현황 4장 중 2장).
-            두 줄분을 미리 잡아 두지 않으면 카드마다 아래 여백이 달라진다.
-        */
-        line-height: 1.5;
-        min-height: 3em;
+    /* SSR 로 이미 DOM 에 있는 문구에 role="status" 를 걸면 스크린리더가 읽지 않는다 */
+    .load-error {
+        margin: 0 0 var(--space-5);
+        padding: var(--space-4);
+        border: 1px solid var(--color-orange-text);
+        border-radius: var(--radius-control);
+        background: var(--color-warning-bg);
+        color: var(--color-orange-text);
+        font-size: var(--text-sm);
     }
 
-    /* Line Chart */
-    .line-chart {
-        position: relative;
-        height: 240px; /* Increased height for labels */
-        display: block;
-        padding-bottom: var(--space-6);
+    .findings {
+        margin-bottom: var(--space-6);
+        padding: var(--space-5);
+        background: var(--bg-primary);
+        /* 경계는 하나로만 — 테두리 아래 그림자를 겹치면 유령 카드가 된다 */
+        border: 1px solid var(--border-default);
+        border-radius: var(--radius-card);
     }
-    .line-chart svg {
-        width: 100%;
-        height: 200px;
-        overflow: visible;
-    }
-    .line-chart circle {
-        cursor: pointer;
-        transition: r 0.2s;
-    }
-    .line-chart circle:hover {
-        r: 6;
-    }
-    .x-axis {
-        position: relative;
-        height: 30px;
-        margin-top: var(--space-2);
-    }
-    .x-axis .label {
-        position: absolute;
-        transform: translateX(-50%);
-        font-size: var(--text-xs);
-        color: var(--text-secondary);
-        white-space: nowrap;
-    }
+    .findings h2 { margin: 0 0 var(--space-4); font-size: var(--text-lg); }
 
-    /* Bar Chart */
-    .bar-chart {
-        height: 200px;
-        display: flex;
-        align-items: flex-end;
-        gap: 4px;
-        padding-bottom: var(--space-5);
-    }
-    .bar-group {
-        flex: 1;
-        height: 100%;
-        display: flex;
-        flex-direction: column;
-        justify-content: flex-end;
-        position: relative;
-    }
-    .bar {
-        border-radius: 4px 4px 0 0;
-        min-height: 2px;
-        opacity: 0.8;
-    }
-    .bar:hover {
-        opacity: 1;
-    }
-    .bar.peak {
-        background: var(--color-orange);
-    }
-    .x-label {
-        position: absolute;
-        bottom: -20px;
-        left: 50%;
-        transform: translateX(-50%);
-        font-size: var(--text-xs);
-        color: var(--text-secondary);
-        white-space: nowrap;
-    }
-
-    /* Ranking List */
-    .ranking-list {
+    .fact-list {
+        list-style: none;
+        margin: 0;
+        padding: 0;
         display: flex;
         flex-direction: column;
         gap: var(--space-4);
     }
-    .rank-item {
+    .fact-list li {
         display: flex;
         flex-direction: column;
         gap: var(--space-1);
+        padding-left: var(--space-3);
+        border-left: 1px solid var(--border-default);
     }
-    .rank-info {
-        display: flex;
-        justify-content: space-between;
-        font-size: var(--text-sm);
+    /*
+        문장이 데이터다. 숫자만 굵게 세워 훑을 때 눈이 걸리게 하고,
+        문장 자체는 본문 크기를 지킨다 — 40px 숫자 하나가 답이던 화면이 아니다.
+    */
+    .fact {
+        font-size: var(--text-base);
+        line-height: 1.55;
+        color: var(--text-primary);
+        /* 한국어는 기본 줄바꿈이 글자 단위다 — 「평 / 균」으로 쪼개진다.
+           화면이 전부 문장이 된 이상 이건 본문 조판 문제다. */
+        word-break: keep-all;
     }
-    .rank-num {
-        font-weight: bold;
-        width: 20px;
-        color: var(--text-secondary);
+    .fact b {
+        font-weight: var(--weight-bold);
+        font-variant-numeric: var(--numeric);
     }
-    .game-name {
-        flex: 1;
-        font-weight: 500;
-    }
-    .play-count {
-        color: var(--text-secondary);
+    .fact-sub {
         font-size: var(--text-xs);
-    }
-    .progress-bg {
-        height: 8px;
-        background: var(--border-light);
-        border-radius: var(--radius-control);
-        overflow: hidden;
-    }
-    .progress-bar {
-        height: 100%;
-        background: var(--color-green-dark);
-        border-radius: var(--radius-control);
-    }
-    .empty-chart {
-        height: 100%;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        color: var(--text-muted);
-        font-size: var(--text-sm);
+        line-height: 1.5;
+        color: var(--text-secondary);
+        font-variant-numeric: var(--numeric);
+        word-break: keep-all;
     }
 
-    /* Section Header */
-    .section-header {
+    .people-group + .people-group {
+        margin-top: var(--space-5);
+        padding-top: var(--space-5);
+        border-top: 1px solid var(--border-light);
+    }
+    .people-group h3 {
+        margin: 0 0 var(--space-3);
+        font-size: var(--text-sm);
+        font-weight: var(--weight-medium);
+        color: var(--text-secondary);
+    }
+    .name-list {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-2);
+    }
+    .name-list li {
         display: flex;
         align-items: baseline;
-        gap: var(--space-3);
-        margin-top: var(--space-6);
-        margin-bottom: var(--space-4);
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: var(--space-2);
     }
-    .section-header h2 {
+    .name {
+        font-size: var(--text-sm);
+        font-weight: var(--weight-medium);
+        color: var(--text-primary);
+        overflow-wrap: anywhere;
+    }
+    .name-meta {
+        font-size: var(--text-xs);
+        color: var(--text-secondary);
+        font-variant-numeric: var(--numeric);
+        white-space: nowrap;
+    }
+    .group-note {
+        margin: var(--space-3) 0 0;
+        font-size: var(--text-xs);
+        line-height: 1.5;
+        color: var(--text-secondary);
+        word-break: keep-all;
+    }
+    .empty, .empty-inline {
         margin: 0;
-        font-size: var(--text-lg);
+        font-size: var(--text-sm);
+        color: var(--text-secondary);
+    }
+    .empty { padding: var(--space-4) 0; text-align: center; }
+
+    .rank-list {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-3);
+    }
+    .rank-item {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        align-items: baseline;
+        gap: var(--space-2);
+    }
+    /* 이름은 길이에 상한이 없다. 잘라서 title 에 숨기면 폰에서 볼 방법이 없다. */
+    .rank-name {
+        min-width: 0;
+        font-size: var(--text-sm);
+        line-height: 1.4;
+        color: var(--text-primary);
+        overflow-wrap: anywhere;
+    }
+    .rank-count {
+        font-size: var(--text-sm);
+        font-variant-numeric: var(--numeric);
+        font-weight: var(--weight-medium);
         color: var(--text-primary);
     }
-    .section-hint {
-        font-size: var(--text-xs);
-        color: var(--text-muted);
+    .rank-track {
+        grid-column: 1 / -1;
+        height: 6px;
+        border-radius: var(--radius-pill);
+        background: var(--bg-hover);
+        overflow: hidden;
     }
-
-    /* 4-column KPI grid */
-    .kpi-grid-4 {
-        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-    }
-    .kpi-card .unit {
-        font-size: var(--text-lg);
-        font-weight: normal;
-        color: var(--text-secondary);
-        margin-left: 2px;
-    }
-    .kpi-card .sub-value {
-        font-size: var(--text-base);
-        font-weight: normal;
-        color: var(--text-muted);
-    }
-
-    /* Clickable KPI card */
-    button.kpi-card {
-        font: inherit;
-        /*
-            text-align 은 못박지 않는다 — .kpi-card 의 center 가 그대로 오게 둔다.
-            left 로 덮여 있던 탓에 같은 줄에서 버튼 카드만 왼쪽, div 카드만
-            가운데로 갈라져 있었다.
-        */
-        width: 100%;
-        color: inherit;
-    }
-    .kpi-extra-actions {
-        margin: 0 0 var(--space-6);
-    }
-    .btn-drilldown {
-        min-height: 44px;
-        padding: 0 0.9rem;
-        border-radius: var(--radius-control);
-        border: 1px solid var(--border-medium);
-        background: var(--bg-primary, var(--bg-primary));
-        color: var(--text-primary, var(--text-primary));
-        font-size: var(--text-sm);
-        font-weight: 600;
-        cursor: pointer;
-    }
-    .kpi-card.clickable {
-        cursor: pointer;
-        transition: transform 0.15s, box-shadow 0.15s;
-    }
-    .kpi-card.clickable:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-        border-color: var(--color-blue-bright);
-    }
-
-    /* Visitor progress bar color */
-    .visitor-bar {
+    .rank-fill {
+        display: block;
+        height: 100%;
+        border-radius: var(--radius-pill);
         background: var(--color-blue-bright);
     }
 
-    /* Modal */
+    .ledger h2 { margin: 0 0 var(--space-4); font-size: var(--text-lg); }
+    .ledger dl {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+        gap: var(--space-4) var(--space-5);
+        margin: 0 0 var(--space-5);
+    }
+    .ledger dl > div {
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-1);
+        padding-left: var(--space-3);
+        border-left: 1px solid var(--border-default);
+    }
+    .ledger dt { font-size: var(--text-xs); color: var(--text-secondary); }
+    .ledger dd {
+        margin: 0;
+        font-size: var(--text-lg);
+        font-weight: var(--weight-medium);
+        font-variant-numeric: var(--numeric);
+        color: var(--text-primary);
+    }
+    .ledger dl p {
+        margin: 0;
+        font-size: var(--text-xs);
+        line-height: 1.5;
+        color: var(--text-secondary);
+        word-break: keep-all;
+    }
+    .btn-drilldown {
+        display: inline-flex;
+        align-items: center;
+        min-height: 44px;
+        padding: 0 var(--space-4);
+        background: var(--bg-primary);
+        border: 1px solid var(--border-control);
+        border-radius: var(--radius-control);
+        color: var(--text-primary);
+        font-family: inherit;
+        font-size: var(--text-sm);
+        font-weight: var(--weight-medium);
+        cursor: pointer;
+    }
+    .btn-drilldown:hover { background: var(--bg-secondary); }
+
     .modal-backdrop {
         position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-        background: rgba(0,0,0,0.4);
+        inset: 0;
+        background: var(--overlay-heavy);
         display: flex;
         align-items: center;
         justify-content: center;
+        padding: var(--space-4);
         z-index: 1000;
     }
     .modal-content {
-        background: white;
+        width: 100%;
+        max-width: 460px;
+        padding: var(--space-5);
+        background: var(--bg-primary);
         border-radius: var(--radius-card);
-        width: 90%;
-        max-width: 600px;
-        max-height: 80vh;
+        /* vh 는 주소창이 보일 때도 큰 뷰포트를 가리켜 아래가 잘렸다 */
+        max-height: 90vh;
+        max-height: 90dvh;
         overflow-y: auto;
-        box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+        box-shadow: 0 4px 20px var(--shadow-lg);
     }
-    .modal-header {
+    .modal-head {
         display: flex;
-        justify-content: space-between;
         align-items: center;
-        padding: 1.25rem var(--space-5);
-        border-bottom: 1px solid var(--border-light);
+        justify-content: space-between;
+        gap: var(--space-3);
     }
-    .modal-header h3 {
-        margin: 0;
-        font-size: var(--text-lg);
-        color: var(--text-primary);
-    }
+    .modal-head h3 { margin: 0; font-size: var(--text-lg); }
     .modal-close {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 44px;
+        height: 44px;
+        margin-right: calc(var(--space-2) * -1);
+        padding: 0;
         background: none;
         border: none;
-        font-size: var(--text-xl);
-        color: var(--text-muted);
+        border-radius: var(--radius-control);
+        color: var(--text-secondary);
         cursor: pointer;
-        padding: 0;
-        line-height: 1;
     }
-    .modal-close:hover {
-        color: var(--text-primary);
+    .modal-close:hover { background: var(--bg-hover); color: var(--text-primary); }
+    .modal-sub {
+        margin: var(--space-1) 0 var(--space-4);
+        font-size: var(--text-sm);
+        color: var(--text-secondary);
     }
-    .modal-body {
-        padding: var(--space-5);
+
+    @media (max-width: 560px) {
+        .findings { padding: var(--space-4); }
+        .ledger dl { grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); }
     }
 </style>
