@@ -2312,7 +2312,7 @@
 
                 <div class="input-group">
                     <label for="scheduledAt">시작 예정 시간</label>
-                    <input type="datetime-local" id="scheduledAt" name="scheduledAt" bind:value={scheduledAt} required class="full-width-input">
+                    <input type="datetime-local" id="scheduledAt" name="scheduledAt" bind:value={scheduledAt} required>
                 </div>
 
                 <div class="player-limits">
@@ -2402,7 +2402,7 @@
                 <strong>일정 수정</strong>
                 <input type="hidden" name="sessionId" value={g.id} />
                 <div class="edit-grid">
-                    <div class="input-group">
+                    <div class="input-group when">
                         <label for="edit-when-{g.id}">시작 예정</label>
                         <input id="edit-when-{g.id}" type="datetime-local" name="scheduledAt" value={toDateTimeLocal(g.scheduled_at)} required />
                     </div>
@@ -3182,6 +3182,19 @@
         font-family: inherit;
         color: var(--text-primary);
         background: var(--bg-primary);
+    }
+    /*
+        iOS Safari 의 datetime-local 은 네이티브 컨트롤이라 자기 값을 그려낸 폭보다
+        좁아지지 않는다. 한국어 형식(「2026. 9. 9. 오전 1:10」)이 길어서, width:100%
+        를 줬는데도 칸을 넘고 모달 밖으로까지 삐져나갔다. 네이티브 외양을 벗기면
+        보통 입력칸처럼 지정한 폭을 따른다 — 탭하면 피커는 그대로 열린다.
+    */
+    .game-form input[type='datetime-local'],
+    .detail-edit input[type='datetime-local'] {
+        -webkit-appearance: none;
+        appearance: none;
+        min-width: 0;
+        max-width: 100%;
     }
     /* 숫자 몇 자리만 받는 칸은 폭까지 늘릴 이유가 없다 */
     .game-form input.number-input,
@@ -5009,8 +5022,18 @@
         margin-top: var(--space-2);
     }
     .detail-edit .input-group {
-        flex: 1 1 8rem;
+        flex: 1 1 6rem;
         min-width: 0;
+    }
+    /*
+        datetime-local 은 네이티브 컨트롤이라 width:100% 로도 자기 고유 최소 폭
+        아래로는 줄지 않는다. 375px에서 「시작 예정」이 배정받은 칸을 넘쳐
+        옆의 「최소 인원」 위로 겹쳐 그려졌고, 두 칸의 높이가 달라지면서
+        라벨 줄까지 어긋났다. 줄일 수 없는 칸에는 줄을 통째로 준다 —
+        아래 줄에 최소·최대·저장 셋이 남는다(6+6rem + 저장 + 간격).
+    */
+    .detail-edit .input-group.when {
+        flex: 1 1 100%;
     }
     .detail-edit .input-group label {
         display: block;
