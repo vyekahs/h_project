@@ -1,7 +1,6 @@
 import { db } from '$lib/server/db/index';
 import { sql } from 'drizzle-orm';
-import { env } from '$env/dynamic/private';
-import { sendMail } from '$lib/server/mail';
+import { NotificationService } from '$lib/server/services/notificationService';
 
 /**
  * BLE 스캐너 무응답 감시.
@@ -36,17 +35,58 @@ async function isVenueOpen(): Promise<boolean> {
 	}
 }
 
-async function alert(subject: string, body: string) {
-	console.warn(`[SCANNER] ${subject}\n${body}`);
-	const to = env.SMTP_TO;
-	if (!to) {
-		console.warn('[SCANNER] SMTP_TO가 없어 메일은 보내지 않는다 (로그만 남김)');
+/**
+ * 알림을 받을 사람: 지금 혼놀에 있는 관리자 전원. 아무도 없으면 폴백 한 명.
+ *
+ * 현장에 있는 사람에게 보내야 의미가 있다 — 스캐너는 전원을 다시 꽂거나 위치를
+ * 옮겨야 살아나는 경우가 대부분이라, 집에 있는 사람이 알림을 받아봐야 할 수 있는 게
+ * 없다. 다만 아무도 없을 때 아무에게도 안 보내면 며칠씩 죽어 있는 지금 상황이
+ * 그대로 반복되므로, 폴백 수신자를 둔다.
+ *
+ * 폴백은 system_settings의 scanner_alert_fallback_user_id로 바꿀 수 있다
+ * (코드에 사람 이름을 박아두면 담당이 바뀔 때마다 배포해야 한다).
+ */
+async function resolveRecipients(): Promise<number[]> {
+	try {
+		const rows = (await db.execute(sql`
+			WITH present_admins AS (
+				SELECT id FROM attendees WHERE is_admin = true AND status = 'present'
+			),
+			fallback AS (
+				SELECT value::int AS id
+				FROM system_settings
+				WHERE key = 'scanner_alert_fallback_user_id'
+				  AND value ~ '^[0-9]+$'
+			)
+			SELECT id FROM present_admins
+			UNION
+			SELECT id FROM fallback WHERE NOT EXISTS (SELECT 1 FROM present_admins)
+		`)) as any[];
+		return rows.map((r) => Number(r.id)).filter((n) => Number.isInteger(n));
+	} catch (e) {
+		console.error('[SCANNER] 알림 수신자 조회 실패:', e);
+		return [];
+	}
+}
+
+async function alert(title: string, body: string) {
+	console.warn(`[SCANNER] ${title}\n${body}`);
+
+	const userIds = await resolveRecipients();
+	if (userIds.length === 0) {
+		console.warn('[SCANNER] 알림 수신자가 없어 로그만 남긴다');
 		return;
 	}
+
 	try {
-		await sendMail(to, subject, body);
+		await NotificationService.notifyMany(userIds, {
+			type: 'scanner_down',
+			title,
+			body,
+			url: '/admin/monitor'
+		});
 	} catch (e) {
-		console.error('[SCANNER] 알림 메일 발송 실패:', e);
+		console.error('[SCANNER] 알림 전송 실패:', e);
 	}
 }
 
@@ -74,7 +114,7 @@ export async function checkScannerHealth(): Promise<void> {
 
 		for (const row of recovered) {
 			await alert(
-				`[혼놀] 스캐너 복구: ${row.id}`,
+				`스캐너 복구: ${row.id}`,
 				`${row.id} 스캐너가 다시 보고하기 시작했습니다.\n` +
 					`무응답 알림 시각: ${row.alerted_down_at}`
 			);
@@ -98,7 +138,7 @@ export async function checkScannerHealth(): Promise<void> {
 
 		for (const row of down) {
 			await alert(
-				`[혼놀] 스캐너 무응답: ${row.id}`,
+				`스캐너 무응답: ${row.id}`,
 				`${row.id} 스캐너가 ${row.silent_minutes}분째 보고하지 않습니다.\n` +
 					`마지막 보고: ${row.last_seen_at}\n\n` +
 					`전원 LED가 켜져 있어도 WiFi가 끊기면 보고하지 못합니다.\n` +

@@ -123,6 +123,14 @@ async function migrate() {
         // 값이 NULL이면 "정상 또는 아직 안 알림", 시각이 있으면 "무응답을 알린 상태".
         // 스캐너가 다시 보고를 시작하면 복구 알림과 함께 NULL로 되돌린다.
         await pool.query('ALTER TABLE scanners ADD COLUMN IF NOT EXISTS alerted_down_at TIMESTAMPTZ;');
+        // 스캐너 무응답 알림은 그 시각 혼놀에 있는 관리자에게 보낸다. 아무도 없으면
+        // 이 사람에게 보낸다. 바꾸려면 이 행의 value를 다른 attendee id로 UPDATE하면 된다.
+        await pool.query(`
+            INSERT INTO system_settings (key, value)
+            SELECT 'scanner_alert_fallback_user_id', id::text
+            FROM attendees WHERE name = '이리' LIMIT 1
+            ON CONFLICT (key) DO NOTHING;
+        `);
 
         // 14. Guest support in session_participants
         console.log('[14] Adding guest support to session_participants...');

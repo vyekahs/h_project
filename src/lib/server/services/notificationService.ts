@@ -18,7 +18,9 @@ class SSENotificationChannel implements NotificationChannel {
 const channels: NotificationChannel[] = [new SSENotificationChannel(), new PushNotificationChannel()];
 
 // mention은 기존 호환: 행 없으면 ON. 나머지 새 알림은 행 없으면 OFF.
-const DEFAULT_ON_TYPES = ['mention', 'wtp_message', 'party_message', 'party_invite'];
+// scanner_down은 운영 알림이라 기본 ON이다. 행이 없으면 OFF로 취급하는 규칙을
+// 그대로 두면, 설정을 만진 적 없는 매니저에게는 스캐너가 죽어도 아무것도 안 간다.
+const DEFAULT_ON_TYPES = ['mention', 'wtp_message', 'party_message', 'party_invite', 'scanner_down'];
 
 function normalizeIds(userIds: number[]): number[] {
 	return [...new Set(userIds.map(Number))].filter((id) => Number.isInteger(id));
