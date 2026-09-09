@@ -596,7 +596,14 @@
         
         .main-content {
             padding: var(--space-4);
-            padding-bottom: 80px; /* Space for bottom nav */
+            /*
+                80px 하드코딩이었다. 탭 바는 --admin-nav-height(81px)이므로 1px이
+                모자랐고, 노치가 있는 기기에서는 safe-area 만큼(34px) 페이지의
+                마지막 컨트롤이 바 밑으로 들어갔다 — 통계의 「Top 10 보기」처럼
+                페이지 맨 끝에 버튼이 있으면 그게 못 눌리는 것으로 끝났다.
+                바로 위 --admin-bottom-inset 이 이미 정확한 값을 알고 있다.
+            */
+            padding-bottom: calc(var(--admin-bottom-inset) + var(--space-5));
         }
         .header {
             flex-direction: column;
