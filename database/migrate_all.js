@@ -119,6 +119,10 @@ async function migrate() {
             );
             CREATE INDEX IF NOT EXISTS idx_scanners_last_seen ON scanners(last_seen_at);
         `);
+        // 무응답 알림을 이미 보냈는지 표시한다. 없으면 5분마다 같은 알림이 반복된다.
+        // 값이 NULL이면 "정상 또는 아직 안 알림", 시각이 있으면 "무응답을 알린 상태".
+        // 스캐너가 다시 보고를 시작하면 복구 알림과 함께 NULL로 되돌린다.
+        await pool.query('ALTER TABLE scanners ADD COLUMN IF NOT EXISTS alerted_down_at TIMESTAMPTZ;');
 
         // 14. Guest support in session_participants
         console.log('[14] Adding guest support to session_participants...');

@@ -52,11 +52,22 @@
 		connections: { sse: number };
 		stuckRequests?: StuckRequest[];
 		abandonedRequests?: AbandonedRequest[];
+		scanners?: ScannerHealth[];
 		uptime: number;
 		timestamp: number;
 		history?: MetricsSnapshot[];
 		autoLogs?: AutoLog[];
 	}
+
+	// BLE 스캐너 상태. 스캐너는 전원이 켜져 있어도 WiFi가 끊기면 보고하지 못해서,
+	// 눈으로 봐서는 죽은 걸 알 수 없다 — 실제로 한 대가 나흘간 조용히 죽어 있었다.
+	type ScannerHealth = {
+		id: string;
+		silentSeconds: number;
+		isDown: boolean;
+		deviceTotal: number | null;
+		freeHeap: number | null;
+	};
 
 	let metrics: Metrics | null = $state(null);
 	let connected = $state(false);
@@ -261,6 +272,14 @@
 		connectSSE();
 	});
 
+	// 마지막 보고 이후 경과. 초 단위 그대로는 "3947초 전"처럼 읽기 어렵다.
+	function formatSilent(sec: number): string {
+		if (sec < 60) return `${sec}초 전`;
+		if (sec < 3600) return `${Math.floor(sec / 60)}분 전`;
+		if (sec < 86400) return `${Math.floor(sec / 3600)}시간 전`;
+		return `${Math.floor(sec / 86400)}일 전`;
+	}
+
 	onDestroy(() => {
 		destroyed = true;
 		if (eventSource) {
@@ -287,6 +306,35 @@
 	</div>
 
 	{#if metrics}
+		<!-- -2. BLE 스캐너 상태 —
+		     스캐너는 전원 LED가 켜져 있어도 WiFi가 끊기면 보고하지 못한다.
+		     현장에서 눈으로는 구분이 안 돼서 한 대가 나흘간 죽어 있었고,
+		     다른 한 대는 운영 중에 멈춰 회원들이 자리에 있는데도 자동 체크아웃됐다.
+		     죽은 스캐너를 맨 위에 두어 먼저 보이게 한다. -->
+		{#if metrics.scanners && metrics.scanners.length > 0}
+			<div class="detail-card scanner-card" class:has-down={metrics.scanners.some((sc) => sc.isDown)}>
+				<h3>
+					BLE 스캐너
+					{#if metrics.scanners.some((sc) => sc.isDown)}
+						<span class="scanner-alarm">⚠️ 무응답 {metrics.scanners.filter((sc) => sc.isDown).length}대</span>
+					{/if}
+				</h3>
+				<div class="scanner-rows">
+					{#each [...metrics.scanners].sort((a, b) => Number(b.isDown) - Number(a.isDown)) as sc}
+						<div class="scanner-row" class:down={sc.isDown}>
+							<span class="sc-dot" aria-hidden="true"></span>
+							<span class="sc-id">{sc.id}</span>
+							<span class="sc-ago">{formatSilent(sc.silentSeconds)}</span>
+							<span class="sc-meta">
+								{#if sc.deviceTotal !== null}기기 {sc.deviceTotal}{/if}
+								{#if sc.freeHeap !== null}· 힙 {Math.round(sc.freeHeap / 1024)}KB{/if}
+							</span>
+						</div>
+					{/each}
+				</div>
+			</div>
+		{/if}
+
 		<!-- -1. 멈춘 요청 경고 (5초 이상 응답 못 준 요청) -->
 		{#if metrics.stuckRequests && metrics.stuckRequests.length > 0}
 			<div class="detail-card stuck-card">
@@ -937,4 +985,36 @@
 			grid-template-columns: 1fr;
 		}
 	}
+
+	/* BLE 스캐너 상태 */
+	.scanner-card.has-down {
+		border-color: rgba(239, 68, 68, 0.45);
+		background: rgba(239, 68, 68, 0.06);
+	}
+	.scanner-alarm {
+		margin-left: 8px;
+		font-size: 0.78rem;
+		font-weight: 700;
+		color: #f87171;
+	}
+	.scanner-rows { display: flex; flex-direction: column; gap: 6px; }
+	.scanner-row {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		font-size: 0.85rem;
+		flex-wrap: wrap;
+	}
+	.sc-dot {
+		width: 8px;
+		height: 8px;
+		border-radius: 50%;
+		background: #22c55e;
+		flex: none;
+	}
+	.scanner-row.down .sc-dot { background: #ef4444; }
+	.sc-id { font-weight: 600; }
+	.scanner-row.down .sc-id { color: #f87171; }
+	.sc-ago { color: rgba(255, 255, 255, 0.72); }
+	.sc-meta { margin-left: auto; font-size: 0.75rem; color: rgba(255, 255, 255, 0.45); }
 </style>

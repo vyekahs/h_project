@@ -9,6 +9,7 @@ import {
 	getActiveDbConnections,
 	getDbPoolStats
 } from '$lib/server/performance';
+import { checkScannerHealth } from '$lib/server/scannerHealth';
 import { runDataRetention } from '$lib/server/retention';
 
 let requestIdSeq = 0;
@@ -35,6 +36,23 @@ if (!dbPoolMonitorInterval) {
 		},
 		30 * 1000
 	);
+}
+
+// BLE 스캐너 무응답 점검 (5분 주기)
+//
+// 스캐너는 전원이 켜져 있어도 WiFi가 끊기면 보고하지 못한다. 눈으로는 구분이
+// 안 되기 때문에, 한 대가 나흘 동안 죽어 있는 것을 아무도 몰랐고 다른 한 대는
+// 운영 도중에 멈춘 채로 저녁을 보냈다. 그동안 회원들이 자리에 있는데도
+// 자동 체크아웃됐다.
+//
+// 무응답 판정은 10분이므로 5분 주기면 최대 15분 안에 알림이 간다.
+// 타이머 상한(2^31-1ms)에 한참 못 미치는 값이라 안전하다.
+const SCANNER_CHECK_INTERVAL_MS = 5 * 60 * 1000;
+let scannerCheckInterval: NodeJS.Timeout | null = null;
+if (!scannerCheckInterval) {
+	scannerCheckInterval = setInterval(() => {
+		checkScannerHealth().catch((e) => console.error('[SCANNER] 점검 실패:', e));
+	}, SCANNER_CHECK_INTERVAL_MS);
 }
 
 // 데이터 보존 정리

@@ -3,6 +3,7 @@ import { getSSEConnectionCount, incrementSSECount, decrementSSECount } from '$li
 import { verifyAdminSession } from '$lib/server/auth';
 import { getAutoCheckinLogs } from '$lib/server/ble';
 import { getDbHealthSnapshot, getStuckRequests, getAbandonedRequests } from '$lib/server/performance';
+import { getScannerHealth } from '$lib/server/scannerHealth';
 
 // CPU snapshot for delta-based usage calculation
 let prevCpuIdle = 0;
@@ -53,14 +54,18 @@ const MAX_HISTORY = 60;
 
 async function collectMetrics() {
 	// 지연 측정과 커넥션 통계를 쿼리 하나로 함께 가져온다 (getDbHealthSnapshot 주석 참고)
-	const {
-		latency: dbLatency,
-		total: dbTotal,
-		idle: dbIdle,
-		waiting: dbWaiting,
-		dbTotal: dbAllInstances,
-		maxConnections: dbMax
-	} = await getDbHealthSnapshot();
+	// 스캐너 상태는 DB 상태와 독립이라 함께 던진다 — 순차로 하면 왕복이 두 번이다.
+	const [
+		{
+			latency: dbLatency,
+			total: dbTotal,
+			idle: dbIdle,
+			waiting: dbWaiting,
+			dbTotal: dbAllInstances,
+			maxConnections: dbMax
+		},
+		scanners
+	] = await Promise.all([getDbHealthSnapshot(), getScannerHealth()]);
 
 	const mem = process.memoryUsage();
 	const totalMem = os.totalmem();
@@ -105,6 +110,7 @@ async function collectMetrics() {
 		// 3초 이상 진행되다가 클라이언트가 끊어버린 요청 이력 — 클라이언트 쪽에서 화면이
 		// 멈춰서 새로고침한 경우의 증거 (그 순간엔 위 stuckRequests에서는 빠짐)
 		abandonedRequests: getAbandonedRequests(20),
+		scanners,
 		uptime: Math.floor(process.uptime()),
 		timestamp: ts,
 		history: metricsHistory,
