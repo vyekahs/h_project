@@ -221,7 +221,10 @@ void ensureWiFi() {
   }
 }
 
-bool sendBatch(int startIdx, int endIdx, int batchIndex, int totalBatches) {
+// http/client를 호출자에게서 받는다. 배치마다 새로 만들면 TLS 핸드셰이크와
+// 수십 KB 버퍼 할당이 배치 수만큼 반복된다 — 아래 sendResults 주석 참고.
+bool sendBatch(HTTPClient& http, WiFiClientSecure& client,
+               int startIdx, int endIdx, int batchIndex, int totalBatches) {
   // WiFi 확인
   ensureWiFi();
   if (WiFi.status() != WL_CONNECTED) return false;
@@ -234,6 +237,11 @@ bool sendBatch(int startIdx, int endIdx, int batchIndex, int totalBatches) {
   doc["timestamp"] = millis();
   doc["batch_index"] = batchIndex;
   doc["total_batches"] = totalBatches;
+  // 진단용: 이번 사이클에 잡은 전체 기기 수와 남은 힙.
+  // 이게 없어서 "전원은 켜져 있는데 왜 보고가 없나"를 시리얼 없이는
+  // 판단할 수 없었다.
+  doc["device_total"] = deviceCount;
+  doc["free_heap"] = (uint32_t)ESP.getFreeHeap();
 
   JsonArray devArr = doc.createNestedArray("devices");
   char macStr[18];
@@ -255,36 +263,21 @@ bool sendBatch(int startIdx, int endIdx, int batchIndex, int totalBatches) {
   Serial.print("  Batch " + String(batchIndex + 1) + "/" + String(totalBatches) + " (" + String(batchCount) + " devices, " + String(jsonString.length()) + "B)... ");
   Serial.print("Free heap: " + String(ESP.getFreeHeap()) + " ");
 
-  // HTTPS 연결 (인증서 검증 비활성화 - ESP32-C3 메모리 절약)
-  WiFiClientSecure *client = new WiFiClientSecure;
-  if (!client) {
-    Serial.println("Error: client alloc failed");
-    return false;
-  }
-  client->setInsecure();  // 인증서 검증 스킵 (메모리 절약)
-
   int code = -1;
   String response;
   {
-    // HTTPClient는 begin()에서 받은 client 포인터를 내부에 보관했다가 소멸자에서
-    // 다시 접근한다(_client->stop()). 따라서 client를 먼저 delete하면 함수가
-    // 끝나는 순간 해제된 메모리를 건드려 죽는다 — 실제로 Load access fault
-    // (MCAUSE=5, MTVAL=0x3c)로 크래시했다. 해제된 힙이 우연히 멀쩡해 보이는
-    // 동안은 몇 사이클씩 정상 동작해서 재현이 들쭉날쭉했다.
-    // 별도 스코프에 두어 http가 client보다 반드시 먼저 소멸하게 한다.
-    HTTPClient http;
     String url = String(API_SERVER) + "/api/ble/report";
-    http.begin(*client, url);
+    http.begin(client, url);
     http.setTimeout(15000);  // 15초 타임아웃
     http.addHeader("Content-Type", "application/json");
     http.addHeader("x-api-key", API_KEY);
 
     code = http.POST(jsonString);
     response = http.getString();
-    http.end();
-  }  // ← http 소멸자가 여기서 실행된다 (client는 아직 살아 있음)
-
-  delete client;  // 메모리 해제
+    // http.end()를 부르지 않는다. end()는 연결을 끊어버려서 다음 배치가
+    // 다시 TLS 핸드셰이크를 하게 된다. setReuse(true)로 열어둔 연결을
+    // 그대로 쓰고, 모든 배치가 끝난 뒤 호출자가 한 번만 닫는다.
+  }
 
   if (code > 0) {
     Serial.println("OK (" + String(code) + ")");
@@ -418,18 +411,47 @@ void loop() {
   Serial.println("Sending in " + String(totalBatches) + " batch(es)");
 
   int successCount = 0;
-  for (int batch = 0; batch < totalBatches; batch++) {
-    int startIdx = batch * batchSize;
-    int endIdx = min(startIdx + batchSize, deviceCount);
 
-    if (sendBatch(startIdx, endIdx, batch, totalBatches)) {
-      successCount++;
-    }
-
-    if (batch < totalBatches - 1) {
-      delay(1000);  // 배치 간 1초 대기 (메모리 회수 + TLS 안정성)
-    }
+  // TLS 클라이언트와 HTTPClient를 사이클당 하나만 만들어 모든 배치가 함께 쓴다.
+  //
+  // 예전에는 sendBatch()가 배치마다 new WiFiClientSecure를 했다. 사람이 많아
+  // 기기가 수백 대 잡히는 날에는 배치가 20개까지 늘어나는데, 그때마다 TLS
+  // 핸드셰이크를 새로 하고 수십 KB 버퍼를 할당·해제한다. 그 결과
+  //   - 보고 한 번에 1분 가까이 걸려 그동안 스캔이 멈춘다(탐지 공백)
+  //   - 힙이 파편화되어 할당이 실패하거나 죽는다
+  //     → "전원은 켜져 있는데 서버에 보고가 없는" 상태가 된다
+  // 한산한 날에는 배치가 1개뿐이라 멀쩡해 보여서 원인 찾기가 어려웠다.
+  //
+  // http를 안쪽 스코프에 둔다. HTTPClient 소멸자가 client를 다시 건드리므로
+  // (내부에 보관한 포인터로 stop() 호출) client보다 반드시 먼저 소멸해야 한다.
+  // 순서가 뒤집히면 해제된 메모리를 읽고 죽는다 — 예전에 겪은 Load access
+  // fault(MCAUSE=5)가 정확히 그 경우였다.
+  WiFiClientSecure *client = new WiFiClientSecure;
+  if (!client) {
+    Serial.println("Error: client alloc failed");
+    return;
   }
+  client->setInsecure();  // 인증서 검증 스킵 (메모리 절약)
+  {
+    HTTPClient http;
+    http.setReuse(true);  // 배치 간 연결 유지 — 핸드셰이크 반복을 없앤다
+
+    for (int batch = 0; batch < totalBatches; batch++) {
+      int startIdx = batch * batchSize;
+      int endIdx = min(startIdx + batchSize, deviceCount);
+
+      if (sendBatch(http, *client, startIdx, endIdx, batch, totalBatches)) {
+        successCount++;
+      }
+
+      // 연결을 재사용하므로 예전의 배치 간 1초 대기는 필요 없다. 그 대기는
+      // 매번 새로 만들던 TLS 버퍼를 회수할 시간을 주려던 것이었다.
+      // 20배치 기준 20초를 그대로 돌려받는다.
+    }
+
+    http.end();  // 모든 배치가 끝난 뒤 한 번만 닫는다
+  }
+  delete client;
 
   Serial.println("Report done: " + String(successCount) + "/" + String(totalBatches) + " batches OK");
 }
