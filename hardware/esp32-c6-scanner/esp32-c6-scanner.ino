@@ -281,8 +281,13 @@ bool sendBatch(HTTPClient& http, WiFiClientSecure& client,
 
   int batchCount = endIdx - startIdx;
 
-  // JSON 생성 (메모리 절약: 디바이스당 ~80바이트)
-  DynamicJsonDocument doc(batchCount * 80 + 512);
+  // JSON 생성.
+  //
+  // 디바이스 하나가 실제로 쓰는 양은 객체 슬롯 + mac 키/값 슬롯 + MAC 문자열
+  // 복사(18B) + rssi 슬롯으로 70~80바이트다. 예전 예산(80)은 경계선이라
+  // 이름이 하나만 붙어도 넘쳤다. 여유를 둔다.
+  const size_t docCapacity = (size_t)batchCount * 112 + 512;
+  DynamicJsonDocument doc(docCapacity);
   doc["scanner_id"] = SCANNER_ID;
   doc["timestamp"] = millis();
   doc["batch_index"] = batchIndex;
@@ -304,6 +309,15 @@ bool sendBatch(HTTPClient& http, WiFiClientSecure& client,
     d["rssi"] = deviceRssis[i];
     char* nm = nameFor(i);
     if (nm) d["name"] = nm;
+  }
+
+  // ArduinoJson은 용량이 모자라도 예외를 던지지 않는다. 조용히 뒷부분을 버리고
+  // 짧은 JSON을 만든다 — 잡은 기기가 보고에서 사라져도 아무 흔적이 남지 않는다.
+  // 잡히는 횟수 자체가 적은 폰(주머니 속)에는 이 유실이 치명적이므로 반드시 본다.
+  if (doc.overflowed()) {
+    Serial.println("ERROR: JSON 버퍼 부족 — 이 배치의 일부 기기가 누락된다 "
+                   "(capacity=" + String(docCapacity) + ", devices=" + String(batchCount)
+                   + "). 디바이스당 예산을 올릴 것.");
   }
 
   String jsonString;
