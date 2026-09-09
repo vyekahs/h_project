@@ -15,6 +15,15 @@ import { NotificationService } from '$lib/server/services/notificationService';
 const SILENT_THRESHOLD = "INTERVAL '10 minutes'";
 
 /**
+ * 알림에 쓸 이름. scanners.name이 있으면 그걸, 없으면 id를 쓴다.
+ *
+ * id는 'scanner_sub_hall'처럼 기계적이라 현장에서 한 번 더 해석해야 한다.
+ * name에 '서브홀'처럼 넣어두면 알림이 바로 읽힌다(지금은 전부 비어 있어 id로 나간다):
+ *   UPDATE scanners SET name = '서브홀' WHERE id = 'scanner_sub_hall';
+ */
+const DISPLAY_NAME = "COALESCE(NULLIF(name, ''), id)";
+
+/**
  * 무응답 알림은 영업 중일 때만 보낸다.
  *
  * 영업이 끝나면 스캐너 전원을 내리므로, 이 조건이 없으면 매일 밤 "스캐너가
@@ -109,14 +118,14 @@ export async function checkScannerHealth(): Promise<void> {
 			SET alerted_down_at = NULL
 			WHERE alerted_down_at IS NOT NULL
 			  AND last_seen_at >= NOW() - ${sql.raw(SILENT_THRESHOLD)}
-			RETURNING id, alerted_down_at
+			RETURNING ${sql.raw(DISPLAY_NAME)} AS label,
+			          round(EXTRACT(EPOCH FROM (NOW() - alerted_down_at)) / 60)::int AS down_minutes
 		`)) as any[];
 
 		for (const row of recovered) {
 			await alert(
-				`스캐너 복구: ${row.id}`,
-				`${row.id} 스캐너가 다시 보고하기 시작했습니다.\n` +
-					`무응답 알림 시각: ${row.alerted_down_at}`
+				`스캐너 복구: ${row.label}`,
+				`${row.down_minutes}분 만에 다시 보고를 시작했습니다.`
 			);
 		}
 
@@ -131,18 +140,16 @@ export async function checkScannerHealth(): Promise<void> {
 			  -- 있어서, 이 조건이 없으면 영업을 열 때마다 같은 알림이 반복된다.
 			  -- 며칠씩 조용한 기기는 고장이 아니라 치워둔 것으로 본다.
 			  AND last_seen_at > NOW() - INTERVAL '7 days'
-			RETURNING id,
-			          last_seen_at,
+			RETURNING ${sql.raw(DISPLAY_NAME)} AS label,
+			          to_char(last_seen_at AT TIME ZONE 'Asia/Seoul', 'MM-DD HH24:MI') AS last_seen_kst,
 			          round(EXTRACT(EPOCH FROM (NOW() - last_seen_at)) / 60)::int AS silent_minutes
 		`)) as any[];
 
 		for (const row of down) {
 			await alert(
-				`스캐너 무응답: ${row.id}`,
-				`${row.id} 스캐너가 ${row.silent_minutes}분째 보고하지 않습니다.\n` +
-					`마지막 보고: ${row.last_seen_at}\n\n` +
-					`전원 LED가 켜져 있어도 WiFi가 끊기면 보고하지 못합니다.\n` +
-					`이 상태로 두면 회원이 자리에 있어도 자동 체크아웃됩니다.`
+				`스캐너 무응답: ${row.label}`,
+				`${row.silent_minutes}분째 보고 없음 (마지막 ${row.last_seen_kst})\n` +
+					`이대로 두면 회원이 자리에 있어도 자동 체크아웃됩니다.`
 			);
 		}
 	} catch (e) {
