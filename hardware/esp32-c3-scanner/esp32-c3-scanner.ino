@@ -37,8 +37,34 @@ BLEScan* pBLEScan;
 int scanTime = 10;
 int scanRounds = 3;
 int batchSize = 30;
+// scanInterval은 "스캔 시작 간격"이지 "스캔 사이의 쉬는 시간"이 아니다.
+// 스캔 자체가 scanTime × scanRounds + 라운드 간 대기 = 기본 31초를 쓰므로,
+// 이 값이 31초보다 작으면 항상 이미 지나 있어 아무 효과가 없다(연속 스캔이 된다).
+// 지금은 그게 탐지에 유리해서 그대로 두지만, 값을 바꿔도 안 먹는다면 이 때문이다.
 unsigned long scanInterval = 30 * 1000;
 unsigned long lastScanTime = 0;
+
+// --- 자가 복구 ---
+//
+// 전원은 들어와 있는데 서버에는 보고가 없는 상태로 며칠씩 방치된 적이 있다.
+// setup()에는 WiFi 실패 시 재시작이 있었지만 런타임에는 없어서, 공유기 재부팅이나
+// DHCP 문제로 한 번 끊기면 루프는 계속 돌면서 아무것도 못 보내는 채로 영원히 남았다.
+// 연속 실패가 쌓이거나 성공한 지 오래되면 스스로 재시작한다.
+int consecutiveFailures = 0;
+const int MAX_CONSECUTIVE_FAILURES = 5;
+unsigned long lastSuccessMs = 0;
+const unsigned long MAX_SILENCE_MS = 10UL * 60UL * 1000UL;  // 10분
+
+// --- 전송 실패 시 탐지 보존 ---
+//
+// 예전에는 사이클 시작마다 버퍼를 비웠다. 그래서 전송에 실패하면 그 스캔에서
+// 잡은 기기가 통째로 사라졌다. 잡히는 횟수 자체가 적은 폰(주머니 속)은 어렵게
+// 한 번 잡힌 것이 하필 전송 실패와 겹치면 그대로 날아간다.
+// 실패하면 버퍼를 유지해 다음 사이클 결과와 합쳐 보낸다. 다만 무한정 들고 있으면
+// 이미 떠난 사람을 계속 "지금 보인다"고 보고하게 되므로 몇 사이클로 제한한다.
+bool carryOver = false;
+int carriedCycles = 0;
+const int MAX_CARRY_CYCLES = 3;
 
 // Buffer (multi-scan dedup)
 //
@@ -63,6 +89,8 @@ const int MAX_NAME_LEN = 24;
 int  namedIdx[MAX_NAMED];
 char namedVals[MAX_NAMED][MAX_NAME_LEN];
 int  namedCount = 0;
+
+void noteCycleFailed();  // loop()보다 뒤에 정의되므로 명시적으로 선언한다
 
 static bool macToBytes(const char* mac, uint8_t out[6]) {
   unsigned int v[6];
@@ -166,6 +194,7 @@ void setup() {
   pBLEScan->setInterval(160);       // 100ms 주기 (단위 0.625ms)
   pBLEScan->setWindow(160);         // 160 = interval과 동일 → 100% 듀티 (연속 수신)
 
+  lastSuccessMs = millis();  // 무보고 감시 시작점
   Serial.println("=== SCANNER READY (passive, 100% duty) ===\n");
 }
 
@@ -225,8 +254,8 @@ void ensureWiFi() {
 // 수십 KB 버퍼 할당이 배치 수만큼 반복된다 — 아래 sendResults 주석 참고.
 bool sendBatch(HTTPClient& http, WiFiClientSecure& client,
                int startIdx, int endIdx, int batchIndex, int totalBatches) {
-  // WiFi 확인
-  ensureWiFi();
+  // 재연결 시도는 호출자가 사이클당 한 번만 한다. 여기서 하면 배치 수만큼
+  // 최대 10초씩 블로킹되어 그동안 스캔을 못 한다.
   if (WiFi.status() != WL_CONNECTED) return false;
 
   int batchCount = endIdx - startIdx;
@@ -334,10 +363,11 @@ void loop() {
   }
   lastScanTime = millis();
 
-  // WiFi 재연결 시도
+  // WiFi 재연결 시도 (사이클당 한 번)
   ensureWiFi();
   if (WiFi.status() != WL_CONNECTED) {
     Serial.println("WiFi down, skipping");
+    noteCycleFailed();
     return;
   }
 
@@ -345,9 +375,21 @@ void loop() {
   Serial.println("Free heap before scan: " + String(ESP.getFreeHeap()));
 
   // Multi-round scan
-  deviceCount = 0;
+  //
+  // 직전 사이클의 전송이 실패했으면 버퍼를 비우지 않는다. 그래야 그때 잡은
+  // 기기가 이번 보고에 함께 실린다. addDevice()가 MAC으로 중복을 걸러주므로
+  // 그냥 이어서 채우면 된다.
+  if (carryOver && carriedCycles < MAX_CARRY_CYCLES) {
+    carriedCycles++;
+    Serial.println("Carrying over " + String(deviceCount) + " device(s) from failed report ("
+                   + String(carriedCycles) + "/" + String(MAX_CARRY_CYCLES) + ")");
+  } else {
+    deviceCount = 0;
+    namedCount = 0;  // 이름은 인덱스로 묶여 있으므로 버퍼와 함께 반드시 초기화
+    carriedCycles = 0;
+  }
+  carryOver = false;
   bufferEvictions = 0;
-  namedCount = 0;  // 이름은 인덱스로 묶여 있으므로 버퍼와 함께 반드시 초기화
   for (int round = 1; round <= scanRounds; round++) {
     Serial.println("Scan round " + String(round) + "/" + String(scanRounds) + "...");
     BLEScanResults* foundDevices = pBLEScan->start(scanTime, false);
@@ -403,7 +445,14 @@ void loop() {
     }
   }
 
-  if (deviceCount == 0) return;
+  if (deviceCount == 0) {
+    // 주변에 BLE 기기가 하나도 없는 상황은 정상이 아니다 — 이어폰·워치·노트북 등이
+    // 항상 몇 대는 잡힌다(실측 30~37대). 0개면 BLE 스택이 멈춘 쪽을 의심한다.
+    // 이 경로를 실패로 세지 않으면 보고 자체가 없어 무보고 감시에 걸리지 않는다.
+    Serial.println("No devices found — BLE 스택 이상 가능성");
+    noteCycleFailed();
+    return;
+  }
 
   // Send in batches
   if (batchSize < 1) batchSize = 30;  // 방어: 0이면 아래가 0으로 나누기가 된다
@@ -454,4 +503,38 @@ void loop() {
   delete client;
 
   Serial.println("Report done: " + String(successCount) + "/" + String(totalBatches) + " batches OK");
+
+  if (successCount == totalBatches) {
+    consecutiveFailures = 0;
+    lastSuccessMs = millis();
+    carriedCycles = 0;
+  } else {
+    // 일부라도 실패하면 버퍼를 유지한다. 어느 배치가 빠졌는지 추적하는 것보다
+    // 전체를 다시 보내는 편이 단순하고, 서버는 같은 MAC을 다시 받아도 무해하다.
+    carryOver = true;
+    noteCycleFailed();
+  }
+}
+
+/**
+ * 사이클 실패를 기록하고, 회복 불가로 보이면 재시작한다.
+ *
+ * 실패는 두 가지로 센다.
+ *   - 연속 실패 횟수: 짧은 시간에 반복 실패하는 경우
+ *   - 마지막 성공 이후 경과: 실패로 잡히지도 않은 채 조용히 멈춘 경우
+ *     (예: 스캔이 0개만 반환해 보고 자체가 없는 상태)
+ * 어느 쪽이든 사람이 전원을 뽑아줘야 살아나는 상태보다는 재시작이 낫다.
+ */
+void noteCycleFailed() {
+  consecutiveFailures++;
+  unsigned long silent = millis() - lastSuccessMs;
+  Serial.println("Report failure #" + String(consecutiveFailures)
+                 + " (마지막 성공 " + String(silent / 1000) + "초 전)");
+
+  if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES || silent > MAX_SILENCE_MS) {
+    Serial.println("*** 서버 보고가 회복되지 않아 재시작한다 ***");
+    Serial.flush();
+    delay(1000);
+    ESP.restart();
+  }
 }
