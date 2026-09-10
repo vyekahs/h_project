@@ -87,7 +87,7 @@
 
     // 정기권 이력 — 어드민 정기권 관리 화면(/admin/passes)과 같은 표기.
     // 지금 정기권의 이력만 온다(서버에서 pass_id로 걸러둠).
-    let showPassLog = false;
+    let showPassLogModal = false;
     const PASS_ACTION_LABEL: Record<string, string> = { grant: '발급', adjust: '조정', cancel: '해지' };
     function passLogShortDate(dateStr: string | null): string {
         if (!dateStr) return '없음';
@@ -442,6 +442,11 @@
                         <div class="pass-date">
                             종료일: {seasonPassEndDate}
                         </div>
+                        {#if data.seasonPassLogs && data.seasonPassLogs.length > 0}
+                            <button type="button" class="pass-log-open" on:click={() => showPassLogModal = true}>
+                                정기권 이력 <span class="log-count">{data.seasonPassLogs.length}</span>
+                            </button>
+                        {/if}
                     </div>
                 {:else if expiredPass}
                     <div class="season-pass-banner expired">
@@ -450,37 +455,12 @@
                             정기권 만료
                         </span>
                         <div class="pass-expired-date">{expiredPass.expiredDate} 만료</div>
+                        {#if data.seasonPassLogs && data.seasonPassLogs.length > 0}
+                            <button type="button" class="pass-log-open" on:click={() => showPassLogModal = true}>
+                                정기권 이력 <span class="log-count">{data.seasonPassLogs.length}</span>
+                            </button>
+                        {/if}
                     </div>
-                {/if}
-
-                {#if (hasSeasonPass || expiredPass) && data.seasonPassLogs && data.seasonPassLogs.length > 0}
-                    <button
-                        type="button"
-                        class="pass-log-toggle"
-                        aria-expanded={showPassLog}
-                        on:click={() => showPassLog = !showPassLog}
-                    >
-                        <svg class="chev" class:is-open={showPassLog} aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-                        정기권 이력 <span class="log-count">{data.seasonPassLogs.length}</span>
-                    </button>
-                    {#if showPassLog}
-                        <ul class="pass-log-list">
-                            {#each data.seasonPassLogs as l (l.id)}
-                                <li>
-                                    <span class="log-head">
-                                        <b>{PASS_ACTION_LABEL[l.action] ?? l.action}</b>
-                                        {l.reason_label}
-                                        {#if l.days}<em>{l.days > 0 ? '+' : ''}{l.days}일</em>{/if}
-                                    </span>
-                                    <span class="log-meta">
-                                        {passLogShortDate(l.expires_before)} → {passLogShortDate(l.expires_after)} ·
-                                        {passLogShortDay(l.created_at)}
-                                    </span>
-                                    {#if l.note}<span class="log-note">{l.note}</span>{/if}
-                                </li>
-                            {/each}
-                        </ul>
-                    {/if}
                 {/if}
 
                 <div class="devices-section">
@@ -781,6 +761,39 @@
                 </li>
             </ol>
             <button class="modal-close-btn" on:click={() => showGuideModal = false}>닫기</button>
+        </div>
+    </div>
+{/if}
+
+{#if showPassLogModal}
+    <div
+        class="modal-backdrop"
+        on:click|self={() => showPassLogModal = false}
+        role="presentation"
+    >
+        <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="pass-log-modal-title" tabindex="-1" use:trapFocus={{ onEscape: () => showPassLogModal = false }}>
+            <h3 id="pass-log-modal-title">정기권 이력</h3>
+            {#if !data.seasonPassLogs || data.seasonPassLogs.length === 0}
+                <p class="pass-log-empty">이력이 없습니다.</p>
+            {:else}
+                <ul class="pass-log-list">
+                    {#each data.seasonPassLogs as l (l.id)}
+                        <li>
+                            <span class="log-head">
+                                <b>{PASS_ACTION_LABEL[l.action] ?? l.action}</b>
+                                {l.reason_label}
+                                {#if l.days}<em>{l.days > 0 ? '+' : ''}{l.days}일</em>{/if}
+                            </span>
+                            <span class="log-meta">
+                                {passLogShortDate(l.expires_before)} → {passLogShortDate(l.expires_after)} ·
+                                {passLogShortDay(l.created_at)}
+                            </span>
+                            {#if l.note}<span class="log-note">{l.note}</span>{/if}
+                        </li>
+                    {/each}
+                </ul>
+            {/if}
+            <button class="modal-close-btn" on:click={() => showPassLogModal = false}>닫기</button>
         </div>
     </div>
 {/if}
@@ -1185,39 +1198,41 @@
         }
     }
 
-    /* 정기권 이력 — /admin/passes 의 표기를 그대로 따른다(어드민 정기권 관리 화면 참고) */
-    .pass-log-toggle {
+    /* 정기권 배너 안의 이력 버튼 — 배너가 보라색 그라디언트라 .badge와 같은
+       반투명 흰색 톤을 쓴다(본문 var(--text-secondary) 등은 이 배경에서 안 보인다) */
+    .pass-log-open {
         display: inline-flex;
         align-items: center;
-        gap: 0.3rem;
-        min-height: 44px;
-        padding: 0 0.6rem;
-        margin: -0.5rem 0 1rem;
-        background: none;
+        gap: 0.35rem;
+        min-height: 32px;
+        margin-top: 0.6rem;
+        padding: 0 0.7rem;
+        background: rgba(255, 255, 255, 0.15);
         border: none;
-        border-radius: 8px;
-        color: var(--text-secondary);
+        border-radius: 999px;
+        color: var(--bg-primary);
         font-family: inherit;
-        font-size: 0.8rem;
+        font-size: 0.78rem;
         cursor: pointer;
     }
-    .pass-log-toggle:hover { background: var(--bg-secondary); color: var(--text-primary); }
-    .pass-log-toggle .chev { transition: transform 0.15s; }
-    .pass-log-toggle .chev.is-open { transform: rotate(180deg); }
-    .pass-log-toggle .log-count {
+    .pass-log-open:hover { background: rgba(255, 255, 255, 0.25); }
+    .pass-log-open .log-count {
         padding: 0 0.45em;
         border-radius: 999px;
-        background: var(--bg-hover);
-        color: var(--text-primary);
-        font-size: 0.75rem;
+        background: rgba(255, 255, 255, 0.25);
     }
-    @media (prefers-reduced-motion: reduce) { .pass-log-toggle .chev { transition: none; } }
+    .season-pass-banner.expired .pass-log-open { color: var(--bg-primary); }
 
+    /* 정기권 이력 모달 목록 — /admin/passes 의 표기를 그대로 따른다 */
+    .pass-log-empty {
+        margin: 0 0 1rem;
+        font-size: 0.85rem;
+        color: var(--text-secondary);
+    }
     .pass-log-list {
         list-style: none;
-        margin: -0.5rem 0 1.5rem;
-        padding: 0.75rem 0 0.25rem;
-        border-top: 1px solid var(--border-light);
+        margin: 0 0 1.5rem;
+        padding: 0;
         display: flex;
         flex-direction: column;
         gap: 0.75rem;
