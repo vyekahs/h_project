@@ -85,18 +85,15 @@
         return null;
     })();
 
-    // 정기권 이력 — 어드민 정기권 관리 화면(/admin/passes)과 같은 표기.
-    // 지금 정기권의 이력만 온다(서버에서 pass_id로 걸러둠).
+    // 정기권 변경 내역. 지금 정기권의 이력만 온다(서버에서 pass_id로 걸러둠).
+    // "며칠에 있었던 일인가"와 "그래서 만료일이 어떻게 바뀌었나"가 한 줄에
+    // 라벨 없이 섞여 있으면 뭘 보고 있는지 알 수 없다("9/10 → 9/10 · 9/10"
+    // 같은 표기가 실제로 그랬다) — 두 종류를 분리하고 "만료일"이라고 못박는다.
     let showPassLogModal = false;
     const PASS_ACTION_LABEL: Record<string, string> = { grant: '발급', adjust: '조정', cancel: '해지' };
-    function passLogShortDate(dateStr: string | null): string {
-        if (!dateStr) return '없음';
+    function passLogFullDate(dateStr: string): string {
         const d = new Date(dateStr);
-        return `${d.getMonth() + 1}/${d.getDate()}`;
-    }
-    function passLogShortDay(dateStr: string): string {
-        const d = new Date(dateStr);
-        return `${d.getMonth() + 1}/${d.getDate()}`;
+        return `${d.getMonth() + 1}월 ${d.getDate()}일`;
     }
 
     let showGuideModal = false;
@@ -439,14 +436,16 @@
                             </span>
                             <span class="d-day">D-{seasonPassDaysLeft}</span>
                         </div>
-                        <div class="pass-date">
-                            종료일: {seasonPassEndDate}
+                        <div class="pass-date-col">
+                            <div class="pass-date">
+                                종료일: {seasonPassEndDate}
+                            </div>
+                            {#if data.seasonPassLogs && data.seasonPassLogs.length > 0}
+                                <button type="button" class="pass-log-open" on:click={() => showPassLogModal = true}>
+                                    변경 내역 <span class="log-count">{data.seasonPassLogs.length}</span>
+                                </button>
+                            {/if}
                         </div>
-                        {#if data.seasonPassLogs && data.seasonPassLogs.length > 0}
-                            <button type="button" class="pass-log-open" on:click={() => showPassLogModal = true}>
-                                정기권 이력 <span class="log-count">{data.seasonPassLogs.length}</span>
-                            </button>
-                        {/if}
                     </div>
                 {:else if expiredPass}
                     <div class="season-pass-banner expired">
@@ -457,7 +456,7 @@
                         <div class="pass-expired-date">{expiredPass.expiredDate} 만료</div>
                         {#if data.seasonPassLogs && data.seasonPassLogs.length > 0}
                             <button type="button" class="pass-log-open" on:click={() => showPassLogModal = true}>
-                                정기권 이력 <span class="log-count">{data.seasonPassLogs.length}</span>
+                                변경 내역 <span class="log-count">{data.seasonPassLogs.length}</span>
                             </button>
                         {/if}
                     </div>
@@ -772,21 +771,25 @@
         role="presentation"
     >
         <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="pass-log-modal-title" tabindex="-1" use:trapFocus={{ onEscape: () => showPassLogModal = false }}>
-            <h3 id="pass-log-modal-title">정기권 이력</h3>
+            <h3 id="pass-log-modal-title">변경 내역</h3>
             {#if !data.seasonPassLogs || data.seasonPassLogs.length === 0}
                 <p class="pass-log-empty">이력이 없습니다.</p>
             {:else}
                 <ul class="pass-log-list">
                     {#each data.seasonPassLogs as l (l.id)}
                         <li>
+                            <span class="log-date">{passLogFullDate(l.created_at)}</span>
                             <span class="log-head">
                                 <b>{PASS_ACTION_LABEL[l.action] ?? l.action}</b>
                                 {l.reason_label}
                                 {#if l.days}<em>{l.days > 0 ? '+' : ''}{l.days}일</em>{/if}
                             </span>
                             <span class="log-meta">
-                                {passLogShortDate(l.expires_before)} → {passLogShortDate(l.expires_after)} ·
-                                {passLogShortDay(l.created_at)}
+                                {#if l.expires_before}
+                                    만료일 {passLogFullDate(l.expires_before)} → {l.expires_after ? passLogFullDate(l.expires_after) : '해지'}
+                                {:else}
+                                    만료일 {passLogFullDate(l.expires_after)}까지
+                                {/if}
                             </span>
                             {#if l.note}<span class="log-note">{l.note}</span>{/if}
                         </li>
@@ -1186,14 +1189,23 @@
         font-size: 0.9rem;
         opacity: 0.9;
     }
-    
+    /* 종료일 텍스트와 변경 내역 버튼을 한 덩어리로 세로 배치 — 배너가
+       row flex(justify-content: space-between)라, 이 wrapper 없이 버튼을
+       그냥 3번째 자식으로 두면 종료일 밑이 아니라 배너 오른쪽 끝으로 밀려난다. */
+    .pass-date-col {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 0.4rem;
+    }
+
     @media (max-width: 480px) {
         .season-pass-banner {
             flex-direction: column;
             align-items: flex-start;
             gap: 0.5rem;
         }
-        .pass-date {
+        .pass-date-col {
             align-self: flex-end;
         }
     }
@@ -1238,6 +1250,11 @@
         gap: 0.75rem;
     }
     .pass-log-list li { display: flex; flex-direction: column; gap: 0.15rem; }
+    .pass-log-list .log-date {
+        font-size: 0.7rem;
+        font-weight: 700;
+        color: var(--text-tertiary);
+    }
     .pass-log-list .log-head { font-size: 0.85rem; color: var(--text-primary); word-break: keep-all; }
     .pass-log-list .log-head b { font-weight: 700; margin-right: 0.35em; }
     .pass-log-list .log-head em { font-style: normal; color: var(--text-secondary); margin-left: 0.35em; }

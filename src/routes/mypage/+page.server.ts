@@ -48,7 +48,8 @@ export const load: PageServerLoad = async ({ parent }) => {
             FROM season_pass_logs l, cur
             WHERE l.attendee_id = ${user.id}
               AND l.pass_id IS NOT DISTINCT FROM cur.pass_id
-            ORDER BY l.created_at DESC, l.id DESC
+            -- 오래된 것부터 — 발급이 맨 위, 그 뒤 조정이 일어난 순서 그대로 읽힌다.
+            ORDER BY l.created_at ASC, l.id ASC
         `).catch(() => [])
     ]);
     // Trigger Title Check (Background)
