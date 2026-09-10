@@ -48,6 +48,12 @@ const ATTENDEE_CACHE_TTL_MS = 5 * 60 * 1000; // 5분
 // BLE/WiFi 분리: 둘 중 하나라도 최근 감지되면 체크아웃 방지 (OR 조건)
 const lastSeenBleMap = new Map<number, number>();
 const lastSeenWifiMap = new Map<number, number>();
+// 게임에 참여 중인 것으로 확인된 시각.
+//
+// BLE/WiFi 맵과 따로 둔다. 게임 참여를 lastSeenBleMap에 적으면 "BLE로 봤다"는
+// 기록이 되어, 나중에 auto_checkout_logs의 ble_seen_at을 보고 탐지 상태를
+// 진단할 때 실제로는 못 잡은 시간을 잡은 것으로 오해하게 된다.
+const lastSeenGameMap = new Map<number, number>();
 
 // System Settings Cache (영구 캐시, 변경 시 updateSettingsCache 호출)
 let settingsCache: { isOpen: boolean; openingTime: string } | null = null;
@@ -64,7 +70,9 @@ function kstTime(): string {
 interface AutoLog {
     time: string;
     type: 'checkin' | 'checkout' | 'auto-open';
-    source: 'BLE' | 'WiFi';
+    // GAME은 "게임 참여를 근거로 재실로 판단했다"는 뜻이다. BLE/WiFi로 못 잡았지만
+    // 게임 기록상 자리에 있던 경우라, 탐지 상태를 진단할 때 구분되어야 한다.
+    source: 'BLE' | 'WiFi' | 'GAME';
     userName: string;
     attendeeId: number;
 }
@@ -99,6 +107,7 @@ export function markAllLeft() {
     }
     lastSeenBleMap.clear();
     lastSeenWifiMap.clear();
+    lastSeenGameMap.clear();
 }
 
 /** BLE lastSeen 업데이트 (Rust BLE 서버에서 호출) */
@@ -524,17 +533,37 @@ export async function checkAutoCheckout() {
     }
 
     for (const attendee of presentUsers) {
-        if (playingUserIds.has(attendee.id)) continue;
+        if (playingUserIds.has(attendee.id)) {
+            // 게임 중이면 자리에 있는 것이 확실하다.
+            //
+            // 예전에는 체크아웃만 건너뛰었다. 그런데 미탐지 시간은 그동안에도
+            // 계속 쌓이기 때문에, 게임이 끝나는 순간 누적된 시간이 임계를 넘겨
+            // 곧바로 체크아웃됐다. 두 시간짜리 게임을 끝내고 일어서자마자
+            // "나간 사람"이 되는 셈이다.
+            //
+            // 게임 참여 자체를 '봤다'로 취급해 시계를 되감는다. 게임이 끝난 뒤
+            // 다시 20분을 못 잡아야 체크아웃된다.
+            lastSeenGameMap.set(attendee.id, now);
+            continue;
+        }
         const bleSeen = lastSeenBleMap.get(attendee.id) ?? 0;
         const wifiSeen = lastSeenWifiMap.get(attendee.id) ?? 0;
-        const lastSeen = Math.max(bleSeen, wifiSeen);
+        const gameSeen = lastSeenGameMap.get(attendee.id) ?? 0;
+        const lastSeen = Math.max(bleSeen, wifiSeen, gameSeen);
 
         if (lastSeen === 0) continue;
 
         if (lastSeen < timeoutThreshold) {
             const bleAgo = bleSeen ? `${Math.round((now - bleSeen) / 60000)}분 전` : 'never';
             const wifiAgo = wifiSeen ? `${Math.round((now - wifiSeen) / 60000)}분 전` : 'never';
-            const lastSource = bleSeen >= wifiSeen ? 'BLE' : 'WiFi';
+            // 무엇을 근거로 '마지막에 봤다'고 판단했는지. 게임 참여가 근거였다면
+            // BLE로 잡았다고 적으면 안 된다 — 사후 진단이 어긋난다.
+            const lastSource =
+                gameSeen >= bleSeen && gameSeen >= wifiSeen
+                    ? 'GAME'
+                    : bleSeen >= wifiSeen
+                      ? 'BLE'
+                      : 'WiFi';
             console.log(`[${kstTime()}][AUTO] Checking-out User ${attendee.id} (${attendee.name}). BLE: ${bleAgo}, WiFi: ${wifiAgo}`);
 
             try {
@@ -568,6 +597,7 @@ export async function checkAutoCheckout() {
                 attendee.status = 'left';
                 lastSeenBleMap.delete(attendee.id);
                 lastSeenWifiMap.delete(attendee.id);
+                lastSeenGameMap.delete(attendee.id);
                 pushAutoLog('checkout', lastSource, attendee.name, attendee.id);
                 emitLiveEvent('visitors');
             } catch (e) {
