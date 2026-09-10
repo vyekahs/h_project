@@ -163,6 +163,15 @@
             .sort((a: any, b: any) =>
                 new Date(b.season_pass_expires_at).getTime() - new Date(a.season_pass_expires_at).getTime())
     );
+    /*
+        이 페이지는 목록만 있어서, 「누가 곧 끝나나」를 알려면 열 줄을 다 읽어야
+        했다. 대시보드가 방 현황에 쓰는 스트립을 그대로 가져와 먼저 답한다.
+    */
+    const SOON_DAYS = 7;
+    const soonCount = $derived(
+        activeHolders.filter((h: any) => getDaysLeft(h.season_pass_expires_at) <= SOON_DAYS).length
+    );
+
     const EXPIRED_PAGE = 5;
     let expiredShown = $state(EXPIRED_PAGE);
     const expiredVisible = $derived(expiredHolders.slice(0, expiredShown));
@@ -185,6 +194,26 @@
         <h1>정기권 관리</h1>
         <button class="btn-primary" onclick={() => openGrant()}>+ 정기권 발급</button>
     </div>
+
+    <section class="pass-summary" aria-label="정기권 현황 요약">
+        <div class="ps-stat">
+            <span class="ps-label">사용 중</span>
+            <span class="ps-value">{activeHolders.length}<span class="ps-unit">명</span></span>
+        </div>
+        <!-- 0 은 좋은 소식이다. 주황은 챙길 사람이 있을 때만 켠다. -->
+        <div class="ps-stat" class:ps-stat-soon={soonCount > 0}>
+            <span class="ps-label">{SOON_DAYS}일 안에 만료</span>
+            {#if soonCount === 0}
+                <span class="ps-value ps-value-none">없음</span>
+            {:else}
+                <span class="ps-value">{soonCount}<span class="ps-unit">명</span></span>
+            {/if}
+        </div>
+        <div class="ps-stat">
+            <span class="ps-label">만료됨</span>
+            <span class="ps-value">{expiredHolders.length}<span class="ps-unit">명</span></span>
+        </div>
+    </section>
 
     <!-- 서버 되돌리기 창은 10분인데 토스트는 30초다. 나머지를 이 패널이 든다. -->
     <RecentActions />
@@ -213,7 +242,7 @@
                             <div class="pass-actions">
                                 <button type="button" class="btn-sm" onclick={() => openAdjust(holder, -1)}>−1</button>
                                 <button type="button" class="btn-sm" onclick={() => openAdjust(holder, 1)}>+1</button>
-                                <button type="button" class="btn-sm" onclick={() => openAdjust(holder, 30)}>+30일</button>
+                                <button type="button" class="btn-sm btn-grow" onclick={() => openAdjust(holder, 30)}>+30일</button>
                             </div>
                             {@render logToggle(holder, logs)}
                         </div>
@@ -241,7 +270,7 @@
                         <div class="expired-main">
                             <a href="/admin/attendees/{holder.id}" class="pass-name">{holder.name}</a>
                             <span class="expired-when">{shortDay(holder.season_pass_expires_at)} 만료 · {daysSince(holder.season_pass_expires_at)}일 지남</span>
-                            <button type="button" class="btn-sm" onclick={() => openGrant(holder.id)}>재발급</button>
+                            <button type="button" class="btn-sm btn-grow" onclick={() => openGrant(holder.id)}>재발급</button>
                             {@render logToggle(holder, logs)}
                         </div>
                         {#if openLogFor === holder.id}
@@ -454,34 +483,69 @@
     }
     .page-header h1 { margin: 0; font-size: var(--text-xl); }
 
-    .section { margin-bottom: var(--space-6); }
+    /*
+        이 콘솔의 섹션은 전부 흰 카드 안에 제목을 넣는다(대시보드·통계).
+        이 페이지만 회색 바탕에 맨 h2 와 목록을 얹고 있어서, 같은 콘솔인데
+        혼자 초안처럼 보였다. 통계의 .findings 와 같은 틀을 쓴다.
+    */
+    .section {
+        margin-bottom: var(--space-5);
+        padding: var(--space-5);
+        background: var(--bg-primary);
+        /* 경계는 하나로만 — 테두리 아래 그림자를 겹치면 유령 카드가 된다 */
+        border: 1px solid var(--border-default);
+        border-radius: var(--radius-card);
+    }
     .section-head {
         display: flex;
         align-items: baseline;
         justify-content: space-between;
         flex-wrap: wrap;
         gap: var(--space-2);
-        margin-bottom: var(--space-3);
-        padding-bottom: var(--space-2);
-        border-bottom: 1px solid var(--border-light);
+        margin-bottom: var(--space-4);
     }
     .section-head h2 { margin: 0; padding: 0; border: none; }
     .section h2 {
+        margin: 0 0 var(--space-4);
         font-size: var(--text-lg);
         color: var(--text-darker);
-        margin-bottom: var(--space-3);
-        padding-bottom: var(--space-2);
-        border-bottom: 1px solid var(--border-light);
     }
-    .empty { color: var(--text-secondary); font-size: var(--text-sm); }
-    .card-list { display: flex; flex-direction: column; gap: var(--space-2); }
 
-    .pass-card {
+    /* ── 현황 스트립 (대시보드 .room-summary 와 같은 뼈대) ── */
+    .pass-summary {
+        margin-bottom: var(--space-5);
+        padding: var(--space-4) var(--space-5);
         background: var(--bg-primary);
-        padding: var(--space-3) var(--space-4);
         border: 1px solid var(--border-default);
-        border-radius: var(--radius-control);
+        border-radius: var(--radius-card);
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: var(--space-4);
     }
+    .ps-stat { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }
+    .ps-label {
+        font-size: var(--text-xs);
+        font-weight: var(--weight-medium);
+        color: var(--text-secondary);
+    }
+    .ps-value {
+        font-size: var(--text-stat);
+        font-weight: var(--weight-bold);
+        line-height: 1;
+        color: var(--text-primary);
+        font-variant-numeric: var(--numeric);
+    }
+    .ps-unit { margin-left: 0.1em; font-size: var(--text-base); font-weight: var(--weight-medium); }
+    .ps-value-none { font-size: var(--text-lg); color: var(--text-secondary); }
+    .ps-stat-soon .ps-value { color: var(--color-orange-text); }
+    .empty { color: var(--text-secondary); font-size: var(--text-sm); }
+    /*
+        섹션이 카드가 됐으므로 줄마다 다시 테두리를 두르면 흰 카드 위의 흰 카드가
+        된다. 만료 목록이 이미 쓰던 방식(실선 구분)으로 두 섹션을 통일한다.
+    */
+    .card-list { display: flex; flex-direction: column; }
+    .pass-card { padding: var(--space-3) 0; }
+    .pass-card + .pass-card { border-top: 1px solid var(--border-light); }
     /*
         임박은 배지가 말한다. 카드 전체를 주황 테두리로 물들이면 「이 회원이
         문제다」로 읽히는데, 실제로는 「곧 끝난다」일 뿐이다.
@@ -510,14 +574,23 @@
         flex-wrap: wrap; font-size: var(--text-xs); color: var(--text-secondary); }
     .pass-actions { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 
+    /*
+        남은 일수는 이 페이지의 본론인데 회색 알약이라 테두리·구분선과 같은
+        무게로 읽혔다. 콘솔이 「주목할 값」에 쓰는 파랑 틴트(--color-info-bg /
+        --color-blue-bright, 대시보드의 .pp-chip·.pp-option.checked)를 준다.
+
+        주황을 여기까지 넓히지는 않는다. 세 줄 중 하나만 주황일 때 그 한 줄이
+        보이는 것이지, 전부 칠하면 임박 신호가 사라진다. 파랑은 「값」이고
+        주황은 「손이 가야 할 값」이다.
+    */
     .days-badge {
         font-size: var(--text-xs);
         font-variant-numeric: var(--numeric);
         font-weight: var(--weight-medium);
         padding: 0.15rem var(--space-2);
         border-radius: var(--radius-pill);
-        background: var(--bg-hover);
-        color: var(--text-primary);
+        background: var(--color-info-bg);
+        color: var(--color-blue-bright);
     }
     .days-badge.urgent { background: var(--color-warning-bg); color: var(--color-orange-text); }
 
@@ -534,15 +607,7 @@
     }
 
     /* ── 만료 목록 ── */
-    .expired-list {
-        list-style: none;
-        margin: 0;
-        padding: 0;
-        border: 1px solid var(--border-default);
-        border-radius: var(--radius-control);
-        background: var(--bg-primary);
-        overflow: hidden;
-    }
+    .expired-list { list-style: none; margin: 0; padding: 0; }
     .expired-row + .expired-row { border-top: 1px solid var(--border-light); }
     .expired-main {
         display: grid;
@@ -550,7 +615,7 @@
         grid-template-columns: auto minmax(0, 1fr) auto auto;
         align-items: center;
         gap: var(--space-3);
-        padding: var(--space-2) var(--space-4);
+        padding: var(--space-2) 0;
     }
     .expired-when {
         justify-self: start;
@@ -571,7 +636,30 @@
         font-size: var(--text-xs);
         cursor: pointer;
     }
+    /*
+        파랑은 「정기권을 늘리는 동작」 하나만 뜻한다 — +30일과 재발급.
+        −1/+1 은 늘리는 일이 아니라 바로잡는 일이라 무채색으로 남는다.
+        한 줄에 버튼 넷이 똑같이 회색이면 그중 무엇이 늘 하는 일인지
+        색으로는 알 수 없었다.
+
+        만료 섹션만 칠했더니 조용해야 할 참고 섹션이 작업 섹션보다 셌다.
+        두 섹션이 같은 일에 같은 색을 쓰면서 무게가 맞는다. 채움 파랑은
+        페이지의 주 동작(헤더의 「+ 정기권 발급」) 하나로 남겨 둔다.
+    */
+    .btn-grow {
+        background: var(--color-info-bg);
+        /* 테두리를 지우면 D-배지와 같은 파란 알약이 되어 배지가 눌리는 것처럼
+           보였다. 컨트롤 테두리는 남긴다 — 누르는 것과 읽는 것의 구분이다. */
+        color: var(--color-blue-bright);
+        font-weight: var(--weight-medium);
+    }
     .btn-sm:hover { background: var(--bg-secondary); }
+    /*
+        .btn-sm:hover 가 뒤에 와서 배경만 덮고 흰 글자는 남겼다 — 1.05:1.
+        두 클래스로 특정도를 올려 배경과 글자가 같이 바뀌게 한다.
+        --color-blue(#339af0)에 흰 글자는 2.99:1 이라 텍스트로 못 쓴다(토큰 주석대로).
+    */
+    .btn-sm.btn-grow:hover { background: var(--color-blue-bright); color: var(--bg-primary); }
 
     /* 53x24 였다 — 이 콘솔이 지키는 44px 타깃 아래였다 */
     .log-toggle {
@@ -673,8 +761,6 @@
     }
     .reason-pick-btn:hover { background: var(--bg-secondary); }
 
-    .expired-row .log-list,
-    .expired-row .log-empty { padding-left: var(--space-4); padding-right: var(--space-4); }
 
     .show-more {
         width: 100%;
@@ -770,6 +856,13 @@
     .btn-secondary { background: var(--bg-primary); color: var(--text-primary); border: 1px solid var(--border-control); }
 
     @media (max-width: 560px) {
+        /* 대시보드 스트립과 같은 단계 낮추기 — 세 자리 수가 칸을 넘지 않게 */
+        .pass-summary { padding: var(--space-3); gap: var(--space-2); }
+        .pass-summary .ps-value { font-size: var(--text-lg); line-height: 1.15; }
+        .pass-summary .ps-unit { font-size: var(--text-sm); }
+        .ps-value-none { font-size: var(--text-base); }
+        .section { padding: var(--space-4); }
+
         /* 세 칸이 한 줄에 안 들어간다. 이름 줄과 액션 줄로 나눈다. */
         .pass-row { grid-template-columns: minmax(0, 1fr) auto; row-gap: var(--space-2); }
         .pass-info { grid-column: 1 / -1; }
