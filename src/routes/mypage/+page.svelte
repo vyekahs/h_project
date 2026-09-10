@@ -1151,7 +1151,12 @@
         margin-bottom: 2rem;
         box-shadow: 0 4px 15px var(--shadow-md);
         display: grid;
-        grid-template-columns: 1fr auto;
+        /* 1fr을 쓰면 왼쪽 칸이 필요 이상으로 넓어져, 그 안에서 중앙 정렬한
+           배지가 배너 왼쪽 가장자리에서 붕 떠 보인다(오른쪽 칸은 auto라
+           종료일이 가장자리에 바짝 붙는 것과 대비됨). 두 칸 다 내용 너비만큼만
+           차지하게 하고, justify-content로 배너 양 끝에 붙인다. */
+        grid-template-columns: auto auto;
+        justify-content: space-between;
         column-gap: 1rem;
         row-gap: 0.5rem;
         align-items: center;
