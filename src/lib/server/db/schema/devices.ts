@@ -30,4 +30,6 @@ export const scanners = pgTable('scanners', {
 	ipAddress: text('ip_address'),
 	metadata: jsonb('metadata'),
 	status: text('status').default('active'),
+	// 무응답 알림을 보낸 시각. NULL이면 정상이거나 아직 안 알린 상태.
+	alertedDownAt: timestamp('alerted_down_at', { withTimezone: true }),
 });

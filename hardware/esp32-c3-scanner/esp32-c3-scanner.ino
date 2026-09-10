@@ -37,8 +37,34 @@ BLEScan* pBLEScan;
 int scanTime = 10;
 int scanRounds = 3;
 int batchSize = 30;
+// scanInterval은 "스캔 시작 간격"이지 "스캔 사이의 쉬는 시간"이 아니다.
+// 스캔 자체가 scanTime × scanRounds + 라운드 간 대기 = 기본 31초를 쓰므로,
+// 이 값이 31초보다 작으면 항상 이미 지나 있어 아무 효과가 없다(연속 스캔이 된다).
+// 지금은 그게 탐지에 유리해서 그대로 두지만, 값을 바꿔도 안 먹는다면 이 때문이다.
 unsigned long scanInterval = 30 * 1000;
 unsigned long lastScanTime = 0;
+
+// --- 자가 복구 ---
+//
+// 전원은 들어와 있는데 서버에는 보고가 없는 상태로 며칠씩 방치된 적이 있다.
+// setup()에는 WiFi 실패 시 재시작이 있었지만 런타임에는 없어서, 공유기 재부팅이나
+// DHCP 문제로 한 번 끊기면 루프는 계속 돌면서 아무것도 못 보내는 채로 영원히 남았다.
+// 연속 실패가 쌓이거나 성공한 지 오래되면 스스로 재시작한다.
+int consecutiveFailures = 0;
+const int MAX_CONSECUTIVE_FAILURES = 5;
+unsigned long lastSuccessMs = 0;
+const unsigned long MAX_SILENCE_MS = 10UL * 60UL * 1000UL;  // 10분
+
+// --- 전송 실패 시 탐지 보존 ---
+//
+// 예전에는 사이클 시작마다 버퍼를 비웠다. 그래서 전송에 실패하면 그 스캔에서
+// 잡은 기기가 통째로 사라졌다. 잡히는 횟수 자체가 적은 폰(주머니 속)은 어렵게
+// 한 번 잡힌 것이 하필 전송 실패와 겹치면 그대로 날아간다.
+// 실패하면 버퍼를 유지해 다음 사이클 결과와 합쳐 보낸다. 다만 무한정 들고 있으면
+// 이미 떠난 사람을 계속 "지금 보인다"고 보고하게 되므로 몇 사이클로 제한한다.
+bool carryOver = false;
+int carriedCycles = 0;
+const int MAX_CARRY_CYCLES = 3;
 
 // Buffer (multi-scan dedup)
 //
@@ -63,6 +89,8 @@ const int MAX_NAME_LEN = 24;
 int  namedIdx[MAX_NAMED];
 char namedVals[MAX_NAMED][MAX_NAME_LEN];
 int  namedCount = 0;
+
+void noteCycleFailed();  // loop()보다 뒤에 정의되므로 명시적으로 선언한다
 
 static bool macToBytes(const char* mac, uint8_t out[6]) {
   unsigned int v[6];
@@ -166,6 +194,7 @@ void setup() {
   pBLEScan->setInterval(160);       // 100ms 주기 (단위 0.625ms)
   pBLEScan->setWindow(160);         // 160 = interval과 동일 → 100% 듀티 (연속 수신)
 
+  lastSuccessMs = millis();  // 무보고 감시 시작점
   Serial.println("=== SCANNER READY (passive, 100% duty) ===\n");
 }
 
@@ -221,19 +250,32 @@ void ensureWiFi() {
   }
 }
 
-bool sendBatch(int startIdx, int endIdx, int batchIndex, int totalBatches) {
-  // WiFi 확인
-  ensureWiFi();
+// http/client를 호출자에게서 받는다. 배치마다 새로 만들면 TLS 핸드셰이크와
+// 수십 KB 버퍼 할당이 배치 수만큼 반복된다 — 아래 sendResults 주석 참고.
+bool sendBatch(HTTPClient& http, WiFiClientSecure& client,
+               int startIdx, int endIdx, int batchIndex, int totalBatches) {
+  // 재연결 시도는 호출자가 사이클당 한 번만 한다. 여기서 하면 배치 수만큼
+  // 최대 10초씩 블로킹되어 그동안 스캔을 못 한다.
   if (WiFi.status() != WL_CONNECTED) return false;
 
   int batchCount = endIdx - startIdx;
 
-  // JSON 생성 (메모리 절약: 디바이스당 ~80바이트)
-  DynamicJsonDocument doc(batchCount * 80 + 512);
+  // JSON 생성.
+  //
+  // 디바이스 하나가 실제로 쓰는 양은 객체 슬롯 + mac 키/값 슬롯 + MAC 문자열
+  // 복사(18B) + rssi 슬롯으로 70~80바이트다. 예전 예산(80)은 경계선이라
+  // 이름이 하나만 붙어도 넘쳤다. 여유를 둔다.
+  const size_t docCapacity = (size_t)batchCount * 112 + 512;
+  DynamicJsonDocument doc(docCapacity);
   doc["scanner_id"] = SCANNER_ID;
   doc["timestamp"] = millis();
   doc["batch_index"] = batchIndex;
   doc["total_batches"] = totalBatches;
+  // 진단용: 이번 사이클에 잡은 전체 기기 수와 남은 힙.
+  // 이게 없어서 "전원은 켜져 있는데 왜 보고가 없나"를 시리얼 없이는
+  // 판단할 수 없었다.
+  doc["device_total"] = deviceCount;
+  doc["free_heap"] = (uint32_t)ESP.getFreeHeap();
 
   JsonArray devArr = doc.createNestedArray("devices");
   char macStr[18];
@@ -248,6 +290,15 @@ bool sendBatch(int startIdx, int endIdx, int batchIndex, int totalBatches) {
     if (nm) d["name"] = nm;
   }
 
+  // ArduinoJson은 용량이 모자라도 예외를 던지지 않는다. 조용히 뒷부분을 버리고
+  // 짧은 JSON을 만든다 — 잡은 기기가 보고에서 사라져도 아무 흔적이 남지 않는다.
+  // 잡히는 횟수 자체가 적은 폰(주머니 속)에는 이 유실이 치명적이므로 반드시 본다.
+  if (doc.overflowed()) {
+    Serial.println("ERROR: JSON 버퍼 부족 — 이 배치의 일부 기기가 누락된다 "
+                   "(capacity=" + String(docCapacity) + ", devices=" + String(batchCount)
+                   + "). 디바이스당 예산을 올릴 것.");
+  }
+
   String jsonString;
   serializeJson(doc, jsonString);
   doc.clear();  // JSON 메모리 즉시 해제
@@ -255,36 +306,21 @@ bool sendBatch(int startIdx, int endIdx, int batchIndex, int totalBatches) {
   Serial.print("  Batch " + String(batchIndex + 1) + "/" + String(totalBatches) + " (" + String(batchCount) + " devices, " + String(jsonString.length()) + "B)... ");
   Serial.print("Free heap: " + String(ESP.getFreeHeap()) + " ");
 
-  // HTTPS 연결 (인증서 검증 비활성화 - ESP32-C3 메모리 절약)
-  WiFiClientSecure *client = new WiFiClientSecure;
-  if (!client) {
-    Serial.println("Error: client alloc failed");
-    return false;
-  }
-  client->setInsecure();  // 인증서 검증 스킵 (메모리 절약)
-
   int code = -1;
   String response;
   {
-    // HTTPClient는 begin()에서 받은 client 포인터를 내부에 보관했다가 소멸자에서
-    // 다시 접근한다(_client->stop()). 따라서 client를 먼저 delete하면 함수가
-    // 끝나는 순간 해제된 메모리를 건드려 죽는다 — 실제로 Load access fault
-    // (MCAUSE=5, MTVAL=0x3c)로 크래시했다. 해제된 힙이 우연히 멀쩡해 보이는
-    // 동안은 몇 사이클씩 정상 동작해서 재현이 들쭉날쭉했다.
-    // 별도 스코프에 두어 http가 client보다 반드시 먼저 소멸하게 한다.
-    HTTPClient http;
     String url = String(API_SERVER) + "/api/ble/report";
-    http.begin(*client, url);
+    http.begin(client, url);
     http.setTimeout(15000);  // 15초 타임아웃
     http.addHeader("Content-Type", "application/json");
     http.addHeader("x-api-key", API_KEY);
 
     code = http.POST(jsonString);
     response = http.getString();
-    http.end();
-  }  // ← http 소멸자가 여기서 실행된다 (client는 아직 살아 있음)
-
-  delete client;  // 메모리 해제
+    // http.end()를 부르지 않는다. end()는 연결을 끊어버려서 다음 배치가
+    // 다시 TLS 핸드셰이크를 하게 된다. setReuse(true)로 열어둔 연결을
+    // 그대로 쓰고, 모든 배치가 끝난 뒤 호출자가 한 번만 닫는다.
+  }
 
   if (code > 0) {
     Serial.println("OK (" + String(code) + ")");
@@ -341,10 +377,11 @@ void loop() {
   }
   lastScanTime = millis();
 
-  // WiFi 재연결 시도
+  // WiFi 재연결 시도 (사이클당 한 번)
   ensureWiFi();
   if (WiFi.status() != WL_CONNECTED) {
     Serial.println("WiFi down, skipping");
+    noteCycleFailed();
     return;
   }
 
@@ -352,9 +389,21 @@ void loop() {
   Serial.println("Free heap before scan: " + String(ESP.getFreeHeap()));
 
   // Multi-round scan
-  deviceCount = 0;
+  //
+  // 직전 사이클의 전송이 실패했으면 버퍼를 비우지 않는다. 그래야 그때 잡은
+  // 기기가 이번 보고에 함께 실린다. addDevice()가 MAC으로 중복을 걸러주므로
+  // 그냥 이어서 채우면 된다.
+  if (carryOver && carriedCycles < MAX_CARRY_CYCLES) {
+    carriedCycles++;
+    Serial.println("Carrying over " + String(deviceCount) + " device(s) from failed report ("
+                   + String(carriedCycles) + "/" + String(MAX_CARRY_CYCLES) + ")");
+  } else {
+    deviceCount = 0;
+    namedCount = 0;  // 이름은 인덱스로 묶여 있으므로 버퍼와 함께 반드시 초기화
+    carriedCycles = 0;
+  }
+  carryOver = false;
   bufferEvictions = 0;
-  namedCount = 0;  // 이름은 인덱스로 묶여 있으므로 버퍼와 함께 반드시 초기화
   for (int round = 1; round <= scanRounds; round++) {
     Serial.println("Scan round " + String(round) + "/" + String(scanRounds) + "...");
     BLEScanResults* foundDevices = pBLEScan->start(scanTime, false);
@@ -410,7 +459,14 @@ void loop() {
     }
   }
 
-  if (deviceCount == 0) return;
+  if (deviceCount == 0) {
+    // 주변에 BLE 기기가 하나도 없는 상황은 정상이 아니다 — 이어폰·워치·노트북 등이
+    // 항상 몇 대는 잡힌다(실측 30~37대). 0개면 BLE 스택이 멈춘 쪽을 의심한다.
+    // 이 경로를 실패로 세지 않으면 보고 자체가 없어 무보고 감시에 걸리지 않는다.
+    Serial.println("No devices found — BLE 스택 이상 가능성");
+    noteCycleFailed();
+    return;
+  }
 
   // Send in batches
   if (batchSize < 1) batchSize = 30;  // 방어: 0이면 아래가 0으로 나누기가 된다
@@ -418,18 +474,81 @@ void loop() {
   Serial.println("Sending in " + String(totalBatches) + " batch(es)");
 
   int successCount = 0;
-  for (int batch = 0; batch < totalBatches; batch++) {
-    int startIdx = batch * batchSize;
-    int endIdx = min(startIdx + batchSize, deviceCount);
 
-    if (sendBatch(startIdx, endIdx, batch, totalBatches)) {
-      successCount++;
-    }
-
-    if (batch < totalBatches - 1) {
-      delay(1000);  // 배치 간 1초 대기 (메모리 회수 + TLS 안정성)
-    }
+  // TLS 클라이언트와 HTTPClient를 사이클당 하나만 만들어 모든 배치가 함께 쓴다.
+  //
+  // 예전에는 sendBatch()가 배치마다 new WiFiClientSecure를 했다. 사람이 많아
+  // 기기가 수백 대 잡히는 날에는 배치가 20개까지 늘어나는데, 그때마다 TLS
+  // 핸드셰이크를 새로 하고 수십 KB 버퍼를 할당·해제한다. 그 결과
+  //   - 보고 한 번에 1분 가까이 걸려 그동안 스캔이 멈춘다(탐지 공백)
+  //   - 힙이 파편화되어 할당이 실패하거나 죽는다
+  //     → "전원은 켜져 있는데 서버에 보고가 없는" 상태가 된다
+  // 한산한 날에는 배치가 1개뿐이라 멀쩡해 보여서 원인 찾기가 어려웠다.
+  //
+  // http를 안쪽 스코프에 둔다. HTTPClient 소멸자가 client를 다시 건드리므로
+  // (내부에 보관한 포인터로 stop() 호출) client보다 반드시 먼저 소멸해야 한다.
+  // 순서가 뒤집히면 해제된 메모리를 읽고 죽는다 — 예전에 겪은 Load access
+  // fault(MCAUSE=5)가 정확히 그 경우였다.
+  WiFiClientSecure *client = new WiFiClientSecure;
+  if (!client) {
+    Serial.println("Error: client alloc failed");
+    return;
   }
+  client->setInsecure();  // 인증서 검증 스킵 (메모리 절약)
+  {
+    HTTPClient http;
+    http.setReuse(true);  // 배치 간 연결 유지 — 핸드셰이크 반복을 없앤다
+
+    for (int batch = 0; batch < totalBatches; batch++) {
+      int startIdx = batch * batchSize;
+      int endIdx = min(startIdx + batchSize, deviceCount);
+
+      if (sendBatch(http, *client, startIdx, endIdx, batch, totalBatches)) {
+        successCount++;
+      }
+
+      // 연결을 재사용하므로 예전의 배치 간 1초 대기는 필요 없다. 그 대기는
+      // 매번 새로 만들던 TLS 버퍼를 회수할 시간을 주려던 것이었다.
+      // 20배치 기준 20초를 그대로 돌려받는다.
+    }
+
+    http.end();  // 모든 배치가 끝난 뒤 한 번만 닫는다
+  }
+  delete client;
 
   Serial.println("Report done: " + String(successCount) + "/" + String(totalBatches) + " batches OK");
+
+  if (successCount == totalBatches) {
+    consecutiveFailures = 0;
+    lastSuccessMs = millis();
+    carriedCycles = 0;
+  } else {
+    // 일부라도 실패하면 버퍼를 유지한다. 어느 배치가 빠졌는지 추적하는 것보다
+    // 전체를 다시 보내는 편이 단순하고, 서버는 같은 MAC을 다시 받아도 무해하다.
+    carryOver = true;
+    noteCycleFailed();
+  }
+}
+
+/**
+ * 사이클 실패를 기록하고, 회복 불가로 보이면 재시작한다.
+ *
+ * 실패는 두 가지로 센다.
+ *   - 연속 실패 횟수: 짧은 시간에 반복 실패하는 경우
+ *   - 마지막 성공 이후 경과: 실패로 잡히지도 않은 채 조용히 멈춘 경우
+ *     (예: 스캔이 0개만 반환해 보고 자체가 없는 상태)
+ * 어느 쪽이든 사람이 전원을 뽑아줘야 살아나는 상태보다는 재시작이 낫다.
+ */
+void noteCycleFailed() {
+  consecutiveFailures++;
+  unsigned long silent = millis() - lastSuccessMs;
+  Serial.println("Report failure #" + String(consecutiveFailures)
+                 + " (마지막 성공 " + String(silent / 1000) + "초 전)");
+
+  if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES || silent > MAX_SILENCE_MS) {
+    Serial.println("*** 서버 보고가 회복되지 않아 재시작한다 ***");
+    Serial.flush();
+    delay(1000);
+    ESP.restart();
+  }
 }
