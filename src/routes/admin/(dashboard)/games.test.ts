@@ -25,7 +25,13 @@ vi.mock('$lib/server/auth', () => ({
 vi.mock('$lib/server/liveEvents', () => ({ emitLiveEvent: vi.fn() }));
 // 종료·노쇼는 되돌릴 수 있어야 하므로 원상태를 서버에 남긴다.
 // 그 기록 자체는 여기서 검증 대상이 아니라 손잡이만 확인한다.
-vi.mock('$lib/server/adminUndo', () => ({
+/*
+    applyUndo 는 목으로 덮지 않는다. 되돌리기 적용이 대시보드 액션 밖으로
+    나갔는데 그걸 목으로 세우면 「클라이언트가 보낸 값이 DB 에 닿지 않는다」는
+    아래 검증이 아무것도 관찰하지 못하는 빈 껍데기가 된다.
+*/
+vi.mock('$lib/server/adminUndo', async (importOriginal) => ({
+    ...(await importOriginal<typeof import('$lib/server/adminUndo')>()),
     recordUndo: vi.fn(async (_kind: string, _payload: unknown, label: string) => ({ id: 1, label })),
     takeUndo: vi.fn()
 }));
