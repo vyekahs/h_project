@@ -23,6 +23,29 @@ async function notifyBleServerIrkAdd(attendeeId: number, irkHex: string) {
 }
 
 export class DeviceRegistrationService {
+    /**
+     * 등록 기기가 지금 서버와 통신 중인지.
+     *
+     * 등록은 PIN을 서버에서 받아 오고 IRK를 서버로 올리므로, 기기가 인터넷에
+     * 닿지 못하면 성립하지 않는다. 그런데 사용자 화면에서는 PIN이 멀쩡히 뜨고
+     * 아무 일도 일어나지 않아서, 뭐가 잘못됐는지 알 수가 없다.
+     * 시작하기 전에 확인해서 이유를 알려준다.
+     */
+    static async isRegistrationDeviceOnline(): Promise<boolean> {
+        try {
+            const rows = (await db.execute(sql`
+                SELECT last_seen_at > NOW() - ${sql.raw(DeviceRegistrationService.DEVICE_STALE_AFTER)} AS alive
+                FROM scanners WHERE id = 'esp32_s3_registration'
+            `)) as any[];
+            return rows[0]?.alive === true;
+        } catch (e) {
+            // 확인할 수 없으면 막지 않는다. 이 점검 때문에 멀쩡한 등록이
+            // 실패하는 쪽이 더 나쁘다.
+            console.error('[Register] 기기 상태 확인 실패 — 진행한다:', e);
+            return true;
+        }
+    }
+
     static async startRegistration(deviceId: string, attendeeId: number, deviceName: string = 'Phone') {
         const pin = Math.floor(1000 + Math.random() * 9000).toString();
         const expiresAt = new Date(Date.now() + 120 * 1000);
@@ -42,7 +65,24 @@ export class DeviceRegistrationService {
         return { pin, expiresAt, regId: (res[0] as any).id };
     }
 
+    /** 등록 기기(S3)가 살아 있다고 볼 수 있는 최대 무응답 시간. 폴링은 15초 주기다. */
+    static readonly DEVICE_STALE_AFTER = "INTERVAL '90 seconds'";
+
     static async pollForDevice(deviceId: string) {
+        // 폴링 자체를 하트비트로 쓴다.
+        //
+        // 예전에는 scanners.last_seen_at이 부팅 시 IP 등록 때만 갱신돼서, 기기가
+        // 며칠 전에 죽어도 그 값이 그대로 남아 있었다. 살아 있는지 알 방법이
+        // 없으니 "등록을 눌렀는데 아무 일도 안 일어난다"를 설명할 수 없었다.
+        //
+        // 응답을 막지 않도록 기다리지 않는다(fire-and-forget). 하트비트가 한 번
+        // 빠지는 것보다 폴링이 느려지는 쪽이 나쁘다.
+        db.execute(sql`
+            INSERT INTO scanners (id, last_seen_at, status)
+            VALUES ('esp32_s3_registration', NOW(), 'active')
+            ON CONFLICT (id) DO UPDATE SET last_seen_at = NOW(), status = 'active'
+        `).catch(e => console.error('[Register] 하트비트 갱신 실패', e));
+
         const res = await db.execute(sql`
             SELECT r.*, a.name as attendee_name
             FROM device_registrations r
