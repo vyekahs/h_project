@@ -17,7 +17,9 @@ import { attendees } from './core';
 */
 export const seasonPassReasons = pgTable('season_pass_reasons', {
 	id: serial('id').primaryKey(),
-	label: varchar('label', { length: 60 }).notNull(),
+	/** UNIQUE — 같은 문구의 사유가 둘이면 고르는 목록만 헷갈려진다. 시드의
+	    ON CONFLICT 도 이 제약이 있어야 걸린다. */
+	label: varchar('label', { length: 60 }).notNull().unique(),
 	sortOrder: integer('sort_order').notNull().default(0),
 	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 });
