@@ -229,7 +229,6 @@
             <div class="card-list">
                 {#each activeHolders as holder (holder.id)}
                     {@const days = getDaysLeft(holder.season_pass_expires_at)}
-                    {@const logs = logsByAttendee.get(Number(holder.id)) ?? []}
                     <div class="pass-card">
                         <div>
                             <div class="pass-row">
@@ -245,11 +244,8 @@
                                     <button type="button" class="btn-sm btn-grow" onclick={() => openAdjust(holder, 30)}>+30일</button>
                                 </div>
                             </div>
-                            {@render logToggle(holder, logs)}
+                            {@render logToggle(holder)}
                         </div>
-                        {#if openLogFor === holder.id}
-                            {@render logList(logs)}
-                        {/if}
                     </div>
                 {/each}
             </div>
@@ -266,17 +262,13 @@
             -->
             <ul class="expired-list">
                 {#each expiredVisible as holder (holder.id)}
-                    {@const logs = logsByAttendee.get(Number(holder.id)) ?? []}
                     <li class="expired-row">
                         <div class="expired-main">
                             <a href="/admin/attendees/{holder.id}" class="pass-name">{holder.name}</a>
                             <span class="expired-when">{shortDay(holder.season_pass_expires_at)} 만료 · {daysSince(holder.season_pass_expires_at)}일 지남</span>
                             <button type="button" class="btn-sm btn-grow" onclick={() => openGrant(holder.id)}>재발급</button>
-                            {@render logToggle(holder, logs)}
+                            {@render logToggle(holder)}
                         </div>
-                        {#if openLogFor === holder.id}
-                            {@render logList(logs)}
-                        {/if}
                     </li>
                 {/each}
             </ul>
@@ -296,15 +288,10 @@
     이력 토글. 예전에는 53×24px 글자 버튼에 「▼」 글리프였다 — 탭 타깃도 모자라고,
     이 콘솔의 아이콘은 전부 그려진 SVG 다.
 -->
-{#snippet logToggle(holder: any, logs: any[])}
-    {@const open = openLogFor === holder.id}
-    <button
-        type="button"
-        class="log-toggle"
-        aria-expanded={open}
-        onclick={() => (openLogFor = open ? null : holder.id)}
-    >
-        <svg class="chev" class:is-open={open} aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+{#snippet logToggle(holder: any)}
+    {@const logs = logsByAttendee.get(Number(holder.id)) ?? []}
+    <button type="button" class="log-toggle" onclick={() => (openLogFor = holder.id)}>
+        <svg class="chev" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"/></svg>
         이력{#if logs.length > 0}<span class="log-count">{logs.length}</span>{/if}
         <span class="sr-only"> — {holder.name}</span>
     </button>
@@ -463,6 +450,21 @@
 
             <div class="modal-actions">
                 <button type="button" class="btn-secondary" onclick={() => (sheet = null)}>취소</button>
+            </div>
+        </div>
+    </div>
+{/if}
+
+{#if openLogFor !== null}
+    {@const logHolder = (data.passHolders ?? []).find((h: any) => Number(h.id) === openLogFor)}
+    {@const logs = logsByAttendee.get(openLogFor) ?? []}
+    <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+    <div class="modal-backdrop" onclick={() => (openLogFor = null)} role="presentation">
+        <div class="modal-content" use:trapFocus={() => (openLogFor = null)} onclick={(e) => e.stopPropagation()} onkeydown={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="dlg-log" tabindex="-1">
+            <h3 id="dlg-log">{logHolder?.name ?? ''} 이력</h3>
+            {@render logList(logs)}
+            <div class="modal-actions">
+                <button type="button" class="btn-secondary" onclick={() => (openLogFor = null)}>닫기</button>
             </div>
         </div>
     </div>
@@ -666,8 +668,6 @@
         cursor: pointer;
     }
     .log-toggle:hover { background: var(--bg-secondary); color: var(--text-primary); }
-    .chev { transition: transform 0.15s; }
-    .chev.is-open { transform: rotate(180deg); }
     .log-count {
         font-variant-numeric: var(--numeric);
         padding: 0 0.35em;
@@ -675,7 +675,6 @@
         background: var(--bg-hover);
         color: var(--text-primary);
     }
-    @media (prefers-reduced-motion: reduce) { .chev { transition: none; } }
 
     .log-list {
         list-style: none;
