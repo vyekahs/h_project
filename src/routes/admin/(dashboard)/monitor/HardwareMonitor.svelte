@@ -67,6 +67,7 @@
 		isDown: boolean;
 		deviceTotal: number | null;
 		freeHeap: number | null;
+		alertEnabled: boolean;
 	};
 
 	let metrics: Metrics | null = $state(null);
@@ -272,6 +273,34 @@
 		connectSSE();
 	});
 
+	// 스캐너별 알림 on/off. 예비 스캐너를 치워두거나 등록용 단말을 꺼두는 일이
+	// 있는데, 그때마다 무응답 알림이 오면 알림 자체를 무시하게 된다.
+	//
+	// 응답을 받고 나서야 화면을 바꾼다. 먼저 바꿔두면 요청이 실패했을 때 껐다고
+	// 믿고 있다가 계속 알림을 받게 된다.
+	let togglingId = $state<string | null>(null);
+	async function toggleScannerAlert(sc: ScannerHealth) {
+		if (togglingId) return;
+		togglingId = sc.id;
+		try {
+			const res = await fetch('/api/admin/scanners/alert', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ id: sc.id, enabled: !sc.alertEnabled })
+			});
+			if (res.ok) {
+				sc.alertEnabled = !sc.alertEnabled;
+				metrics = metrics;  // 다음 SSE 갱신 전까지 화면에 반영
+			} else {
+				console.error('스캐너 알림 설정 실패', await res.text());
+			}
+		} catch (e) {
+			console.error('스캐너 알림 설정 실패', e);
+		} finally {
+			togglingId = null;
+		}
+	}
+
 	// 마지막 보고 이후 경과. 초 단위 그대로는 "3947초 전"처럼 읽기 어렵다.
 	function formatSilent(sec: number): string {
 		if (sec < 60) return `${sec}초 전`;
@@ -312,11 +341,11 @@
 		     다른 한 대는 운영 중에 멈춰 회원들이 자리에 있는데도 자동 체크아웃됐다.
 		     죽은 스캐너를 맨 위에 두어 먼저 보이게 한다. -->
 		{#if metrics.scanners}
-			<div class="detail-card scanner-card" class:has-down={metrics.scanners.some((sc) => sc.isDown)}>
+			<div class="detail-card scanner-card" class:has-down={metrics.scanners.some((sc) => sc.isDown && sc.alertEnabled)}>
 				<h3>
 					BLE 스캐너
-					{#if metrics.scanners.some((sc) => sc.isDown)}
-						<span class="scanner-alarm">⚠️ 무응답 {metrics.scanners.filter((sc) => sc.isDown).length}대</span>
+					{#if metrics.scanners.some((sc) => sc.isDown && sc.alertEnabled)}
+						<span class="scanner-alarm">⚠️ 무응답 {metrics.scanners.filter((sc) => sc.isDown && sc.alertEnabled).length}대</span>
 					{/if}
 				</h3>
 				<div class="scanner-rows">
@@ -326,7 +355,7 @@
 						<p class="scanner-empty">등록된 스캐너가 없거나 목록을 불러오지 못했습니다.</p>
 					{/if}
 					{#each [...metrics.scanners].sort((a, b) => Number(b.isDown) - Number(a.isDown)) as sc}
-						<div class="scanner-row" class:down={sc.isDown}>
+						<div class="scanner-row" class:down={sc.isDown && sc.alertEnabled} class:muted={!sc.alertEnabled}>
 							<span class="sc-dot" aria-hidden="true"></span>
 							<span class="sc-id">{sc.id}</span>
 							<span class="sc-ago">{formatSilent(sc.silentSeconds)}</span>
@@ -335,6 +364,16 @@
 								{#if sc.deviceTotal !== null && sc.freeHeap !== null}·{/if}
 								{#if sc.freeHeap !== null}힙 {Math.round(sc.freeHeap / 1024)}KB{/if}
 							</span>
+							<button
+								type="button"
+								class="sc-alert-toggle"
+								class:on={sc.alertEnabled}
+								disabled={togglingId === sc.id}
+								onclick={() => toggleScannerAlert(sc)}
+								title={sc.alertEnabled ? '무응답 시 알림을 보냅니다' : '이 기기는 알림을 보내지 않습니다'}
+							>
+								{sc.alertEnabled ? '🔔 감시 중' : '🔕 알림 끔'}
+							</button>
 						</div>
 					{/each}
 				</div>
@@ -1027,5 +1066,22 @@
 		font-size: 0.82rem;
 		color: rgba(255, 255, 255, 0.5);
 	}
+	.scanner-row.muted { opacity: 0.55; }
+	.scanner-row.muted .sc-dot { background: rgba(255, 255, 255, 0.3); }
+	.sc-alert-toggle {
+		padding: 2px 8px;
+		border-radius: 999px;
+		border: 1px solid rgba(255, 255, 255, 0.18);
+		background: transparent;
+		color: rgba(255, 255, 255, 0.55);
+		font-size: 0.7rem;
+		cursor: pointer;
+		white-space: nowrap;
+	}
+	.sc-alert-toggle.on {
+		border-color: rgba(34, 197, 94, 0.4);
+		color: #86efac;
+	}
+	.sc-alert-toggle:disabled { opacity: 0.5; cursor: default; }
 	.sc-meta { margin-left: auto; font-size: 0.75rem; color: rgba(255, 255, 255, 0.45); }
 </style>

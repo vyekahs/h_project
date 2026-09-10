@@ -123,6 +123,24 @@ async function migrate() {
         // 값이 NULL이면 "정상 또는 아직 안 알림", 시각이 있으면 "무응답을 알린 상태".
         // 스캐너가 다시 보고를 시작하면 복구 알림과 함께 NULL로 되돌린다.
         await pool.query('ALTER TABLE scanners ADD COLUMN IF NOT EXISTS alerted_down_at TIMESTAMPTZ;');
+        // 스캐너별 알림 스위치. 일부러 꺼두는 기기(등록용 단말, 예비 스캐너)까지
+        // 무응답 알림이 오면 알림 자체를 무시하게 된다. 어드민 모니터에서 토글한다.
+        //
+        // 전부 켜진 상태로 시작한다. "오래 조용하면 치워둔 것"이라고 추측해
+        // 꺼둘 수도 있지만, 그러면 관리자가 "이건 왜 꺼져 있지?"를 먼저 풀어야 한다.
+        // 감시할지 말지는 사람이 정하는 것이므로 기본값은 감시로 두고 끄게 한다.
+        await pool.query(`
+            DO $$ BEGIN
+                ALTER TABLE scanners ADD COLUMN alert_enabled BOOLEAN NOT NULL DEFAULT TRUE;
+                -- 등록용 단말(esp32_s3_registration)은 평소 꺼두고 필요할 때만 켜서 쓴다.
+                -- 켜진 채로 두면 영업 때마다 "무응답" 알림이 오고, 그런 알림이 쌓이면
+                -- 진짜 고장 알림까지 함께 무시하게 된다.
+                --
+                -- 컬럼을 '방금 만든 경우에만' 끈다(중복 컬럼이면 위에서 예외로 빠짐).
+                -- 매번 돌리면 나중에 관리자가 켜둔 설정을 재기동마다 되돌려버린다.
+                UPDATE scanners SET alert_enabled = FALSE WHERE id = 'esp32_s3_registration';
+            EXCEPTION WHEN duplicate_column THEN null; END $$;
+        `);
         // 스캐너 무응답 알림은 그 시각 혼놀에 있는 관리자에게 보낸다. 아무도 없으면
         // 이 사람에게 보낸다. 바꾸려면 이 행의 value를 다른 attendee id로 UPDATE하면 된다.
         await pool.query(`
