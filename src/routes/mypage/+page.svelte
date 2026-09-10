@@ -1172,7 +1172,7 @@
     .season-pass-banner .badge {
         grid-column: 1;
         grid-row: 1;
-        justify-self: start;
+        justify-self: center;
         background: rgba(255,255,255,0.2);
         padding: 0.4rem 0.8rem;
         border-radius: 20px;
@@ -1183,7 +1183,7 @@
     .season-pass-banner .d-day {
         grid-column: 1;
         grid-row: 2;
-        justify-self: start;
+        justify-self: center;
         font-size: 1.5rem;
         font-weight: 800;
         color: var(--bg-primary);
