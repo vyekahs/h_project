@@ -3,7 +3,7 @@ import { db } from '$lib/server/db/index';
 import { sql } from 'drizzle-orm';
 import crypto from 'crypto';
 import { emitLiveEvent } from '$lib/server/liveEvents';
-import { markInfraMacs, recordWifiSample } from '$lib/server/wifiLearning';
+import { markInfraMacs, setLatestLanMacs, recordCheckinObservation } from '$lib/server/wifiLearning';
 
 // Types
 interface ScanResult {
@@ -541,6 +541,11 @@ export async function processAutoCheckin(detectedAttendeeIds: Set<number>, isWit
                 attendee.status = 'present';
                 pushAutoLog('checkin', source, attendee.name, attendeeId);
                 emitLiveEvent('visitors');
+
+                // 이 순간이 확신이 가장 높다 — BLE로 방금 잡혔으니 확실히 거기 있다.
+                // 그때 랜에 있던 MAC들을 오늘의 후보로 남겨, 날짜별로 교차시킨다.
+                recordCheckinObservation(attendeeId).catch(e =>
+                    console.error('[WiFiLearn] 관측 실패', e));
             } catch (e) {
                 console.error(`[${source}] Failed to check-in ${attendeeId}`, e);
             }
@@ -687,17 +692,13 @@ export async function processWifiReport(_scannerId: string, devices: { mac: stri
         return;
     }
 
-    // MAC 자동 학습 표본.
+    // 최신 랜 상태를 들고 있는다. MAC 자동 학습이 BLE 체크인 순간에 이 값을 쓴다.
+    // 체크인은 아무 때나 일어나고 WiFi 보고는 몇 분에 한 번이라, 그때 스캐너를
+    // 다시 부를 수 없다.
     //
-    // 정답지는 BLE로 확인된 회원이다. WiFi 판정 결과를 쓰면 스스로 학습한 결과로
-    // 다시 학습하는 되먹임이 생겨, 한 번 잘못 짝지어진 MAC이 영원히 굳어진다.
-    // 그래서 wifiMacCache가 비어 있어(등록자 0명) 아래에서 일찍 반환하더라도
-    // 학습은 그 전에 해둔다 — 등록자가 없을 때야말로 학습이 가장 필요하다.
-    const bleConfirmed = [...lastSeenBleMap.entries()]
-        .filter(([, ts]) => Date.now() - ts < 5 * 60 * 1000)
-        .map(([id]) => id);
-    recordWifiSample(devices.map(d => d.mac), bleConfirmed).catch(e =>
-        console.error('[WiFi] 학습 표본 기록 실패', e));
+    // 등록자가 0명이라 아래에서 일찍 반환하더라도 이건 먼저 해둔다 —
+    // 등록자가 없을 때야말로 학습이 가장 필요하다.
+    setLatestLanMacs(devices.map(d => d.mac));
 
     if (wifiMacCache.size === 0) {
         console.log(`[${kstTime()}][WiFi] No WiFi MACs registered, skipping`);
