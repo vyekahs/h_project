@@ -2,8 +2,6 @@
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
 #include <ArduinoJson.h>
-#include <vector>
-#include <set>
 #include <NimBLEDevice.h>
 #include <NimBLEHIDDevice.h>
 #include <esp_bt.h>
@@ -28,14 +26,40 @@ const char* SERVER_URL = "https://damonpyo.mooo.com";
 
 // WiFi Promiscuous Scan Config
 const unsigned long WIFI_SCAN_INTERVAL = 300000;  // 5분마다 스캔
+// 스캔하는 동안 BLE 광고를 멈추므로 그 시간엔 등록하려는 사람에게 기기가 안 보인다.
+// 15초는 5분 중 5%였다. 10초면 충분히 모이고 사각 시간도 준다.
+const unsigned long PROMISC_SCAN_MS = 10000;
 unsigned long lastWifiScanTime = 0;
 
 // WiFi Promiscuous Mode - MAC 수집
-std::set<String> promiscCollectedMacs;
-String ownMacUpper = "";      // ESP32 자신의 MAC (필터용)
-String gatewayMacUpper = "";  // 공유기 MAC (필터용)
+//
+// 원시 6바이트로 담는다. 예전에는 std::set<String>에 넣었는데, 이 콜백은 WiFi
+// 태스크에서 초당 수백 번 호출되므로 프레임마다 malloc(String 생성 + 트리 노드)이
+// 일어났다. 사람이 많아 프레임이 쏟아질수록 힙이 파편화되고, 30KB 밑으로 떨어지면
+// 힙 감시가 기기를 재시작시킨다 — "사람 많을 때 불안정하다"의 정체다.
+//
+// 중복 검사는 선형 탐색이지만 6바이트 memcmp를 최대 96번 하는 것뿐이라
+// malloc 한 번보다 훨씬 싸다.
+const int MAX_PROMISC_MACS = 96;
+uint8_t promiscMacs[MAX_PROMISC_MACS][6];
+volatile int promiscMacCount = 0;
+uint8_t ownMacBytes[6];       // ESP32 자신의 MAC (필터용)
+uint8_t gatewayMacBytes[6];   // 공유기 MAC (필터용)
+bool gatewayMacKnown = false;
 
-// Promiscuous 콜백 — WiFi 태스크에서 실행되므로 최대한 가볍게
+static bool parseMacBytes(const String& mac, uint8_t out[6]) {
+    unsigned int v[6];
+    if (sscanf(mac.c_str(), "%x:%x:%x:%x:%x:%x",
+               &v[0], &v[1], &v[2], &v[3], &v[4], &v[5]) != 6) return false;
+    for (int i = 0; i < 6; i++) out[i] = (uint8_t)v[i];
+    return true;
+}
+
+static bool macEq(const uint8_t* a, const uint8_t* b) {
+    return memcmp(a, b, 6) == 0;
+}
+
+// Promiscuous 콜백 — WiFi 태스크에서 실행되므로 힙을 절대 건드리지 않는다
 void IRAM_ATTR wifiPromiscuousCallback(void* buf, wifi_promiscuous_pkt_type_t type) {
     // 관리 프레임과 데이터 프레임만 처리 (컨트롤 프레임은 MAC 정보 없음)
     if (type != WIFI_PKT_MGMT && type != WIFI_PKT_DATA) return;
@@ -56,15 +80,18 @@ void IRAM_ATTR wifiPromiscuousCallback(void* buf, wifi_promiscuous_pkt_type_t ty
     // 멀티캐스트 필터 (첫 바이트 비트 0 = 멀티캐스트/브로드캐스트)
     if (addr2[0] & 0x01) return;
 
-    char macStr[18];
-    snprintf(macStr, sizeof(macStr), "%02X:%02X:%02X:%02X:%02X:%02X",
-             addr2[0], addr2[1], addr2[2], addr2[3], addr2[4], addr2[5]);
-    String mac(macStr);
-
     // 자기 자신과 공유기 필터
-    if (mac == ownMacUpper || mac == gatewayMacUpper) return;
+    if (macEq(addr2, ownMacBytes)) return;
+    if (gatewayMacKnown && macEq(addr2, gatewayMacBytes)) return;
 
-    promiscCollectedMacs.insert(mac);
+    // 이미 담은 MAC인지 (선형 탐색 — 힙을 안 쓰는 게 여기서는 훨씬 중요하다)
+    int n = promiscMacCount;
+    for (int i = 0; i < n; i++) {
+        if (macEq(promiscMacs[i], addr2)) return;
+    }
+    if (n >= MAX_PROMISC_MACS) return;  // 넘치면 버린다. 재실 판정에는 충분한 수다.
+    memcpy(promiscMacs[n], addr2, 6);
+    promiscMacCount = n + 1;
 }
 
 // Static IP Config (네트워크 대역: 172.30.1.x)
@@ -87,7 +114,12 @@ uint16_t currentConnId = 0xFFFF;
 
 // Polling Globals
 unsigned long lastPollTime = 0;
-const unsigned long POLL_INTERVAL_IDLE = 5000;   // idle 상태: 5초마다 폴링
+// idle 상태 폴링 주기.
+//
+// 5초였다. 등록 요청은 하루 몇 번 있을까 말까 한 이벤트인데 하루 17,000번 TLS
+// 핸드셰이크를 새로 했다. 힙 파편화의 큰 축이었다.
+// 15초로 늘려도 등록을 누른 뒤 최대 15초면 기기가 알아채므로 체감 차이가 작다.
+const unsigned long POLL_INTERVAL_IDLE = 15000;
 bool isRegistering = false;
 String myMacAddress = "";
 
@@ -372,6 +404,8 @@ void registerIp() {
         String json;
         serializeJson(doc, json);
 
+        esp_task_wdt_reset();  // HTTP는 초 단위로 블로킹한다
+
         int code = http.POST(json);
         Serial.printf("[IP] Attempt %d/3: HTTP %d\n", attempt, code);
         http.end();
@@ -592,7 +626,7 @@ void scanLocalDevices() {
     Serial.printf("[WiFi] Free heap before scan: %d\n", ESP.getFreeHeap());
 
     // Phase 1: Promiscuous mode로 15초간 MAC 수집
-    promiscCollectedMacs.clear();
+    promiscMacCount = 0;
 
     // BLE 광고 일시 중단 (Promiscuous 모드와 BLE 동시 사용 시 간섭)
     NimBLEDevice::stopAdvertising();
@@ -601,10 +635,10 @@ void scanLocalDevices() {
     esp_wifi_set_promiscuous_rx_cb(wifiPromiscuousCallback);
     esp_wifi_set_promiscuous(true);
 
-    Serial.println("[WiFi] Promiscuous mode ON, scanning for 15 seconds...");
+    Serial.printf("[WiFi] Promiscuous mode ON, scanning for %lu seconds...\n", PROMISC_SCAN_MS / 1000);
     bool scanAborted = false;
     unsigned long scanStart = millis();
-    while (millis() - scanStart < 15000) {
+    while (millis() - scanStart < PROMISC_SCAN_MS) {
         delay(100);  // 100ms 간격으로 체크 (BLE 연결 빠르게 감지)
         esp_task_wdt_reset();
         localServer.handleClient();  // WiFi 등록 요청 처리 유지
@@ -617,7 +651,7 @@ void scanLocalDevices() {
     }
 
     esp_wifi_set_promiscuous(false);
-    Serial.printf("[WiFi] Promiscuous mode OFF, captured %d unique MACs\n", promiscCollectedMacs.size());
+    Serial.printf("[WiFi] Promiscuous mode OFF, captured %d unique MACs\n", promiscMacCount);
 
     // BLE 광고 재시작 (BLE 연결 중이 아닐 때만)
     if (currentConnId == 0xFFFF && !isRegistering) {
@@ -627,15 +661,13 @@ void scanLocalDevices() {
 
     // BLE 연결로 스캔이 중단된 경우 불완전한 데이터 전송 스킵
     if (scanAborted) {
-        promiscCollectedMacs.clear();
+        promiscMacCount = 0;
         return;
     }
 
-    // Phase 2: set → vector 변환
-    std::vector<String> macs(promiscCollectedMacs.begin(), promiscCollectedMacs.end());
-    promiscCollectedMacs.clear();  // 메모리 해제
-
-    if (macs.size() == 0) return;
+    // Phase 2: 수집 결과 확정 (콜백은 위에서 이미 멈췄다)
+    const int macCount = promiscMacCount;
+    if (macCount == 0) return;
 
     // Phase 3: 서버에 전송
     HTTPClient https;
@@ -644,22 +676,31 @@ void scanLocalDevices() {
     https.addHeader("Content-Type", "application/json");
     https.addHeader("x-api-key", SCANNER_API_KEY);
 
-    DynamicJsonDocument doc(macs.size() * 50 + 512);
+    DynamicJsonDocument doc((size_t)macCount * 56 + 512);
     doc["scanner_id"] = "esp32_s3_wifi";
     doc["timestamp"] = millis();
 
     JsonArray devArr = doc.createNestedArray("devices");
-    for (const auto& mac : macs) {
+    char macStr[18];
+    for (int i = 0; i < macCount; i++) {
+        snprintf(macStr, sizeof(macStr), "%02X:%02X:%02X:%02X:%02X:%02X",
+                 promiscMacs[i][0], promiscMacs[i][1], promiscMacs[i][2],
+                 promiscMacs[i][3], promiscMacs[i][4], promiscMacs[i][5]);
         JsonObject d = devArr.createNestedObject();
-        d["mac"] = mac;
+        d["mac"] = macStr;   // char*는 ArduinoJson이 내부 풀로 복사한다
+    }
+    if (doc.overflowed()) {
+        Serial.println("[WiFi] JSON 버퍼 부족 — 일부 MAC 누락");
     }
 
     String jsonStr;
     serializeJson(doc, jsonStr);
     doc.clear();
 
+    esp_task_wdt_reset();   // 전송 직전 — 아래 POST가 최대 15초 블로킹한다
     int responseCode = https.POST(jsonStr);
-    Serial.printf("[WiFi] Report sent: %d (%d devices)\n", responseCode, macs.size());
+    esp_task_wdt_reset();
+    Serial.printf("[WiFi] Report sent: %d (%d devices)\n", responseCode, macCount);
 
     https.end();
 
@@ -683,6 +724,8 @@ void uploadIrk(String irk) {
 
         String json;
         serializeJson(doc, json);
+
+        esp_task_wdt_reset();  // HTTP는 초 단위로 블로킹한다
 
         int code = http.POST(json);
         Serial.printf("Upload Result: %d\n", code);
@@ -710,7 +753,11 @@ void pollServer() {
     String url = baseUrl + "/api/devices/poll?deviceId=" + shortId;
     http.begin(getHttpClient(), url);
     http.setTimeout(10000);
+    // 이 GET은 최대 10초, TLS 핸드셰이크까지 더하면 그 이상 블로킹한다.
+    // 워치독이 30초라 네트워크가 느린 날엔 여기서 패닉 재부팅이 났다.
+    esp_task_wdt_reset();  // 이 GET은 TLS 포함 10초 이상 블로킹할 수 있다
     int code = http.GET();
+    esp_task_wdt_reset();
 
     Serial.printf("[Poll] code=%d\n", code);
 
@@ -807,11 +854,14 @@ void setup() {
   Serial.println("MAC: " + myMacAddress);
 
   // Promiscuous 필터용 MAC 캡처
-  ownMacUpper = WiFi.macAddress();  // "XX:XX:XX:XX:XX:XX" 형태
+  // 필터용 MAC은 바이트로 들고 있는다. 콜백에서 문자열로 비교하면 프레임마다
+  // String 임시 객체가 생겨, 힙을 안 쓰려고 바꾼 의미가 없어진다.
+  WiFi.macAddress(ownMacBytes);
   delay(500);
-  gatewayMacUpper = getMacFromArp(gateway);  // 게이트웨이 MAC (ARP 1회)
-  Serial.println("[WiFi] Own MAC: " + ownMacUpper);
-  Serial.println("[WiFi] Gateway MAC: " + gatewayMacUpper);
+  String gwStr = getMacFromArp(gateway);  // 게이트웨이 MAC (ARP 1회)
+  gatewayMacKnown = parseMacBytes(gwStr, gatewayMacBytes);
+  Serial.println("[WiFi] Own MAC: " + WiFi.macAddress());
+  Serial.println("[WiFi] Gateway MAC: " + (gatewayMacKnown ? gwStr : String("(미확인)")));
 
     // BLE Init (NimBLE)
     NimBLEDevice::init("HN_SETUP");
@@ -940,10 +990,13 @@ void loop() {
       ESP.restart();
   }
 
-  // WiFi ARP 스캔 (idle 상태에서만, 60초마다)
+  // WiFi 프로미스큐어스 스캔 (idle 상태에서만, WIFI_SCAN_INTERVAL 주기)
   if (!isRegistering && millis() - lastWifiScanTime > WIFI_SCAN_INTERVAL) {
       lastWifiScanTime = millis();
       scanLocalDevices();
+      // 스캔 중에는 폴링이 멈춘다(루프가 그 안에 있다). 스캔이 끝나자마자 한 번
+      // 확인해, 그동안 들어온 등록 요청이 다음 주기까지 밀리지 않게 한다.
+      lastPollTime = 0;
   }
 
   // Watchdog 리셋 (loop가 정상 동작 중임을 알림)
