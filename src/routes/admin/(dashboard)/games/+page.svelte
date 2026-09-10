@@ -8,7 +8,12 @@
 
     /** 목록 표시 방식 — 기본은 표. 200종에서 카드 그리드는 스캔이 불가능하다. */
     let viewMode: 'table' | 'card' = $state('table');
-    let sortKey: 'name' | 'players' | 'playtime' | 'complexity' = $state('name');
+    /*
+        표는 "어떤 게임이 있나"를 보는 자리다. 인원·시간은 매니저가 이미 아는
+        값이라 열을 두 개 먹으면서 이름과 동작을 밀어냈다. 열을 걷어냈으므로
+        그 정렬 키도 닿을 수 없다 — 카드 뷰는 두 값을 그대로 보여준다.
+    */
+    let sortKey: 'name' | 'complexity' = $state('name');
     let sortAsc = $state(true);
     /** 'all' | 'active' | 'inactive' | 'noimage' */
     let filterKey: 'all' | 'active' | 'inactive' | 'noimage' = $state('all');
@@ -73,6 +78,12 @@
 
     let showModal = $state(false);
     let showBggModal = $state(false);
+    /*
+        BGG 가져오기가 이 화면에서 가장 잦은 동작인데 헤더 오른쪽 위에 있었다 —
+        폰에서 목록을 훑다가 쓰려면 맨 위까지 올라가야 하는 자리다. 엄지가 놓이는
+        오른쪽 아래로 내리고, 두 길(직접 입력 · BGG)을 그 아래 펼친다.
+    */
+    let fabOpen = $state(false);
     let isEditing = $state(false);
     let selectedGame: any = $state(null);
     let isUnlimitedTime = $state(false);
@@ -146,8 +157,6 @@
 
     const sortedGames = $derived([...filteredGames].sort((a: any, b: any) => {
         const dir = sortAsc ? 1 : -1;
-        if (sortKey === 'players') return ((a.min_players ?? 0) - (b.min_players ?? 0)) * dir;
-        if (sortKey === 'playtime') return ((a.playtime_min ?? 0) - (b.playtime_min ?? 0)) * dir;
         if (sortKey === 'complexity') return ((a.complexity ?? 0) - (b.complexity ?? 0)) * dir;
         return a.name.localeCompare(b.name, 'ko') * dir;
     }));
@@ -289,19 +298,16 @@
     };
 </script>
 
+<svelte:window onkeydown={(e) => { if (e.key === 'Escape' && fabOpen) fabOpen = false; }} />
+
 <div class="games-page">
     <div class="header">
         <h1>
             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:10px; vertical-align:text-bottom;"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></svg>
             게임 도감
         </h1>
-        <div class="header-actions">
-            <button class="btn-secondary" onclick={() => showBggModal = true}>
-                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px;"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
-                BGG에서 가져오기
-            </button>
-            <button class="btn-primary" onclick={openAddModal}>+ 게임 추가</button>
-        </div>
+        <!-- 추가하는 두 길은 오른쪽 아래 플로팅 버튼이 갖는다. 여기 두면
+             같은 동작이 두 곳에 생긴다. -->
     </div>
 
     <div class="search-bar">
@@ -352,22 +358,12 @@
             <thead>
                 <tr>
                     <th class="col-thumb"><span class="sr-only">커버</span></th>
-                    <th>
+                    <th class="col-name">
                         <button class="sort-btn" onclick={() => toggleSort('name')} aria-label="이름으로 정렬">
                             이름{#if sortKey === 'name'}<span aria-hidden="true">{sortAsc ? ' ↑' : ' ↓'}</span>{/if}
                         </button>
                     </th>
-                    <th class="col-num">
-                        <button class="sort-btn" onclick={() => toggleSort('players')} aria-label="인원으로 정렬">
-                            인원{#if sortKey === 'players'}<span aria-hidden="true">{sortAsc ? ' ↑' : ' ↓'}</span>{/if}
-                        </button>
-                    </th>
-                    <th class="col-num">
-                        <button class="sort-btn" onclick={() => toggleSort('playtime')} aria-label="시간으로 정렬">
-                            시간{#if sortKey === 'playtime'}<span aria-hidden="true">{sortAsc ? ' ↑' : ' ↓'}</span>{/if}
-                        </button>
-                    </th>
-                    <th class="col-num">
+                    <th class="col-num col-complexity">
                         <button class="sort-btn" onclick={() => toggleSort('complexity')} aria-label="난이도로 정렬">
                             난이도{#if sortKey === 'complexity'}<span aria-hidden="true">{sortAsc ? ' ↑' : ' ↓'}</span>{/if}
                         </button>
@@ -388,31 +384,39 @@
                                 </span>
                             {/if}
                         </td>
-                        <td>
-                            <button class="name-link" onclick={() => openDetailModal(game)}>{game.name}</button>
-                            {#if !game.is_active}<span class="badge-inactive">비활성</span>{/if}
-                            {#if brokenImages.has(game.id)}<span class="badge-broken">이미지 끊김</span>{/if}
+                        <td class="col-name">
+                            <span class="name-cell">
+                                <button class="name-link" title={game.name} onclick={() => openDetailModal(game)}>{game.name}</button>
+                                {#if !game.is_active}<span class="badge-inactive">비활성</span>{/if}
+                                {#if brokenImages.has(game.id)}<span class="badge-broken">이미지 끊김</span>{/if}
+                            </span>
                         </td>
-                        <td class="col-num">{fmtPlayers(game)}</td>
-                        <td class="col-num">{fmtPlaytime(game)}</td>
-                        <td class="col-num">{game.complexity ?? EMPTY}</td>
-                        <td class="col-dlc">{game.included_dlcs || '—'}</td>
+                        <td class="col-num col-complexity">{game.complexity ?? EMPTY}</td>
+                        <td class="col-dlc" title={game.included_dlcs || undefined}>{game.included_dlcs || '—'}</td>
                         <td class="col-actions">
+                            <!--
+                                아이콘만으로는 무슨 동작인지 읽히지 않았다. 글자로
+                                돌아가되 이름을 짧게 든다 — 「비활성화」·「완전 삭제」는
+                                폰에서 셋이 나란히 서면 화면을 넘긴다. 온전한 이름은
+                                title 과 aria-label 이 갖고, 보이는 글자는 그 앞머리라
+                                스크린리더 이름과 보이는 이름이 어긋나지 않는다.
+                                높이는 36px, 손가락이 닿는 넓이는 ::after 로 44px.
+                            -->
                             <div class="row-actions">
-                                <button class="btn-quiet" onclick={() => openEditModal(game)}>수정</button>
+                                <button class="btn-row" onclick={() => openEditModal(game)}>수정</button>
                                 {#if game.is_active}
-                                    <button class="btn-quiet" onclick={() => (confirmAction = { kind: 'deactivate', game })}>비활성화</button>
+                                    <button class="btn-row" onclick={() => (confirmAction = { kind: 'deactivate', game })} title="비활성화" aria-label="{game.name} 비활성화">비활성</button>
                                 {:else}
                                     <form method="POST" action="?/reactivate" use:enhance={() => async ({ result, update }) => {
                                         reportResult(result, `${game.name}을(를) 복구했습니다.`);
                                         await update();
                                     }}>
                                         <input type="hidden" name="id" value={game.id} />
-                                        <button type="submit" class="btn-quiet">복구</button>
+                                        <button type="submit" class="btn-row" aria-label="{game.name} 복구">복구</button>
                                     </form>
                                 {/if}
                                 {#if !game.has_history}
-                                    <button class="btn-danger-quiet" onclick={() => (confirmAction = { kind: 'delete', game })}>완전 삭제</button>
+                                    <button class="btn-row is-danger" onclick={() => (confirmAction = { kind: 'delete', game })} title="완전 삭제" aria-label="{game.name} 완전 삭제">삭제</button>
                                 {/if}
                             </div>
                         </td>
@@ -421,7 +425,7 @@
             </tbody>
         </table>
         {#if sortedGames.length === 0}
-            <p class="empty-state">{gameSearch ? '검색 결과가 없습니다. 다른 이름이나 BGG ID로 찾아보세요.' : '등록된 게임이 없습니다. 「+ 게임 추가」나 「BGG에서 가져오기」로 시작하세요.'}</p>
+            <p class="empty-state">{gameSearch ? '검색 결과가 없습니다. 다른 이름이나 BGG ID로 찾아보세요.' : '등록된 게임이 없습니다. 오른쪽 아래 「게임 추가」로 시작하세요.'}</p>
         {/if}
     </div>
 {:else}
@@ -497,7 +501,7 @@
             </div>
         {/each}
         {#if sortedGames.length === 0}
-            <div class="empty-state">{gameSearch ? '검색 결과가 없습니다. 다른 이름이나 BGG ID로 찾아보세요.' : '등록된 게임이 없습니다. 「+ 게임 추가」나 「BGG에서 가져오기」로 시작하세요.'}</div>
+            <div class="empty-state">{gameSearch ? '검색 결과가 없습니다. 다른 이름이나 BGG ID로 찾아보세요.' : '등록된 게임이 없습니다. 오른쪽 아래 「게임 추가」로 시작하세요.'}</div>
         {/if}
     </div>
 {/if}
@@ -506,6 +510,39 @@
             더 보기 ({visibleGames.length}/{sortedGames.length})
         </button>
     {/if}
+</div>
+
+<!--
+    펼친 동안은 바깥 아무 데나 눌러 닫는다. 백드롭을 깔지 않으면 폰에서 메뉴를
+    무르는 유일한 길이 같은 버튼을 정확히 다시 누르는 것뿐이다.
+-->
+{#if fabOpen}
+    <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+    <div class="fab-backdrop" onclick={() => (fabOpen = false)} role="presentation"></div>
+{/if}
+<div class="fab-wrap">
+    {#if fabOpen}
+        <div class="fab-menu">
+            <button class="fab-item" onclick={() => { fabOpen = false; openAddModal(); }}>
+                <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
+                직접 입력
+            </button>
+            <button class="fab-item" onclick={() => { fabOpen = false; showBggModal = true; }}>
+                <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+                BGG에서 가져오기
+            </button>
+        </div>
+    {/if}
+    <button
+        class="fab"
+        class:is-open={fabOpen}
+        aria-expanded={fabOpen}
+        aria-haspopup="menu"
+        onclick={() => (fabOpen = !fabOpen)}
+    >
+        <svg class="fab-plus" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        게임 추가
+    </button>
 </div>
 
 {#if confirmAction}
@@ -1048,7 +1085,11 @@
         font-variant-numeric: var(--numeric);
     }
     .col-thumb { width: 48px; }
+    /* 확장도 자유 입력이라 길이에 상한이 없다. 온전한 값은 title 이 갖는다. */
     .col-dlc {
+        max-width: 14rem;
+        overflow: hidden;
+        text-overflow: ellipsis;
         max-width: 18rem;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -1061,27 +1102,137 @@
         (0,2,0 대 0,1,0) 실제로는 왼쪽 정렬이었다. 그래서 「완전 삭제」가
         붙는 행만 오른쪽으로 74px 더 뻗어 나가고(1120px 대 1194px),
         오른쪽 끝이 어느 행에서도 맞지 않았다.
-        3.5+4.5+4.75rem + 간격 2칸 + 셀 좌우 패딩 = 15.25rem.
+        2.75+3.5+2.75rem + 간격 2칸(16px) + 셀 좌우 패딩(24px) = 11.5rem.
     */
     .col-actions {
-        width: 15.25rem;
+        width: 11.5rem;
         white-space: nowrap;
     }
     /*
-        세 자리를 항상 잡아 둔다. 「완전 삭제」는 플레이 기록이 없는 게임에만
-        붙는 드문 버튼이라, 자리를 비워 두지 않으면 그 한 행 때문에 앞의 두
-        버튼까지 밀린다. 자리를 고정하면 수정·비활성화·완전 삭제가 각각
-        같은 x 에서 시작하고 끝난다.
+        세 자리를 항상 잡아 둔다. 「삭제」는 플레이 기록이 없는 게임에만 붙는
+        드문 버튼이라, 자리를 비워 두지 않으면 그 한 행 때문에 앞의 두 버튼까지
+        밀린다. 자리를 고정하면 셋이 각각 같은 x 에서 시작하고 끝난다.
     */
     .row-actions {
         display: grid;
-        grid-template-columns: 3.5rem 4.5rem 4.75rem;
+        grid-template-columns: 2.75rem 3.5rem 2.75rem;
         gap: var(--space-2);
         align-items: center;
     }
     /* form 은 복구 버튼을 감싸는 껍데기일 뿐이라 그리드 자리를 차지하면 안 된다 */
     .row-actions form { display: contents; }
-    .row-actions button { width: 100%; }
+    /*
+        44px 로 세우면 버튼이 행 높이를 정해 버린다(썸네일 40 · 이름 24).
+        여러 판을 한눈에 훑으려고 쓰는 표에서 그 4px 이 줄 수를 깎는다.
+        보이는 높이는 36px 로 두고, 손가락이 닿는 넓이만 ::after 로 44px 로
+        넓힌다. 좌우로도 4px 씩 뻗는데 버튼 간격이 8px 이라 딱 맞닿고 겹치지
+        않는다 — 겹치면 「비활성」을 노린 손가락이 옆의 「삭제」에 떨어진다.
+    */
+    .btn-row {
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        min-height: 36px;
+        padding: 0 var(--space-1);
+        background: none;
+        border: 1px solid var(--border-medium);
+        border-radius: var(--radius-control);
+        color: var(--text-primary);
+        font-family: inherit;
+        font-size: var(--text-xs);
+        white-space: nowrap;
+        cursor: pointer;
+    }
+    .btn-row::after {
+        content: '';
+        position: absolute;
+        inset: -4px;
+    }
+    .btn-row:hover,
+    .btn-row:focus-visible {
+        background: var(--bg-secondary);
+    }
+    .btn-row.is-danger {
+        background: var(--danger-outline-bg);
+        border-color: var(--danger-outline-fg);
+        color: var(--danger-outline-fg);
+    }
+    /*
+        ── 플로팅 추가 버튼 ──
+        폰에는 하단 내비(--admin-nav-height)가 깔려 있으므로 그 위로 올라온다.
+        z-index 는 내비(100)보다 낮게 둔다 — 겹치지 않는 자리라 위로 올릴 이유가
+        없고, 모달 백드롭(1000)에는 당연히 덮여야 한다.
+    */
+    .fab-wrap {
+        position: fixed;
+        right: var(--space-5);
+        bottom: var(--space-5);
+        z-index: 90;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: var(--space-2);
+    }
+    .fab-backdrop {
+        position: fixed;
+        inset: 0;
+        z-index: 89;
+    }
+    .fab {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--space-2);
+        min-height: 48px;
+        padding: 0 var(--space-5);
+        border: none;
+        border-radius: var(--radius-pill);
+        background: var(--color-blue-bright);
+        color: white;
+        font-family: inherit;
+        font-size: var(--text-sm);
+        font-weight: var(--weight-medium);
+        white-space: nowrap;
+        cursor: pointer;
+        box-shadow: 0 4px 16px var(--shadow-lg);
+    }
+    /* 열린 상태를 색이 아니라 모양으로 말한다 — 같은 +가 ×가 된다 */
+    .fab-plus {
+        transition: transform 0.15s;
+    }
+    .fab.is-open .fab-plus {
+        transform: rotate(45deg);
+    }
+    .fab-menu {
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        gap: var(--space-2);
+    }
+    .fab-item {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--space-2);
+        min-height: 44px;
+        padding: 0 var(--space-4);
+        border: 1px solid var(--border-default);
+        border-radius: var(--radius-pill);
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        font-family: inherit;
+        font-size: var(--text-sm);
+        white-space: nowrap;
+        cursor: pointer;
+        box-shadow: 0 2px 10px var(--shadow-lg);
+    }
+    .fab-item:hover,
+    .fab-item:focus-visible {
+        background: var(--bg-secondary);
+    }
+    @media (prefers-reduced-motion: reduce) {
+        .fab-plus { transition: none; }
+    }
     .thumb {
         width: 40px;
         height: 40px;
@@ -1111,9 +1262,38 @@
         cursor: pointer;
         min-height: 24px;
     }
-    .name-link {
-        display: inline-flex;
+    /*
+        이름은 길이에 상한이 없다. 표는 칸을 내용에 맞춰 늘리므로 「글룸헤이븐:
+        죽음의 아가리」 한 줄이 표 전체를 화면 밖으로 밀어냈고, 그 뒤의 동작
+        열이 잘렸다. max-width:0 은 "이 칸을 내용 때문에 늘리지 말라"는 뜻이고,
+        width:100% 는 다른 칸을 채우고 남은 폭을 전부 이 칸에 준다 — 둘을 함께
+        걸면 이름 칸이 고무처럼 남는 자리를 먹되 결코 넘기지 않는다.
+    */
+    .col-name {
+        max-width: 0;
+        width: 100%;
+    }
+    /*
+        배지(비활성 · 이미지 끊김)는 줄이면 안 된다 — 줄어들 것은 이름뿐이다.
+        이름에 min-width:0 을 줘야 flex 아이템의 기본 min-width:auto 를 벗고
+        말줄임이 걸린다.
+    */
+    .name-cell {
+        display: flex;
         align-items: center;
+        gap: var(--space-2);
+        min-width: 0;
+    }
+    .name-cell .badge-inactive,
+    .name-cell .badge-broken {
+        flex-shrink: 0;
+    }
+    .name-link {
+        display: block;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
         background: none;
         border: none;
         padding: 0;
@@ -1153,18 +1333,8 @@
         font-size: var(--text-sm);
         cursor: pointer;
     }
-    .btn-danger-quiet {
-        background: var(--danger-outline-bg);
-        border: 1px solid var(--danger-outline-fg);
-        border-radius: var(--radius-control);
-        color: var(--danger-outline-fg);
-        padding: 0 var(--space-2);
-        min-height: 44px;
-        font-size: var(--text-sm);
-        cursor: pointer;
-    }
     /* 도감에서 지워도 기록은 남고 다시 등록할 수 있다 — 2단(테두리 빨강).
-       목록의 「완전 삭제」(.btn-danger-quiet)와 같은 옷을 입어야 확인창이
+       목록의 「삭제」(.btn-row.is-danger)와 같은 토큰을 입어야 확인창이
        자기를 부른 버튼보다 무겁게 읽히지 않는다. */
     .btn-destructive {
         background: var(--danger-outline-bg);
@@ -1270,19 +1440,22 @@
         line-height: 1.7;
     }
     @media (max-width: 768px) {
+        /* 하단 내비 위로 올라선다 */
+        .fab-wrap {
+            right: var(--space-4);
+            bottom: calc(var(--admin-nav-height) + var(--space-3));
+        }
         .col-dlc, .col-thumb { display: none; }
         .games-table th, .games-table td { padding: var(--space-2); }
         /*
-            폰에서는 390px 안에 15.25rem 짜리 열이 들어가지 않는다. 가로로 못 늘리는
-            대신 세로로 쌓되, 열 폭은 「완전 삭제」가 한 줄에 들어가는 값으로 고정한다.
-            폭을 auto 로 두면 표가 이 열을 min-content(글자 한 자)까지 짜부라뜨려
-            버튼 글자가 「수 / 정」처럼 세로로 쪼개졌다.
+            셋이 한 줄에 들어가야 한다 — 쌓았을 때는 한 행이 140px이라 화면에 네 줄,
+            가로로 늘렸을 때는 표가 화면을 넘어 삭제 버튼이 잘렸다.
+            셀 패딩이 좌우 8px씩이므로 44+56+44 + 16 + 16 = 176px = 11rem.
+
+            인원·시간 열을 걷어내면서 자리가 났으므로 난이도는 접지 않는다 —
+            폰에서도 이름·난이도·동작이 한 줄에 들어간다.
         */
-        .col-actions { width: 6.5rem; white-space: normal; }
-        .row-actions {
-            grid-template-columns: 1fr;
-            gap: var(--space-1);
-        }
+        .col-actions { width: 11rem; }
     }
 
     .header {
@@ -1626,10 +1799,6 @@
         text-align: center;
         color: var(--text-secondary);
         margin-top: var(--space-6);
-    }
-    .header-actions {
-        display: flex;
-        gap: var(--space-2);
     }
 
     /* Search Bar */

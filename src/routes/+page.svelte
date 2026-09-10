@@ -1900,7 +1900,7 @@
 
                 <div class="input-group">
                     <label for="scheduledAt">시작 예정 시간</label>
-                    <input type="datetime-local" id="scheduledAt" name="scheduledAt" bind:value={scheduledAt} required class="full-width-input">
+                    <input type="datetime-local" id="scheduledAt" name="scheduledAt" bind:value={scheduledAt} required>
                 </div>
 
                 <div class="player-limits">
@@ -3838,6 +3838,22 @@
         border: 1px solid var(--border-default);
         border-radius: 8px;
         font-size: 1rem;
+    }
+    /*
+        iOS Safari 의 datetime-local 은 네이티브 컨트롤이라 자기 값을 그려낸 폭보다
+        좁아지지 않는다. 한국어 형식(「2026. 9. 9. 오전 1:10」)이 길어서 칸을 넘고
+        모달 밖으로까지 삐져나갔다 — .input-group 이 세로 flex 라 stretch 로 폭을
+        맞추려 해도 min-content 가 그걸 이긴다. 네이티브 외양을 벗기면 지정한 폭을
+        따른다(탭하면 피커는 그대로 열린다).
+        어드민의 같은 모달에도 같은 규칙이 걸려 있다.
+    */
+    .input-group input[type='datetime-local'] {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 100%;
+        box-sizing: border-box;
+        min-width: 0;
+        max-width: 100%;
     }
     .modal-actions {
         display: flex;

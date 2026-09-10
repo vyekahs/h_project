@@ -4,6 +4,7 @@
     import { invalidateAll } from '$app/navigation';
     import { onMount, onDestroy } from 'svelte';
     import { trapFocus } from '$lib/actions/modal';
+    import RecentActions from '$lib/components/admin/RecentActions.svelte';
     // 결과 알림은 레이아웃의 <AdminFeedback />가 렌더한다 — 화면마다 다시 만들지 않는다
     import {
         showToast,
@@ -11,6 +12,7 @@
         reportResult,
         rememberAction,
         forgetAction,
+        toastUndoable,
         pruneActions,
         recentActions,
         UNDO_WINDOW_MS
@@ -262,43 +264,7 @@
      * 순간과 무를 수 있는 곳이 같아야 실제로 눌린다. 서버에는 불투명한 id만
      * 보내고, 무엇을 어떻게 되돌릴지는 서버가 남겨둔 원상태에서 읽는다.
      */
-    function toastUndoable(message: string, undo: { id: number; label: string } | undefined) {
-        if (!undo) {
-            showToast(message);
-            return;
-        }
-        // 되돌리기 버튼은 두 곳에 선다: 30초짜리 토스트와, 서버 창이 끝날 때까지
-        // 남는 「최근 조치」. 같은 실행을 둘이 나눠 갖고, 한쪽이 쓰면 둘 다 거둔다.
-        let recentId = 0;
-        const run = async () => {
-            forgetAction(recentId);
-            const body = new FormData();
-            body.set('undoId', String(undo.id));
-            try {
-                const res = await fetch('?/undoAdminAction', { method: 'POST', body });
-                const result: any = deserialize(await res.text());
-                if (!reportResult(result)) showToast(`되돌렸습니다 · ${undo.label}`);
-            } catch {
-                showAlert('되돌리지 못했습니다. 네트워크를 확인해주세요.');
-            }
-            await invalidateAll();
-        };
-        recentId = rememberAction({ label: undo.label, run });
-        showToast(message, { label: '되돌리기', run });
-    }
 
-    // 「최근 조치」 접기 패널
-    let recentOpen = $state(false);
-    // 서버 창이 지난 항목은 눌러도 거절당한다. 시계가 틱할 때마다 같이 걷어낸다.
-    $effect(() => {
-        void now;
-        pruneActions(now);
-    });
-    /* 시계는 30초마다 틱하므로 now가 조치 시각보다 앞설 수 있다. 그대로 빼면
-       10분 창을 「11분 남음」이라 말한다 — 화면이 못 지킬 약속을 하게 된다. */
-    function undoMinsLeft(at: number) {
-        return Math.max(1, Math.ceil((at + UNDO_WINDOW_MS - Math.max(now, at)) / 60000));
-    }
 
     /* datetime-local은 로컬 시각 문자열을 요구한다. ISO를 그대로 넣으면 비거나
        UTC로 표시돼, 고치려던 시각이 다른 시각으로 저장된다. */
@@ -1077,53 +1043,8 @@
     </div>
 </section>
 
-<!--
-    되돌리기의 나머지 9분 반.
-
-    서버의 되돌리기 창은 10분인데 그것을 담은 표면이 30초짜리 토스트뿐이었다.
-    실수를 알아차리는 데는 보통 그 자리를 떠난 뒤가 걸리는데, 그때는 토스트가
-    이미 사라져 서버가 아직 받아주는 취소권이 화면에서만 없어져 있었다.
-    조치가 있을 때만 나타나고, 접힌 상태가 기본이다 — 평소에는 세지 않는다.
--->
-{#if $recentActions.length > 0}
-    <div class="recent-actions">
-        <div class="recent-head">
-        <button
-            type="button"
-            class="recent-toggle"
-            aria-expanded={recentOpen}
-            aria-controls="recent-actions-list"
-            onclick={() => (recentOpen = !recentOpen)}
-        >
-            <span class="recent-caret" aria-hidden="true">{recentOpen ? '▾' : '▸'}</span>
-            되돌릴 수 있는 조치 {$recentActions.length}
-        </button>
-        <!--
-            10분 창이 끝날 때까지 지울 방법이 없었다. 무를 생각이 없는 조치까지
-            그 시간 내내 화면 위에 앉아 있으면, 되돌리기를 담은 자리가 치우고
-            싶은 것이 된다. 서버 창은 그대로 두고 화면에서만 거둔다.
-        -->
-        <button type="button" class="recent-clear" onclick={() => $recentActions.forEach((a) => forgetAction(a.id))}>
-            모두 지우기
-        </button>
-        </div>
-        {#if recentOpen}
-            <ul class="recent-list" id="recent-actions-list">
-                {#each $recentActions as a (a.id)}
-                    <li>
-                        <span class="recent-label">{a.label}</span>
-                        <span class="recent-left">{undoMinsLeft(a.at)}분 남음</span>
-                        <button type="button" class="btn-role is-secondary recent-undo" onclick={() => a.run()}>
-                            되돌리기<span class="sr-only"> — {a.label}</span>
-                        </button>
-                        <button type="button" class="recent-dismiss" onclick={() => forgetAction(a.id)}
-                            aria-label="목록에서 지우기 — {a.label}">×</button>
-                    </li>
-                {/each}
-            </ul>
-        {/if}
-    </div>
-{/if}
+<!-- 「최근 조치」 패널. 되돌리기 표면을 두 라우트가 나눠 쓰므로 컴포넌트로 나갔다. -->
+<RecentActions />
 
 <!--
     넓은 화면에서 방의 네 질문이 같은 화면에 들어오도록 2열로 묶는다.
@@ -2320,7 +2241,7 @@
 
                 <div class="input-group">
                     <label for="scheduledAt">시작 예정 시간</label>
-                    <input type="datetime-local" id="scheduledAt" name="scheduledAt" bind:value={scheduledAt} required class="full-width-input">
+                    <input type="datetime-local" id="scheduledAt" name="scheduledAt" bind:value={scheduledAt} required>
                 </div>
 
                 <div class="player-limits">
@@ -2410,7 +2331,7 @@
                 <strong>일정 수정</strong>
                 <input type="hidden" name="sessionId" value={g.id} />
                 <div class="edit-grid">
-                    <div class="input-group">
+                    <div class="input-group when">
                         <label for="edit-when-{g.id}">시작 예정</label>
                         <input id="edit-when-{g.id}" type="datetime-local" name="scheduledAt" value={toDateTimeLocal(g.scheduled_at)} required />
                     </div>
@@ -2743,98 +2664,6 @@
     }
     .rs-stat-pending .rs-unit {
         color: var(--color-orange-text);
-    }
-    /*
-        「최근 조치」 패널. 스트립과 방 사이에 끼지만 접힌 상태의 높이는
-        한 줄(40px)이고, 되돌릴 것이 없으면 아예 렌더되지 않는다.
-    */
-    .recent-clear {
-        flex: 0 0 auto;
-        margin-right: var(--space-2);
-        min-height: 44px;
-        padding: 0 var(--space-2);
-        border: 1px solid transparent;
-        border-radius: var(--radius-control);
-        background: none;
-        color: var(--text-secondary);
-        font-size: var(--text-xs);
-        cursor: pointer;
-    }
-    .recent-clear:hover {
-        background: var(--bg-hover);
-        color: var(--text-primary);
-    }
-    .recent-dismiss {
-        min-width: 44px;
-        min-height: 44px;
-        padding: 0;
-        border: 1px solid transparent;
-        border-radius: var(--radius-control);
-        background: none;
-        color: var(--text-secondary);
-        font-size: 1.1rem;
-        line-height: 1;
-        cursor: pointer;
-    }
-    .recent-dismiss:hover {
-        background: var(--bg-hover);
-        color: var(--text-primary);
-    }
-    .recent-actions {
-        margin-bottom: var(--space-5);
-        border: 1px solid var(--border-light);
-        border-radius: var(--radius-control);
-        background: var(--bg-secondary);
-    }
-    .recent-head {
-        display: flex;
-        align-items: center;
-    }
-    .recent-toggle {
-        display: flex;
-        align-items: center;
-        gap: var(--space-2);
-        flex: 1 1 auto;
-        min-width: 0;
-        padding: var(--space-2) var(--space-4);
-        border: none;
-        border-radius: var(--radius-control);
-        background: none;
-        color: var(--text-primary);
-        font-size: var(--text-sm);
-        font-weight: var(--weight-medium);
-        text-align: left;
-        cursor: pointer;
-    }
-    .recent-caret {
-        color: var(--text-secondary);
-    }
-    .recent-list {
-        list-style: none;
-        margin: 0;
-        padding: 0 var(--space-4) var(--space-3);
-    }
-    .recent-list li {
-        display: flex;
-        align-items: center;
-        gap: var(--space-3);
-        padding: var(--space-2) 0;
-        border-top: 1px solid var(--border-light);
-    }
-    .recent-label {
-        flex: 1;
-        min-width: 0;
-        font-size: var(--text-sm);
-        overflow-wrap: anywhere;
-    }
-    .recent-left {
-        flex-shrink: 0;
-        font-size: var(--text-xs);
-        color: var(--text-secondary);
-        font-variant-numeric: var(--numeric);
-    }
-    .recent-undo {
-        flex-shrink: 0;
     }
     /*
         칸 옆에서 말하는 검증 실패. 막는 모달은 상태를 잃는 실패에만 남긴다.
@@ -3190,6 +3019,19 @@
         font-family: inherit;
         color: var(--text-primary);
         background: var(--bg-primary);
+    }
+    /*
+        iOS Safari 의 datetime-local 은 네이티브 컨트롤이라 자기 값을 그려낸 폭보다
+        좁아지지 않는다. 한국어 형식(「2026. 9. 9. 오전 1:10」)이 길어서, width:100%
+        를 줬는데도 칸을 넘고 모달 밖으로까지 삐져나갔다. 네이티브 외양을 벗기면
+        보통 입력칸처럼 지정한 폭을 따른다 — 탭하면 피커는 그대로 열린다.
+    */
+    .game-form input[type='datetime-local'],
+    .detail-edit input[type='datetime-local'] {
+        -webkit-appearance: none;
+        appearance: none;
+        min-width: 0;
+        max-width: 100%;
     }
     /* 숫자 몇 자리만 받는 칸은 폭까지 늘릴 이유가 없다 */
     .game-form input.number-input,
@@ -5017,8 +4859,18 @@
         margin-top: var(--space-2);
     }
     .detail-edit .input-group {
-        flex: 1 1 8rem;
+        flex: 1 1 6rem;
         min-width: 0;
+    }
+    /*
+        datetime-local 은 네이티브 컨트롤이라 width:100% 로도 자기 고유 최소 폭
+        아래로는 줄지 않는다. 375px에서 「시작 예정」이 배정받은 칸을 넘쳐
+        옆의 「최소 인원」 위로 겹쳐 그려졌고, 두 칸의 높이가 달라지면서
+        라벨 줄까지 어긋났다. 줄일 수 없는 칸에는 줄을 통째로 준다 —
+        아래 줄에 최소·최대·저장 셋이 남는다(6+6rem + 저장 + 간격).
+    */
+    .detail-edit .input-group.when {
+        flex: 1 1 100%;
     }
     .detail-edit .input-group label {
         display: block;
