@@ -242,7 +242,7 @@
                             <div class="pass-actions">
                                 <button type="button" class="btn-sm" onclick={() => openAdjust(holder, -1)}>−1</button>
                                 <button type="button" class="btn-sm" onclick={() => openAdjust(holder, 1)}>+1</button>
-                                <button type="button" class="btn-sm" onclick={() => openAdjust(holder, 30)}>+30일</button>
+                                <button type="button" class="btn-sm btn-grow" onclick={() => openAdjust(holder, 30)}>+30일</button>
                             </div>
                             {@render logToggle(holder, logs)}
                         </div>
@@ -270,7 +270,7 @@
                         <div class="expired-main">
                             <a href="/admin/attendees/{holder.id}" class="pass-name">{holder.name}</a>
                             <span class="expired-when">{shortDay(holder.season_pass_expires_at)} 만료 · {daysSince(holder.season_pass_expires_at)}일 지남</span>
-                            <button type="button" class="btn-sm" onclick={() => openGrant(holder.id)}>재발급</button>
+                            <button type="button" class="btn-sm btn-grow" onclick={() => openGrant(holder.id)}>재발급</button>
                             {@render logToggle(holder, logs)}
                         </div>
                         {#if openLogFor === holder.id}
@@ -574,14 +574,23 @@
         flex-wrap: wrap; font-size: var(--text-xs); color: var(--text-secondary); }
     .pass-actions { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 
+    /*
+        남은 일수는 이 페이지의 본론인데 회색 알약이라 테두리·구분선과 같은
+        무게로 읽혔다. 콘솔이 「주목할 값」에 쓰는 파랑 틴트(--color-info-bg /
+        --color-blue-bright, 대시보드의 .pp-chip·.pp-option.checked)를 준다.
+
+        주황을 여기까지 넓히지는 않는다. 세 줄 중 하나만 주황일 때 그 한 줄이
+        보이는 것이지, 전부 칠하면 임박 신호가 사라진다. 파랑은 「값」이고
+        주황은 「손이 가야 할 값」이다.
+    */
     .days-badge {
         font-size: var(--text-xs);
         font-variant-numeric: var(--numeric);
         font-weight: var(--weight-medium);
         padding: 0.15rem var(--space-2);
         border-radius: var(--radius-pill);
-        background: var(--bg-hover);
-        color: var(--text-primary);
+        background: var(--color-info-bg);
+        color: var(--color-blue-bright);
     }
     .days-badge.urgent { background: var(--color-warning-bg); color: var(--color-orange-text); }
 
@@ -627,7 +636,30 @@
         font-size: var(--text-xs);
         cursor: pointer;
     }
+    /*
+        파랑은 「정기권을 늘리는 동작」 하나만 뜻한다 — +30일과 재발급.
+        −1/+1 은 늘리는 일이 아니라 바로잡는 일이라 무채색으로 남는다.
+        한 줄에 버튼 넷이 똑같이 회색이면 그중 무엇이 늘 하는 일인지
+        색으로는 알 수 없었다.
+
+        만료 섹션만 칠했더니 조용해야 할 참고 섹션이 작업 섹션보다 셌다.
+        두 섹션이 같은 일에 같은 색을 쓰면서 무게가 맞는다. 채움 파랑은
+        페이지의 주 동작(헤더의 「+ 정기권 발급」) 하나로 남겨 둔다.
+    */
+    .btn-grow {
+        background: var(--color-info-bg);
+        /* 테두리를 지우면 D-배지와 같은 파란 알약이 되어 배지가 눌리는 것처럼
+           보였다. 컨트롤 테두리는 남긴다 — 누르는 것과 읽는 것의 구분이다. */
+        color: var(--color-blue-bright);
+        font-weight: var(--weight-medium);
+    }
     .btn-sm:hover { background: var(--bg-secondary); }
+    /*
+        .btn-sm:hover 가 뒤에 와서 배경만 덮고 흰 글자는 남겼다 — 1.05:1.
+        두 클래스로 특정도를 올려 배경과 글자가 같이 바뀌게 한다.
+        --color-blue(#339af0)에 흰 글자는 2.99:1 이라 텍스트로 못 쓴다(토큰 주석대로).
+    */
+    .btn-sm.btn-grow:hover { background: var(--color-blue-bright); color: var(--bg-primary); }
 
     /* 53x24 였다 — 이 콘솔이 지키는 44px 타깃 아래였다 */
     .log-toggle {
