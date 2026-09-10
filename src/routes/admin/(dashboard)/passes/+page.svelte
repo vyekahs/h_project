@@ -231,18 +231,19 @@
                     {@const days = getDaysLeft(holder.season_pass_expires_at)}
                     {@const logs = logsByAttendee.get(Number(holder.id)) ?? []}
                     <div class="pass-card">
-                        <div class="pass-row">
-                            <div class="pass-info">
-                                <a href="/admin/attendees/{holder.id}" class="pass-name">{holder.name}</a>
-                                <span class="pass-expiry">
-                                    {formatDate(holder.season_pass_expires_at)}까지
-                                    <span class="days-badge" class:urgent={days <= 7}>D-{days}</span>
-                                </span>
-                            </div>
-                            <div class="pass-actions">
-                                <button type="button" class="btn-sm" onclick={() => openAdjust(holder, -1)}>−1</button>
-                                <button type="button" class="btn-sm" onclick={() => openAdjust(holder, 1)}>+1</button>
-                                <button type="button" class="btn-sm btn-grow" onclick={() => openAdjust(holder, 30)}>+30일</button>
+                        <div>
+                            <div class="pass-row">
+                                <div class="pass-info">
+                                    <div><a href="/admin/attendees/{holder.id}" class="pass-name">{holder.name}</a><span class="days-badge" class:urgent={days <= 7}>D-{days}</span></div>
+                                    <span class="pass-expiry">
+                                        {formatDate(holder.season_pass_expires_at)}까지
+                                    </span>
+                                </div>
+                                <div class="pass-actions">
+                                    <button type="button" class="btn-sm" onclick={() => openAdjust(holder, -1)}>−1</button>
+                                    <button type="button" class="btn-sm" onclick={() => openAdjust(holder, 1)}>+1</button>
+                                    <button type="button" class="btn-sm btn-grow" onclick={() => openAdjust(holder, 30)}>+30일</button>
+                                </div>
                             </div>
                             {@render logToggle(holder, logs)}
                         </div>
@@ -551,11 +552,12 @@
         문제다」로 읽히는데, 실제로는 「곧 끝난다」일 뿐이다.
     */
     .pass-row {
-        display: grid;
+        display: flex;
         /* 이름·만료 · 조정 · 이력 — 만료 행과 같은 뼈대 */
-        grid-template-columns: minmax(0, 1fr) auto auto;
         align-items: center;
         gap: var(--space-3);
+        flex-direction: row;
+        justify-content: space-between;
     }
     .pass-info { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; }
     .pass-name {
@@ -636,28 +638,14 @@
         font-size: var(--text-xs);
         cursor: pointer;
     }
-    /*
-        파랑은 「정기권을 늘리는 동작」 하나만 뜻한다 — +30일과 재발급.
-        −1/+1 은 늘리는 일이 아니라 바로잡는 일이라 무채색으로 남는다.
-        한 줄에 버튼 넷이 똑같이 회색이면 그중 무엇이 늘 하는 일인지
-        색으로는 알 수 없었다.
-
-        만료 섹션만 칠했더니 조용해야 할 참고 섹션이 작업 섹션보다 셌다.
-        두 섹션이 같은 일에 같은 색을 쓰면서 무게가 맞는다. 채움 파랑은
-        페이지의 주 동작(헤더의 「+ 정기권 발급」) 하나로 남겨 둔다.
-    */
     .btn-grow {
-        background: var(--color-info-bg);
-        /* 테두리를 지우면 D-배지와 같은 파란 알약이 되어 배지가 눌리는 것처럼
-           보였다. 컨트롤 테두리는 남긴다 — 누르는 것과 읽는 것의 구분이다. */
-        color: var(--color-blue-bright);
         font-weight: var(--weight-medium);
     }
     .btn-sm:hover { background: var(--bg-secondary); }
     /*
-        .btn-sm:hover 가 뒤에 와서 배경만 덮고 흰 글자는 남겼다 — 1.05:1.
+        .btn-sm:hover 가 뒤에 와서 배경만 덮고 흰 글자는 남기면 1.05:1이 된다.
         두 클래스로 특정도를 올려 배경과 글자가 같이 바뀌게 한다.
-        --color-blue(#339af0)에 흰 글자는 2.99:1 이라 텍스트로 못 쓴다(토큰 주석대로).
+        --color-blue(#339af0)에 흰 글자는 2.99:1이라 텍스트로 못 쓴다(토큰 주석대로).
     */
     .btn-sm.btn-grow:hover { background: var(--color-blue-bright); color: var(--bg-primary); }
 
@@ -668,8 +656,6 @@
         gap: 0.3rem;
         min-height: 44px;
         padding: 0 var(--space-2);
-        /* 펼치기는 조정 버튼과 다른 종류의 동작이다 — 붙여 놓으면 네 번째 버튼으로 읽힌다 */
-        margin-left: var(--space-2);
         background: none;
         border: none;
         border-radius: var(--radius-control);
@@ -863,11 +849,6 @@
         .ps-value-none { font-size: var(--text-base); }
         .section { padding: var(--space-4); }
 
-        /* 세 칸이 한 줄에 안 들어간다. 이름 줄과 액션 줄로 나눈다. */
-        .pass-row { grid-template-columns: minmax(0, 1fr) auto; row-gap: var(--space-2); }
-        .pass-info { grid-column: 1 / -1; }
-        .pass-actions { grid-column: 1; }
-        .pass-row .log-toggle { grid-column: 2; justify-self: end; }
         /* 모바일: 이름 / 만료시점 + 재발급·이력 */
         .expired-main { grid-template-columns: minmax(0, 1fr) auto auto; row-gap: var(--space-1); }
         .expired-row .expired-when { justify-self: start; }
