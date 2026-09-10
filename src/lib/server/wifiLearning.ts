@@ -70,6 +70,18 @@ export async function recordWifiSample(macs: string[], bleConfirmedIds: number[]
 
 	const ids = [...new Set(bleConfirmedIds)].filter((n) => Number.isInteger(n));
 
+	// BLE로 확인된 사람이 하나도 없으면 이 표본은 버린다.
+	//
+	// 재시작 직후에는 lastSeenBleMap이 비어 있어서, 회원들이 자리에 있어도 몇 분간
+	// "확인된 사람 0명"이 된다. 그 상태로 표본을 세면 회원 폰이 랜에 있는데도
+	// 아무에게도 기여하지 않은 채 전체 출현율만 올라간다. 그 항은 점수에서 빼는
+	// 값이므로, 결과적으로 회원 폰의 점수가 부당하게 깎여 학습이 느려진다.
+	// 배포가 잦을수록 이 편향이 쌓인다.
+	//
+	// 아무도 없는 시간대의 표본을 버리는 손해는 없다. 상시 장비는 새벽 기록
+	// (markInfraMacs)으로 따로 걸러내고 있다.
+	if (ids.length === 0) return;
+
 	try {
 		// 카운터는 한 번의 UPSERT로 모두 올린다. 종류별로 나눠 쿼리를 던지면
 		// 표본마다 커넥션을 여러 개 잡는다 — 이 프로젝트에서 풀이 바닥난 원인이었다.
@@ -84,8 +96,6 @@ export async function recordWifiSample(macs: string[], bleConfirmedIds: number[]
 			SELECT n.name, 1 FROM (VALUES ${sql.join(names, sql`, `)}) AS n(name)
 			ON CONFLICT (name) DO UPDATE SET count = wifi_learn_counters.count + 1
 		`);
-
-		if (ids.length === 0) return;
 
 		const pairs = ids.flatMap((id) => uniqueMacs.map((m) => sql`(${id}::int, ${m})`));
 		await db.execute(sql`
