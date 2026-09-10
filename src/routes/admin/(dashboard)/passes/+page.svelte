@@ -136,11 +136,6 @@
     function daysSince(dateStr: string): number {
         return Math.max(0, Math.floor((Date.now() - new Date(dateStr).getTime()) / 86_400_000));
     }
-    function shortDate(dateStr: string | null): string {
-        if (!dateStr) return '없음';
-        const d = new Date(dateStr);
-        return `${d.getMonth() + 1}/${d.getDate()}`;
-    }
     const ACTION_LABEL: Record<string, string> = { grant: '발급', adjust: '조정', cancel: '해지' };
 
     /* 사용 중은 곧 끝나는 순 — 손이 가야 할 것이 위에 온다 */
@@ -267,7 +262,6 @@
                             <a href="/admin/attendees/{holder.id}" class="pass-name">{holder.name}</a>
                             <span class="expired-when">{shortDay(holder.season_pass_expires_at)} 만료 · {daysSince(holder.season_pass_expires_at)}일 지남</span>
                             <button type="button" class="btn-sm btn-grow" onclick={() => openGrant(holder.id)}>재발급</button>
-                            {@render logToggle(holder)}
                         </div>
                     </li>
                 {/each}
@@ -291,8 +285,7 @@
 {#snippet logToggle(holder: any)}
     {@const logs = logsByAttendee.get(Number(holder.id)) ?? []}
     <button type="button" class="log-toggle" onclick={() => (openLogFor = holder.id)}>
-        <svg class="chev" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"/></svg>
-        이력{#if logs.length > 0}<span class="log-count">{logs.length}</span>{/if}
+        변경내역
         <span class="sr-only"> — {holder.name}</span>
     </button>
 {/snippet}
@@ -304,14 +297,18 @@
         <ul class="log-list">
             {#each logs as l (l.id)}
                 <li>
+                    <span class="log-date">{formatDate(l.created_at)} {l.actor}</span>
                     <span class="log-head">
                         <b>{ACTION_LABEL[l.action] ?? l.action}</b>
                         {l.reason_label}
                         {#if l.days}<em>{l.days > 0 ? '+' : ''}{l.days}일</em>{/if}
                     </span>
                     <span class="log-meta">
-                        {shortDate(l.expires_before)} → {shortDate(l.expires_after)} ·
-                        {shortDay(l.created_at)} {l.actor}
+                        {#if l.expires_before}
+                            만료일 {formatDate(l.expires_before)} → {l.expires_after ? formatDate(l.expires_after) : '해지'}
+                        {:else}
+                            만료일 {formatDate(l.expires_after)}까지
+                        {/if}
                     </span>
                     {#if l.note}<span class="log-note">{l.note}</span>{/if}
                 </li>
@@ -651,13 +648,11 @@
     */
     .btn-sm.btn-grow:hover { background: var(--color-blue-bright); color: var(--bg-primary); }
 
-    /* 53x24 였다 — 이 콘솔이 지키는 44px 타깃 아래였다 */
     .log-toggle {
         display: inline-flex;
         align-items: center;
-        gap: 0.3rem;
-        min-height: 44px;
-        padding: 0 var(--space-2);
+        padding: 0;
+        margin-top: var(--space-3);
         background: none;
         border: none;
         border-radius: var(--radius-control);
@@ -668,13 +663,6 @@
         cursor: pointer;
     }
     .log-toggle:hover { background: var(--bg-secondary); color: var(--text-primary); }
-    .log-count {
-        font-variant-numeric: var(--numeric);
-        padding: 0 0.35em;
-        border-radius: var(--radius-pill);
-        background: var(--bg-hover);
-        color: var(--text-primary);
-    }
 
     .log-list {
         list-style: none;
@@ -686,6 +674,7 @@
         gap: var(--space-3);
     }
     .log-list li { display: flex; flex-direction: column; gap: 0.15rem; }
+    .log-date { font-size: var(--text-xs); font-weight: var(--weight-bold); color: var(--text-tertiary); font-variant-numeric: var(--numeric); }
     .log-head { font-size: var(--text-sm); color: var(--text-primary); word-break: keep-all; }
     .log-head b { font-weight: var(--weight-bold); margin-right: 0.35em; }
     .log-head em { font-style: normal; font-variant-numeric: var(--numeric); color: var(--text-secondary); margin-left: 0.35em; }
