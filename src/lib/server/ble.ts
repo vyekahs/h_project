@@ -61,6 +61,7 @@ let settingsCache: { isOpen: boolean; openingTime: string } | null = null;
 // Constants
 const CHECKOUT_TIMEOUT_MS = 20 * 60 * 1000; // 20 minutes
 
+
 /** 한국 시간 타임스탬프 (HH:mm:ss) */
 function kstTime(): string {
     return new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(11, 19);
@@ -479,11 +480,61 @@ export async function processAutoCheckin(detectedAttendeeIds: Set<number>, isWit
                 continue;
             }
 
+            // 오늘 자동 체크아웃된 방문이 있으면 새 방문을 만들지 않고 그것을 다시 연다.
+            //
+            // 시간 제한을 두지 않는다. 이 기록으로 알고 싶은 것은 "오늘 왔는가"와
+            // "얼마나 있었는가"이지 중간에 편의점을 다녀왔는지가 아니다. 사람당
+            // 하루 한 방문으로 두면 방문 횟수·체류 시간·자주 만난 친구가 모두
+            // 탐지 품질에 흔들리지 않는다. 실제로 어떤 회원은 자리에 앉아 있었는데도
+            // 하루가 네 조각으로 남았다(19:17~21:15, 21:26~21:47, 22:21~22:54,
+            // 22:57~23:08).
+            //
+            // 다만 수동 체크아웃은 병합하지 않는다. 관리자가 손으로 내보낸 것은
+            // "나갔다"는 사람의 판단이라 되돌리면 안 되고, 마감 처리 후 스친 신호가
+            // 방문을 다시 열어버리는 것도 막아야 한다. auto_checkout_logs의
+            // checked_out_at과 visits.departure_time이 같은 트랜잭션의 NOW()라
+            // 정확히 일치하는 점으로 구분한다.
+            //
+            // 자정을 넘겨 운영하면 날짜가 갈리며 방문이 나뉜다. 바로 위의
+            // "이미 열린 방문" 판정도 같은 기준을 쓰므로 동작이 어긋나지는 않는다.
+            let merged = false;
+            try {
+                const reopened = (await db.execute(sql`
+                    UPDATE visits v
+                    SET departure_time = NULL
+                    WHERE v.id = (
+                        SELECT v2.id FROM visits v2
+                        JOIN auto_checkout_logs l
+                          ON l.attendee_id = v2.attendee_id
+                         AND l.checked_out_at = v2.departure_time
+                        WHERE v2.attendee_id = ${attendeeId}
+                          AND v2.departure_time IS NOT NULL
+                          AND (v2.arrival_time AT TIME ZONE 'Asia/Seoul')::date
+                              = (NOW() AT TIME ZONE 'Asia/Seoul')::date
+                        ORDER BY v2.departure_time DESC
+                        LIMIT 1
+                    )
+                    RETURNING v.id
+                `)) as any[];
+                merged = reopened.length > 0;
+                if (merged) {
+                    console.log(`[${kstTime()}][${source}] User ${attendeeId} 직전 자동 체크아웃을 취소하고 방문을 이어붙임 (visit ${reopened[0].id})`);
+                }
+            } catch (e) {
+                // 병합에 실패해도 체크인 자체는 진행한다. 방문이 쪼개질 뿐이다.
+                console.error(`[${kstTime()}][${source}] 방문 병합 실패 (새 방문으로 진행)`, e);
+            }
+
             console.log(`[${kstTime()}][${source}] Auto Checking-in User ${attendeeId}`);
             try {
                 await db.transaction(async (tx) => {
-                    await tx.execute(sql`UPDATE attendees SET status = 'present', arrival_time = NOW(), updated_at = NOW() WHERE id = ${attendeeId}`);
-                    await tx.execute(sql`INSERT INTO visits (attendee_id, arrival_time) VALUES (${attendeeId}, NOW())`);
+                    await tx.execute(sql`UPDATE attendees SET status = 'present', updated_at = NOW() WHERE id = ${attendeeId}`);
+                    if (!merged) {
+                        // 병합했으면 arrival_time을 건드리지 않는다. 덮어쓰면 처음
+                        // 도착한 시각이 사라져 체류 시간이 잘못 계산된다.
+                        await tx.execute(sql`UPDATE attendees SET arrival_time = NOW() WHERE id = ${attendeeId}`);
+                        await tx.execute(sql`INSERT INTO visits (attendee_id, arrival_time) VALUES (${attendeeId}, NOW())`);
+                    }
                     await tx.execute(sql`DELETE FROM daily_visit_plans WHERE attendee_id = ${attendeeId} AND plan_date = CURRENT_DATE`);
                 });
                 attendee.status = 'present';
