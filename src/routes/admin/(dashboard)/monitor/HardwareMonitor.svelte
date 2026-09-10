@@ -311,7 +311,7 @@
 		     현장에서 눈으로는 구분이 안 돼서 한 대가 나흘간 죽어 있었고,
 		     다른 한 대는 운영 중에 멈춰 회원들이 자리에 있는데도 자동 체크아웃됐다.
 		     죽은 스캐너를 맨 위에 두어 먼저 보이게 한다. -->
-		{#if metrics.scanners && metrics.scanners.length > 0}
+		{#if metrics.scanners}
 			<div class="detail-card scanner-card" class:has-down={metrics.scanners.some((sc) => sc.isDown)}>
 				<h3>
 					BLE 스캐너
@@ -320,6 +320,11 @@
 					{/if}
 				</h3>
 				<div class="scanner-rows">
+					{#if metrics.scanners.length === 0}
+						<!-- 목록이 비면 카드를 숨기지 않고 이렇게 알린다. 숨기면 "스캐너가
+						     없다"와 "조회에 실패했다"가 화면에서 구분되지 않는다. -->
+						<p class="scanner-empty">등록된 스캐너가 없거나 목록을 불러오지 못했습니다.</p>
+					{/if}
 					{#each [...metrics.scanners].sort((a, b) => Number(b.isDown) - Number(a.isDown)) as sc}
 						<div class="scanner-row" class:down={sc.isDown}>
 							<span class="sc-dot" aria-hidden="true"></span>
@@ -327,7 +332,8 @@
 							<span class="sc-ago">{formatSilent(sc.silentSeconds)}</span>
 							<span class="sc-meta">
 								{#if sc.deviceTotal !== null}기기 {sc.deviceTotal}{/if}
-								{#if sc.freeHeap !== null}· 힙 {Math.round(sc.freeHeap / 1024)}KB{/if}
+								{#if sc.deviceTotal !== null && sc.freeHeap !== null}·{/if}
+								{#if sc.freeHeap !== null}힙 {Math.round(sc.freeHeap / 1024)}KB{/if}
 							</span>
 						</div>
 					{/each}
@@ -1019,5 +1025,11 @@
 	.sc-id { font-weight: 600; }
 	.scanner-row.down .sc-id { color: var(--color-orange-text); }
 	.sc-ago { color: var(--text-secondary); }
+	.scanner-row.down .sc-id { color: #f87171; }
+	.scanner-empty {
+		margin: 0;
+		font-size: 0.82rem;
+		color: rgba(255, 255, 255, 0.5);
+	}
 	.sc-meta { margin-left: auto; font-size: 0.75rem; color: var(--text-tertiary); }
 </style>
