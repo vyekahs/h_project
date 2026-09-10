@@ -85,6 +85,20 @@
         return null;
     })();
 
+    // 정기권 이력 — 어드민 정기권 관리 화면(/admin/passes)과 같은 표기.
+    // 지금 정기권의 이력만 온다(서버에서 pass_id로 걸러둠).
+    let showPassLog = false;
+    const PASS_ACTION_LABEL: Record<string, string> = { grant: '발급', adjust: '조정', cancel: '해지' };
+    function passLogShortDate(dateStr: string | null): string {
+        if (!dateStr) return '없음';
+        const d = new Date(dateStr);
+        return `${d.getMonth() + 1}/${d.getDate()}`;
+    }
+    function passLogShortDay(dateStr: string): string {
+        const d = new Date(dateStr);
+        return `${d.getMonth() + 1}/${d.getDate()}`;
+    }
+
     let showGuideModal = false;
 
     // Title Management
@@ -437,6 +451,36 @@
                         </span>
                         <div class="pass-expired-date">{expiredPass.expiredDate} 만료</div>
                     </div>
+                {/if}
+
+                {#if (hasSeasonPass || expiredPass) && data.seasonPassLogs && data.seasonPassLogs.length > 0}
+                    <button
+                        type="button"
+                        class="pass-log-toggle"
+                        aria-expanded={showPassLog}
+                        on:click={() => showPassLog = !showPassLog}
+                    >
+                        <svg class="chev" class:is-open={showPassLog} aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                        정기권 이력 <span class="log-count">{data.seasonPassLogs.length}</span>
+                    </button>
+                    {#if showPassLog}
+                        <ul class="pass-log-list">
+                            {#each data.seasonPassLogs as l (l.id)}
+                                <li>
+                                    <span class="log-head">
+                                        <b>{PASS_ACTION_LABEL[l.action] ?? l.action}</b>
+                                        {l.reason_label}
+                                        {#if l.days}<em>{l.days > 0 ? '+' : ''}{l.days}일</em>{/if}
+                                    </span>
+                                    <span class="log-meta">
+                                        {passLogShortDate(l.expires_before)} → {passLogShortDate(l.expires_after)} ·
+                                        {passLogShortDay(l.created_at)}
+                                    </span>
+                                    {#if l.note}<span class="log-note">{l.note}</span>{/if}
+                                </li>
+                            {/each}
+                        </ul>
+                    {/if}
                 {/if}
 
                 <div class="devices-section">
@@ -1140,6 +1184,50 @@
             align-self: flex-end;
         }
     }
+
+    /* 정기권 이력 — /admin/passes 의 표기를 그대로 따른다(어드민 정기권 관리 화면 참고) */
+    .pass-log-toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+        min-height: 44px;
+        padding: 0 0.6rem;
+        margin: -0.5rem 0 1rem;
+        background: none;
+        border: none;
+        border-radius: 8px;
+        color: var(--text-secondary);
+        font-family: inherit;
+        font-size: 0.8rem;
+        cursor: pointer;
+    }
+    .pass-log-toggle:hover { background: var(--bg-secondary); color: var(--text-primary); }
+    .pass-log-toggle .chev { transition: transform 0.15s; }
+    .pass-log-toggle .chev.is-open { transform: rotate(180deg); }
+    .pass-log-toggle .log-count {
+        padding: 0 0.45em;
+        border-radius: 999px;
+        background: var(--bg-hover);
+        color: var(--text-primary);
+        font-size: 0.75rem;
+    }
+    @media (prefers-reduced-motion: reduce) { .pass-log-toggle .chev { transition: none; } }
+
+    .pass-log-list {
+        list-style: none;
+        margin: -0.5rem 0 1.5rem;
+        padding: 0.75rem 0 0.25rem;
+        border-top: 1px solid var(--border-light);
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+    .pass-log-list li { display: flex; flex-direction: column; gap: 0.15rem; }
+    .pass-log-list .log-head { font-size: 0.85rem; color: var(--text-primary); word-break: keep-all; }
+    .pass-log-list .log-head b { font-weight: 700; margin-right: 0.35em; }
+    .pass-log-list .log-head em { font-style: normal; color: var(--text-secondary); margin-left: 0.35em; }
+    .pass-log-list .log-meta { font-size: 0.75rem; color: var(--text-secondary); }
+    .pass-log-list .log-note { font-size: 0.75rem; color: var(--text-secondary); word-break: keep-all; }
 
     /* History Headers & Filters */
     .section-header {

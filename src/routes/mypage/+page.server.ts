@@ -15,7 +15,7 @@ export const load: PageServerLoad = async ({ parent }) => {
     }
 
     // Fetch Registered Devices & Parties & All Attendees & All Games
-    const [devicesResult, parties, allAttendeesResult, allGamesResult, pendingInvitations] = await Promise.all([
+    const [devicesResult, parties, allAttendeesResult, allGamesResult, pendingInvitations, seasonPassLogsResult] = await Promise.all([
         db.execute(sql`SELECT id, name, created_at, last_seen_at FROM user_devices WHERE attendee_id = ${user.id} ORDER BY created_at DESC`),
         PartyService.getUserParties(user.id).catch(() => []),
         db.execute(sql`
@@ -34,7 +34,22 @@ export const load: PageServerLoad = async ({ parent }) => {
             ORDER BY a.name ASC
         `),
         db.execute(sql`SELECT id, name, playtime_min, image_url FROM games ORDER BY name ASC`),
-        PartyService.getPendingInvitations(user.id).catch(() => [])
+        PartyService.getPendingInvitations(user.id).catch(() => []),
+        // 지금 정기권(마지막 발급이 연 pass_id)의 이력만 — 어드민 정기권 관리 화면과
+        // 같은 방식(자세한 이유는 src/routes/admin/(dashboard)/passes/+page.server.ts 참고).
+        // 재발급 전 옛 정기권의 이력은 섞이지 않는다.
+        db.execute(sql`
+            WITH cur AS (
+                SELECT MAX(id) FILTER (WHERE action = 'grant') AS pass_id
+                FROM season_pass_logs WHERE attendee_id = ${user.id}
+            )
+            SELECT l.id, l.action, l.reason_label, l.note, l.days,
+                   l.expires_before, l.expires_after, l.created_at
+            FROM season_pass_logs l, cur
+            WHERE l.attendee_id = ${user.id}
+              AND l.pass_id IS NOT DISTINCT FROM cur.pass_id
+            ORDER BY l.created_at DESC, l.id DESC
+        `).catch(() => [])
     ]);
     // Trigger Title Check (Background)
     try {
@@ -49,7 +64,8 @@ export const load: PageServerLoad = async ({ parent }) => {
         parties: parties as any[],
         allAttendees: allAttendeesResult as any[],
         allGames: allGamesResult as any[],
-        pendingInvitations: pendingInvitations as any[]
+        pendingInvitations: pendingInvitations as any[],
+        seasonPassLogs: seasonPassLogsResult as any[]
     };
 };
 
