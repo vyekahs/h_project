@@ -10,6 +10,8 @@ import {
 	getDbPoolStats
 } from '$lib/server/performance';
 import { checkScannerHealth } from '$lib/server/scannerHealth';
+import { promoteConfidentMacs } from '$lib/server/wifiLearning';
+import { addWifiMacToCache } from '$lib/server/ble';
 import { runDataRetention } from '$lib/server/retention';
 
 let requestIdSeq = 0;
@@ -53,6 +55,28 @@ if (!scannerCheckInterval) {
 	scannerCheckInterval = setInterval(() => {
 		checkScannerHealth().catch((e) => console.error('[SCANNER] 점검 실패:', e));
 	}, SCANNER_CHECK_INTERVAL_MS);
+}
+
+// WiFi MAC 자동 학습 승격 (1시간 주기)
+//
+// BLE로 확인된 순간의 동시 출현을 세어, 어느 MAC이 누구 폰인지 스스로 알아낸다.
+// 표본이 충분히 쌓이고 근거가 확실해진 것만 실제 등록으로 올린다.
+//
+// 자주 돌릴 이유가 없다. 표본은 WiFi 보고마다 쌓이고 판정은 수십 개가 모여야
+// 의미가 생기므로, 1시간이면 충분히 빠르다.
+const WIFI_LEARN_INTERVAL_MS = 60 * 60 * 1000;
+let wifiLearnInterval: NodeJS.Timeout | null = null;
+if (!wifiLearnInterval) {
+	wifiLearnInterval = setInterval(async () => {
+		try {
+			const promoted = await promoteConfidentMacs();
+			// 승격된 MAC은 캐시에도 넣어야 다음 보고부터 바로 재실로 잡힌다.
+			// DB만 바꾸면 다음 재시작까지 아무 효과가 없다.
+			for (const p of promoted) addWifiMacToCache(p.attendeeId, p.mac);
+		} catch (e) {
+			console.error('[WiFiLearn] 승격 실패:', e);
+		}
+	}, WIFI_LEARN_INTERVAL_MS);
 }
 
 // 데이터 보존 정리

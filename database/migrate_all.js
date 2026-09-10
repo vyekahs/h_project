@@ -123,6 +123,24 @@ async function migrate() {
         // 값이 NULL이면 "정상 또는 아직 안 알림", 시각이 있으면 "무응답을 알린 상태".
         // 스캐너가 다시 보고를 시작하면 복구 알림과 함께 NULL로 되돌린다.
         await pool.query('ALTER TABLE scanners ADD COLUMN IF NOT EXISTS alerted_down_at TIMESTAMPTZ;');
+        // 스캐너별 알림 스위치. 일부러 꺼두는 기기(등록용 단말, 예비 스캐너)까지
+        // 무응답 알림이 오면 알림 자체를 무시하게 된다. 어드민 모니터에서 토글한다.
+        //
+        // 전부 켜진 상태로 시작한다. "오래 조용하면 치워둔 것"이라고 추측해
+        // 꺼둘 수도 있지만, 그러면 관리자가 "이건 왜 꺼져 있지?"를 먼저 풀어야 한다.
+        // 감시할지 말지는 사람이 정하는 것이므로 기본값은 감시로 두고 끄게 한다.
+        await pool.query(`
+            DO $$ BEGIN
+                ALTER TABLE scanners ADD COLUMN alert_enabled BOOLEAN NOT NULL DEFAULT TRUE;
+                -- 등록용 단말(esp32_s3_registration)은 평소 꺼두고 필요할 때만 켜서 쓴다.
+                -- 켜진 채로 두면 영업 때마다 "무응답" 알림이 오고, 그런 알림이 쌓이면
+                -- 진짜 고장 알림까지 함께 무시하게 된다.
+                --
+                -- 컬럼을 '방금 만든 경우에만' 끈다(중복 컬럼이면 위에서 예외로 빠짐).
+                -- 매번 돌리면 나중에 관리자가 켜둔 설정을 재기동마다 되돌려버린다.
+                UPDATE scanners SET alert_enabled = FALSE WHERE id = 'esp32_s3_registration';
+            EXCEPTION WHEN duplicate_column THEN null; END $$;
+        `);
         // 스캐너 무응답 알림은 그 시각 혼놀에 있는 관리자에게 보낸다. 아무도 없으면
         // 이 사람에게 보낸다. 바꾸려면 이 행의 value를 다른 attendee id로 UPDATE하면 된다.
         await pool.query(`
@@ -130,6 +148,40 @@ async function migrate() {
             SELECT 'scanner_alert_fallback_user_id', id::text
             FROM attendees WHERE name = '이리' LIMIT 1
             ON CONFLICT (key) DO NOTHING;
+        `);
+
+        // 13-2. WiFi MAC 자동 학습
+        //
+        // BLE 광고는 폰이 내킬 때만 해서 어떤 회원은 33시간에 13번밖에 안 잡힌다.
+        // WiFi는 접속해 있으면 항상 잡히지만 어느 MAC이 누구 것인지 알아야 쓸 수 있고,
+        // 회원 32명에게 직접 등록시키는 것은 현실적이지 않다.
+        //
+        // BLE로 확인된 날마다 "그때 랜에 있던 MAC" 집합을 모아 날짜별로 교차시킨다.
+        // 며칠 반복하면 그 사람이 올 때마다 늘 있던 MAC 하나만 남는다.
+        console.log('[13-2] Checking WiFi MAC learning tables...');
+        await pool.query(`
+            -- 회원이 BLE로 확인된 날 수
+            CREATE TABLE IF NOT EXISTS wifi_learn_attendee_days (
+                attendee_id INTEGER PRIMARY KEY REFERENCES attendees(id) ON DELETE CASCADE,
+                days_seen   INTEGER NOT NULL DEFAULT 0,
+                last_day    DATE
+            );
+            -- 그 회원이 있던 날 중 이 MAC도 랜에 있던 날 수.
+            -- days_seen이 위 표의 값과 같으면 "올 때마다 늘 함께 있었다"는 뜻이다.
+            CREATE TABLE IF NOT EXISTS wifi_mac_candidates (
+                attendee_id INTEGER NOT NULL REFERENCES attendees(id) ON DELETE CASCADE,
+                mac         VARCHAR(17) NOT NULL,
+                days_seen   INTEGER NOT NULL DEFAULT 0,
+                last_day    DATE,
+                PRIMARY KEY (attendee_id, mac)
+            );
+            -- 영업이 끝난 새벽에도 랜에 있던 기기. 공유기, TV, 스캐너 같은 상시 장비다.
+            -- 회원 폰이 새벽 3시에 동아리방 WiFi에 붙어 있을 수는 없다.
+            CREATE TABLE IF NOT EXISTS wifi_infra_macs (
+                mac           VARCHAR(17) PRIMARY KEY,
+                first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                last_seen_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            );
         `);
 
         // 14. Guest support in session_participants

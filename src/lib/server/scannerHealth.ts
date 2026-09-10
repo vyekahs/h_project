@@ -118,11 +118,15 @@ export async function checkScannerHealth(): Promise<void> {
 			SET alerted_down_at = NULL
 			WHERE alerted_down_at IS NOT NULL
 			  AND last_seen_at >= NOW() - ${sql.raw(SILENT_THRESHOLD)}
-			RETURNING ${sql.raw(DISPLAY_NAME)} AS label,
+			RETURNING alert_enabled,
+			          ${sql.raw(DISPLAY_NAME)} AS label,
 			          round(EXTRACT(EPOCH FROM (NOW() - alerted_down_at)) / 60)::int AS down_minutes
 		`)) as any[];
 
 		for (const row of recovered) {
+			// 알림을 꺼둔 사이 복구된 경우: 표시(alerted_down_at)는 위에서 이미
+			// 지웠으니 상태는 맞고, 알림만 보내지 않는다.
+			if (row.alert_enabled !== true) continue;
 			await alert(
 				`스캐너 복구: ${row.label}`,
 				`${row.down_minutes}분 만에 다시 보고를 시작했습니다.`
@@ -136,10 +140,11 @@ export async function checkScannerHealth(): Promise<void> {
 			SET alerted_down_at = NOW()
 			WHERE alerted_down_at IS NULL
 			  AND last_seen_at < NOW() - ${sql.raw(SILENT_THRESHOLD)}
-			  -- 오래 꺼둔 기기는 알리지 않는다. 등록용 단말처럼 평소에 꺼두는 것이
-			  -- 있어서, 이 조건이 없으면 영업을 열 때마다 같은 알림이 반복된다.
-			  -- 며칠씩 조용한 기기는 고장이 아니라 치워둔 것으로 본다.
-			  AND last_seen_at > NOW() - INTERVAL '7 days'
+			  -- 일부러 꺼둔 기기(예비 스캐너, 등록용 단말)는 알리지 않는다.
+			  -- 예전에는 "7일 넘게 조용하면 치워둔 것"이라고 추측했는데, 그건
+			  -- 오늘 꺼둔 기기를 걸러내지 못하고 오래 고장 난 기기는 영영 무시한다.
+			  -- 의도는 사람이 정하는 것이므로 스위치로 받는다(어드민 모니터에서 토글).
+			  AND alert_enabled = true
 			RETURNING ${sql.raw(DISPLAY_NAME)} AS label,
 			          to_char(last_seen_at AT TIME ZONE 'Asia/Seoul', 'MM-DD HH24:MI') AS last_seen_kst,
 			          round(EXTRACT(EPOCH FROM (NOW() - last_seen_at)) / 60)::int AS silent_minutes
@@ -170,7 +175,8 @@ export async function getScannerHealth() {
 			       round(EXTRACT(EPOCH FROM (NOW() - last_seen_at)))::int AS silent_seconds,
 			       (last_seen_at < NOW() - ${sql.raw(SILENT_THRESHOLD)}) AS is_down,
 			       (metadata->>'device_total')::int AS device_total,
-			       (metadata->>'free_heap')::int   AS free_heap
+			       (metadata->>'free_heap')::int   AS free_heap,
+			       alert_enabled
 			FROM scanners
 			ORDER BY last_seen_at DESC NULLS LAST
 		`)) as any[];
@@ -180,10 +186,36 @@ export async function getScannerHealth() {
 			silentSeconds: Number(r.silent_seconds ?? 0),
 			isDown: r.is_down === true,
 			deviceTotal: r.device_total === null ? null : Number(r.device_total),
-			freeHeap: r.free_heap === null ? null : Number(r.free_heap)
+			freeHeap: r.free_heap === null ? null : Number(r.free_heap),
+			alertEnabled: r.alert_enabled === true
 		}));
 	} catch (e) {
 		console.error('[SCANNER] 상태 조회 실패:', e);
 		return [];
+	}
+}
+
+/**
+ * 스캐너별 무응답 알림 on/off.
+ *
+ * 예비 스캐너를 치워두거나 등록용 단말을 꺼두는 일이 실제로 있는데, 그때마다
+ * 알림이 오면 알림 자체를 무시하게 된다. 끄고 켜는 판단은 사람이 한다.
+ *
+ * 끌 때 alerted_down_at도 함께 지운다. 남겨두면 나중에 다시 켰을 때 "이미 알린
+ * 상태"로 보여 정작 죽었을 때 알림이 안 나간다.
+ */
+export async function setScannerAlertEnabled(id: string, enabled: boolean): Promise<boolean> {
+	try {
+		const rows = (await db.execute(sql`
+			UPDATE scanners
+			SET alert_enabled = ${enabled},
+			    alerted_down_at = CASE WHEN ${enabled} THEN alerted_down_at ELSE NULL END
+			WHERE id = ${id}
+			RETURNING id
+		`)) as any[];
+		return rows.length > 0;
+	} catch (e) {
+		console.error('[SCANNER] 알림 설정 변경 실패:', e);
+		return false;
 	}
 }
