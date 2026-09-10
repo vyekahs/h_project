@@ -9,7 +9,9 @@
 -- 카드의 버튼이 정하고 이 표는 「왜」만 든다.
 CREATE TABLE IF NOT EXISTS season_pass_reasons (
     id SERIAL PRIMARY KEY,
-    label VARCHAR(60) NOT NULL,
+    -- UNIQUE 가 없으면 아래 ON CONFLICT 가 걸릴 대상이 없어 매번 새로 들어간다.
+    -- 같은 문구의 조정 사유가 둘일 이유도 없다 — 고르는 목록만 헷갈려진다.
+    label VARCHAR(60) NOT NULL UNIQUE,
     sort_order INTEGER NOT NULL DEFAULT 0,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -39,4 +41,4 @@ CREATE INDEX IF NOT EXISTS idx_season_pass_logs_attendee
 -- 처음 쓸 수 있도록 하나만 깔아 둔다. 나머지는 운영 중에 화면에서 등록한다.
 INSERT INTO season_pass_reasons (label, sort_order) VALUES
     ('서비스 제공', 1)
-ON CONFLICT DO NOTHING;
+ON CONFLICT (label) DO NOTHING;

@@ -4,12 +4,9 @@ import { fail } from '@sveltejs/kit';
 import type { PageServerLoad, Actions } from './$types';
 import { verifyAdminSession } from '$lib/server/auth';
 import { recordUndo, takeUndo, applyUndo } from '$lib/server/adminUndo';
-import { computePassPeriod, PASS_DAYS } from '$lib/passPeriod';
-
-/** 조정 일수의 상한. 예전에는 상한이 없어 −1 연타로 만료일이 과거까지 갔다. */
-const MAX_ADJUST_DAYS = 365;
-/** 어드민 콘솔은 공용 계정 하나라 누가 눌렀는지는 남지 않는다. */
-const ACTOR = '관리자';
+import { PASS_DAYS } from '$lib/passPeriod';
+/* 쓰기는 이 모듈 하나로 — 회원 상세 페이지도 같은 함수를 부른다 */
+import { issuePass, adjustPassDays, MAX_ADJUST_DAYS } from '$lib/server/seasonPass';
 
 async function requireAdmin(request: Request) {
     const token = request.headers.get('cookie')?.match(/admin_session=([^;]+)/)?.[1];
@@ -94,59 +91,15 @@ export const actions: Actions = {
         if (!(await requireAdmin(request))) return fail(403, { error: '권한이 없습니다.' });
 
         const data = await request.formData();
-        const attendeeId = Number(data.get('attendeeId'));
-        const startDate = String(data.get('startDate') ?? '');
-        const note = String(data.get('note') ?? '').trim();
+        const res = await issuePass({
+            attendeeId: Number(data.get('attendeeId')),
+            startDate: String(data.get('startDate') ?? ''),
+            note: String(data.get('note') ?? '')
+        });
+        if (!res.ok) return fail(res.status, { error: res.error });
 
-        if (!attendeeId) return fail(400, { error: '회원을 선택해주세요.' });
-
-        const period = computePassPeriod(startDate);
-        if (!period) return fail(400, { error: '시작일을 올바르게 선택해주세요.' });
-
-        try {
-            const undoPayload = await db.transaction(async (tx) => {
-                const prev = (
-                    (await tx.execute(sql`
-                        SELECT season_pass_expires_at FROM attendees WHERE id = ${attendeeId}
-                    `)) as any[]
-                )[0];
-                if (!prev) return { error: '해당 회원을 찾을 수 없습니다.' } as const;
-                const expiresBefore = prev.season_pass_expires_at ?? null;
-                /*
-                    발급 사유는 사람이 고를 것이 아니다. 이전 만료일이 있으면 재발급,
-                    없으면 신규 — 화면이 이미 아는 사실을 다시 묻지 않는다.
-                */
-                const reasonLabel = expiresBefore ? '재발급' : '신규 발급';
-
-                await tx.execute(sql`
-                    UPDATE attendees SET season_pass_expires_at = ${period.expiresAt.toISOString()}
-                    WHERE id = ${attendeeId}
-                `);
-
-                /* 규칙이 민 이유와 사람이 적은 메모를 같은 칸에서 읽는다 */
-                const noteParts = [note, period.explanation].filter(Boolean);
-                const logRows = await tx.execute(sql`
-                    INSERT INTO season_pass_logs
-                        (attendee_id, action, reason_id, reason_label, note, days, expires_before, expires_after, actor)
-                    VALUES (${attendeeId}, 'grant', NULL, ${reasonLabel},
-                            ${noteParts.length ? noteParts.join(' · ') : null},
-                            ${period.totalDays}, ${expiresBefore}, ${period.expiresAt.toISOString()}, ${ACTOR})
-                    RETURNING id
-                `);
-                const logId = Number((logRows as any[])[0].id);
-                /* 발급 행이 정기권의 시작이다 — 자기 id 를 달아 이후 조정이 물려받게 한다 */
-                await tx.execute(sql`UPDATE season_pass_logs SET pass_id = ${logId} WHERE id = ${logId}`);
-                return { attendeeId, expiresBefore, logId, label: reasonLabel } as const;
-            });
-
-            if ('error' in undoPayload) return fail(400, { error: undoPayload.error });
-
-            const undo = await recordUndo('pass_grant', undoPayload, `정기권 발급 (${undoPayload.label})`);
-            return { success: true, undo, expiresDate: period.expiresDate, totalDays: period.totalDays };
-        } catch (err) {
-            console.error('grantPass failed:', err);
-            return fail(500, { error: '정기권 발급 중 오류가 발생했습니다.' });
-        }
+        const undo = await recordUndo('pass_grant', res.payload, `정기권 발급 (${res.label})`);
+        return { success: true, undo, expiresDate: res.expiresDate, totalDays: res.totalDays };
     },
 
     /* 조정. 사유가 필수로 바뀌었다 — 왜 하루를 더 줬는지가 남지 않으면 이력이 아니다. */
@@ -154,68 +107,24 @@ export const actions: Actions = {
         if (!(await requireAdmin(request))) return fail(403, { error: '권한이 없습니다.' });
 
         const data = await request.formData();
-        const attendeeId = Number(data.get('attendeeId'));
         const days = Number(data.get('days'));
         const reasonId = Number(data.get('reasonId'));
-
-        if (!attendeeId || !Number.isInteger(days) || days === 0) {
-            return fail(400, { error: '잘못된 요청입니다.' });
-        }
-        if (Math.abs(days) > MAX_ADJUST_DAYS) {
-            return fail(400, { error: `한 번에 조정할 수 있는 일수는 ${MAX_ADJUST_DAYS}일까지입니다.` });
-        }
         if (!reasonId) return fail(400, { error: '사유를 선택해주세요.' });
 
-        try {
-            const undoPayload = await db.transaction(async (tx) => {
-                const reason = await loadReason(tx, reasonId);
-                if (!reason) return { error: '사유를 선택해주세요.' } as const;
+        const reason = await loadReason(db, reasonId);
+        if (!reason) return fail(400, { error: '사유를 선택해주세요.' });
 
-                const prev = (
-                    (await tx.execute(sql`
-                        SELECT season_pass_expires_at FROM attendees WHERE id = ${attendeeId}
-                    `)) as any[]
-                )[0];
-                if (!prev?.season_pass_expires_at) return { error: '유효한 정기권이 없습니다.' } as const;
-                const expiresBefore = prev.season_pass_expires_at;
+        const res = await adjustPassDays({
+            attendeeId: Number(data.get('attendeeId')),
+            days,
+            reasonId: reason.id,
+            reasonLabel: reason.label
+        });
+        if (!res.ok) return fail(res.status, { error: res.error });
 
-                const after = (
-                    (await tx.execute(sql`
-                        UPDATE attendees
-                        SET season_pass_expires_at = season_pass_expires_at + interval '1 day' * ${days}
-                        WHERE id = ${attendeeId}
-                        RETURNING season_pass_expires_at
-                    `)) as any[]
-                )[0];
-
-                const logRows = await tx.execute(sql`
-                    INSERT INTO season_pass_logs
-                        (attendee_id, pass_id, action, reason_id, reason_label, note, days, expires_before, expires_after, actor)
-                    VALUES (${attendeeId},
-                            /* 지금 정기권 = 이 회원의 마지막 발급 행. 없으면 NULL(발급 기록 이전의 옛 정기권). */
-                            (SELECT MAX(id) FROM season_pass_logs
-                              WHERE attendee_id = ${attendeeId} AND action = 'grant'),
-                            'adjust', ${reason.id}, ${reason.label}, NULL,
-                            ${days}, ${expiresBefore}, ${after.season_pass_expires_at}, ${ACTOR})
-                    RETURNING id
-                `);
-                return {
-                    attendeeId,
-                    expiresBefore,
-                    logId: Number((logRows as any[])[0].id),
-                    label: reason.label
-                } as const;
-            });
-
-            if ('error' in undoPayload) return fail(400, { error: undoPayload.error });
-
-            const sign = days > 0 ? `+${days}` : String(days);
-            const undo = await recordUndo('pass_adjust', undoPayload, `정기권 ${sign}일 (${undoPayload.label})`);
-            return { success: true, undo };
-        } catch (err) {
-            console.error('adjustPass failed:', err);
-            return fail(500, { error: '정기권 조정 중 오류가 발생했습니다.' });
-        }
+        const sign = days > 0 ? `+${days}` : String(days);
+        const undo = await recordUndo('pass_adjust', res.payload, `정기권 ${sign}일 (${res.label})`);
+        return { success: true, undo };
     },
 
     /* 조정 사유 마스터. 한 번 등록하면 여러 사람에게 같은 문구로 쓰인다. */

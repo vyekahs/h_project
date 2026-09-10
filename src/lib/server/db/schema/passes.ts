@@ -1,4 +1,4 @@
-import { pgTable, serial, varchar, text, integer, timestamp, index } from 'drizzle-orm/pg-core';
+import { pgTable, serial, varchar, text, integer, timestamp, date, index } from 'drizzle-orm/pg-core';
 import { attendees } from './core';
 
 /*
@@ -17,7 +17,9 @@ import { attendees } from './core';
 */
 export const seasonPassReasons = pgTable('season_pass_reasons', {
 	id: serial('id').primaryKey(),
-	label: varchar('label', { length: 60 }).notNull(),
+	/** UNIQUE — 같은 문구의 사유가 둘이면 고르는 목록만 헷갈려진다. 시드의
+	    ON CONFLICT 도 이 제약이 있어야 걸린다. */
+	label: varchar('label', { length: 60 }).notNull().unique(),
 	sortOrder: integer('sort_order').notNull().default(0),
 	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 });
@@ -58,6 +60,11 @@ export const seasonPassLogs = pgTable('season_pass_logs', {
 	note: text('note'),
 	/** 순 변화 일수(+30, +1, -1). 해지는 남은 일수를 음수로 적는다. */
 	days: integer('days'),
+	/**
+	 * 발급 행에만 있는 시작일. 월·화 보정으로 days 가 30→31, 32 로 늘기 때문에
+	 * 「만료일 − days」로는 원래 시작일이 복원되지 않는다. 그래서 직접 적는다.
+	 */
+	startedOn: date('started_on'),
 	expiresBefore: timestamp('expires_before', { withTimezone: true }),
 	expiresAfter: timestamp('expires_after', { withTimezone: true }),
 	/** 어드민 콘솔은 공용 계정 하나라 「관리자」로만 남는다. */
