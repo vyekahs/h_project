@@ -21,9 +21,6 @@
 #include <BLEScan.h>
 #include <BLEAdvertisedDevice.h>
 #include <esp_bt.h>
-#include <lwip/opt.h>
-#include <lwip/etharp.h>
-#include <lwip/netif.h>
 #include <string.h>
 #include "secrets.h"  // WIFI_SSID, WIFI_PASS, SCANNER_API_KEY — secrets.h.example 참고
 
@@ -67,25 +64,6 @@ int consecutiveFailures = 0;
 const int MAX_CONSECUTIVE_FAILURES = 5;
 unsigned long lastSuccessMs = 0;
 const unsigned long MAX_SILENCE_MS = 10UL * 60UL * 1000UL;  // 10분
-
-// --- LAN(WiFi) 재실 확인 ---
-//
-// BLE 광고는 폰이 내킬 때만 한다. 어떤 폰은 33시간에 13번밖에 안 잡혀서,
-// 자리에 앉아 있는데도 자동 체크아웃됐다. 반면 WiFi에 붙어 있는 기기는 ARP에
-// 반드시 응답한다 — 화면이 꺼져 있어도, 주머니 안에 있어도.
-//
-// 스캐너는 동아리방 WiFi에 있으므로 같은 대역에 ARP를 던져 응답을 모을 수 있다.
-// 서버는 다른 망에 있어서 이걸 직접 못 한다.
-//
-// 매 사이클 돌리지 않는다. 한 번에 5초 가까이 걸리고 그동안 BLE 수신이 줄어드는데,
-// 재실 판정에 5초 단위 정밀도는 필요 없다.
-const int  ARP_EVERY_N_CYCLES = 4;    // 약 2~3분마다
-const int  ARP_BATCH          = 8;    // lwIP ARP 테이블이 작아(기본 10칸) 나눠 훑는다
-const int  ARP_BATCH_WAIT_MS  = 150;  // 응답을 받아 테이블에 실릴 시간
-const int  MAX_LAN_DEVICES    = 64;
-char lanMacs[MAX_LAN_DEVICES][18];
-int  lanMacCount = 0;
-int  cyclesSinceArp = 0;
 
 // --- 전송 실패 시 탐지 보존 ---
 //
@@ -413,96 +391,6 @@ bool sendBatch(HTTPClient& http, WiFiClientSecure& client,
   }
 }
 
-/** 이미 수집한 MAC인지 확인하고, 새 것이면 담는다. */
-static void addLanMac(const uint8_t mac[6]) {
-  char buf[18];
-  snprintf(buf, sizeof(buf), "%02X:%02X:%02X:%02X:%02X:%02X",
-           mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
-  for (int i = 0; i < lanMacCount; i++) {
-    if (strcmp(lanMacs[i], buf) == 0) return;
-  }
-  if (lanMacCount >= MAX_LAN_DEVICES) return;
-  strncpy(lanMacs[lanMacCount], buf, sizeof(lanMacs[0]) - 1);
-  lanMacs[lanMacCount][sizeof(lanMacs[0]) - 1] = '\0';
-  lanMacCount++;
-}
-
-/**
- * 같은 대역에 ARP를 던져 응답한 기기의 MAC을 모은다.
- *
- * lwIP의 ARP 테이블은 기본 10칸뿐이라 254개를 한 번에 훑으면 먼저 들어온 항목이
- * 밀려난다. 작은 묶음으로 나눠 던지고 그때마다 테이블을 읽어 옮겨 담는다.
- *
- * /24가 아니면 건너뛴다. 더 넓은 대역을 전부 훑으면 시간이 급격히 늘고,
- * 그동안 BLE 수신이 그만큼 줄어든다.
- */
-void arpSweep() {
-  lanMacCount = 0;
-
-  struct netif* nif = netif_default;
-  if (!nif) {
-    Serial.println("ARP: netif 없음 — 건너뜀");
-    return;
-  }
-
-  IPAddress ip = WiFi.localIP();
-  IPAddress mask = WiFi.subnetMask();
-  if (mask[0] != 255 || mask[1] != 255 || mask[2] != 255) {
-    Serial.println("ARP: /24 대역이 아니라 건너뜀");
-    return;
-  }
-
-  unsigned long t0 = millis();
-  for (int start = 1; start <= 254; start += ARP_BATCH) {
-    for (int host = start; host < start + ARP_BATCH && host <= 254; host++) {
-      if (host == ip[3]) continue;  // 자기 자신
-      ip4_addr_t target;
-      IP4_ADDR(&target, ip[0], ip[1], ip[2], host);
-      etharp_request(nif, &target);
-    }
-    delay(ARP_BATCH_WAIT_MS);
-
-    for (int e = 0; e < ARP_TABLE_SIZE; e++) {
-      ip4_addr_t* eip = nullptr;
-      struct netif* enif = nullptr;
-      struct eth_addr* eth = nullptr;
-      if (etharp_get_entry(e, &eip, &enif, &eth) && eth) {
-        addLanMac(eth->addr);
-      }
-    }
-  }
-
-  Serial.println("ARP: " + String(lanMacCount) + "대 응답 (" +
-                 String(millis() - t0) + "ms)");
-}
-
-/** 모은 MAC을 서버로 보낸다. 서버는 등록된 MAC만 재실로 반영한다. */
-void sendLanReport(HTTPClient& http, WiFiClientSecure& client) {
-  if (lanMacCount == 0) return;
-
-  DynamicJsonDocument doc((size_t)lanMacCount * 40 + 256);
-  doc["scanner_id"] = SCANNER_ID;
-  JsonArray arr = doc.createNestedArray("devices");
-  for (int i = 0; i < lanMacCount; i++) {
-    JsonObject d = arr.createNestedObject();
-    d["mac"] = lanMacs[i];
-  }
-  if (doc.overflowed()) {
-    Serial.println("ARP: JSON 버퍼 부족 — 일부 누락");
-  }
-
-  String body;
-  serializeJson(doc, body);
-
-  String url = String(API_SERVER) + "/api/wifi/report";
-  http.begin(client, url);
-  http.setTimeout(15000);
-  http.addHeader("Content-Type", "application/json");
-  http.addHeader("x-api-key", API_KEY);
-  int code = http.POST(body);
-  Serial.println("ARP: 보고 " + String(code) + " (" + String(lanMacCount) + "대)");
-}
-
 void loop() {
   if (millis() - lastScanTime < scanInterval) {
     delay(1000);
@@ -643,19 +531,6 @@ void loop() {
       // 연결을 재사용하므로 예전의 배치 간 1초 대기는 필요 없다. 그 대기는
       // 매번 새로 만들던 TLS 버퍼를 회수할 시간을 주려던 것이었다.
       // 20배치 기준 20초를 그대로 돌려받는다.
-    }
-
-    // BLE 보고가 끝난 뒤 LAN(ARP) 재실 확인을 이어서 한다.
-    //
-    // 이미 열어둔 TLS 연결을 그대로 쓴다 — 여기서 새로 만들면 앞서 없앤
-    // 핸드셰이크 반복과 힙 파편화가 그대로 돌아온다.
-    //
-    // 스캔 중이 아니라 보고 뒤에 두는 이유: ARP 훑기는 5초쯤 걸리고 그동안
-    // WiFi가 라디오를 쓰므로 BLE 수신이 줄어든다. 스캔 구간과 겹치지 않게 한다.
-    if (++cyclesSinceArp >= ARP_EVERY_N_CYCLES) {
-      cyclesSinceArp = 0;
-      arpSweep();
-      sendLanReport(http, *client);
     }
 
     http.end();  // 모든 배치가 끝난 뒤 한 번만 닫는다
