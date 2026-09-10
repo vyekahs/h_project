@@ -55,8 +55,21 @@ static bool parseMacBytes(const String& mac, uint8_t out[6]) {
     return true;
 }
 
-static bool macEq(const uint8_t* a, const uint8_t* b) {
-    return memcmp(a, b, 6) == 0;
+// 콜백이 IRAM_ATTR이므로 이 함수도 IRAM에 둔다.
+//
+// IRAM_ATTR은 "플래시를 읽을 수 없는 상황에서도 실행될 수 있다"는 선언이다.
+// 그 안에서 플래시에 있는 함수(memcmp 등)를 부르면 그 순간 죽는다. 실제로는
+// WiFi 태스크에서 호출되어 문제가 드러나지 않을 수 있지만, 선언과 실제가
+// 어긋난 채로 두면 나중에 진짜 ISR로 바뀌었을 때 재현이 어려운 크래시가 된다.
+// 6바이트 비교라 직접 푸는 편이 memcmp 호출보다 빠르기도 하다.
+static bool IRAM_ATTR macEq(const uint8_t* a, const uint8_t* b) {
+    return a[0] == b[0] && a[1] == b[1] && a[2] == b[2]
+        && a[3] == b[3] && a[4] == b[4] && a[5] == b[5];
+}
+
+static void IRAM_ATTR macCopy(uint8_t* dst, const uint8_t* src) {
+    dst[0] = src[0]; dst[1] = src[1]; dst[2] = src[2];
+    dst[3] = src[3]; dst[4] = src[4]; dst[5] = src[5];
 }
 
 // Promiscuous 콜백 — WiFi 태스크에서 실행되므로 힙을 절대 건드리지 않는다
@@ -90,7 +103,7 @@ void IRAM_ATTR wifiPromiscuousCallback(void* buf, wifi_promiscuous_pkt_type_t ty
         if (macEq(promiscMacs[i], addr2)) return;
     }
     if (n >= MAX_PROMISC_MACS) return;  // 넘치면 버린다. 재실 판정에는 충분한 수다.
-    memcpy(promiscMacs[n], addr2, 6);
+    macCopy(promiscMacs[n], addr2);
     promiscMacCount = n + 1;
 }
 
@@ -154,6 +167,14 @@ bool isWebBtFlow = false;
 unsigned long webBtAuthTime = 0;
 unsigned long webBtFlowStartTime = 0;  // Web BT 플로우 시작 시간 (자동 리셋용)
 const unsigned long WEB_BT_TIMEOUT = 60000;  // 60초 후 자동 리셋
+
+// 워치독은 setup 끝에서야 켜진다. 그 전에(예: setup의 registerIp) 리셋을 부르면
+// 등록되지 않은 태스크라 에러가 나고 부팅 때마다 로그가 지저분해진다.
+// 켜진 뒤에만 실제로 부른다.
+bool wdtArmed = false;
+static void wdtReset() {
+    if (wdtArmed) esp_task_wdt_reset();
+}
 
 // HTTP/HTTPS 자동 판별 헬퍼
 bool isHttps() {
@@ -404,7 +425,7 @@ void registerIp() {
         String json;
         serializeJson(doc, json);
 
-        esp_task_wdt_reset();  // HTTP는 초 단위로 블로킹한다
+        wdtReset();  // HTTP는 초 단위로 블로킹한다
 
         int code = http.POST(json);
         Serial.printf("[IP] Attempt %d/3: HTTP %d\n", attempt, code);
@@ -697,9 +718,9 @@ void scanLocalDevices() {
     serializeJson(doc, jsonStr);
     doc.clear();
 
-    esp_task_wdt_reset();   // 전송 직전 — 아래 POST가 최대 15초 블로킹한다
+    wdtReset();   // 전송 직전 — 아래 POST가 최대 15초 블로킹한다
     int responseCode = https.POST(jsonStr);
-    esp_task_wdt_reset();
+    wdtReset();
     Serial.printf("[WiFi] Report sent: %d (%d devices)\n", responseCode, macCount);
 
     https.end();
@@ -725,7 +746,7 @@ void uploadIrk(String irk) {
         String json;
         serializeJson(doc, json);
 
-        esp_task_wdt_reset();  // HTTP는 초 단위로 블로킹한다
+        wdtReset();  // HTTP는 초 단위로 블로킹한다
 
         int code = http.POST(json);
         Serial.printf("Upload Result: %d\n", code);
@@ -755,9 +776,9 @@ void pollServer() {
     http.setTimeout(10000);
     // 이 GET은 최대 10초, TLS 핸드셰이크까지 더하면 그 이상 블로킹한다.
     // 워치독이 30초라 네트워크가 느린 날엔 여기서 패닉 재부팅이 났다.
-    esp_task_wdt_reset();  // 이 GET은 TLS 포함 10초 이상 블로킹할 수 있다
+    wdtReset();  // 이 GET은 TLS 포함 10초 이상 블로킹할 수 있다
     int code = http.GET();
-    esp_task_wdt_reset();
+    wdtReset();
 
     Serial.printf("[Poll] code=%d\n", code);
 
@@ -944,6 +965,7 @@ void setup() {
   };
   esp_task_wdt_init(&wdt_config);
   esp_task_wdt_add(NULL);
+  wdtArmed = true;
 
   Serial.printf("Setup Complete. Free heap: %d bytes\n", ESP.getFreeHeap());
   Serial.println("Waiting for commands...");
