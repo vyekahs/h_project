@@ -3,6 +3,7 @@ import { db } from '$lib/server/db/index';
 import { sql } from 'drizzle-orm';
 import crypto from 'crypto';
 import { emitLiveEvent } from '$lib/server/liveEvents';
+import { markInfraMacs, recordWifiSample } from '$lib/server/wifiLearning';
 
 // Types
 interface ScanResult {
@@ -675,9 +676,28 @@ export async function processWifiReport(_scannerId: string, devices: { mac: stri
     const beforeOpeningWindow = currentMinutesTotal < (openMinutesTotal - 120);
 
     if (!settingsCache!.isOpen && beforeOpeningWindow) {
+        // 영업이 끝난 새벽에도 랜에 남아 있는 기기는 공유기·TV·스캐너 같은 상시 장비다.
+        // 회원 폰일 수 없으므로 MAC 자동 학습에서 통째로 제외하기 위해 기록해둔다.
+        // (재실 판정은 아래처럼 그대로 건너뛴다)
+        if (checkHour >= 2 && checkHour < 7) {
+            markInfraMacs(devices.map(d => d.mac)).catch(e =>
+                console.error('[WiFi] 상시 장비 기록 실패', e));
+        }
         console.log(`[${kstTime()}][WiFi] Gym closed & before opening window, skipping (${devices.length} devices)`);
         return;
     }
+
+    // MAC 자동 학습 표본.
+    //
+    // 정답지는 BLE로 확인된 회원이다. WiFi 판정 결과를 쓰면 스스로 학습한 결과로
+    // 다시 학습하는 되먹임이 생겨, 한 번 잘못 짝지어진 MAC이 영원히 굳어진다.
+    // 그래서 wifiMacCache가 비어 있어(등록자 0명) 아래에서 일찍 반환하더라도
+    // 학습은 그 전에 해둔다 — 등록자가 없을 때야말로 학습이 가장 필요하다.
+    const bleConfirmed = [...lastSeenBleMap.entries()]
+        .filter(([, ts]) => Date.now() - ts < 5 * 60 * 1000)
+        .map(([id]) => id);
+    recordWifiSample(devices.map(d => d.mac), bleConfirmed).catch(e =>
+        console.error('[WiFi] 학습 표본 기록 실패', e));
 
     if (wifiMacCache.size === 0) {
         console.log(`[${kstTime()}][WiFi] No WiFi MACs registered, skipping`);

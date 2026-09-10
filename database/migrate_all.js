@@ -150,6 +150,40 @@ async function migrate() {
             ON CONFLICT (key) DO NOTHING;
         `);
 
+        // 13-2. WiFi MAC 자동 학습
+        //
+        // BLE 광고는 폰이 내킬 때만 해서 어떤 회원은 33시간에 13번밖에 안 잡힌다.
+        // WiFi는 접속해 있으면 항상 잡히지만, 어느 MAC이 누구 것인지 알아야 쓸 수 있고
+        // 회원 32명에게 직접 등록시키는 것은 현실적이지 않다.
+        //
+        // 그래서 BLE로 확실히 잡힌 순간을 단서로 삼아 동시 출현을 센다.
+        // 회원이 있을 때만 랜에 있고 없을 때 없는 MAC이 그 사람 폰이다.
+        console.log('[13-2] Checking WiFi MAC learning tables...');
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS wifi_mac_learning (
+                attendee_id INTEGER NOT NULL REFERENCES attendees(id) ON DELETE CASCADE,
+                mac         VARCHAR(17) NOT NULL,
+                hits        INTEGER NOT NULL DEFAULT 0,
+                PRIMARY KEY (attendee_id, mac)
+            );
+            -- name: 'global' | 'a:<attendee_id>' | 'm:<mac>'
+            -- 표본 하나 = WiFi 보고 한 번. global은 전체 표본 수,
+            -- a:*는 그 회원이 BLE로 확인된 표본 수, m:*은 그 MAC이 랜에 있던 표본 수.
+            CREATE TABLE IF NOT EXISTS wifi_learn_counters (
+                name  TEXT PRIMARY KEY,
+                count INTEGER NOT NULL DEFAULT 0
+            );
+            -- 영업이 끝난 새벽에도 랜에 있던 기기. 공유기, TV, 스캐너, 프린터 같은
+            -- 상시 장비다. 회원 폰이 새벽 3시에 동아리방 WiFi에 붙어 있을 수는 없다.
+            -- 학습에서 통째로 제외한다 — 이런 기기는 모든 회원과 동시에 나타나므로
+            -- 걸러내지 않으면 아무하고나 짝지어진다.
+            CREATE TABLE IF NOT EXISTS wifi_infra_macs (
+                mac          VARCHAR(17) PRIMARY KEY,
+                first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                last_seen_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            );
+        `);
+
         // 14. Guest support in session_participants
         console.log('[14] Adding guest support to session_participants...');
         await pool.query('ALTER TABLE session_participants ALTER COLUMN attendee_id DROP NOT NULL;');
