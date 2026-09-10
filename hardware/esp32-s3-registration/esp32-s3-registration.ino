@@ -826,7 +826,7 @@ void pollServer() {
 
 void setup() {
   Serial.begin(115200);
-  delay(2000);  // 시리얼 안정화 대기 늘림
+  delay(500);  // 시리얼 안정화 (길게 잡으면 그만큼 광고가 늦는다)
 
   Serial.println("\n\n=== ESP32-S3 Registration Device ===");
 
@@ -846,52 +846,14 @@ void setup() {
       Serial.println("NVS bond store cleared");
   }
 
-  // WiFi Setup (Static IP)
-  Serial.println("Connecting to WiFi: " + String(WIFI_SSID));
-  WiFi.mode(WIFI_STA);
-  WiFi.config(staticIP, gateway, subnet, dns);
-  WiFi.begin(WIFI_SSID, WIFI_PASS);
-
-  int wifiAttempts = 0;
-  while (WiFi.status() != WL_CONNECTED && wifiAttempts < 30) {
-    delay(500);
-    Serial.print(".");
-    wifiAttempts++;
-  }
-  if (WiFi.status() != WL_CONNECTED) {
-    // 예전에는 여기서 ESP.restart()를 했다. 그런데 등록이 끝나면 기기가 스스로
-    // 재부팅하도록 되어 있어서(본드 저장소를 깨끗이 지우기 위해), 마침 그때
-    // WiFi가 흔들리면 부팅 → 실패 → 재부팅을 무한히 반복했다. 그동안 BLE
-    // 초기화까지 가지 못하므로 기기가 영영 보이지 않는다 — 등록은 BLE로
-    // 시작하는데 그 입구가 막히는 셈이다. "등록하면 바로 안 보인다"가 이것이다.
-    //
-    // WiFi 없이도 계속 진행한다. BLE 광고는 뜨고, 연결은 ensureWiFi()가 15초마다
-    // 뒤에서 계속 시도한다. 서버가 정말 필요한 순간(IRK 업로드)에만 실패하고,
-    // 그 실패는 사용자에게 보인다 — 아무것도 안 보이는 것보다 낫다.
-    Serial.println("\nWiFi 연결 실패 — WiFi 없이 계속 진행한다 (뒤에서 재시도)");
-  } else {
-    Serial.println("\nWiFi Connected!");
-    Serial.printf("IP: %s\n", WiFi.localIP().toString().c_str());
-  }
-
-  // 서버에 IP 등록 (연결 안 됐으면 내부에서 바로 반환하고, 재연결 시 다시 부른다)
-  registerIp();
-
-  // Get MAC
-  myMacAddress = WiFi.macAddress();
-  myMacAddress.replace(":", "");
-  Serial.println("MAC: " + myMacAddress);
-
-  // Promiscuous 필터용 MAC 캡처
-  // 필터용 MAC은 바이트로 들고 있는다. 콜백에서 문자열로 비교하면 프레임마다
-  // String 임시 객체가 생겨, 힙을 안 쓰려고 바꾼 의미가 없어진다.
-  WiFi.macAddress(ownMacBytes);
-  delay(500);
-  String gwStr = getMacFromArp(gateway);  // 게이트웨이 MAC (ARP 1회)
-  gatewayMacKnown = parseMacBytes(gwStr, gatewayMacBytes);
-  Serial.println("[WiFi] Own MAC: " + WiFi.macAddress());
-  Serial.println("[WiFi] Gateway MAC: " + (gatewayMacKnown ? gwStr : String("(미확인)")));
-
+  // BLE를 WiFi보다 먼저 올린다.
+  //
+  // 등록이 끝나면 기기가 재부팅하는데, 예전에는 BLE 초기화가 WiFi 연결과
+  // registerIp() 뒤에 있어서 그동안(10~20초) 기기가 보이지 않았다. 등록을 막
+  // 마친 사람 눈에는 "누르자마자 사라졌다"로 보인다.
+  //
+  // BLE 초기화는 WiFi에 전혀 의존하지 않는다. 먼저 올리면 부팅 1초 남짓이면
+  // 광고가 뜨고, WiFi는 그 뒤에서 붙는다.
     // BLE Init (NimBLE)
     NimBLEDevice::init("HN_SETUP");
 
@@ -957,6 +919,53 @@ void setup() {
     NimBLEDevice::startAdvertising();
 
   // Local HTTP Server (WiFi MAC 등록 페이지 제공)
+
+  // WiFi Setup (Static IP)
+  Serial.println("Connecting to WiFi: " + String(WIFI_SSID));
+  WiFi.mode(WIFI_STA);
+  WiFi.config(staticIP, gateway, subnet, dns);
+  WiFi.begin(WIFI_SSID, WIFI_PASS);
+
+  int wifiAttempts = 0;
+  while (WiFi.status() != WL_CONNECTED && wifiAttempts < 30) {
+    delay(500);
+    Serial.print(".");
+    wifiAttempts++;
+  }
+  if (WiFi.status() != WL_CONNECTED) {
+    // 예전에는 여기서 ESP.restart()를 했다. 그런데 등록이 끝나면 기기가 스스로
+    // 재부팅하도록 되어 있어서(본드 저장소를 깨끗이 지우기 위해), 마침 그때
+    // WiFi가 흔들리면 부팅 → 실패 → 재부팅을 무한히 반복했다. 그동안 BLE
+    // 초기화까지 가지 못하므로 기기가 영영 보이지 않는다 — 등록은 BLE로
+    // 시작하는데 그 입구가 막히는 셈이다. "등록하면 바로 안 보인다"가 이것이다.
+    //
+    // WiFi 없이도 계속 진행한다. BLE 광고는 뜨고, 연결은 ensureWiFi()가 15초마다
+    // 뒤에서 계속 시도한다. 서버가 정말 필요한 순간(IRK 업로드)에만 실패하고,
+    // 그 실패는 사용자에게 보인다 — 아무것도 안 보이는 것보다 낫다.
+    Serial.println("\nWiFi 연결 실패 — WiFi 없이 계속 진행한다 (뒤에서 재시도)");
+  } else {
+    Serial.println("\nWiFi Connected!");
+    Serial.printf("IP: %s\n", WiFi.localIP().toString().c_str());
+  }
+
+  // 서버에 IP 등록 (연결 안 됐으면 내부에서 바로 반환하고, 재연결 시 다시 부른다)
+  registerIp();
+
+  // Get MAC
+  myMacAddress = WiFi.macAddress();
+  myMacAddress.replace(":", "");
+  Serial.println("MAC: " + myMacAddress);
+
+  // Promiscuous 필터용 MAC 캡처
+  // 필터용 MAC은 바이트로 들고 있는다. 콜백에서 문자열로 비교하면 프레임마다
+  // String 임시 객체가 생겨, 힙을 안 쓰려고 바꾼 의미가 없어진다.
+  WiFi.macAddress(ownMacBytes);
+  delay(500);
+  String gwStr = getMacFromArp(gateway);  // 게이트웨이 MAC (ARP 1회)
+  gatewayMacKnown = parseMacBytes(gwStr, gatewayMacBytes);
+  Serial.println("[WiFi] Own MAC: " + WiFi.macAddress());
+  Serial.println("[WiFi] Gateway MAC: " + (gatewayMacKnown ? gwStr : String("(미확인)")));
+
   localServer.on("/mac", HTTP_GET, handleGetMac);
   localServer.on("/register", HTTP_GET, handleRegisterPage);
   localServer.begin();
