@@ -1,4 +1,4 @@
-import { getLiveEmitter } from '$lib/server/liveEvents';
+import { getLiveEmitter, addSseUser, removeSseUser } from '$lib/server/liveEvents';
 import { verifyAttendeeSession } from '$lib/server/auth';
 
 export function GET({ request, cookies }: { request: Request; cookies: any }) {
@@ -24,6 +24,8 @@ export function GET({ request, cookies }: { request: Request; cookies: any }) {
 				} catch {}
 				return;
 			}
+			// 아래 콜백들이 캡처하는 값이라 좁혀진 타입을 유지하려면 상수로 받아야 한다.
+			const uid: number = userId;
 
 			const emitter = getLiveEmitter();
 
@@ -72,6 +74,10 @@ export function GET({ request, cookies }: { request: Request; cookies: any }) {
 			emitter.on('party_chat', onPartyChat);
 			emitter.on('wtp_chat', onWtpChat);
 
+			// 이 사용자가 앱을 보고 있다고 표시한다. 알림 전송 쪽에서 이 값을 보고
+			// 웹푸시를 건너뛴다 — 앱을 보고 있는데 잠금화면 알림까지 울릴 이유가 없다.
+			addSseUser(uid);
+
 			// 연결 직후 바로 한 바이트 보내서 즉시 flush시킨다.
 			// (첫 데이터가 올 때까지 브라우저의 EventSource가 open 상태로 전환되지 않고
 			//  30초 하트비트 전까지 통신이 없어 보여 연결이 불안정하게 끊기는 문제 방지)
@@ -94,6 +100,7 @@ export function GET({ request, cookies }: { request: Request; cookies: any }) {
 				emitter.off('notification', onNotification);
 				emitter.off('party_chat', onPartyChat);
 				emitter.off('wtp_chat', onWtpChat);
+				removeSseUser(uid);
 				if (heartbeatTimer) clearInterval(heartbeatTimer);
 				try { controller.close(); } catch {}
 			}
