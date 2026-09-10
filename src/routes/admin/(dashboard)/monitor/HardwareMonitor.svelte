@@ -986,16 +986,19 @@
 		}
 	}
 
-	/* BLE 스캐너 상태 */
+	/* BLE 스캐너 상태 —
+	   무응답은 되돌릴 수 없는 조작이 아니라(다시 보고하면 자동 복구) 주의를 끌어야
+	   하는 상태일 뿐이므로, "채움 빨강은 블랙 등록만"(admin-tokens.test.ts) 원칙에
+	   따라 danger가 아닌 warning 계열 토큰을 쓴다. */
 	.scanner-card.has-down {
-		border-color: rgba(239, 68, 68, 0.45);
-		background: rgba(239, 68, 68, 0.06);
+		border-color: var(--border-warning);
+		background: var(--color-warning-bg);
 	}
 	.scanner-alarm {
 		margin-left: 8px;
 		font-size: 0.78rem;
 		font-weight: 700;
-		color: #f87171;
+		color: var(--color-orange-text);
 	}
 	.scanner-rows { display: flex; flex-direction: column; gap: 6px; }
 	.scanner-row {
@@ -1009,12 +1012,12 @@
 		width: 8px;
 		height: 8px;
 		border-radius: 50%;
-		background: #22c55e;
+		background: var(--color-green);
 		flex: none;
 	}
-	.scanner-row.down .sc-dot { background: #ef4444; }
+	.scanner-row.down .sc-dot { background: var(--color-orange-dark); }
 	.sc-id { font-weight: 600; }
-	.scanner-row.down .sc-id { color: #f87171; }
-	.sc-ago { color: rgba(255, 255, 255, 0.72); }
-	.sc-meta { margin-left: auto; font-size: 0.75rem; color: rgba(255, 255, 255, 0.45); }
+	.scanner-row.down .sc-id { color: var(--color-orange-text); }
+	.sc-ago { color: var(--text-secondary); }
+	.sc-meta { margin-left: auto; font-size: 0.75rem; color: var(--text-tertiary); }
 </style>
