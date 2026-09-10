@@ -859,14 +859,22 @@ void setup() {
     wifiAttempts++;
   }
   if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("\nWiFi connection failed! Restarting...");
-    delay(1000);
-    ESP.restart();
+    // 예전에는 여기서 ESP.restart()를 했다. 그런데 등록이 끝나면 기기가 스스로
+    // 재부팅하도록 되어 있어서(본드 저장소를 깨끗이 지우기 위해), 마침 그때
+    // WiFi가 흔들리면 부팅 → 실패 → 재부팅을 무한히 반복했다. 그동안 BLE
+    // 초기화까지 가지 못하므로 기기가 영영 보이지 않는다 — 등록은 BLE로
+    // 시작하는데 그 입구가 막히는 셈이다. "등록하면 바로 안 보인다"가 이것이다.
+    //
+    // WiFi 없이도 계속 진행한다. BLE 광고는 뜨고, 연결은 ensureWiFi()가 15초마다
+    // 뒤에서 계속 시도한다. 서버가 정말 필요한 순간(IRK 업로드)에만 실패하고,
+    // 그 실패는 사용자에게 보인다 — 아무것도 안 보이는 것보다 낫다.
+    Serial.println("\nWiFi 연결 실패 — WiFi 없이 계속 진행한다 (뒤에서 재시도)");
+  } else {
+    Serial.println("\nWiFi Connected!");
+    Serial.printf("IP: %s\n", WiFi.localIP().toString().c_str());
   }
-  Serial.println("\nWiFi Connected!");
-  Serial.printf("IP: %s\n", WiFi.localIP().toString().c_str());
 
-  // 서버에 IP 등록
+  // 서버에 IP 등록 (연결 안 됐으면 내부에서 바로 반환하고, 재연결 시 다시 부른다)
   registerIp();
 
   // Get MAC
