@@ -831,22 +831,24 @@
 	}
 
 	/* Log Card */
+	/*
+		아래 여백은 카드마다 따로 붙어 있었다(.log-card / .stuck-card /
+		.abandoned-card). 그러다 보니 .scanner-card 만 빠져서 BLE 스캐너 카드가
+		다음 카드에 딱 붙어 있었다 — 간격 0. 공통 규칙으로 올려 빠질 수 없게 한다.
+	*/
 	.detail-card {
 		background: white;
 		padding: var(--space-5);
 		border-radius: var(--radius-card);
 		border: 1px solid var(--border-light);
+		margin-bottom: var(--space-5);
 	}
 	.detail-card h3 {
 		margin: 0 0 var(--space-4) 0;
 		font-size: var(--text-base);
 		color: var(--text-primary);
 	}
-	.log-card {
-		margin-bottom: var(--space-5);
-	}
 	.stuck-card {
-		margin-bottom: var(--space-5);
 		border: 1px solid var(--color-red-dark);
 		background: var(--color-error-bg);
 		animation: pulse-border 2s infinite;
@@ -859,7 +861,6 @@
 		color: var(--color-red-darker);
 	}
 	.abandoned-card {
-		margin-bottom: var(--space-5);
 		border: 1px solid var(--color-orange);
 		background: var(--color-warning-bg);
 	}
@@ -936,8 +937,9 @@
 		color: var(--color-blue-bright);
 		font-weight: 600;
 	}
+	/* --text-muted(#999)는 흰 바탕에서 2.52:1 — 본문으로 쓸 수 없다 */
 	.empty-state {
-		color: var(--text-muted);
+		color: var(--text-secondary);
 		text-align: center;
 		padding: var(--space-6);
 	}
@@ -1062,29 +1064,41 @@
 	}
 	.scanner-row.down .sc-dot { background: var(--color-orange-dark); }
 	.sc-id { font-weight: 600; }
-	.scanner-row.down .sc-id { color: var(--color-orange-text); }
+	/*
+		이 카드(.detail-card)는 흰 배경인데 아래 색들이 전부 흰색 계열이었다.
+		다크 테마 시절의 잔재로 보인다 — 「등록된 스캐너가 없습니다」 문구는
+		흰 바탕에 흰 글자(1:1)라 아예 안 보였고, 그래서 제목 아래가 텅 빈
+		공간으로 읽혔다. 알림 토글과 음소거 점도 마찬가지였다.
+
+		흰 바탕 기준 대비: --text-secondary 5.43:1, --color-green-dark 6.59:1,
+		--color-orange-text 5.18:1. 예전 값은 #f87171 2.77:1, #86efac 1.4:1 이었다.
+	*/
 	.sc-ago { color: var(--text-secondary); }
-	.scanner-row.down .sc-id { color: #f87171; }
+	.scanner-row.down .sc-id { color: var(--color-orange-text); }
 	.scanner-empty {
 		margin: 0;
 		font-size: 0.82rem;
-		color: rgba(255, 255, 255, 0.5);
+		color: var(--text-secondary);
 	}
-	.scanner-row.muted { opacity: 0.55; }
-	.scanner-row.muted .sc-dot { background: rgba(255, 255, 255, 0.3); }
+	/*
+		알림을 꺼둔 줄은 예전에 opacity 0.55 로 흐렸다. 흐리기는 글자까지 같이
+		죽여서(#666 이 실질 2.3:1) 스캐너 이름을 읽을 수 없게 만든다. 꺼져
+		있다는 사실은 점과 토글 버튼이 이미 말하므로 글자는 건드리지 않는다.
+	*/
+	.scanner-row.muted .sc-dot { background: var(--text-tertiary); }
 	.sc-alert-toggle {
 		padding: 2px 8px;
 		border-radius: 999px;
-		border: 1px solid rgba(255, 255, 255, 0.18);
+		border: 1px solid var(--border-control);
 		background: transparent;
-		color: rgba(255, 255, 255, 0.55);
+		color: var(--text-secondary);
 		font-size: 0.7rem;
 		cursor: pointer;
 		white-space: nowrap;
 	}
 	.sc-alert-toggle.on {
-		border-color: rgba(34, 197, 94, 0.4);
-		color: #86efac;
+		border-color: var(--color-green-dark);
+		color: var(--color-green-dark);
 	}
 	.sc-alert-toggle:disabled { opacity: 0.5; cursor: default; }
 	.sc-meta { margin-left: auto; font-size: 0.75rem; color: var(--text-tertiary); }
