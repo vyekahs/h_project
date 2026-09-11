@@ -1,6 +1,6 @@
 import { db } from '$lib/server/db/index';
 import { sql } from 'drizzle-orm';
-import { emitNotification } from '$lib/server/liveEvents';
+import { emitNotification, hasActiveSse } from '$lib/server/liveEvents';
 import type { NotificationPayload, NotificationChannel } from './notificationChannel';
 import { PushNotificationChannel, sendPushToMany } from './pushNotificationChannel';
 
@@ -54,8 +54,12 @@ async function deliver(userIds: number[], payload: NotificationPayload) {
 		});
 	}
 
+	// 앱을 보고 있는 사람은 인앱으로 이미 받았으므로 푸시에서 뺀다(위 notify 주석 참고).
+	const pushTargets = userIds.filter(id => !hasActiveSse(id));
+	if (pushTargets.length === 0) return;
+
 	try {
-		await sendPushToMany(userIds, payload);
+		await sendPushToMany(pushTargets, payload);
 	} catch (e) {
 		console.error('[Notify] 푸시 일괄 전송 실패:', e);
 	}
@@ -81,8 +85,19 @@ export const NotificationService = {
 			VALUES (${userId}, ${payload.type}, ${payload.body}, ${fromUserId ?? null}, ${referenceId ?? null})
 		`);
 
-		// 2. Send via all channels
-		await Promise.allSettled(channels.map(ch => ch.send(userId, payload)));
+		// 2. 전달.
+		//
+		// 앱을 보고 있는 사람에게는 웹푸시를 보내지 않는다. 인앱 알림과 잠금화면
+		// 알림이 같이 울려 같은 내용을 두 번 받게 된다.
+		//
+		// 모바일 브라우저는 앱이 배경으로 가면 SSE를 대개 끊으므로, 연결이
+		// 살아 있다는 것은 대체로 화면을 보고 있다는 뜻이다. 데스크톱 배경 탭처럼
+		// 연결은 살아 있는데 안 보고 있는 경우엔 푸시를 놓치지만, 돌아왔을 때
+		// 인앱 알림 목록에 남아 있으므로 알림 자체를 잃지는 않는다.
+		const targets = hasActiveSse(userId)
+			? channels.filter(ch => !(ch instanceof PushNotificationChannel))
+			: channels;
+		await Promise.allSettled(targets.map(ch => ch.send(userId, payload)));
 	},
 
 	/**
