@@ -373,11 +373,14 @@ export function createTripleTileGame() {
 	function handleWin() {
 		if (gameState === 'finished' || isWon) return;
 		isWon = true;
+		// 타이머를 먼저 멈춘다. 아래 600ms 동안 gameState가 아직 'playing'이라,
+		// 그 사이 자동저장 틱(5초마다)이 끼어들면 방금 지운 저장이 되살아나고
+		// 시작 화면에 "이어하기"가 남는다.
+		stopTimer();
 		localStorage.removeItem('triple_tile_save');
 		hasSavedGame = false;
 		setTimeout(() => {
 			gameState = 'finished';
-			stopTimer();
 			if (!hasRestarted && !scoreSubmitted) {
 				scoreSubmitted = true;
 				submitScore();
