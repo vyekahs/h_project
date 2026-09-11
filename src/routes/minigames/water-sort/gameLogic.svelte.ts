@@ -377,10 +377,13 @@ export function createWaterSortGame() {
 
 	function handleWin() {
 		showWinAnimation = true;
+		// 타이머를 먼저 멈춘다. 아래 800ms 동안 gameState가 아직 'playing'이라,
+		// 그 사이 자동저장 틱이 끼어들면 방금 지운 저장이 되살아나고
+		// 시작 화면에 "이어하기"가 남는다.
+		stopTimer();
 		localStorage.removeItem('watersort_save');
 		setTimeout(() => {
 			gameState = 'finished';
-			stopTimer();
 			hasSavedGame = false;
 			if (!hasRestarted) {
 				submitScore();

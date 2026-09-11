@@ -219,7 +219,13 @@
 				primaryAction={{ label: '다시 도전', onclick: game.startGame }}
 				secondaryAction={{
 					label: '나가기',
-					onclick: () => goto('/minigames/start/triple-tile'),
+					onclick: () => {
+						// 패배·일시정지 모달과 달리 여기만 정리를 안 해서, 저장이 남으면
+						// 시작 화면에 "이어하기"가 떴다.
+						game.stopTimer();
+						localStorage.removeItem('triple_tile_save');
+						goto('/minigames/start/triple-tile');
+					},
 				}}
 			/>
 		{/if}
