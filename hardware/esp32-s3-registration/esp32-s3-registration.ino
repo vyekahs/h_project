@@ -26,23 +26,19 @@ const char* SERVER_URL = "https://damonpyo.mooo.com";
 
 // WiFi Promiscuous Scan Config
 const unsigned long WIFI_SCAN_INTERVAL = 300000;  // 5분마다 스캔
-// 스캔하는 동안 BLE 광고를 멈추므로 그 시간엔 등록하려는 사람에게 기기가 안 보인다.
-// 15초는 5분 중 5%였다. 10초면 충분히 모이고 사각 시간도 준다.
-const unsigned long PROMISC_SCAN_MS = 10000;
+// ARP는 lwIP 테이블이 작아(기본 10칸) 나눠 던지고 그때마다 읽어야 한다.
+const int ARP_BATCH = 8;
+const int ARP_BATCH_WAIT_MS = 150;  // 응답이 테이블에 실릴 시간
 unsigned long lastWifiScanTime = 0;
 
-// WiFi Promiscuous Mode - MAC 수집
+// 랜에서 응답한 기기 MAC 수집 버퍼.
 //
-// 원시 6바이트로 담는다. 예전에는 std::set<String>에 넣었는데, 이 콜백은 WiFi
-// 태스크에서 초당 수백 번 호출되므로 프레임마다 malloc(String 생성 + 트리 노드)이
-// 일어났다. 사람이 많아 프레임이 쏟아질수록 힙이 파편화되고, 30KB 밑으로 떨어지면
-// 힙 감시가 기기를 재시작시킨다 — "사람 많을 때 불안정하다"의 정체다.
-//
-// 중복 검사는 선형 탐색이지만 6바이트 memcmp를 최대 96번 하는 것뿐이라
-// malloc 한 번보다 훨씬 싸다.
-const int MAX_PROMISC_MACS = 96;
-uint8_t promiscMacs[MAX_PROMISC_MACS][6];
-volatile int promiscMacCount = 0;
+// 원시 6바이트로 담는다. String이나 std::set을 쓰면 항목마다 힙 할당이 생기는데,
+// 이 기기는 힙이 30KB 밑으로 떨어지면 스스로 재시작하도록 되어 있어 파편화가
+// 곧 재부팅으로 이어진다.
+const int MAX_LAN_MACS = 96;
+uint8_t lanMacs[MAX_LAN_MACS][6];
+volatile int lanMacCount = 0;
 uint8_t ownMacBytes[6];       // ESP32 자신의 MAC (필터용)
 uint8_t gatewayMacBytes[6];   // 공유기 MAC (필터용)
 bool gatewayMacKnown = false;
@@ -55,56 +51,28 @@ static bool parseMacBytes(const String& mac, uint8_t out[6]) {
     return true;
 }
 
-// 콜백이 IRAM_ATTR이므로 이 함수도 IRAM에 둔다.
-//
-// IRAM_ATTR은 "플래시를 읽을 수 없는 상황에서도 실행될 수 있다"는 선언이다.
-// 그 안에서 플래시에 있는 함수(memcmp 등)를 부르면 그 순간 죽는다. 실제로는
-// WiFi 태스크에서 호출되어 문제가 드러나지 않을 수 있지만, 선언과 실제가
-// 어긋난 채로 두면 나중에 진짜 ISR로 바뀌었을 때 재현이 어려운 크래시가 된다.
-// 6바이트 비교라 직접 푸는 편이 memcmp 호출보다 빠르기도 하다.
-static bool IRAM_ATTR macEq(const uint8_t* a, const uint8_t* b) {
+// 6바이트 비교는 memcmp를 부르는 것보다 직접 푸는 편이 빠르다.
+// (프로미스큐어스 콜백에서 쓰던 시절의 IRAM_ATTR은 이제 필요 없어 뺐다 —
+//  지금은 메인 루프에서만 호출된다.)
+static bool macEq(const uint8_t* a, const uint8_t* b) {
     return a[0] == b[0] && a[1] == b[1] && a[2] == b[2]
         && a[3] == b[3] && a[4] == b[4] && a[5] == b[5];
 }
 
-static void IRAM_ATTR macCopy(uint8_t* dst, const uint8_t* src) {
+static void macCopy(uint8_t* dst, const uint8_t* src) {
     dst[0] = src[0]; dst[1] = src[1]; dst[2] = src[2];
     dst[3] = src[3]; dst[4] = src[4]; dst[5] = src[5];
 }
 
-// Promiscuous 콜백 — WiFi 태스크에서 실행되므로 힙을 절대 건드리지 않는다
-void IRAM_ATTR wifiPromiscuousCallback(void* buf, wifi_promiscuous_pkt_type_t type) {
-    // 관리 프레임과 데이터 프레임만 처리 (컨트롤 프레임은 MAC 정보 없음)
-    if (type != WIFI_PKT_MGMT && type != WIFI_PKT_DATA) return;
-
-    const wifi_promiscuous_pkt_t* pkt = (wifi_promiscuous_pkt_t*)buf;
-    const uint8_t* frame = pkt->payload;
-
-    // 최소 802.11 헤더 크기 확인
-    if (pkt->rx_ctrl.sig_len < 24) return;
-
-    // addr2 (송신자 MAC) = 802.11 헤더 오프셋 10
-    const uint8_t* addr2 = frame + 10;
-
-    // 브로드캐스트 필터
-    if (addr2[0] == 0xFF && addr2[1] == 0xFF && addr2[2] == 0xFF &&
-        addr2[3] == 0xFF && addr2[4] == 0xFF && addr2[5] == 0xFF) return;
-
-    // 멀티캐스트 필터 (첫 바이트 비트 0 = 멀티캐스트/브로드캐스트)
-    if (addr2[0] & 0x01) return;
-
-    // 자기 자신과 공유기 필터
-    if (macEq(addr2, ownMacBytes)) return;
-    if (gatewayMacKnown && macEq(addr2, gatewayMacBytes)) return;
-
-    // 이미 담은 MAC인지 (선형 탐색 — 힙을 안 쓰는 게 여기서는 훨씬 중요하다)
-    int n = promiscMacCount;
+/** 수집 버퍼에 MAC을 담는다(중복 제외). ARP 응답을 옮겨 담는 데 쓴다. */
+static void addLanMac(const uint8_t* mac) {
+    int n = lanMacCount;
     for (int i = 0; i < n; i++) {
-        if (macEq(promiscMacs[i], addr2)) return;
+        if (macEq(lanMacs[i], mac)) return;
     }
-    if (n >= MAX_PROMISC_MACS) return;  // 넘치면 버린다. 재실 판정에는 충분한 수다.
-    macCopy(promiscMacs[n], addr2);
-    promiscMacCount = n + 1;
+    if (n >= MAX_LAN_MACS) return;
+    macCopy(lanMacs[n], mac);
+    lanMacCount = n + 1;
 }
 
 // Static IP Config (네트워크 대역: 172.30.1.x)
@@ -643,51 +611,79 @@ void scanLocalDevices() {
     ensureWiFi();
     if (WiFi.status() != WL_CONNECTED) return;
 
-    Serial.println("[WiFi] Promiscuous scan starting...");
+    Serial.println("[WiFi] ARP 스캔 시작");
     Serial.printf("[WiFi] Free heap before scan: %d\n", ESP.getFreeHeap());
 
-    // Phase 1: Promiscuous mode로 15초간 MAC 수집
-    promiscMacCount = 0;
+    // ARP로 랜에 접속한 기기를 찾는다.
+    //
+    // 예전에는 프로미스큐어스 모드로 15초간 프레임을 엿들었다. 그런데 그렇게
+    // 잡히는 개인 기기 MAC은 대부분 프로브 요청(관리 프레임)의 것이고, 요즘
+    // 폰은 프로브를 보낼 때마다 MAC을 무작위로 바꾼다. 실측에서 2일 이상 방문한
+    // 회원 여섯 명 전원, 개인 MAC이 방문 간에 단 한 번도 반복되지 않았다.
+    // 반복되는 것은 공유기 같은 상시 장비뿐이었다 — 식별에 쓸 수 없는 값이다.
+    //
+    // ARP는 다르다. 우리 랜에 실제로 접속한 기기만 응답하고, 그 MAC은 이
+    // 네트워크에서 고정이며, 기기가 조용히 있어도 반드시 답한다(응답하지 않으면
+    // 통신 자체가 안 되므로). 옆집 기기나 지나가는 사람도 섞이지 않는다.
+    //
+    // 덤으로 프로미스큐어스 모드가 필요 없어져 BLE 광고를 끊지 않아도 된다.
+    // 예전에는 스캔하는 10초 동안 등록하려는 사람에게 기기가 보이지 않았다.
+    lanMacCount = 0;
 
-    // BLE 광고 일시 중단 (Promiscuous 모드와 BLE 동시 사용 시 간섭)
-    NimBLEDevice::stopAdvertising();
-    Serial.println("[WiFi] BLE advertising paused for scan");
-
-    esp_wifi_set_promiscuous_rx_cb(wifiPromiscuousCallback);
-    esp_wifi_set_promiscuous(true);
-
-    Serial.printf("[WiFi] Promiscuous mode ON, scanning for %lu seconds...\n", PROMISC_SCAN_MS / 1000);
-    bool scanAborted = false;
-    unsigned long scanStart = millis();
-    while (millis() - scanStart < PROMISC_SCAN_MS) {
-        delay(100);  // 100ms 간격으로 체크 (BLE 연결 빠르게 감지)
-        esp_task_wdt_reset();
-        localServer.handleClient();  // WiFi 등록 요청 처리 유지
-        // BLE 연결 감지 시 스캔 즉시 중단
-        if (currentConnId != 0xFFFF || isRegistering) {
-            Serial.println("[WiFi] BLE connection detected, stopping scan early");
-            scanAborted = true;
-            break;
-        }
-    }
-
-    esp_wifi_set_promiscuous(false);
-    Serial.printf("[WiFi] Promiscuous mode OFF, captured %d unique MACs\n", promiscMacCount);
-
-    // BLE 광고 재시작 (BLE 연결 중이 아닐 때만)
-    if (currentConnId == 0xFFFF && !isRegistering) {
-        NimBLEDevice::startAdvertising();
-        Serial.println("[WiFi] BLE advertising resumed");
-    }
-
-    // BLE 연결로 스캔이 중단된 경우 불완전한 데이터 전송 스킵
-    if (scanAborted) {
-        promiscMacCount = 0;
+    struct netif* nif = netif_default;
+    if (!nif) {
+        Serial.println("[WiFi] netif 없음 — 스캔 건너뜀");
         return;
     }
 
-    // Phase 2: 수집 결과 확정 (콜백은 위에서 이미 멈췄다)
-    const int macCount = promiscMacCount;
+    IPAddress myIp = WiFi.localIP();
+    IPAddress mask = WiFi.subnetMask();
+    if (mask[0] != 255 || mask[1] != 255 || mask[2] != 255) {
+        Serial.println("[WiFi] /24 대역이 아니라 스캔 건너뜀");
+        return;
+    }
+
+    unsigned long scanStart = millis();
+    for (int start = 1; start <= 254; start += ARP_BATCH) {
+        if (currentConnId != 0xFFFF || isRegistering) {
+            Serial.println("[WiFi] 등록 시작됨 — 스캔 중단");
+            lanMacCount = 0;
+            return;
+        }
+
+        for (int host = start; host < start + ARP_BATCH && host <= 254; host++) {
+            if (host == myIp[3]) continue;  // 자기 자신
+            ip4_addr_t target;
+            IP4_ADDR(&target, myIp[0], myIp[1], myIp[2], host);
+            LOCK_TCPIP_CORE();
+            etharp_request(nif, &target);
+            UNLOCK_TCPIP_CORE();
+        }
+
+        delay(ARP_BATCH_WAIT_MS);
+        wdtReset();
+        localServer.handleClient();  // 등록 요청 처리는 계속 받는다
+
+        // lwIP ARP 테이블은 기본 10칸뿐이라 한 번에 254개를 던지면 먼저 들어온
+        // 항목이 밀려난다. 작은 묶음마다 읽어 옮겨 담는다.
+        LOCK_TCPIP_CORE();
+        for (int e = 0; e < ARP_TABLE_SIZE; e++) {
+            ip4_addr_t* eip = nullptr;
+            struct netif* enif = nullptr;
+            struct eth_addr* eth = nullptr;
+            if (etharp_get_entry(e, &eip, &enif, &eth) && eth) {
+                // 자기 자신과 공유기는 담지 않는다. 어차피 상시 장비라 서버가
+                // 걸러내지만, 여기서 빼면 버퍼와 전송량을 아낀다.
+                if (macEq(eth->addr, ownMacBytes)) continue;
+                if (gatewayMacKnown && macEq(eth->addr, gatewayMacBytes)) continue;
+                addLanMac(eth->addr);
+            }
+        }
+        UNLOCK_TCPIP_CORE();
+    }
+
+    const int macCount = lanMacCount;
+    Serial.printf("[WiFi] ARP 응답 %d대 (%lums)\n", macCount, millis() - scanStart);
     if (macCount == 0) return;
 
     // Phase 3: 서버에 전송
@@ -705,8 +701,8 @@ void scanLocalDevices() {
     char macStr[18];
     for (int i = 0; i < macCount; i++) {
         snprintf(macStr, sizeof(macStr), "%02X:%02X:%02X:%02X:%02X:%02X",
-                 promiscMacs[i][0], promiscMacs[i][1], promiscMacs[i][2],
-                 promiscMacs[i][3], promiscMacs[i][4], promiscMacs[i][5]);
+                 lanMacs[i][0], lanMacs[i][1], lanMacs[i][2],
+                 lanMacs[i][3], lanMacs[i][4], lanMacs[i][5]);
         JsonObject d = devArr.createNestedObject();
         d["mac"] = macStr;   // char*는 ArduinoJson이 내부 풀로 복사한다
     }
