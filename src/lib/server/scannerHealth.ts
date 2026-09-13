@@ -78,6 +78,24 @@ async function resolveRecipients(): Promise<number[]> {
 	}
 }
 
+/**
+ * 알림 한 건.
+ *
+ * body는 제목 없이도 이해되어야 한다. notifications 테이블에는 message(본문)만
+ * 저장되고 제목은 버려지기 때문에, 인앱 알림 목록에서는 본문만 보인다. 기기
+ * 이름을 제목에만 넣었더니 "푸시를 받은 사람 말고는 어느 기기인지 모르겠다"는
+ * 상황이 됐다.
+ */
+/**
+ * 스캐너 알림 한 건.
+ *
+ * body는 제목 없이도 이해되어야 한다. notifications 테이블에는 message(본문)만
+ * 저장되고 제목은 버려지므로, 인앱 알림 목록에서는 본문만 보인다. 기기 이름을
+ * 제목에만 넣었더니 "푸시를 받은 사람 말고는 어느 기기인지 모르겠다"가 됐다.
+ *
+ * 이건 이 파일의 알림에만 적용한다. 다른 알림들은 지금 문구가 이미 자체적으로
+ * 이해되므로 건드리지 않는다.
+ */
 async function alert(title: string, body: string) {
 	console.warn(`[SCANNER] ${title}\n${body}`);
 
@@ -113,23 +131,33 @@ export async function checkScannerHealth(): Promise<void> {
 	try {
 		// 복구는 영업 여부와 무관하게 처리한다. 알림 표시를 지워두지 않으면
 		// 다음에 정말 죽었을 때 "이미 알린 상태"로 보여 알림이 안 나간다.
+		// RETURNING은 '갱신된 뒤'의 값을 돌려준다. alerted_down_at을 방금 NULL로
+		// 바꿔놓고 그걸로 경과를 계산하면 NULL이 나와 알림에 "null분"이 찍힌다.
+		// 자기 자신을 FROM으로 조인하면 그쪽은 갱신 전 스냅샷이라 옛 값을 읽을 수 있다.
 		const recovered = (await db.execute(sql`
-			UPDATE scanners
+			UPDATE scanners s
 			SET alerted_down_at = NULL
-			WHERE alerted_down_at IS NOT NULL
-			  AND last_seen_at >= NOW() - ${sql.raw(SILENT_THRESHOLD)}
-			RETURNING alert_enabled,
-			          ${sql.raw(DISPLAY_NAME)} AS label,
-			          round(EXTRACT(EPOCH FROM (NOW() - alerted_down_at)) / 60)::int AS down_minutes
+			FROM scanners old
+			WHERE old.id = s.id
+			  AND s.alerted_down_at IS NOT NULL
+			  AND s.last_seen_at >= NOW() - ${sql.raw(SILENT_THRESHOLD)}
+			RETURNING s.alert_enabled,
+			          COALESCE(NULLIF(s.name, ''), s.id) AS label,
+			          round(EXTRACT(EPOCH FROM (NOW() - old.alerted_down_at)) / 60)::int AS down_minutes
 		`)) as any[];
 
 		for (const row of recovered) {
 			// 알림을 꺼둔 사이 복구된 경우: 표시(alerted_down_at)는 위에서 이미
 			// 지웠으니 상태는 맞고, 알림만 보내지 않는다.
 			if (row.alert_enabled !== true) continue;
+			// 값이 비어도 문장이 깨지지 않게 한다. 알림 문구에 "null"이 찍히면
+			// 받는 사람은 시스템이 고장난 줄 안다.
+			const mins = Number(row.down_minutes);
 			await alert(
 				`스캐너 복구: ${row.label}`,
-				`${row.down_minutes}분 만에 다시 보고를 시작했습니다.`
+				Number.isFinite(mins)
+					? `${row.label} — ${mins}분 만에 다시 보고를 시작했습니다.`
+					: `${row.label} — 다시 보고를 시작했습니다.`
 			);
 		}
 
@@ -153,7 +181,7 @@ export async function checkScannerHealth(): Promise<void> {
 		for (const row of down) {
 			await alert(
 				`스캐너 무응답: ${row.label}`,
-				`${row.silent_minutes}분째 보고 없음 (마지막 ${row.last_seen_kst})\n` +
+				`${row.label} — ${row.silent_minutes}분째 보고 없음 (마지막 ${row.last_seen_kst})\n` +
 					`이대로 두면 회원이 자리에 있어도 자동 체크아웃됩니다.`
 			);
 		}
