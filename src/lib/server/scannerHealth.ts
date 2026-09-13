@@ -113,23 +113,33 @@ export async function checkScannerHealth(): Promise<void> {
 	try {
 		// 복구는 영업 여부와 무관하게 처리한다. 알림 표시를 지워두지 않으면
 		// 다음에 정말 죽었을 때 "이미 알린 상태"로 보여 알림이 안 나간다.
+		// RETURNING은 '갱신된 뒤'의 값을 돌려준다. alerted_down_at을 방금 NULL로
+		// 바꿔놓고 그걸로 경과를 계산하면 NULL이 나와 알림에 "null분"이 찍힌다.
+		// 자기 자신을 FROM으로 조인하면 그쪽은 갱신 전 스냅샷이라 옛 값을 읽을 수 있다.
 		const recovered = (await db.execute(sql`
-			UPDATE scanners
+			UPDATE scanners s
 			SET alerted_down_at = NULL
-			WHERE alerted_down_at IS NOT NULL
-			  AND last_seen_at >= NOW() - ${sql.raw(SILENT_THRESHOLD)}
-			RETURNING alert_enabled,
-			          ${sql.raw(DISPLAY_NAME)} AS label,
-			          round(EXTRACT(EPOCH FROM (NOW() - alerted_down_at)) / 60)::int AS down_minutes
+			FROM scanners old
+			WHERE old.id = s.id
+			  AND s.alerted_down_at IS NOT NULL
+			  AND s.last_seen_at >= NOW() - ${sql.raw(SILENT_THRESHOLD)}
+			RETURNING s.alert_enabled,
+			          COALESCE(NULLIF(s.name, ''), s.id) AS label,
+			          round(EXTRACT(EPOCH FROM (NOW() - old.alerted_down_at)) / 60)::int AS down_minutes
 		`)) as any[];
 
 		for (const row of recovered) {
 			// 알림을 꺼둔 사이 복구된 경우: 표시(alerted_down_at)는 위에서 이미
 			// 지웠으니 상태는 맞고, 알림만 보내지 않는다.
 			if (row.alert_enabled !== true) continue;
+			// 값이 비어도 문장이 깨지지 않게 한다. 알림 문구에 "null"이 찍히면
+			// 받는 사람은 시스템이 고장난 줄 안다.
+			const mins = Number(row.down_minutes);
 			await alert(
 				`스캐너 복구: ${row.label}`,
-				`${row.down_minutes}분 만에 다시 보고를 시작했습니다.`
+				Number.isFinite(mins)
+					? `${mins}분 만에 다시 보고를 시작했습니다.`
+					: '다시 보고를 시작했습니다.'
 			);
 		}
 
