@@ -698,7 +698,10 @@ void scanLocalDevices() {
     https.addHeader("x-api-key", SCANNER_API_KEY);
 
     DynamicJsonDocument doc((size_t)macCount * 56 + 512);
-    doc["scanner_id"] = "esp32_s3_wifi";
+    // 등록 하트비트와 같은 id를 쓴다. 물리적으로 한 대인데 id가 둘이면
+    // scanners 표에 두 줄로 잡혀, 어드민에 중복으로 보이고 무응답 알림도
+    // 두 번 가고 알림 스위치도 따로 관리해야 한다.
+    doc["scanner_id"] = "esp32_s3_registration";
     doc["timestamp"] = millis();
 
     JsonArray devArr = doc.createNestedArray("devices");
