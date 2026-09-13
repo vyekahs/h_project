@@ -78,6 +78,24 @@ async function resolveRecipients(): Promise<number[]> {
 	}
 }
 
+/**
+ * 알림 한 건.
+ *
+ * body는 제목 없이도 이해되어야 한다. notifications 테이블에는 message(본문)만
+ * 저장되고 제목은 버려지기 때문에, 인앱 알림 목록에서는 본문만 보인다. 기기
+ * 이름을 제목에만 넣었더니 "푸시를 받은 사람 말고는 어느 기기인지 모르겠다"는
+ * 상황이 됐다.
+ */
+/**
+ * 스캐너 알림 한 건.
+ *
+ * body는 제목 없이도 이해되어야 한다. notifications 테이블에는 message(본문)만
+ * 저장되고 제목은 버려지므로, 인앱 알림 목록에서는 본문만 보인다. 기기 이름을
+ * 제목에만 넣었더니 "푸시를 받은 사람 말고는 어느 기기인지 모르겠다"가 됐다.
+ *
+ * 이건 이 파일의 알림에만 적용한다. 다른 알림들은 지금 문구가 이미 자체적으로
+ * 이해되므로 건드리지 않는다.
+ */
 async function alert(title: string, body: string) {
 	console.warn(`[SCANNER] ${title}\n${body}`);
 
@@ -138,8 +156,8 @@ export async function checkScannerHealth(): Promise<void> {
 			await alert(
 				`스캐너 복구: ${row.label}`,
 				Number.isFinite(mins)
-					? `${mins}분 만에 다시 보고를 시작했습니다.`
-					: '다시 보고를 시작했습니다.'
+					? `${row.label} — ${mins}분 만에 다시 보고를 시작했습니다.`
+					: `${row.label} — 다시 보고를 시작했습니다.`
 			);
 		}
 
@@ -163,7 +181,7 @@ export async function checkScannerHealth(): Promise<void> {
 		for (const row of down) {
 			await alert(
 				`스캐너 무응답: ${row.label}`,
-				`${row.silent_minutes}분째 보고 없음 (마지막 ${row.last_seen_kst})\n` +
+				`${row.label} — ${row.silent_minutes}분째 보고 없음 (마지막 ${row.last_seen_kst})\n` +
 					`이대로 두면 회원이 자리에 있어도 자동 체크아웃됩니다.`
 			);
 		}
