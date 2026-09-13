@@ -16,9 +16,7 @@ export const POST: RequestHandler = async ({ request }) => {
         const body = await request.json();
         const { scanner_id, devices } = body;
 
-        // 기기가 id를 안 보내는 경우의 기본값. S3 한 대가 등록과 WiFi 스캔을
-        // 겸하므로 등록 쪽과 같은 id를 쓴다 — 나뉘면 한 기기가 두 줄로 잡힌다.
-        const actualScannerId = scanner_id || 'esp32_s3_registration';
+        const actualScannerId = scanner_id || 'esp32_s3_wifi';
 
         if (!Array.isArray(devices)) {
             return json({ error: 'Invalid Format' }, { status: 400 });
