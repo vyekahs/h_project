@@ -66,10 +66,11 @@ async function fetchSharedData(): Promise<SharedData> {
                 LEFT JOIN games g ON gs.game_id = g.id
                 LEFT JOIN players p ON p.session_id = gs.id
                 LEFT JOIN attendees canceller ON gs.cancelled_by = canceller.id
-                -- 취소된 건 카드가 사라지지 않고 회색으로 표시되게, 취소 후 24시간까지는
+                -- 취소된 건 카드가 사라지지 않고 회색으로 표시되게, 게임 당일 자정까지는
                 -- 계속 이 목록에 포함시킨다 (화면에서 status로 취소 처리를 구분한다)
                 WHERE gs.status = 'scheduled'
-                   OR (gs.status = 'cancelled' AND gs.cancelled_at > NOW() - INTERVAL '24 hours')
+                   OR (gs.status = 'cancelled'
+                       AND (gs.scheduled_at AT TIME ZONE 'Asia/Seoul')::date = (NOW() AT TIME ZONE 'Asia/Seoul')::date)
             ),
             main_playing AS (
                 SELECT gs.id, gs.game_name, gs.game_id, gs.start_time, gs.end_time,

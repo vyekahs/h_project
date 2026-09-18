@@ -257,7 +257,7 @@ export async function applyUndo(entry: UndoEntry): Promise<ApplyUndoResult> {
                     }
                 });
             } else if (entry.kind === 'close_day') {
-                const { attendeeIds, visitIds, playing, scheduledIds, prevIsOpen, prevLastAutoClose } = entry.payload;
+                const { attendeeIds, visitIds, playing, scheduledIds, visitPlans, prevIsOpen, prevLastAutoClose } = entry.payload;
                 await db.transaction(async (tx) => {
                     for (const attendeeId of (attendeeIds ?? []) as number[]) {
                         await tx.execute(sql`UPDATE attendees SET status = 'present' WHERE id = ${attendeeId}`);
@@ -272,6 +272,15 @@ export async function applyUndo(entry: UndoEntry): Promise<ApplyUndoResult> {
                     }
                     for (const sessionId of (scheduledIds ?? []) as number[]) {
                         await tx.execute(sql`UPDATE game_sessions SET status = 'scheduled' WHERE id = ${sessionId}`);
+                    }
+                    // 마감 사이에 같은 사람이 새로 "오늘 갈래요"를 등록했을 수 있다 —
+                    // (attendee_id, plan_date) 유니크 제약과 부딪히면 새 등록을 이긴다.
+                    for (const vp of (visitPlans ?? []) as any[]) {
+                        await tx.execute(sql`
+                            INSERT INTO daily_visit_plans (attendee_id, plan_date, planned_time, created_at)
+                            VALUES (${vp.attendee_id}, ${vp.plan_date}, ${vp.planned_time}, ${vp.created_at})
+                            ON CONFLICT (attendee_id, plan_date) DO NOTHING
+                        `);
                     }
                     const restoredIsOpen = prevIsOpen ?? 'true';
                     await tx.execute(sql`

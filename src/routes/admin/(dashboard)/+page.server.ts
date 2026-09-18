@@ -598,6 +598,18 @@ export const actions: Actions = {
         const prevIsOpen = prevSettings.find((r) => r.key === 'is_open')?.value ?? null;
         const prevLastAutoClose = prevSettings.find((r) => r.key === 'last_auto_close_date')?.value ?? null;
 
+        /*
+            새벽 마감(자정~9시)은 businessDate가 이미 어제다 — 즉 지금의 "오늘 갈래요"는
+            내일 열릴 영업일을 향한 것이라 이 마감과 무관하다. 지우면 막 등록한 사람의
+            계획이 마감 버튼 한 번에 날아간다. 낮 마감(9시 이후, businessDate = 오늘)일
+            때만 그날의 "오늘 갈래요"를 함께 정리한다.
+        */
+        const isDawnClose = kstNowForDate.getUTCHours() < 9;
+        const visitPlans = isDawnClose ? [] : ((await db.execute(sql`
+            SELECT attendee_id, plan_date, planned_time, created_at
+            FROM daily_visit_plans WHERE plan_date = ${businessDateOuter}::date
+        `)) as any[]);
+
         try {
             await db.transaction(async (tx) => {
                 const businessDate = businessDateOuter;
@@ -610,6 +622,9 @@ export const actions: Actions = {
                 await tx.execute(sql`UPDATE game_sessions SET status = 'finished', end_time = NOW() WHERE status = 'playing'`);
                 // Cancel scheduled games for this business day only
                 await tx.execute(sql`UPDATE game_sessions SET status = 'finished' WHERE status = 'scheduled' AND scheduled_at::date = ${businessDate}::date`);
+                if (!isDawnClose) {
+                    await tx.execute(sql`DELETE FROM daily_visit_plans WHERE plan_date = ${businessDate}::date`);
+                }
                 // Set is_open to false
                 await tx.execute(sql`INSERT INTO system_settings (key, value) VALUES ('is_open', 'false') ON CONFLICT (key) DO UPDATE SET value = 'false'`);
                 updateSettingsCache(false);
@@ -626,7 +641,7 @@ export const actions: Actions = {
 
         const undo = await recordUndo(
             'close_day',
-            { attendeeIds, visitIds, playing, scheduledIds, prevIsOpen, prevLastAutoClose },
+            { attendeeIds, visitIds, playing, scheduledIds, visitPlans, prevIsOpen, prevLastAutoClose },
             `마감 · ${attendeeIds.length}명 퇴장 · ${playing.length}판 종료`
         );
         return { success: true, undo, closed: { people: attendeeIds.length, games: playing.length } };
