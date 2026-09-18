@@ -57,7 +57,13 @@ const lastSeenWifiMap = new Map<number, number>();
 const lastSeenGameMap = new Map<number, number>();
 
 // System Settings Cache (영구 캐시, 변경 시 updateSettingsCache 호출)
-let settingsCache: { isOpen: boolean; openingTime: string } | null = null;
+let settingsCache: {
+    isOpen: boolean;
+    openingTime: string;
+    closingWeekday: string;
+    closingWeekend: string;
+    weekendDays: number[];
+} | null = null;
 
 // Constants
 const CHECKOUT_TIMEOUT_MS = 20 * 60 * 1000; // 20 minutes
@@ -93,7 +99,15 @@ export function getAutoCheckinLogs(): AutoLog[] {
 /** 설정 캐시 업데이트 (외부에서 is_open 변경 시 호출) */
 export function updateSettingsCache(isOpen: boolean, openingTime?: string) {
     if (!settingsCache) {
-        settingsCache = { isOpen, openingTime: openingTime || '09:00' };
+        // 마감 설정은 여기서 알 수 없으므로 기본값으로 둔다. ensureCachesLoaded가
+        // 곧 DB에서 채운다.
+        settingsCache = {
+            isOpen,
+            openingTime: openingTime || '09:00',
+            closingWeekday: '00:00',
+            closingWeekend: '06:00',
+            weekendDays: [5, 6]
+        };
     } else {
         settingsCache.isOpen = isOpen;
         if (openingTime !== undefined) settingsCache.openingTime = openingTime;
@@ -117,16 +131,50 @@ export function updateLastSeenBle(attendeeId: number, timestamp: number) {
     lastSeenBleMap.set(attendeeId, timestamp);
 }
 
-/** 오토오픈 윈도우 계산 (오픈시간 ±2시간) */
+/** 오픈 몇 분 전부터 자동 오픈을 허용할지. 일찍 지나가는 사람에게 열리면 안 된다. */
+const AUTO_OPEN_LEAD_MINUTES = 5;
+
+function toMinutes(hhmm: string, fallback: number): number {
+    const [h, m] = hhmm.split(':').map(Number);
+    if (!Number.isFinite(h) || !Number.isFinite(m)) return fallback;
+    return h * 60 + m;
+}
+
+/**
+ * 지금이 자동 오픈을 허용할 시간대인가.
+ *
+ * 오픈 5분 전부터 그날 마감까지다.
+ *
+ * 예전에는 "오픈시간 ±2시간"이었다. 그래서 14시 오픈이면 12시부터 열렸고 —
+ * 점심때 지나가던 관리자에게 가게가 열렸다 — 16시가 지나면 정작 안 열렸다.
+ * 양쪽 다 실제 운영과 맞지 않았다.
+ *
+ * 마감이 오픈보다 이르면(평일 00:00, 주말 06:00) 자정을 넘긴 것으로 보고
+ * 다음 날로 계산한다. 그래야 새벽 2시에도 창 안에 있다.
+ *
+ * 같은 계산이 세 군데(BLE 처리, WiFi 처리, 내부 API)에 복사돼 있었다.
+ * 하나만 고치면 나머지가 어긋나므로 여기로 모은다.
+ */
 export function calculateAutoOpenWindow(): boolean {
     if (!settingsCache) return false;
-    const now = new Date();
-    const kstNow = new Date(now.getTime() + 9 * 60 * 60 * 1000);
-    const currentMins = kstNow.getUTCHours() * 60 + kstNow.getUTCMinutes();
-    const [openHour, openMinute] = settingsCache.openingTime.split(':').map(Number);
-    const openMins = openHour * 60 + openMinute;
-    const diff = currentMins - openMins;
-    return diff >= -120 && diff <= 120;
+
+    const kstNow = new Date(Date.now() + 9 * 60 * 60 * 1000);
+    const nowMins = kstNow.getUTCHours() * 60 + kstNow.getUTCMinutes();
+    const isWeekend = settingsCache.weekendDays.includes(kstNow.getUTCDay());
+
+    const openMins = toMinutes(settingsCache.openingTime, 9 * 60);
+    const closeMins = toMinutes(
+        isWeekend ? settingsCache.closingWeekend : settingsCache.closingWeekday,
+        0
+    );
+
+    const start = openMins - AUTO_OPEN_LEAD_MINUTES;
+    // 마감이 오픈보다 이르면 자정을 넘긴 것이다.
+    const end = closeMins <= openMins ? closeMins + 1440 : closeMins;
+    // 지금이 시작보다 이르면, 자정을 넘겨 아직 어제 영업 중일 수 있다.
+    const now = nowMins < start ? nowMins + 1440 : nowMins;
+
+    return now >= start && now <= end;
 }
 
 /** 기기 등록 시 IRK 캐시에 즉시 추가 (중복 IRK는 업데이트) */
@@ -261,19 +309,45 @@ function verifyMetric(hash: Buffer, prand: Buffer, key: Buffer, padding: 'Head'|
 export async function ensureCachesLoaded(source: string = 'BLE') {
     if (!settingsCache) {
         try {
-            const settingsRes = await db.execute(sql`SELECT key, value FROM system_settings WHERE key IN ('is_open', 'opening_time')`);
+            // 자동 오픈 창은 마감 시각까지 이어지므로 마감 설정도 함께 읽는다.
+            const settingsRes = await db.execute(sql`
+                SELECT key, value FROM system_settings
+                WHERE key IN ('is_open', 'opening_time',
+                              'closing_time_weekday', 'closing_time_weekend', 'weekend_days')
+            `);
             let isOpen = false;
             let openingTime = '09:00';
+            let closingWeekday = '00:00';
+            let closingWeekend = '06:00';
+            let weekendDays = [5, 6];
             for (const row of settingsRes) {
                 const r = row as any;
                 if (r.key === 'is_open') isOpen = r.value === 'true';
                 if (r.key === 'opening_time') openingTime = r.value;
+                if (r.key === 'closing_time_weekday') closingWeekday = r.value;
+                if (r.key === 'closing_time_weekend') closingWeekend = r.value;
+                if (r.key === 'weekend_days') {
+                    const parsed = String(r.value)
+                        .split(',')
+                        .map((v: string) => Number(v.trim()))
+                        .filter((n: number) => Number.isInteger(n) && n >= 0 && n <= 6);
+                    if (parsed.length > 0) weekendDays = parsed;
+                }
             }
-            settingsCache = { isOpen, openingTime };
-            console.log(`[${kstTime()}][${source}] Settings cache loaded: isOpen=${isOpen}, openingTime=${openingTime}`);
+            settingsCache = { isOpen, openingTime, closingWeekday, closingWeekend, weekendDays };
+            console.log(
+                `[${kstTime()}][${source}] Settings cache loaded: isOpen=${isOpen}, ` +
+                `open=${openingTime}, close=${closingWeekday}/${closingWeekend}, weekend=[${weekendDays}]`
+            );
         } catch (e) {
             console.error('Failed to fetch settings', e);
-            settingsCache = { isOpen: false, openingTime: '09:00' };
+            settingsCache = {
+                isOpen: false,
+                openingTime: '09:00',
+                closingWeekday: '00:00',
+                closingWeekend: '06:00',
+                weekendDays: [5, 6]
+            };
         }
     }
     if (!irkCache) {
@@ -427,17 +501,9 @@ export async function processScanResults(scannerId: string, timestamp: number, s
     }
 
     // 3. Auto Check-in Logic & Auto-Open Logic
-    const now = new Date();
-    const kstNow = new Date(now.getTime() + 9 * 60 * 60 * 1000);
-    const currentHour = kstNow.getUTCHours();
-    const currentMinute = kstNow.getUTCMinutes();
-    const [openHour, openMinute] = settingsCache!.openingTime.split(':').map(Number);
-
-    // 오픈시간 전후 2시간만 자동 오픈 허용 (예: 09:00 오픈이면 07:00~11:00)
-    const currentMins = currentHour * 60 + currentMinute;
-    const openMins = openHour * 60 + openMinute;
-    const diffFromOpening = currentMins - openMins;
-    const isWithinAutoOpenWindow = diffFromOpening >= -120 && diffFromOpening <= 120;
+    // 시각 계산은 calculateAutoOpenWindow 안으로 옮겼다. 같은 계산이 여기저기
+    // 흩어져 있으면 한쪽만 고쳤을 때 조용히 어긋난다.
+    const isWithinAutoOpenWindow = calculateAutoOpenWindow();
 
     await processAutoCheckin(detectedAttendeeIds, isWithinAutoOpenWindow, 'BLE');
 
@@ -729,17 +795,9 @@ export async function processWifiReport(_scannerId: string, devices: { mac: stri
 
     if (detectedAttendeeIds.size === 0) return;
 
-    const now = new Date();
-    const kstNow = new Date(now.getTime() + 9 * 60 * 60 * 1000);
-    const currentHour = kstNow.getUTCHours();
-    const currentMinute = kstNow.getUTCMinutes();
-    const [openHour, openMinute] = settingsCache!.openingTime.split(':').map(Number);
-
-    // 오픈시간 전후 2시간만 자동 오픈 허용 (예: 09:00 오픈이면 07:00~11:00)
-    const currentMins = currentHour * 60 + currentMinute;
-    const openMins = openHour * 60 + openMinute;
-    const diffFromOpening = currentMins - openMins;
-    const isWithinAutoOpenWindow = diffFromOpening >= -120 && diffFromOpening <= 120;
+    // 시각 계산은 calculateAutoOpenWindow 안으로 옮겼다. 같은 계산이 여기저기
+    // 흩어져 있으면 한쪽만 고쳤을 때 조용히 어긋난다.
+    const isWithinAutoOpenWindow = calculateAutoOpenWindow();
 
     await processAutoCheckin(detectedAttendeeIds, isWithinAutoOpenWindow, 'WiFi');
 

@@ -169,6 +169,60 @@ export async function getMacCandidates(limit = 30): Promise<MacCandidate[]> {
 }
 
 /**
+ * 등록된 MAC이 이만큼의 방문 동안 한 번도 안 잡히면 낡은 값으로 본다.
+ *
+ * 폰의 WiFi MAC은 네트워크별로 고정이지만 영구하지는 않다. 회원이 네트워크를
+ * 지웠다 다시 붙거나, OS를 업데이트하거나, 설정을 초기화하면 바뀐다.
+ * 그러면 그 회원은 조용히 WiFi로 안 잡히게 되는데, 아무도 눈치채지 못한다.
+ */
+const STALE_AFTER_MISSED_DAYS = 3;
+
+/**
+ * 더 이상 나타나지 않는 등록 MAC을 지워 다시 배우게 한다.
+ *
+ * 승격 조건에 wifi_mac IS NULL이 있어서, 한 번 등록되면 값이 낡아도 갱신되지
+ * 않는다. 그 회원은 영영 WiFi로 안 잡힌다.
+ *
+ * 후보 기록도 함께 지운다. 남겨두면 누적 일수가 이미 높아서 다음 판정에서
+ * 그 낡은 MAC이 다시 1등으로 뽑힌다.
+ */
+async function clearStaleMacs(): Promise<{ name: string; mac: string }[]> {
+	try {
+		const rows = (await db.execute(sql`
+			WITH stale AS (
+				SELECT ud.attendee_id, ud.wifi_mac AS mac
+				FROM user_devices ud
+				JOIN wifi_learn_attendee_days d ON d.attendee_id = ud.attendee_id
+				LEFT JOIN wifi_mac_candidates c
+				       ON c.attendee_id = ud.attendee_id AND c.mac = ud.wifi_mac
+				WHERE ud.wifi_mac IS NOT NULL
+				  AND d.days_seen - COALESCE(c.days_seen, 0) >= ${STALE_AFTER_MISSED_DAYS}
+			),
+			cleared AS (
+				UPDATE user_devices ud SET wifi_mac = NULL
+				FROM stale s
+				WHERE ud.attendee_id = s.attendee_id AND ud.wifi_mac = s.mac
+				RETURNING ud.attendee_id, s.mac
+			),
+			pruned AS (
+				DELETE FROM wifi_mac_candidates c
+				USING stale s
+				WHERE c.attendee_id = s.attendee_id AND c.mac = s.mac
+			)
+			SELECT a.name, cl.mac FROM cleared cl JOIN attendees a ON a.id = cl.attendee_id
+		`)) as any[];
+
+		for (const r of rows) {
+			console.log(`[WiFiLearn] ${r.name}의 등록 MAC ${r.mac} 해제 — 최근 방문에서 계속 안 잡힘`);
+		}
+		return rows.map((r) => ({ name: r.name as string, mac: r.mac as string }));
+	} catch (e) {
+		console.error('[WiFiLearn] 낡은 MAC 정리 실패:', e);
+		return [];
+	}
+}
+
+/**
  * 충분히 확실해진 후보를 실제 등록으로 승격한다.
  *
  * 이미 wifi_mac이 있는 회원은 건드리지 않는다. 손으로 등록한 값이 자동 추정으로
@@ -177,6 +231,9 @@ export async function getMacCandidates(limit = 30): Promise<MacCandidate[]> {
 export async function promoteConfidentMacs(): Promise<
 	{ attendeeId: number; name: string; mac: string }[]
 > {
+	// 낡은 등록부터 정리한다. 먼저 지워야 그 회원이 이번 판정에서 다시 배울 수 있다.
+	await clearStaleMacs();
+
 	const candidates = await getMacCandidates(100);
 	const ready = candidates.filter(
 		(c) =>
