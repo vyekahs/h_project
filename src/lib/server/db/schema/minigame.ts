@@ -118,6 +118,10 @@ export const tichuDecisionLog = pgTable('tichu_decision_log', {
 	id: bigserial('id', { mode: 'number' }).primaryKey(),
 	userId: integer('user_id').notNull().references(() => attendees.id, { onDelete: 'cascade' }),
 	roundNumber: integer('round_number').notNull(),
+	/** 0 = 사람, 1·3 = 상대 AI, 2 = 파트너 AI. user_id는 그 게임을 친 사람 */
+	seat: integer('seat').notNull().default(0),
+	/** 그 자리 AI의 성향 (사람이면 NULL) */
+	seatStrategy: varchar('seat_strategy', { length: 20 }),
 
 	// 판단 시점 특징값 (AI와 같은 축)
 	pureWinRate: real('pure_win_rate'),
@@ -130,7 +134,13 @@ export const tichuDecisionLog = pgTable('tichu_decision_log', {
 	/** 'none' | 'small' | 'grand' */
 	declared: varchar('declared', { length: 10 }).notNull(),
 
+	/** 스몰을 부른 순간까지 나온 카드 수 (0 = 아무도 내기 전) */
+	smallCardsOut: integer('small_cards_out'),
+	partnerDeclared: varchar('partner_declared', { length: 10 }),
+	oppDeclared: varchar('opp_declared', { length: 10 }),
+
 	finishedFirst: boolean('finished_first').notNull(),
+	finishPosition: integer('finish_position'),
 	teamScore: integer('team_score'),
 
 	/** 카드 id 배열 */
@@ -138,6 +148,10 @@ export const tichuDecisionLog = pgTable('tichu_decision_log', {
 	hand14: json('hand_14'),
 
 	partnerStrategy: varchar('partner_strategy', { length: 20 }),
+	/** 게임 목표 점수. NULL이면 마지막 라운드가 빠지던 2026-09-19 이전 수집분 */
+	targetScore: integer('target_score'),
+	/** 그 라운드의 플레이 순서 [자리, 내용][] — 사람 행(seat 0)에만 있다 */
+	plays: json('plays'),
 	createdAt: timestamp('created_at').defaultNow(),
 }, (table) => [
 	index('idx_tichu_decision_user').on(table.userId, table.createdAt),
