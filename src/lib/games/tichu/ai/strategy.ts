@@ -20,7 +20,7 @@ import {
 	type CardTracker
 } from './cardTracker';
 import { searchBestPlay, calcExitRate, isForcedOutIfLeading } from './playSearchGrid';
-import { buildSampleWorlds, evaluateLeadSafety, evaluateTwoTurnFinish, getUnseenCards, estimateGoOutFirstProb, estimateGrandTichuQuality, type SampledWorld } from './monteCarlo';
+import { buildSampleWorlds, evaluateLeadSafety, evaluateTwoTurnFinish, evaluateOvertakeFinish, getUnseenCards, estimateGoOutFirstProb, estimateGrandTichuQuality, type SampledWorld } from './monteCarlo';
 
 // ===== Hand Analysis Helpers =====
 
@@ -1171,7 +1171,11 @@ export function decideLeadEndgame(
 	// === 몬테카를로 샘플링: 안 보이는 손패를 여러 번 무작위로 나눠 실제 안전성 추정 ===
 	// 이 호출 1회당 한 번만 생성해 아래 모든 후보 평가에 재사용 (공통 난수 기법)
 	const partnerSeatForMc = getPartnerSeat(context.currentSeat) as SeatIndex;
-	const worlds = buildSampleWorlds(context);
+	// 손패가 몇 장 안 남으면 표본을 늘린다. 이때는 "A를 먼저 낼까 Q를 먼저 낼까"처럼
+	// 확률이 비슷한 두 순서를 비교하게 되는데(봉황이 상대에게 있을 확률 vs 다른 A가
+	// 상대에게 있을 확률), 20개로는 표본 오차(±0.1)가 그 차이를 덮어 판단이 뒤집힌다.
+	// 후보가 두세 개뿐이라 비용은 무시할 만하다.
+	const worlds = buildSampleWorlds(context, hand.length <= 4 ? ENDGAME_MC_SAMPLES : undefined);
 
 	// 상대가 1장 남은 상황의 위협 확률은 샘플링이 필요 없음 — 그 좌석의 카드는 unseen 중
 	// 균등 1장이므로 "unseen 중 내 리드를 이기는 카드의 비율"이 정확한 확률
@@ -1257,6 +1261,12 @@ export function decideLeadEndgame(
 	return [hand[0].id];
 }
 
+/** 손패 4장 이하에서 쓰는 몬테카를로 표본 수 (기본 20) */
+const ENDGAME_MC_SAMPLES = 80;
+
+/** 2장 마무리에 실패해 한 조합을 쥐고 남았을 때, 그 조합이 나중에 통할 가능성을 얼마나 쳐줄지 */
+const STRANDED_CARD_CREDIT = 0.5;
+
 /**
  * Find all 2-turn finishes and score them by win probability.
  * Each result: lead combo → remainder combo, scored by how likely both will win.
@@ -1297,7 +1307,33 @@ export function findAllTwoTurnFinishes(
 
 		// Strategy: lead with the one that WILL win, then play remainder.
 		// Score = leadWinProb * (1 + remainderWinProb)
-		const score = leadWinProb * (1 + remainderWinProb * 0.8);
+		let score = leadWinProb * (1 + remainderWinProb * 0.8);
+
+		// === 약한 걸 먼저 내고 센 걸로 덮으면서 나가는 길 ===
+		//
+		// 위 점수는 "리드가 트릭을 이겨야만 다음 장을 낼 수 있다"고 가정한다. 그런데 남는
+		// 조합이 리드를 덮을 수 있는 같은 종류라면(Q와 A, 5 페어와 K 페어) 리드가 잡혀도
+		// 내 차례에 그 위에 얹으면서 나간다. 이 길을 몰라서 Q·A를 들고 A를 먼저 냈다가
+		// 봉황에 잡히고 Q를 든 채 갇히는 일이 실제로 나왔다.
+		//
+		// 두 순서를 "나갈 확률 + 실패했을 때 손에 남는 카드의 값어치"로 비교한다.
+		// 실패했을 때 A를 쥐고 있는 것과 Q를 쥐고 있는 것은 전혀 다르다.
+		//   센 것 먼저: strong이 트릭을 이기면 성공, 실패하면 weak를 쥐고 남는다
+		//   약한 것 먼저: strong으로 못 덮는 게 얹히지 않으면 성공, 실패하면 strong을 쥐고 남는다
+		// 차이가 없으면(둘 다 확실하면) 센 것을 먼저 내서 상대가 카드를 털 기회를 주지 않는다.
+		if (useMc && canBeat(combo, remainderCombo)) {
+			const strongFirst = evaluateTwoTurnFinish(remainderCombo, combo, worlds, partnerSeat!);
+			const pStrong = strongFirst.effectiveWinProb;
+			const pOvertake = evaluateOvertakeFinish(combo, remainderCombo, worlds, partnerSeat!);
+			const valueStrongFirst = pStrong + (1 - pStrong) * STRANDED_CARD_CREDIT * leadWinProb;
+			const valueWeakFirst = pOvertake + (1 - pOvertake) * STRANDED_CARD_CREDIT * pStrong;
+			if (valueWeakFirst > valueStrongFirst + 0.02) {
+				const strongFirstScore = pStrong * (1 + strongFirst.remainderSafeRate * 0.8);
+				// 점수 눈금(0~1.8)에 맞춰 확률 차이를 옮긴다. 이 차이는 뒤에서 더해지는 성격
+				// 편향(±0.25)보다 커야 한다 — 나갈 수 있는 순서를 성격 때문에 버리면 안 된다.
+				score = Math.max(score, strongFirstScore + 1.8 * (valueWeakFirst - valueStrongFirst));
+			}
+		}
 
 		results.push({ lead: combo, remainder: remainderCombo, score });
 	}
