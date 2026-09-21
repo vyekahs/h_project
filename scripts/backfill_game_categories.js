@@ -49,22 +49,18 @@ async function main() {
 
     console.log(`대상 ${rows.length}건${FORCE ? ' (--force: 기존 값도 다시 채움)' : ''}${DRY_RUN ? ' (--dry-run: DB에 쓰지 않음)' : ''}`);
 
-    let ok = 0;
+    // BGG 호출은 한 곳에 부담을 주지 않으려고 delay를 두고 순서대로 부르지만,
+    // DB에는 그때그때 쓰지 않고 다 모았다가 한 번의 UPDATE로 반영한다 —
+    // 347번 왕복할 이유가 없다.
+    const results = [];
     let failed = 0;
     for (let i = 0; i < rows.length; i++) {
         const g = rows[i];
         const prefix = `[${i + 1}/${rows.length}] ${g.name} (bgg_id=${g.bgg_id})`;
         try {
             const { categories, mechanics } = await fetchCategoriesAndMechanics(g.bgg_id);
-            if (!DRY_RUN) {
-                await pool.query('UPDATE games SET categories = $1, mechanics = $2 WHERE id = $3', [
-                    categories || null,
-                    mechanics || null,
-                    g.id
-                ]);
-            }
+            results.push({ id: g.id, categories: categories || null, mechanics: mechanics || null });
             console.log(`${prefix} -> 카테고리: ${categories || '(없음)'} | 메카닉: ${mechanics || '(없음)'}`);
-            ok++;
         } catch (e) {
             console.error(`${prefix} -> 실패: ${e.message}`);
             failed++;
@@ -72,7 +68,18 @@ async function main() {
         if (i < rows.length - 1) await sleep(DELAY_MS);
     }
 
-    console.log(`완료 — 성공 ${ok}건, 실패 ${failed}건`);
+    if (!DRY_RUN && results.length > 0) {
+        const values = results.map((_, i) => `($${i * 3 + 1}::int, $${i * 3 + 2}::text, $${i * 3 + 3}::text)`).join(', ');
+        const params = results.flatMap((r) => [r.id, r.categories, r.mechanics]);
+        await pool.query(
+            `UPDATE games AS g SET categories = v.categories, mechanics = v.mechanics
+             FROM (VALUES ${values}) AS v(id, categories, mechanics)
+             WHERE g.id = v.id`,
+            params
+        );
+    }
+
+    console.log(`완료 — 성공 ${results.length}건, 실패 ${failed}건${DRY_RUN ? ' (DB에 쓰지 않음)' : ''}`);
     await pool.end();
     if (failed > 0) process.exitCode = 1;
 }
