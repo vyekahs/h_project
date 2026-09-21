@@ -79,6 +79,17 @@ export const gameRatings = pgTable('game_ratings', {
 	primaryKey({ columns: [table.attendeeId, table.gameId] }),
 ]);
 
+// 게임 추천에서 빼고 싶은 카테고리·난이도. (attendee_id, kind, value) 복합키라
+// 같은 값을 두 번 넣어도 조용히 무시된다(ON CONFLICT DO NOTHING으로 토글).
+export const gameRecExclusions = pgTable('game_rec_exclusions', {
+	attendeeId: integer('attendee_id').notNull().references(() => attendees.id, { onDelete: 'cascade' }),
+	kind: varchar('kind', { length: 20 }).notNull(),
+	value: text('value').notNull(),
+	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+}, (table) => [
+	primaryKey({ columns: [table.attendeeId, table.kind, table.value] }),
+]);
+
 export const reservations = pgTable('reservations', {
 	id: serial('id').primaryKey(),
 	sessionId: integer('session_id').references(() => gameSessions.id, { onDelete: 'cascade' }),

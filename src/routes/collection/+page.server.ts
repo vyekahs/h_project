@@ -4,7 +4,7 @@ import { redirect, fail } from '@sveltejs/kit';
 import type { PageServerLoad, Actions } from './$types';
 import { verifyAttendeeSession } from '$lib/server/auth';
 import { editGameResult, GameHistoryEditError } from '$lib/server/services/gameHistoryService';
-import { getRecommendations } from '$lib/server/recommendations';
+import { getRecommendations, DIFFICULTY_BUCKETS } from '$lib/server/recommendations';
 
 export const load: PageServerLoad = async ({ cookies }) => {
     const userSessionToken = cookies.get('user_session');
@@ -16,7 +16,7 @@ export const load: PageServerLoad = async ({ cookies }) => {
         throw redirect(303, '/login?redirectTo=/collection');
     }
 
-    const [gamesResult, playedResult, ownedResult, ratedResult, recommendations] = await Promise.all([
+    const [gamesResult, playedResult, ownedResult, ratedResult, recommendations, categoryRows, exclusionRows] = await Promise.all([
         db.execute(sql`
             SELECT id, name, image_url, playtime_min, min_players, max_players, difficulty
             FROM games
@@ -59,7 +59,17 @@ export const load: PageServerLoad = async ({ cookies }) => {
         // 장식장의 그 물건이 누구 것이라는 뜻이 아니다.
         db.execute(sql`SELECT game_id FROM game_ownership WHERE attendee_id = ${user.id}`),
         db.execute(sql`SELECT game_id, rating FROM game_ratings WHERE attendee_id = ${user.id}`),
-        getRecommendations(user.id).catch(() => null)
+        getRecommendations(user.id).catch(() => null),
+        // 제외 설정 화면의 카테고리 목록 — 실제 카탈로그에 있는 값만 보여준다
+        // (BGG 전체 분류를 다 나열하면 대부분 이 클럽엔 없는 게임의 태그다).
+        db.execute(sql`
+            SELECT trim(cat) AS category, COUNT(*)::int AS cnt
+            FROM games, unnest(string_to_array(categories, ',')) AS cat
+            WHERE is_active = true AND categories IS NOT NULL
+            GROUP BY trim(cat)
+            ORDER BY cnt DESC, category ASC
+        `),
+        db.execute(sql`SELECT kind, value FROM game_rec_exclusions WHERE attendee_id = ${user.id}`)
     ]);
 
     const playedByGameId: Record<number, any[]> = {};
@@ -88,7 +98,10 @@ export const load: PageServerLoad = async ({ cookies }) => {
         allPlays,
         ownedGameIds: (ownedResult as any[]).map((r) => r.game_id),
         ratingsByGameId: Object.fromEntries((ratedResult as any[]).map((r) => [r.game_id, r.rating])),
-        recommendations
+        recommendations,
+        recCategories: (categoryRows as any[]).map((r) => r.category as string),
+        difficultyBuckets: DIFFICULTY_BUCKETS,
+        recExclusions: (exclusionRows as any[]).map((r) => ({ kind: r.kind as string, value: r.value as string }))
     };
 };
 
@@ -177,6 +190,38 @@ export const actions: Actions = {
             return { success: true, rated: true };
         } catch (e) {
             return fail(500, { error: '평점 저장에 실패했습니다.' });
+        }
+    },
+
+    // 추천에서 특정 난이도/카테고리를 빼고 싶을 때. (attendee_id, kind, value)
+    // 복합키라 ON CONFLICT DO NOTHING으로 켜고, 없으면 그냥 지워서 끈다.
+    toggleRecExclusion: async ({ request, cookies }) => {
+        const userSessionToken = cookies.get('user_session');
+        if (!userSessionToken) return fail(401, { error: '로그인이 필요합니다.' });
+        const user = await verifyAttendeeSession(userSessionToken);
+        if (!user) return fail(401, { error: '로그인이 필요합니다.' });
+
+        const data = await request.formData();
+        const kind = data.get('kind')?.toString();
+        const value = data.get('value')?.toString();
+        const excluded = data.get('excluded') === 'true';
+        if (kind !== 'category' && kind !== 'difficulty') return fail(400, { error: '잘못된 요청입니다.' });
+        if (!value) return fail(400, { error: '잘못된 요청입니다.' });
+
+        try {
+            if (excluded) {
+                await db.execute(sql`
+                    INSERT INTO game_rec_exclusions (attendee_id, kind, value) VALUES (${user.id}, ${kind}, ${value})
+                    ON CONFLICT DO NOTHING
+                `);
+            } else {
+                await db.execute(sql`
+                    DELETE FROM game_rec_exclusions WHERE attendee_id = ${user.id} AND kind = ${kind} AND value = ${value}
+                `);
+            }
+            return { success: true, exclusionToggled: true };
+        } catch (e) {
+            return fail(500, { error: '처리에 실패했습니다.' });
         }
     }
 };

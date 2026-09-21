@@ -141,6 +141,16 @@
     let ownershipError = $state('');
     let ratingError = $state('');
     const myRating = $derived(selectedGameId ? (data.ratingsByGameId[selectedGameId] ?? null) : null);
+
+    // 추천은 누르기 전엔 계산만 해두고 화면엔 안 보여준다 — 매번 들어올 때마다
+    // 뜨면 "혼놀데이 누가 오나" 확인하러 온 사람한테 원치 않는 게 먼저 보인다.
+    let showRecommendations = $state(false);
+    let showRecFilters = $state(false);
+    const excludedCategories = $derived(new Set((data.recExclusions ?? []).filter((e) => e.kind === 'category').map((e) => e.value)));
+    const excludedDifficulties = $derived(new Set((data.recExclusions ?? []).filter((e) => e.kind === 'difficulty').map((e) => e.value)));
+    function isCategoryExcluded(cat: string) { return excludedCategories.has(cat); }
+    function isDifficultyExcluded(v: string) { return excludedDifficulties.has(v); }
+    const recExclusionCount = $derived((data.recExclusions ?? []).length);
     function openPlayEdit(play: any) {
         historyEditError = '';
         editingSessionId = play.sessionId;
@@ -429,36 +439,83 @@
         <section class="rec-section">
             <div class="section-header">
                 <h2>이런 게임 어때요?</h2>
+                <div class="rec-header-actions">
+                    <button type="button" class="btn-quiet" onclick={() => (showRecFilters = !showRecFilters)}>
+                        제외 설정{recExclusionCount > 0 ? ` (${recExclusionCount})` : ''}
+                    </button>
+                    <button type="button" class="btn-rec-reveal" onclick={() => (showRecommendations = !showRecommendations)}>
+                        {showRecommendations ? '접기' : '추천 보기'}
+                    </button>
+                </div>
             </div>
-            {#each [
-                { title: '함께 자주 하는 사람들이 한 게임', items: data.recommendations.friendsPlay },
-                { title: '높게 평가한 게임과 비슷한 게임', items: data.recommendations.similarStyle },
-                { title: '취향 비슷한 사람이 좋아한 게임', items: data.recommendations.similarTaste }
-            ] as group (group.title)}
-                {#if group.items.length > 0}
-                    <div class="rec-group">
-                        <h3 class="rec-group-title">{group.title}</h3>
-                        <div class="rec-grid">
-                            {#each group.items as g (g.id)}
-                                <div class="rec-card" title={g.reason}>
-                                    <div class="rec-cover">
-                                        {#if g.imageUrl}
-                                            <img src={g.imageUrl} alt="" loading="lazy" />
-                                        {:else}
-                                            <div class="rec-cover-placeholder" aria-hidden="true"></div>
-                                        {/if}
-                                    </div>
-                                    <span class="rec-name">{g.name}</span>
-                                    <span class="rec-meta">
-                                        {#if g.playtimeMin}{g.playtimeMin}분{/if}
-                                        {#if g.complexity}{g.playtimeMin ? ' · ' : ''}난이도 {g.complexity.toFixed(1)}{/if}
-                                    </span>
-                                </div>
+
+            {#if showRecFilters}
+                <div class="rec-filters">
+                    <p class="rec-filters-label">난이도</p>
+                    <div class="rec-filter-chips">
+                        {#each data.difficultyBuckets as b (b.value)}
+                            {@const excluded = isDifficultyExcluded(b.value)}
+                            <form method="POST" action="?/toggleRecExclusion" use:enhance={() => {
+                                return async ({ result, update }) => { if (result.type === 'success') await update(); };
+                            }}>
+                                <input type="hidden" name="kind" value="difficulty" />
+                                <input type="hidden" name="value" value={b.value} />
+                                <input type="hidden" name="excluded" value={(!excluded).toString()} />
+                                <button type="submit" class="rec-filter-chip" class:excluded>{b.label}</button>
+                            </form>
+                        {/each}
+                    </div>
+                    {#if data.recCategories.length > 0}
+                        <p class="rec-filters-label">카테고리</p>
+                        <div class="rec-filter-chips">
+                            {#each data.recCategories as cat (cat)}
+                                {@const excluded = isCategoryExcluded(cat)}
+                                <form method="POST" action="?/toggleRecExclusion" use:enhance={() => {
+                                    return async ({ result, update }) => { if (result.type === 'success') await update(); };
+                                }}>
+                                    <input type="hidden" name="kind" value="category" />
+                                    <input type="hidden" name="value" value={cat} />
+                                    <input type="hidden" name="excluded" value={(!excluded).toString()} />
+                                    <button type="submit" class="rec-filter-chip" class:excluded>{cat}</button>
+                                </form>
                             {/each}
                         </div>
-                    </div>
-                {/if}
-            {/each}
+                    {/if}
+                    <p class="rec-filters-hint">눌러서 제외 — 눌린 건 추천에서 빠져요.</p>
+                </div>
+            {/if}
+
+            {#if showRecommendations}
+                {#each [
+                    { title: '함께 자주 하는 사람들이 한 게임', items: data.recommendations.friendsPlay },
+                    { title: '높게 평가한 게임과 비슷한 게임', items: data.recommendations.similarStyle },
+                    { title: '취향 비슷한 사람이 좋아한 게임', items: data.recommendations.similarTaste }
+                ] as group (group.title)}
+                    {#if group.items.length > 0}
+                        <div class="rec-group">
+                            <h3 class="rec-group-title">{group.title}</h3>
+                            <div class="rec-grid">
+                                {#each group.items as g (g.id)}
+                                    <div class="rec-card" title={g.reason}>
+                                        <div class="rec-cover">
+                                            {#if g.imageUrl}
+                                                <img src={g.imageUrl} alt="" loading="lazy" />
+                                            {:else}
+                                                <div class="rec-cover-placeholder" aria-hidden="true"></div>
+                                            {/if}
+                                        </div>
+                                        <span class="rec-name">{g.name}</span>
+                                        <span class="rec-meta">
+                                            {#if g.playtimeMin}{g.playtimeMin}분{/if}
+                                            {#if g.complexity}{g.playtimeMin ? ' · ' : ''}난이도 {g.complexity.toFixed(1)}{/if}
+                                        </span>
+                                    </div>
+                                {/each}
+                            </div>
+                        </div>
+                    {/if}
+                {/each}
+            {/if}
         </section>
     {/if}
 
@@ -789,17 +846,84 @@
 
     /* 추천 게임 */
     .rec-section { margin-bottom: 1.5rem; }
-    .rec-section .section-header h2 {
+    .rec-section .section-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 0.5rem;
         margin: 0 0 0.6rem 0;
-        font-size: 0.82rem;
-        color: var(--text-secondary);
         border-bottom: 1px solid var(--border-light);
         padding-bottom: 0.45rem;
     }
-    .rec-group { margin-top: 1rem; }
-    /* section-header 다음이 항상 첫 그룹이다 — 그룹은 section의 :first-child가
-       아니라 section-header 다음 형제라 :first-child로는 안 걸렸다. */
-    .section-header + .rec-group { margin-top: 0.5rem; }
+    .rec-section .section-header h2 {
+        margin: 0;
+        font-size: 0.82rem;
+        color: var(--text-secondary);
+    }
+    .rec-header-actions {
+        display: flex;
+        gap: 0.4rem;
+    }
+    .btn-quiet, .btn-rec-reveal {
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: var(--text-secondary);
+        background: var(--bg-primary);
+        border: 1px solid var(--border-default);
+        padding: 0.35rem 0.65rem;
+        border-radius: 100px;
+        cursor: pointer;
+        white-space: nowrap;
+    }
+    .btn-rec-reveal {
+        color: var(--color-blue-bright);
+        border-color: var(--color-blue-bright);
+    }
+    .rec-filters {
+        margin-bottom: 1rem;
+        padding: 0.7rem;
+        background: var(--bg-secondary);
+        border-radius: 8px;
+    }
+    .rec-filters-label {
+        margin: 0.5rem 0 0.35rem;
+        font-size: 0.72rem;
+        font-weight: 600;
+        color: var(--text-tertiary);
+    }
+    .rec-filters-label:first-child { margin-top: 0; }
+    .rec-filter-chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.35rem;
+    }
+    .rec-filter-chip {
+        font-size: 0.72rem;
+        color: var(--text-secondary);
+        background: var(--bg-primary);
+        border: 1px solid var(--border-default);
+        padding: 0.25rem 0.6rem;
+        border-radius: 100px;
+        cursor: pointer;
+    }
+    .rec-filter-chip.excluded {
+        background: var(--bg-tertiary);
+        color: var(--text-hint);
+        text-decoration: line-through;
+    }
+    .rec-filters-hint {
+        margin: 0.6rem 0 0;
+        font-size: 0.7rem;
+        color: var(--text-hint);
+    }
+    /* section-header 바로 뒤(필터 패널이 열려 있으면 그 뒤)에 오는 그룹은
+       위 여백이 필요 없다 — section-header가 이미 padding-bottom과 테두리로
+       구분해준다. 필터 패널 유무에 따라 앞에 오는 형제가 달라지므로
+       :first-child 대신 그룹 스스로의 margin을 기본값으로 두고, 그 앞이
+       필터든 헤더든 상관없이 다음 그룹부터만 간격을 준다. */
+    .rec-group { margin-top: 0; }
+    .rec-group + .rec-group { margin-top: 1rem; }
     .rec-group-title {
         margin: 0 0 0.5rem;
         font-size: 0.78rem;

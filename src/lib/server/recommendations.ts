@@ -22,6 +22,21 @@ interface GameAttrs {
 
 const MAX_PER_SECTION = 5;
 
+/** 제외 설정 화면에서 "난이도"로 고를 수 있는 세 구간. complexity(BGG weight) 기준. */
+export const DIFFICULTY_BUCKETS = [
+	{ value: 'light', label: '가벼움', max: 2 },
+	{ value: 'medium', label: '보통', max: 3.5 },
+	{ value: 'heavy', label: '무거움', max: Infinity }
+] as const;
+
+function difficultyBucket(complexity: number | null): string | null {
+	if (complexity == null) return null;
+	for (const b of DIFFICULTY_BUCKETS) {
+		if (complexity <= b.max) return b.value;
+	}
+	return null;
+}
+
 function tagSet(text: string | null): Set<string> {
 	if (!text) return new Set();
 	return new Set(text.split(',').map((s) => s.trim()).filter(Boolean));
@@ -54,6 +69,16 @@ function gameSimilarity(a: GameAttrs, b: GameAttrs): number {
 	return complexityScore * 0.25 + playtimeScore * 0.25 + catScore * 0.25 + mechScore * 0.25;
 }
 
+function isExcluded(g: GameAttrs, excludedCategories: Set<string>, excludedDifficulties: Set<string>): boolean {
+	const bucket = difficultyBucket(g.complexity);
+	if (bucket && excludedDifficulties.has(bucket)) return true;
+	if (excludedCategories.size === 0) return false;
+	for (const cat of tagSet(g.categories)) {
+		if (excludedCategories.has(cat)) return true;
+	}
+	return false;
+}
+
 /**
  * 로그인한 사람에게 안 해본 게임 셋을 추천한다. 세 기준을 각각 따로 계산해서
  * 보여준다(하나로 섞지 않는다) — "왜 추천됐는지"가 점수 하나로 뭉치면
@@ -68,7 +93,7 @@ export async function getRecommendations(userId: number): Promise<{
 	similarStyle: RecGame[];
 	similarTaste: RecGame[];
 }> {
-	const [playedRows, catalogRows, friendWeightRows, myRatingRows, otherRatingRows] = await Promise.all([
+	const [playedRows, catalogRows, friendWeightRows, myRatingRows, otherRatingRows, exclusionRows] = await Promise.all([
 		db.execute(sql`
 			SELECT DISTINCT g.id
 			FROM session_participants sp
@@ -96,8 +121,16 @@ export async function getRecommendations(userId: number): Promise<{
 			GROUP BY sp2.attendee_id
 		`),
 		db.execute(sql`SELECT game_id, rating FROM game_ratings WHERE attendee_id = ${userId}`),
-		db.execute(sql`SELECT attendee_id, game_id, rating FROM game_ratings WHERE attendee_id != ${userId}`)
+		db.execute(sql`SELECT attendee_id, game_id, rating FROM game_ratings WHERE attendee_id != ${userId}`),
+		db.execute(sql`SELECT kind, value FROM game_rec_exclusions WHERE attendee_id = ${userId}`)
 	]);
+
+	const excludedCategories = new Set<string>();
+	const excludedDifficulties = new Set<string>();
+	for (const r of exclusionRows as any[]) {
+		if (r.kind === 'category') excludedCategories.add(r.value);
+		else if (r.kind === 'difficulty') excludedDifficulties.add(r.value);
+	}
 
 	const playedIds = new Set((playedRows as any[]).map((r) => Number(r.id)));
 	const catalog: GameAttrs[] = (catalogRows as any[]).map((g) => ({
@@ -110,7 +143,11 @@ export async function getRecommendations(userId: number): Promise<{
 		mechanics: g.mechanics
 	}));
 	const catalogById = new Map(catalog.map((g) => [g.id, g]));
-	const candidates = catalog.filter((g) => !playedIds.has(g.id));
+	// 안 해본 게임 중에서도 제외 설정(난이도·카테고리)에 걸리면 세 신호 전부에서 뺀다.
+	const candidates = catalog.filter(
+		(g) => !playedIds.has(g.id) && !isExcluded(g, excludedCategories, excludedDifficulties)
+	);
+	const eligibleIds = new Set(candidates.map((g) => g.id));
 
 	const toRecGame = (g: GameAttrs, reason: string): RecGame => ({
 		id: g.id,
@@ -138,7 +175,7 @@ export async function getRecommendations(userId: number): Promise<{
 		const scoreByGame = new Map<number, { score: number; friends: number }>();
 		for (const r of friendGameRows as any[]) {
 			const gameId = Number(r.game_id);
-			if (playedIds.has(gameId)) continue;
+			if (!eligibleIds.has(gameId)) continue;
 			const weight = friendWeight.get(Number(r.friend_id)) ?? 0;
 			const cur = scoreByGame.get(gameId) ?? { score: 0, friends: 0 };
 			cur.score += weight;
@@ -207,7 +244,7 @@ export async function getRecommendations(userId: number): Promise<{
 			for (const [otherId, similarity] of taste) {
 				const ratings = otherRatingsByUser.get(otherId)!;
 				for (const [gameId, rating] of ratings) {
-					if (rating < 7 || playedIds.has(gameId) || myRatings.has(gameId)) continue;
+					if (rating < 7 || !eligibleIds.has(gameId) || myRatings.has(gameId)) continue;
 					scoreByGame.set(gameId, (scoreByGame.get(gameId) ?? 0) + similarity);
 				}
 			}
