@@ -16,6 +16,8 @@ export const games = pgTable('games', {
 	minAge: integer('min_age'),
 	complexity: real('complexity'),
 	bestPlayers: text('best_players'),
+	categories: text('categories'),
+	mechanics: text('mechanics'),
 	isActive: boolean('is_active').default(true),
 	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 });

@@ -106,7 +106,9 @@
             complexity: 2.5,
             description: '',
             image_url: '',
-            included_dlcs: ''
+            included_dlcs: '',
+            categories: '',
+            mechanics: ''
         };
         isUnlimitedTime = false;
         previewFailed = false;
@@ -142,7 +144,7 @@
     const searchedGames = $derived(gameSearch.trim()
         ? data.games.filter((g: any) => {
               const q = gameSearch.trim().toLowerCase();
-              return [g.name, g.description, g.included_dlcs, g.bgg_id]
+              return [g.name, g.description, g.included_dlcs, g.categories, g.mechanics, g.bgg_id]
                   .filter(Boolean)
                   .some((v: any) => String(v).toLowerCase().includes(q));
           })
@@ -472,6 +474,9 @@
                         <span>{fmtPlaytime(game)}</span>
                         <span class="complexity-badge">난이도 {game.complexity ?? EMPTY}</span>
                     </div>
+                    {#if game.categories}
+                        <p class="dlc-info">{game.categories}</p>
+                    {/if}
                     {#if game.included_dlcs}
                         <p class="dlc-info">
                             <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:2px; vertical-align:text-top;"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -788,6 +793,18 @@
                         </div>
                     {/if}
 
+                    {#if selectedDetailGame.categories}
+                        <div class="dlc-section">
+                            <h4>카테고리</h4>
+                            <p>{selectedDetailGame.categories}</p>
+                        </div>
+                    {/if}
+                    {#if selectedDetailGame.mechanics}
+                        <div class="dlc-section">
+                            <h4>메카닉</h4>
+                            <p>{selectedDetailGame.mechanics}</p>
+                        </div>
+                    {/if}
                     {#if selectedDetailGame.included_dlcs}
                         <div class="dlc-section">
                             <h4>
@@ -889,6 +906,17 @@
                         <label for="complexity">난이도</label>
                         <input type="number" id="complexity" name="complexity" bind:value={selectedGame.complexity} step="0.01" min="1" max="5" />
                         <p class="field-hint">BGG의 Weight 값(1 = 아주 가벼움, 5 = 아주 무거움). 모르면 비워두세요.</p>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="categories">카테고리</label>
+                        <input type="text" id="categories" name="categories" bind:value={selectedGame.categories} placeholder="예: 전략, 카드 게임 (쉼표로 구분)" />
+                    </div>
+                    <div class="form-group">
+                        <label for="mechanics">메카닉</label>
+                        <input type="text" id="mechanics" name="mechanics" bind:value={selectedGame.mechanics} placeholder="예: 일꾼 놓기, 덱 빌딩 (쉼표로 구분)" />
                     </div>
                 </div>
 
