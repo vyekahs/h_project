@@ -293,6 +293,9 @@ export function decideSmallTichu(hand: Card[], weights: PersonalityWeights, cont
 	return true;
 }
 
+/** 패스 대신 털어낼 낱장의 상한 (K). A·용·봉황은 선을 되찾는 카드라 아낀다 */
+const LOOSE_SINGLE_MAX_RANK = 13;
+
 /**
  * 파트너가 이 랭크 이하로 이기고 있으면 "낮은 패"로 본다.
  * 상대가 같은 낮은 대역의 카드로 쉽게 덮을 수 있는 구간.
@@ -949,6 +952,35 @@ function pickBestFollow(
 			(trickPoints >= 15 && getTeam(lastPlay.seat) !== myTeam);
 
 		if (!mustPlay) {
+			// === 패스하기 전에: 짝 없는 낱장으로 받을 수 있으면 그걸 턴다 ===
+			//
+			// 위 문턱은 "이 수의 점수가 낮으면 패스"인데, 패스와 비교하지는 않는다. 그래서
+			// 상대의 9 싱글 위에 10 J J Q Q K A를 쥐고 패스하는 일이 잦았다. 손패를 가장 적은
+			// 턴으로 비우는 분할(findOptimalPartition)에서 낱장으로 남는 카드는 언젠가 내 선에서 한 턴을 써서 털어야 하는 카드다. 상대 싱글
+			// 위에 얹으면 그 한 턴이 공짜고, 상대가 낮은 싱글로 트릭을 먹고 선을 이어가는
+			// 것도 끊는다.
+			//
+			// 실제 플레이 기록(44라운드)에서 찾은 구멍: AI는 일반 카드로 이길 수 있는 사람의
+			// 낮은 싱글(≤10)을 29% 그냥 통과시켰고, 마지막 차례인 자리에서도 56% 통과시켜
+			// 사람이 5·7·9 같은 카드로 선을 유지했다.
+			//
+			// 검증 (고정 덱 + 결정론, 시드별 100게임, 한 팀에만 적용, 라운드당 점수차 / 게임 승률):
+			//   기준                       +9.5 / 58%   +9.1 / 62%   +4.5 / 56%
+			//   "어떤 조합에도 없는 카드"  +33.8 / 86%  +23.0 / 77%  +27.2 / 80%
+			//   "최적 분할의 낱장"         +37.2 / 85%  +32.4 / 84%  +35.0 / 83%   ← 채택
+			// 반대 팀에 적용해도 같은 크기로 뒤집힌다. 가능한 모든 조합을 기준으로 하면
+			// 스트레이트가 하나만 있어도 거의 모든 카드가 "조합에 속한 카드"가 돼서 덜 발동한다.
+			// 상한 Q / K / A는 서로 오차 범위 안 — A는 선을 되찾는 카드라 K까지로 둔다.
+			if (opponentWinning && lastPlay.combination.type === 'single') {
+				const inMultiCombo = new Set<string>();
+				const partition = findOptimalPartition(hand, findAllPlayableCombinations(hand).filter(c => !isBomb(c)));
+				for (const mc of partition.combos) {
+					if (mc.type !== 'single' && !isBomb(mc)) for (const cc of mc.cards) inMultiCombo.add(cc.id);
+				}
+				const loose = sorted.filter(p => p.type === 'single' && p.cards[0].type === 'normal' &&
+					p.rank <= LOOSE_SINGLE_MAX_RANK && !inMultiCombo.has(p.cards[0].id));
+				if (loose.length > 0) return loose[0].cards.map(c => c.id);
+			}
 			return 'pass';
 		}
 	}
