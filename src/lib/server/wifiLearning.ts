@@ -146,6 +146,10 @@ export async function getMacCandidates(limit = 30): Promise<MacCandidate[]> {
 				       ) AS runner_up
 				FROM wifi_mac_candidates c
 				JOIN wifi_learn_attendee_days d ON d.attendee_id = c.attendee_id
+				-- 관측 시점에만 걸러서는 부족하다. 상시 장비는 새벽 스윕에서 뒤늦게
+				-- 밝혀지는데, 그 전에 기록된 후보는 그대로 남아 계속 1등을 다툰다.
+				-- 실제로 초기화 직후 후보 8개 중 4개가 이미 상시 목록에 있는 것이었다.
+				WHERE NOT EXISTS (SELECT 1 FROM wifi_infra_macs i WHERE i.mac = c.mac)
 			)
 			SELECT r.attendee_id, a.name, r.mac, r.days_seen, r.days_visited, r.runner_up
 			FROM ranked r JOIN attendees a ON a.id = r.attendee_id
@@ -267,6 +271,7 @@ export async function promoteConfidentMacs(): Promise<
 			-- 아무도 승격하지 못한다.
 			WHERE d.days_seen >= ${MIN_DAYS}
 			  AND c.days_seen >= d.days_seen - ${MAX_MISSES}
+			  AND NOT EXISTS (SELECT 1 FROM wifi_infra_macs i WHERE i.mac = c.mac)
 			GROUP BY c.mac
 			HAVING count(DISTINCT c.attendee_id) > 1
 		`)) as any[];
