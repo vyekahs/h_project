@@ -34,6 +34,14 @@ const MAX_MISSES = 1;
 const MIN_DAY_MARGIN = 2;
 /** 이보다 오래된 WiFi 보고는 현재 상태로 믿지 않는다. */
 const LAN_FRESHNESS_MS = 10 * 60 * 1000;
+/**
+ * 이만큼의 밤에 반복해서 나타나야 상시 장비로 인정한다.
+ *
+ * 하룻밤만으로는 운영자가 늦게까지 남은 날의 그 사람 폰과 구분되지 않는다.
+ * 한 번 상시로 찍히면 후보에서 영구 제외되므로, 잘못 찍으면 그 회원은 영영
+ * 학습되지 않는다. 진짜 상시 장비는 매일 밤 나타나니 기다리는 비용이 작다.
+ */
+const INFRA_MIN_NIGHTS = 3;
 
 /**
  * 가장 최근 WiFi 보고의 MAC 집합.
@@ -61,9 +69,17 @@ export async function markInfraMacs(macs: string[]) {
 	if (unique.length === 0) return;
 	try {
 		await db.execute(sql`
-			INSERT INTO wifi_infra_macs (mac)
-			SELECT m.mac FROM (VALUES ${sql.join(unique.map((m) => sql`(${m})`), sql`, `)}) AS m(mac)
-			ON CONFLICT (mac) DO UPDATE SET last_seen_at = NOW()
+			INSERT INTO wifi_infra_macs (mac, last_night)
+			SELECT m.mac, (NOW() AT TIME ZONE 'Asia/Seoul')::date
+			FROM (VALUES ${sql.join(unique.map((m) => sql`(${m})`), sql`, `)}) AS m(mac)
+			ON CONFLICT (mac) DO UPDATE
+			SET last_seen_at = NOW(),
+			    -- 같은 밤에 여러 번 보고돼도 한 밤으로 센다. 안 그러면 5분마다
+			    -- 올라가 하룻밤 만에 기준을 넘긴다.
+			    nights_seen = wifi_infra_macs.nights_seen
+			                + CASE WHEN wifi_infra_macs.last_night IS DISTINCT FROM
+			                            (NOW() AT TIME ZONE 'Asia/Seoul')::date THEN 1 ELSE 0 END,
+			    last_night  = (NOW() AT TIME ZONE 'Asia/Seoul')::date
 		`);
 	} catch (e) {
 		console.error('[WiFiLearn] 상시 장비 기록 실패:', e);
@@ -100,7 +116,7 @@ export async function recordCheckinObservation(attendeeId: number) {
 			INSERT INTO wifi_mac_candidates (attendee_id, mac, days_seen, last_day)
 			SELECT ${attendeeId}, c.mac, 1, (NOW() AT TIME ZONE 'Asia/Seoul')::date
 			FROM (VALUES ${values}) AS c(mac)
-			WHERE NOT EXISTS (SELECT 1 FROM wifi_infra_macs i WHERE i.mac = c.mac)
+			WHERE NOT EXISTS (SELECT 1 FROM wifi_infra_macs i WHERE i.mac = c.mac AND i.nights_seen >= ${INFRA_MIN_NIGHTS})
 			  AND NOT EXISTS (
 			      SELECT 1 FROM user_devices ud
 			      WHERE ud.wifi_mac = c.mac AND ud.attendee_id <> ${attendeeId}
@@ -146,6 +162,10 @@ export async function getMacCandidates(limit = 30): Promise<MacCandidate[]> {
 				       ) AS runner_up
 				FROM wifi_mac_candidates c
 				JOIN wifi_learn_attendee_days d ON d.attendee_id = c.attendee_id
+				-- 관측 시점에만 걸러서는 부족하다. 상시 장비는 새벽 스윕에서 뒤늦게
+				-- 밝혀지는데, 그 전에 기록된 후보는 그대로 남아 계속 1등을 다툰다.
+				-- 실제로 초기화 직후 후보 8개 중 4개가 이미 상시 목록에 있는 것이었다.
+				WHERE NOT EXISTS (SELECT 1 FROM wifi_infra_macs i WHERE i.mac = c.mac AND i.nights_seen >= ${INFRA_MIN_NIGHTS})
 			)
 			SELECT r.attendee_id, a.name, r.mac, r.days_seen, r.days_visited, r.runner_up
 			FROM ranked r JOIN attendees a ON a.id = r.attendee_id
@@ -267,6 +287,7 @@ export async function promoteConfidentMacs(): Promise<
 			-- 아무도 승격하지 못한다.
 			WHERE d.days_seen >= ${MIN_DAYS}
 			  AND c.days_seen >= d.days_seen - ${MAX_MISSES}
+			  AND NOT EXISTS (SELECT 1 FROM wifi_infra_macs i WHERE i.mac = c.mac AND i.nights_seen >= ${INFRA_MIN_NIGHTS})
 			GROUP BY c.mac
 			HAVING count(DISTINCT c.attendee_id) > 1
 		`)) as any[];

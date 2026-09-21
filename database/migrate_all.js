@@ -183,6 +183,18 @@ async function migrate() {
                 last_seen_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
             );
         `);
+        // 몇 밤 연속으로 나타났는지 센다.
+        //
+        // "새벽에 랜에 있으면 상시 장비"라는 판단에는 구멍이 있다. 운영자는 새벽에도
+        // 있을 수 있고, 그러면 그 사람의 폰이 상시 장비로 영구 차단되어 영영
+        // 학습되지 않는다. 진짜 상시 장비는 매일 밤 나타나므로, 여러 밤 반복된
+        // 것만 인정하면 하룻밤 머문 사람의 기기와 구분된다.
+        await pool.query(`
+            DO $$ BEGIN
+                ALTER TABLE wifi_infra_macs ADD COLUMN nights_seen INTEGER NOT NULL DEFAULT 1;
+                ALTER TABLE wifi_infra_macs ADD COLUMN last_night DATE;
+            EXCEPTION WHEN duplicate_column THEN null; END $$;
+        `);
 
         // 14. Guest support in session_participants
         console.log('[14] Adding guest support to session_participants...');

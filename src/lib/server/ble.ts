@@ -750,9 +750,34 @@ export async function processWifiReport(_scannerId: string, devices: { mac: stri
         // 영업이 끝난 새벽에도 랜에 남아 있는 기기는 공유기·TV·스캐너 같은 상시 장비다.
         // 회원 폰일 수 없으므로 MAC 자동 학습에서 통째로 제외하기 위해 기록해둔다.
         // (재실 판정은 아래처럼 그대로 건너뛴다)
-        if (checkHour >= 2 && checkHour < 7) {
+        // 아무도 없는 새벽에만 상시 장비를 기록한다.
+        //
+        // 운영자는 새벽에도 남아 있을 수 있다. 그때 수집하면 그 사람의 폰이
+        // 상시 장비로 찍히고, 한 번 찍히면 후보에서 영구 제외되어 영영 학습되지
+        // 않는다. BLE로 최근에 잡힌 사람이 하나라도 있으면 건너뛴다.
+        const someoneHere = [...lastSeenBleMap.values()].some(
+            ts => Date.now() - ts < 30 * 60 * 1000
+        );
+
+        // 주말 밤은 수집하지 않는다.
+        //
+        // 주말은 마감이 늦어(06:00) 새벽까지 사람이 남아 있을 수 있다. 그때 수집하면
+        // 그 사람들의 폰이 상시 장비로 찍힌다.
+        //
+        // '밤'은 전날에 속한다 — 토요일 밤 모임은 일요일 새벽까지 이어진다. 그래서
+        // 오늘이 아니라 어제 요일로 판단한다. 지금은 02~07시 구간이므로 이 밤의
+        // 시작일은 언제나 어제다.
+        const prevDay = (kstCheck.getUTCDay() + 6) % 7;
+        const isWeekendNight = settingsCache!.weekendDays.includes(prevDay);
+
+        if (checkHour >= 2 && checkHour < 7 && !someoneHere && !isWeekendNight) {
             markInfraMacs(devices.map(d => d.mac)).catch(e =>
                 console.error('[WiFi] 상시 장비 기록 실패', e));
+        } else if (checkHour >= 2 && checkHour < 7) {
+            console.log(
+                `[${kstTime()}][WiFi] 새벽 상시 장비 수집 건너뜀 ` +
+                `(${isWeekendNight ? '주말 밤' : '사람 있음'})`
+            );
         }
         console.log(`[${kstTime()}][WiFi] Gym closed & before opening window, skipping (${devices.length} devices)`);
         return;
