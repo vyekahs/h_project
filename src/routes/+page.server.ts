@@ -9,7 +9,6 @@ import { getSharedData } from '$lib/server/dataCache';
 import { NotificationService } from '$lib/server/services/notificationService';
 import { WantToPlayService } from '$lib/server/services/wantToPlayService';
 import { resolveGameId } from '$lib/server/games';
-import { getRecommendations } from '$lib/server/recommendations';
 
 async function canModifyGame(request: Request, gameId: string | number): Promise<boolean> {
     const sessionToken = request.headers.get('cookie')?.match(/admin_session=([^;]+)/)?.[1];
@@ -107,19 +106,12 @@ export const load: PageServerLoad = async ({ locals }) => {
         `).catch(() => null)
         : Promise.resolve(null);
 
-    // 추천은 완전히 개인화된 데이터라 공용 캐시(dataCache.ts)에 넣을 수 없다 —
-    // userQueriesPromise와 같은 자리에서, 로그인했을 때만 계산한다.
-    const recommendationsPromise = user
-        ? getRecommendations(user.id).catch(() => null)
-        : Promise.resolve(null);
-
     // 공용 데이터는 메모리 캐시에서 가져옴 (동시 요청 시 DB 1번만 조회)
-    const [shared, wantToPlayPosts, wtpAvailableTags, userResults, recommendations] = await Promise.all([
+    const [shared, wantToPlayPosts, wtpAvailableTags, userResults] = await Promise.all([
         getSharedData(),
         WantToPlayService.getOpenPosts(),
         WantToPlayService.getAvailableTags(),
         userQueriesPromise,
-        recommendationsPromise,
     ]);
 
     let userPenaltyInfo = null;
@@ -167,7 +159,6 @@ export const load: PageServerLoad = async ({ locals }) => {
         userHasVisitPlan,
         wantToPlayPosts,
         wtpAvailableTags,
-        recommendations,
     };
 };
 

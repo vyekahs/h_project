@@ -1010,43 +1010,6 @@
             </div>
         </section>
 
-        {#if data.user && data.recommendations && (data.recommendations.friendsPlay.length > 0 || data.recommendations.similarStyle.length > 0 || data.recommendations.similarTaste.length > 0)}
-            <section class="rec-section">
-                <div class="section-header">
-                    <h2>이런 게임 어때요?</h2>
-                </div>
-                {#each [
-                    { title: '함께 자주 하는 사람들이 한 게임', items: data.recommendations.friendsPlay },
-                    { title: '높게 평가한 게임과 비슷한 게임', items: data.recommendations.similarStyle },
-                    { title: '취향 비슷한 사람이 좋아한 게임', items: data.recommendations.similarTaste }
-                ] as group (group.title)}
-                    {#if group.items.length > 0}
-                        <div class="rec-group">
-                            <h3 class="rec-group-title">{group.title}</h3>
-                            <div class="rec-grid">
-                                {#each group.items as g (g.id)}
-                                    <div class="rec-card" title={g.reason}>
-                                        <div class="rec-cover">
-                                            {#if g.imageUrl}
-                                                <img src={g.imageUrl} alt="" loading="lazy" />
-                                            {:else}
-                                                <div class="rec-cover-placeholder" aria-hidden="true"></div>
-                                            {/if}
-                                        </div>
-                                        <span class="rec-name">{g.name}</span>
-                                        <span class="rec-meta">
-                                            {#if g.playtimeMin}{g.playtimeMin}분{/if}
-                                            {#if g.complexity}{g.playtimeMin ? ' · ' : ''}난이도 {g.complexity.toFixed(1)}{/if}
-                                        </span>
-                                    </div>
-                                {/each}
-                            </div>
-                        </div>
-                    {/if}
-                {/each}
-            </section>
-        {/if}
-
         {#if (data.mainScheduledGames || []).length > 0}
             {@const mainGames = data.mainScheduledGames || []}
             <section class="tables-section">
@@ -2528,55 +2491,6 @@
     }
     .visit-plan-card.editable:hover::after {
         opacity: 1;
-    }
-
-    /* 추천 게임 */
-    .rec-group { margin-top: 1rem; }
-    /* section-header 다음이 항상 첫 그룹이다 — 그룹은 section의 :first-child가
-       아니라 section-header 다음 형제라 :first-child로는 안 걸렸다. */
-    .section-header + .rec-group { margin-top: 0.5rem; }
-    .rec-group-title {
-        margin: 0 0 0.5rem;
-        font-size: 0.82rem;
-        font-weight: 600;
-        color: var(--text-secondary);
-    }
-    .rec-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
-        gap: 0.6rem;
-    }
-    .rec-card {
-        display: flex;
-        flex-direction: column;
-        gap: 0.2rem;
-    }
-    .rec-cover {
-        aspect-ratio: 1;
-        border-radius: 8px;
-        overflow: hidden;
-        background: var(--bg-tertiary);
-    }
-    .rec-cover img {
-        width: 100%;
-        height: 100%;
-        object-fit: cover;
-    }
-    .rec-cover-placeholder {
-        width: 100%;
-        height: 100%;
-    }
-    .rec-name {
-        font-size: 0.78rem;
-        font-weight: 600;
-        color: var(--text-primary);
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-    }
-    .rec-meta {
-        font-size: 0.7rem;
-        color: var(--text-tertiary);
     }
 
     /* Visit Plan Modal */

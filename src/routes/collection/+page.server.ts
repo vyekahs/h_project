@@ -4,6 +4,7 @@ import { redirect, fail } from '@sveltejs/kit';
 import type { PageServerLoad, Actions } from './$types';
 import { verifyAttendeeSession } from '$lib/server/auth';
 import { editGameResult, GameHistoryEditError } from '$lib/server/services/gameHistoryService';
+import { getRecommendations } from '$lib/server/recommendations';
 
 export const load: PageServerLoad = async ({ cookies }) => {
     const userSessionToken = cookies.get('user_session');
@@ -15,7 +16,7 @@ export const load: PageServerLoad = async ({ cookies }) => {
         throw redirect(303, '/login?redirectTo=/collection');
     }
 
-    const [gamesResult, playedResult, ownedResult, ratedResult] = await Promise.all([
+    const [gamesResult, playedResult, ownedResult, ratedResult, recommendations] = await Promise.all([
         db.execute(sql`
             SELECT id, name, image_url, playtime_min, min_players, max_players, difficulty
             FROM games
@@ -57,7 +58,8 @@ export const load: PageServerLoad = async ({ cookies }) => {
         // (attendee_id, game_id) 복합키라 같은 게임을 여러 사람이 각자 체크한다 —
         // 장식장의 그 물건이 누구 것이라는 뜻이 아니다.
         db.execute(sql`SELECT game_id FROM game_ownership WHERE attendee_id = ${user.id}`),
-        db.execute(sql`SELECT game_id, rating FROM game_ratings WHERE attendee_id = ${user.id}`)
+        db.execute(sql`SELECT game_id, rating FROM game_ratings WHERE attendee_id = ${user.id}`),
+        getRecommendations(user.id).catch(() => null)
     ]);
 
     const playedByGameId: Record<number, any[]> = {};
@@ -85,7 +87,8 @@ export const load: PageServerLoad = async ({ cookies }) => {
         // 게임과 무관하게 시간순으로 쭉 훑어야 하는 경우("지난주에 뭐 했더라")를 위한 것.
         allPlays,
         ownedGameIds: (ownedResult as any[]).map((r) => r.game_id),
-        ratingsByGameId: Object.fromEntries((ratedResult as any[]).map((r) => [r.game_id, r.rating]))
+        ratingsByGameId: Object.fromEntries((ratedResult as any[]).map((r) => [r.game_id, r.rating])),
+        recommendations
     };
 };
 
