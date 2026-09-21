@@ -126,6 +126,7 @@
         editingSessionId = null;
         historyEditError = '';
         ownershipError = '';
+        ratingError = '';
     }
 
     // 게임 종료 시 승자/점수를 잘못 입력했을 때 이 모달 안에서 바로 고칠 수 있게 한다
@@ -138,6 +139,8 @@
     let editingSessionId: number | null = $state(null);
     let historyEditError = $state('');
     let ownershipError = $state('');
+    let ratingError = $state('');
+    const myRating = $derived(selectedGameId ? (data.ratingsByGameId[selectedGameId] ?? null) : null);
     function openPlayEdit(play: any) {
         historyEditError = '';
         editingSessionId = play.sessionId;
@@ -562,6 +565,38 @@
             {#if selectedGamePlays.length === 0}
                 <p class="no-play-results">아직 플레이 기록이 없어요.</p>
             {:else}
+                {#if ratingError}
+                    <p class="inline-error">{ratingError}</p>
+                {/if}
+                <form
+                    method="POST"
+                    action="?/rateGame"
+                    class="rating-form"
+                    use:enhance={() => {
+                        ratingError = '';
+                        return async ({ result, update }) => {
+                            if (result.type === 'success') {
+                                await update();
+                            } else if (result.type === 'failure') {
+                                ratingError = (result.data as any)?.error || '처리에 실패했습니다.';
+                            }
+                        };
+                    }}
+                >
+                    <input type="hidden" name="gameId" value={selectedGame.id} />
+                    <label for="rating-select">내 평점</label>
+                    <select
+                        id="rating-select"
+                        name="rating"
+                        value={myRating ?? ''}
+                        onchange={(e) => e.currentTarget.form?.requestSubmit()}
+                    >
+                        <option value="">평가 안 함</option>
+                        {#each Array(10) as _, i}
+                            <option value={i + 1}>{i + 1}점</option>
+                        {/each}
+                    </select>
+                </form>
                 <button
                     type="button"
                     class="filter-disclosure-toggle"
@@ -1118,6 +1153,30 @@
         background: var(--color-warning-bg);
         border-color: var(--color-amber);
         color: var(--color-achievement-text);
+    }
+    .rating-form {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.5rem;
+        margin-bottom: 1rem;
+        padding: 0.5rem 0.7rem;
+        border: 1px solid var(--border-default);
+        border-radius: 8px;
+        background: var(--bg-secondary);
+    }
+    .rating-form label {
+        font-size: 0.82rem;
+        font-weight: 600;
+        color: var(--text-secondary);
+    }
+    .rating-form select {
+        padding: 0.3rem 0.5rem;
+        border: 1px solid var(--border-default);
+        border-radius: 6px;
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        font-size: 0.82rem;
     }
     /* 필터가 항상 펼쳐져 있으면 컨트롤 5~6개가 정작 기록 몇 건보다 눈에 띈다 —
        기본은 접어두고 몇 개 걸려있는지만 보여준다 */

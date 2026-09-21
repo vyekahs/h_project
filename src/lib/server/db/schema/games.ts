@@ -67,6 +67,18 @@ export const gameOwnership = pgTable('game_ownership', {
 	primaryKey({ columns: [table.attendeeId, table.gameId] }),
 ]);
 
+// 본인이 해본 게임에 매기는 10점 만점 평점. 소장 체크(game_ownership)와 달리
+// 플레이 기록이 있는 게임에만 의미가 있다 — UI가 그 범위로 노출을 제한한다.
+export const gameRatings = pgTable('game_ratings', {
+	attendeeId: integer('attendee_id').notNull().references(() => attendees.id, { onDelete: 'cascade' }),
+	gameId: integer('game_id').notNull().references(() => games.id, { onDelete: 'cascade' }),
+	rating: integer('rating').notNull(),
+	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+	updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+}, (table) => [
+	primaryKey({ columns: [table.attendeeId, table.gameId] }),
+]);
+
 export const reservations = pgTable('reservations', {
 	id: serial('id').primaryKey(),
 	sessionId: integer('session_id').references(() => gameSessions.id, { onDelete: 'cascade' }),
