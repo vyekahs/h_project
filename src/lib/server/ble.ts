@@ -60,8 +60,6 @@ const lastSeenGameMap = new Map<number, number>();
 let settingsCache: {
     isOpen: boolean;
     openingTime: string;
-    closingWeekday: string;
-    closingWeekend: string;
     weekendDays: number[];
 } | null = null;
 
@@ -99,13 +97,11 @@ export function getAutoCheckinLogs(): AutoLog[] {
 /** 설정 캐시 업데이트 (외부에서 is_open 변경 시 호출) */
 export function updateSettingsCache(isOpen: boolean, openingTime?: string) {
     if (!settingsCache) {
-        // 마감 설정은 여기서 알 수 없으므로 기본값으로 둔다. ensureCachesLoaded가
+        // 주말 설정은 여기서 알 수 없으므로 기본값으로 둔다. ensureCachesLoaded가
         // 곧 DB에서 채운다.
         settingsCache = {
             isOpen,
             openingTime: openingTime || '09:00',
-            closingWeekday: '00:00',
-            closingWeekend: '06:00',
             weekendDays: [5, 6]
         };
     } else {
@@ -134,6 +130,14 @@ export function updateLastSeenBle(attendeeId: number, timestamp: number) {
 /** 오픈 몇 분 전부터 자동 오픈을 허용할지. 일찍 지나가는 사람에게 열리면 안 된다. */
 const AUTO_OPEN_LEAD_MINUTES = 5;
 
+/**
+ * 오픈 시각으로부터 몇 분까지 자동 오픈을 허용할지.
+ *
+ * 관리자가 제시간에 오지 못하는 날을 위한 여유지, 하루 종일 열어두는 스위치가
+ * 아니다. 늦게 오는 날도 오픈 4시간 안에는 도착한다.
+ */
+const AUTO_OPEN_DURATION_MINUTES = 4 * 60;
+
 function toMinutes(hhmm: string, fallback: number): number {
     const [h, m] = hhmm.split(':').map(Number);
     if (!Number.isFinite(h) || !Number.isFinite(m)) return fallback;
@@ -143,14 +147,22 @@ function toMinutes(hhmm: string, fallback: number): number {
 /**
  * 지금이 자동 오픈을 허용할 시간대인가.
  *
- * 오픈 5분 전부터 그날 마감까지다.
+ * 오픈 5분 전부터 오픈 4시간 뒤까지다(14시 오픈이면 13:55~18:00).
  *
- * 예전에는 "오픈시간 ±2시간"이었다. 그래서 14시 오픈이면 12시부터 열렸고 —
- * 점심때 지나가던 관리자에게 가게가 열렸다 — 16시가 지나면 정작 안 열렸다.
- * 양쪽 다 실제 운영과 맞지 않았다.
+ * 한때 "오픈시간 ±2시간"이었다. 14시 오픈이면 12시부터 열렸고 — 점심때 지나가던
+ * 관리자에게 가게가 열렸다 — 16시가 지나면 정작 안 열렸다. 그래서 창 끝을 그날
+ * 마감까지 늘렸는데, 이번에는 마감한 뒤에도 창이 살아 있는 게 문제가 됐다:
+ * 일요일 23:20에 마감하자 19초 뒤 자동 오픈이 가게를 다시 열었고, 다시 열린
+ * 하루는 자동 마감의 "오늘은 이미 마감함" 가드에 막혀 끝나지 않았다. 새벽 2시에
+ * 사람이 손으로 닫아야 했다.
  *
- * 마감이 오픈보다 이르면(평일 00:00, 주말 06:00) 자정을 넘긴 것으로 보고
- * 다음 날로 계산한다. 그래야 새벽 2시에도 창 안에 있다.
+ * 자동 오픈이 해결하려는 것은 "관리자가 와 있는데 가게가 닫혀 있는" 상황이고,
+ * 그건 오픈 무렵에만 생긴다. 마감 시각은 여기에 쓰지 않는다 — 마감 시각까지
+ * 열어둘 이유가 없고, 마감과 자동 오픈이 같은 시각을 공유하면 둘이 서로를
+ * 되돌리게 된다.
+ *
+ * 오픈이 늦은 시간이면(예: 22시) 창이 자정을 넘길 수 있어 그 경우만 하루를
+ * 더해 비교한다.
  *
  * 같은 계산이 세 군데(BLE 처리, WiFi 처리, 내부 API)에 복사돼 있었다.
  * 하나만 고치면 나머지가 어긋나므로 여기로 모은다.
@@ -160,19 +172,14 @@ export function calculateAutoOpenWindow(): boolean {
 
     const kstNow = new Date(Date.now() + 9 * 60 * 60 * 1000);
     const nowMins = kstNow.getUTCHours() * 60 + kstNow.getUTCMinutes();
-    const isWeekend = settingsCache.weekendDays.includes(kstNow.getUTCDay());
 
     const openMins = toMinutes(settingsCache.openingTime, 9 * 60);
-    const closeMins = toMinutes(
-        isWeekend ? settingsCache.closingWeekend : settingsCache.closingWeekday,
-        0
-    );
 
     const start = openMins - AUTO_OPEN_LEAD_MINUTES;
-    // 마감이 오픈보다 이르면 자정을 넘긴 것이다.
-    const end = closeMins <= openMins ? closeMins + 1440 : closeMins;
-    // 지금이 시작보다 이르면, 자정을 넘겨 아직 어제 영업 중일 수 있다.
-    const now = nowMins < start ? nowMins + 1440 : nowMins;
+    const end = openMins + AUTO_OPEN_DURATION_MINUTES;
+    // 창이 자정을 넘겨야만 지금 시각에 하루를 더한다. 창이 자정 안에서 끝나는데도
+    // 더하면(예: 13:55~18:00에 새벽 2시) 창 밖인 시각이 창 안으로 들어온다.
+    const now = nowMins < start && end > 1440 ? nowMins + 1440 : nowMins;
 
     return now >= start && now <= end;
 }
@@ -309,23 +316,18 @@ function verifyMetric(hash: Buffer, prand: Buffer, key: Buffer, padding: 'Head'|
 export async function ensureCachesLoaded(source: string = 'BLE') {
     if (!settingsCache) {
         try {
-            // 자동 오픈 창은 마감 시각까지 이어지므로 마감 설정도 함께 읽는다.
+            // weekend_days는 자동 오픈이 아니라 WiFi 상시기기 판정(주말 밤 제외)에 쓴다.
             const settingsRes = await db.execute(sql`
                 SELECT key, value FROM system_settings
-                WHERE key IN ('is_open', 'opening_time',
-                              'closing_time_weekday', 'closing_time_weekend', 'weekend_days')
+                WHERE key IN ('is_open', 'opening_time', 'weekend_days')
             `);
             let isOpen = false;
             let openingTime = '09:00';
-            let closingWeekday = '00:00';
-            let closingWeekend = '06:00';
             let weekendDays = [5, 6];
             for (const row of settingsRes) {
                 const r = row as any;
                 if (r.key === 'is_open') isOpen = r.value === 'true';
                 if (r.key === 'opening_time') openingTime = r.value;
-                if (r.key === 'closing_time_weekday') closingWeekday = r.value;
-                if (r.key === 'closing_time_weekend') closingWeekend = r.value;
                 if (r.key === 'weekend_days') {
                     const parsed = String(r.value)
                         .split(',')
@@ -334,18 +336,16 @@ export async function ensureCachesLoaded(source: string = 'BLE') {
                     if (parsed.length > 0) weekendDays = parsed;
                 }
             }
-            settingsCache = { isOpen, openingTime, closingWeekday, closingWeekend, weekendDays };
+            settingsCache = { isOpen, openingTime, weekendDays };
             console.log(
                 `[${kstTime()}][${source}] Settings cache loaded: isOpen=${isOpen}, ` +
-                `open=${openingTime}, close=${closingWeekday}/${closingWeekend}, weekend=[${weekendDays}]`
+                `open=${openingTime}, weekend=[${weekendDays}]`
             );
         } catch (e) {
             console.error('Failed to fetch settings', e);
             settingsCache = {
                 isOpen: false,
                 openingTime: '09:00',
-                closingWeekday: '00:00',
-                closingWeekend: '06:00',
                 weekendDays: [5, 6]
             };
         }
