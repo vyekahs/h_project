@@ -2532,7 +2532,9 @@
 
     /* 추천 게임 */
     .rec-group { margin-top: 1rem; }
-    .rec-group:first-child { margin-top: 0.5rem; }
+    /* section-header 다음이 항상 첫 그룹이다 — 그룹은 section의 :first-child가
+       아니라 section-header 다음 형제라 :first-child로는 안 걸렸다. */
+    .section-header + .rec-group { margin-top: 0.5rem; }
     .rec-group-title {
         margin: 0 0 0.5rem;
         font-size: 0.82rem;
