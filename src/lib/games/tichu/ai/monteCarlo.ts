@@ -13,6 +13,7 @@ import type { AiDecisionContext } from './types';
 import { createAllCards } from '../constants';
 import { sampleShuffle } from './determinism';
 import { findBeatablePlays, getCardSortRank } from './handEvaluator';
+import { canBeat } from '../combinations';
 import { buildCardTracker } from './cardTracker';
 import { calcExitRate } from './playSearchGrid';
 
@@ -189,6 +190,42 @@ export function evaluateTwoTurnFinish(
 	};
 }
 
+/**
+ * "약한 걸 리드하고, 센 걸로 덮으면서 나간다" 계획(weak → strong)이 통하는 세계의 비율.
+ *
+ * 마지막 조합은 내는 순간 손이 비므로 트릭을 이길 필요가 없다 — **얹을 수만 있으면** 된다.
+ * 그래서 이 계획은 weak를 아무도 안 받아도(선 유지 → strong 리드로 나감), 누가 받아도
+ * (내 차례에 strong으로 덮고 나감) 성공한다. 막히는 건 상대가 weak 위에
+ * **strong으로도 못 덮는 것**을 얹을 때뿐이다.
+ *
+ * 싱글에서 봉황은 막는 카드가 아니다: weak 위에 얹힌 봉황은 weak+0.5라 strong 아래다.
+ * 같은 봉황이 strong을 리드했을 때는 그 위(strong+0.5)로 올라와 잡아먹는다 — 센 카드를
+ * 먼저 내는 쪽이 봉황에 더 약한 이유다.
+ */
+export function evaluateOvertakeFinish(
+	weak: Combination,
+	strong: Combination,
+	worlds: SampledWorld[],
+	partnerSeat: SeatIndex
+): number {
+	if (worlds.length === 0) return 0;
+	let ok = 0;
+	for (const world of worlds) {
+		let blocked = false;
+		for (const [seat, cardsForSeat] of world.hands) {
+			if (seat === partnerSeat) continue;
+			for (const play of findBeatablePlays(cardsForSeat, weak)) {
+				const isPhoenixSingle = play.type === 'single' &&
+					play.cards[0].type === 'special' && play.cards[0].special === 'phoenix';
+				if (isPhoenixSingle) continue;
+				if (!canBeat(play, strong)) { blocked = true; break; }
+			}
+			if (blocked) break;
+		}
+		if (!blocked) ok++;
+	}
+	return ok / worlds.length;
+}
 
 /**
  * "내가 먼저 나갈 확률" 추정.
