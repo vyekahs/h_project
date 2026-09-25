@@ -130,7 +130,11 @@ async function fetchSharedData(): Promise<SharedData> {
                 JOIN attendees a ON sp.attendee_id = a.id
                 LEFT JOIN minigame_user_points up ON a.id = up.user_id
                 LEFT JOIN minigame_titles t ON up.equipped_title_id = t.id
-                WHERE gs.status = 'scheduled'
+                -- playing도 포함한다. 예정 게임은 시간이 되면 자동으로 시작되는데,
+                -- scheduled만 보면 그 순간 "아직 안 온 참가자"가 올 예정 목록에서
+                -- 사라졌다. 게임은 시작됐어도 사람은 아직 오지 않았으므로 계속
+                -- 보여야 하고, 실제로 도착해 체크인되면 present 필터에서 걸러진다.
+                WHERE gs.status IN ('scheduled', 'playing')
                   AND gs.scheduled_at::date = (NOW() AT TIME ZONE 'Asia/Seoul')::date
                   AND sp.attendee_id IS NOT NULL
                 ORDER BY sp.attendee_id, gs.scheduled_at ASC
