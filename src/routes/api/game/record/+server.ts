@@ -28,14 +28,14 @@ export const POST: RequestHandler = async ({ request, locals, cookies }) => {
         return json({ error: '카페 방문 기록이 없습니다' }, { status: 403 });
     }
 
-    const { gameId, difficulty, clearTime, score, skipReward, mistakes } = await request.json();
+    const { gameId, difficulty, clearTime, score, skipReward, mistakes, cleared } = await request.json();
 
     if (!gameId || !difficulty || clearTime === undefined) {
         return json({ error: 'Missing required fields' }, { status: 400 });
     }
 
     try {
-        const result = await RankingService.submitScore(userId, gameId, difficulty, clearTime, score, skipReward, mistakes || 0);
+        const result = await RankingService.submitScore(userId, gameId, difficulty, clearTime, score, skipReward, mistakes || 0, cleared !== false);
 
         // Trigger Title Check and return newly assigned titles
         let newTitles: string[] = [];

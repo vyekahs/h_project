@@ -301,7 +301,7 @@
                                 {:else if gameConfig.id === 'match-crash'}
                                     <p class="score-desc">점수 = 매치 점수 × 콤보 배율 + 특수 타일 보너스</p>
                                 {:else if gameConfig.id === 'regicide'}
-                                    <p class="score-desc">점수 = 승리등급(🥇300/🥈150/🥉50) + (10분 - 클리어시간) x 2</p>
+                                    <p class="score-desc">점수 = 적 처치(J 20 / Q 40 / K 60, 전부 480) + 클리어 시 승리등급(🥇300/🥈150/🥉50) + (10분 - 클리어시간) x 2</p>
                                 {:else}
                                     <p class="score-desc">점수 = 기본점수 + 시간보너스 - 실수페널티(15%/회)</p>
                                 {/if}
