@@ -224,7 +224,7 @@
 					? '다시시작한 게임은 랭킹에 반영되지 않습니다'
 					: undefined}
 				stats={[
-					...(!game.hasRestarted && game.won
+					...(game.scoreSubmitted
 						? [{
 							label: '점수',
 							value: game.calculatedScore.toLocaleString(),

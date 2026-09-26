@@ -69,6 +69,7 @@ export function createRegicideGame() {
 
 	// ─── Score ───
 	let calculatedScore = $state(0);
+	let scoreSubmitted = $state(false);
 	let newTitleName = $state<string | null>(null);
 	let showVisitPrompt = $state(false);
 
@@ -245,6 +246,7 @@ export function createRegicideGame() {
 		timerValue = 0;
 		displayTimer = 0;
 		calculatedScore = 0;
+		scoreSubmitted = false;
 		showVisitPrompt = false;
 		hasRestarted = false;
 		newTitleName = null;
@@ -538,6 +540,12 @@ export function createRegicideGame() {
 		localStorage.removeItem('regicide_save');
 
 		addLog('damage', `패배! ${enemiesDefeated}/12 적 처치`);
+
+		// 클리어하지 못해도 처치한 적만큼은 점수로 남긴다. 한 명도 못 잡은 판은
+		// 남길 점수가 없으니 보내지 않는다 (0점 판이 기록·포인트에 쌓이는 것도 막는다).
+		if (!hasRestarted && enemiesDefeated > 0) {
+			submitScore();
+		}
 	}
 
 	// ─── Score submission ───
@@ -551,14 +559,18 @@ export function createRegicideGame() {
 					gameId: 'regicide',
 					difficulty,
 					clearTime: timerValue,
-					score: 0,
+					// 서버는 이 값으로 처치 점수를 계산하고, 12면 클리어 보너스를 얹는다
+					score: enemiesDefeated,
 					mistakes: jestersUsed,
-					skipReward: !GAME_CONFIG.ENABLE_REWARDS
+					// 포인트는 클리어한 판에만. 지다가 끝난 판을 반복해 포인트를 모으지 못하게
+					skipReward: !GAME_CONFIG.ENABLE_REWARDS || !won,
+					cleared: won
 				})
 			});
 			const data = await res.json();
 			if (res.ok) {
 				calculatedScore = data.score;
+				scoreSubmitted = true;
 
 				if (data.currentRank && (!data.previousRank || data.currentRank < data.previousRank)) {
 					rankUpStore.show(data.previousRank, data.currentRank, 'regicide', data.score);
@@ -804,6 +816,7 @@ export function createRegicideGame() {
 		set alertMessage(v: string | null) { alertMessage = v; },
 		get confirmMessage() { return confirmMessage; },
 		get calculatedScore() { return calculatedScore; },
+		get scoreSubmitted() { return scoreSubmitted; },
 		get newTitleName() { return newTitleName; },
 		get showVisitPrompt() { return showVisitPrompt; },
 

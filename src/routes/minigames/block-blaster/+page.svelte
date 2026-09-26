@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { GAME_REGISTRY } from '$lib/games/gameRegistry';
 	import Board from './Board.svelte';
 	import BlockTray from './BlockTray.svelte';
 	import AbilityInventory from './AbilityInventory.svelte';
@@ -258,7 +259,9 @@
 		if (!browser) return;
 		const params = new URLSearchParams(window.location.search);
 		const diffParam = params.get('difficulty');
-		const mode: GameMode = diffParam === 'special' ? 'special' : 'classic';
+		// 시작 화면에서 막은 모드는 URL로 직접 들어와도 열리지 않게 (gameRegistry.disabledDifficulties)
+		const blocked = GAME_REGISTRY['block-blaster'].disabledDifficulties ?? [];
+		const mode: GameMode = diffParam === 'special' && !blocked.includes('special') ? 'special' : 'classic';
 
 		if (params.get('autostart') === 'true') {
 			replaceState(window.location.pathname, {});
