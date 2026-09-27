@@ -949,14 +949,23 @@ export const actions: Actions = {
         const user = userSessionToken ? await verifyAttendeeSession(userSessionToken) : null;
         if (!user && !isAdmin) return fail(401, { error: '로그인이 필요합니다.' });
 
+        // 승인이 실패해도 서버에 아무 흔적이 남지 않았다. 화면도 조용하고 로그도
+        // 조용해서 "승인을 눌렀는데 요청이 그대로 있다"는 신고가 들어와도 어느
+        // 단계에서 막혔는지 알 방법이 없었다. 실패한 지점을 남긴다.
+        const who = `user=${user?.id ?? '-'} admin=${isAdmin}`;
+        const deny = (code: number, why: string, msg: string) => {
+            console.warn(`[APPROVE] 거부 res=${reservationId} ${who} — ${why}`);
+            return fail(code, { error: msg });
+        };
+
         // 1. Get Reservation Info
         const resInfo = await db.execute(sql`SELECT session_id, status FROM reservations WHERE id = ${reservationId}`);
-        if (resInfo.length === 0) return fail(404, { error: '요청을 찾을 수 없습니다.' });
+        if (resInfo.length === 0) return deny(404, '예약 행 없음', '요청을 찾을 수 없습니다.');
         const { session_id, status } = resInfo[0] as any;
 
         // 2. Concurrency Check: Status must be 'pending_approval'
         if (status !== 'pending_approval') {
-             return fail(400, { error: '이미 처리된 요청입니다.' });
+             return deny(400, `status=${status}`, '이미 처리된 요청입니다.');
         }
 
         // 3. Authorization: Admin OR Host OR Participant
@@ -973,7 +982,7 @@ export const actions: Actions = {
             }
         }
 
-        if (!authorized) return fail(403, { error: '승인 권한이 없습니다. 게임 참여자만 승인할 수 있습니다.' });
+        if (!authorized) return deny(403, `세션 ${session_id}의 참가자도 생성자도 아님`, '승인 권한이 없습니다. 게임 참여자만 승인할 수 있습니다.');
 
         try {
             const result = await db.transaction(async (tx) => {
@@ -998,11 +1007,14 @@ export const actions: Actions = {
                     return { error: '이미 처리되었거나 유효하지 않은 요청입니다.' };
                 }
             });
-            if ('error' in result) return fail(400, result);
+            if ('error' in result) return deny(400, 'UPDATE가 0행 (동시에 처리됨)', result.error as string);
+            console.log(`[APPROVE] 승인 완료 res=${reservationId} session=${session_id} ${who}`);
             emitLiveEvent('games');
             return { success: true };
         } catch (e) {
-            return fail(500, { error: 'Failed' });
+            // 여기서 아무것도 남기지 않아 500이 나도 원인을 추적할 수 없었다.
+            console.error(`[APPROVE] 실패 res=${reservationId} ${who}:`, e);
+            return fail(500, { error: '승인 처리 중 오류가 발생했습니다.' });
         }
     },
 

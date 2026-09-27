@@ -3984,7 +3984,12 @@
     .request-actions {
         display: flex;
         align-items: center;
-        gap: 0.1rem;
+        /* 승인(✓)과 거절(✗) 사이는 최소 16px 떨어져 있어야 한다.
+           .btn-icon::after가 터치 영역을 사방 8px씩 넓히는데, 예전 간격(0.1rem)
+           으로는 두 버튼의 확장 영역이 겹쳐서 — 뒤에 오는 거절 쪽이 위에 깔린다 —
+           승인 버튼 오른쪽 가장자리를 누르면 거절이 눌렸다. 되돌릴 수 없는 쪽이
+           이기는 겹침이라 간격으로 떼어놓는다. */
+        gap: 0.75rem;
         padding-left: 0.2rem;
         margin-left: 0.4rem;
         border-left: 1px solid var(--bg-hover); /* Thin vertical bar */
