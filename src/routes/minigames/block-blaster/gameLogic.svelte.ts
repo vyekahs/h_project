@@ -1068,9 +1068,15 @@ export function createBlockBlasterGame() {
 
 	function hasUsableActiveAbility(): boolean {
 		if (!isSpecialMode()) return false;
-		// 쿨다운 0인 액티브 스킬이 1개라도 있으면 위기 탈출 가능
+		// 쿨다운 0인 액티브 스킬이 1개라도 있으면 위기 탈출 가능.
+		// 봉인된 슬롯은 useAbility()가 막으므로 여기서도 빼야 한다. 안 빼면
+		// "능력으로 탈출하라"며 게임오버를 보류해놓고 정작 누를 수 있는 능력이
+		// 없어, 게임이 끝나지도 진행되지도 않는 상태로 멈춘다.
 		return inventory.some(
-			o => !isPassive(o.ability) && o.cooldownRemaining === 0
+			(o, i) =>
+				!isPassive(o.ability) &&
+				o.cooldownRemaining === 0 &&
+				!sealedSlots.some(x => x.slotIndex === i)
 		);
 	}
 
@@ -1115,11 +1121,19 @@ export function createBlockBlasterGame() {
 			[filled[i], filled[j]] = [filled[j], filled[i]];
 		}
 		const next = cloneGrid(grid);
+		// 셀을 비울 때 cellMeta도 같이 지운다. 안 지우면 그리드는 빈 칸(0)인데
+		// 화면은 메타를 보고 검은 돌·위험 칸으로 계속 그려서, 그 위에 블록이
+		// 놓이고(canPlaceBlock은 0을 보고 허용) 꽉 차 보이는 줄이
+		// findCompletedLines에선 미완성이라 안 지워진다.
+		// (다른 클리어 경로들은 모두 이렇게 정리하고 있다)
+		const nextMeta = { ...cellMeta };
 		for (let i = 0; i < removeCount; i++) {
 			const [r, c] = filled[i];
 			next[r][c] = 0;
+			delete nextMeta[cellKey(r, c)];
 		}
 		grid = next;
+		cellMeta = nextMeta;
 	}
 
 	async function submitScore() {

@@ -413,6 +413,12 @@ export interface RunResult {
 	/** 스테이지별로 몇 턴 만에 도달했는지 (index = stagesCleared 값) */
 	stageTurn: number[];
 	stalled: boolean;
+	/**
+	 * 판 도중 관측된 "유령 셀" — grid는 비었는데(0) cellMeta에 채워짐을 뜻하는
+	 * 마커가 남은 칸. 화면은 돌로 그리는데 로직은 빈 칸으로 봐서, 그 위에 블록이
+	 * 놓이고 꽉 찬 줄이 안 지워지는 증상이 난다. (portalMark는 의도된 빈 칸이라 제외)
+	 */
+	ghostCells: string[];
 	/** 종료 시점에 활성 상태(미해결)였던 위험 종류 */
 	dangersAtDeath: string[];
 	/** 게임 전체에서 등장한 위험 종류별 횟수 */
@@ -487,11 +493,32 @@ export async function runGame(opts: RunOptions = {}): Promise<RunResult> {
 		}
 	};
 
+	const ghostCells: string[] = [];
+	const scanGhosts = () => {
+		if (ghostCells.length >= 5) return; // 표본만 모은다
+		const g = game.grid as BoardGrid;
+		const meta = game.cellMeta as Record<string, Record<string, unknown>>;
+		for (let r = 0; r < GRID_SIZE; r++) {
+			for (let c = 0; c < GRID_SIZE; c++) {
+				if (g[r][c] !== 0) continue;
+				const m = meta[`${r},${c}`];
+				if (!m) continue;
+				// portalMark는 빈 칸에 붙는 게 정상(플레이어가 놓아서 발동)
+				const rest = Object.keys(m).filter(k => k !== 'portalMark');
+				if (rest.length > 0) {
+					ghostCells.push(`turn${turns} ${r},${c} → ${rest.join(',')}`);
+					if (ghostCells.length >= 5) return;
+				}
+			}
+		}
+	};
+
 	while (game.gameState === 'playing' && turns < maxTurns) {
 		await new Promise(r => setTimeout(r, 0));
 		if (game.isAnimating) { idle++; if (idle > IDLE_LIMIT) break; continue; }
 		if (resolveModals(game, draftPolicy)) { idle++; if (idle > IDLE_LIMIT) break; continue; }
 
+		scanGhosts();
 		trackDangers();
 
 		if (game.stagesCleared > lastStages) {
@@ -560,6 +587,7 @@ export async function runGame(opts: RunOptions = {}): Promise<RunResult> {
 		abilitiesTaken: inv,
 		stageTurn,
 		stalled: turns >= maxTurns || idle > IDLE_LIMIT,
+		ghostCells,
 		dangersAtDeath,
 		dangersSeen,
 		dangersResolved,
