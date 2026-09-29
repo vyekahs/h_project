@@ -55,6 +55,10 @@
 		const el = gameAreaEl;
 		if (!el) return;
 		const handler = (e: TouchEvent) => {
+			// 전투 기록 시트·카드 목록처럼 스스로 스크롤해야 하는 영역은 막지 않는다.
+			// 이 리스너는 네이티브라 Svelte의 위임 이벤트 핸들러(stopPropagation)보다
+			// 먼저 실행되므로, 자식 쪽에서 막는 것으로는 소용이 없다.
+			if ((e.target as Element | null)?.closest?.('[data-scrollable]')) return;
 			e.preventDefault();
 		};
 		el.addEventListener('touchmove', handler, { passive: false });
@@ -180,8 +184,9 @@
 			/>
 		{/if}
 
-		{#if game.turnPhase === 'enemy_attacks' && game.gamePhase === 'playing' && !tutorialBlocked}
+		{#if game.turnPhase === 'enemy_attacks' && game.gamePhase === 'playing' && !tutorialBlocked && game.currentEnemy}
 			<DiscardModal
+				enemy={game.currentEnemy}
 				hand={game.playerHand}
 				discardIds={game.discardCardIds}
 				effectiveAttack={game.effectiveEnemyAttack}
