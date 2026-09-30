@@ -268,6 +268,13 @@ function generateSeededGrid(blocks: (BlockShape | null)[]): BoardGrid {
 interface GridSnapshot {
 	grid: BoardGrid;
 	currentBlocks: (BlockShape | null)[];
+	/**
+	 * grid만 되돌리면 셀의 위험 마커(cellMeta)와 어긋난다.
+	 * 되돌린 뒤 grid는 빈 칸인데 마커만 남으면 화면은 돌로 그리고
+	 * canPlaceBlock/findCompletedLines는 빈 칸으로 봐서, 그 위에 블록이 놓이고
+	 * 꽉 찬 줄이 안 지워진다. 항상 grid와 함께 저장/복원한다.
+	 */
+	cellMeta: CellMetaMap;
 }
 
 export function createBlockBlasterGame() {
@@ -555,7 +562,9 @@ export function createBlockBlasterGame() {
 	function snapshotState() {
 		lastSnapshots.push({
 			grid: cloneGrid(grid),
-			currentBlocks: currentBlocks.map(b => (b ? { ...b, cells: b.cells.map(c => [...c] as [number, number]) } : null))
+			currentBlocks: currentBlocks.map(b => (b ? { ...b, cells: b.cells.map(c => [...c] as [number, number]) } : null)),
+			// 얕은 복사로 충분 — 각 CellMeta는 항상 새 객체로 교체되지 제자리 변경되지 않는다
+			cellMeta: { ...cellMeta }
 		});
 		if (lastSnapshots.length > 3) lastSnapshots.shift();
 	}
@@ -2940,6 +2949,8 @@ export function createBlockBlasterGame() {
 				if (snap) {
 					grid = snap.grid;
 					currentBlocks = snap.currentBlocks;
+					// cellMeta를 같이 되돌리지 않으면 유령 셀이 남는다 (GridSnapshot 주석 참고)
+					cellMeta = snap.cellMeta ?? {};
 					selectedBlockIndex = null;
 				}
 				return true;

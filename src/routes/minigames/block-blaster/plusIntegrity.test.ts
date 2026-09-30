@@ -45,12 +45,11 @@ describe('플러스 모드 상태 정합성', () => {
 		}
 	}, 300_000);
 
-	// (A) 부활이 호출하는 clearRandomCells가 메타를 안 지우던 것은 고쳤지만,
-	// 관측 당시 12판 중 1판 꼴로 유령 셀이 아직 관측된다. 남은 발생 경로를 못 찾았다.
-	//   관측 예: turn245 (5,3) petrified 가 3턴 이상 잔존
-	//           turn282 (6,2) spreadOrigin,spreadingDangerId
-	// 원인을 찾으면 .skip을 떼고 활성화할 것.
-	it.skip('유령 셀(grid 0 + 채워짐 마커)이 생기지 않는다', async () => {
+	// (A) 발생 경로 두 개를 모두 고쳤다.
+	//   - 부활이 호출하는 clearRandomCells가 셀을 비우며 메타를 안 지움
+	//   - undo가 grid/currentBlocks만 되돌리고 cellMeta는 그대로 둠 (주범)
+	// 수정 전 120판 중 3판에서 15건 관측 → 수정 후 120판 0건.
+	it('유령 셀(grid 0 + 채워짐 마커)이 생기지 않는다', async () => {
 		const restore = clampTimers();
 		try {
 			const { ghosts } = await runMany(6);
