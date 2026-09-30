@@ -3,7 +3,7 @@ import { db } from '$lib/server/db/index';
 import { sql } from 'drizzle-orm';
 import crypto from 'crypto';
 import { emitLiveEvent } from '$lib/server/liveEvents';
-import { markInfraMacs, setLatestLanMacs, recordCheckinObservation } from '$lib/server/wifiLearning';
+import { markInfraMacs, recordDayMacs } from '$lib/server/wifiLearning';
 
 // Types
 interface ScanResult {
@@ -607,11 +607,10 @@ export async function processAutoCheckin(detectedAttendeeIds: Set<number>, isWit
                 attendee.status = 'present';
                 pushAutoLog('checkin', source, attendee.name, attendeeId);
                 emitLiveEvent('visitors');
-
-                // 이 순간이 확신이 가장 높다 — BLE로 방금 잡혔으니 확실히 거기 있다.
-                // 그때 랜에 있던 MAC들을 오늘의 후보로 남겨, 날짜별로 교차시킨다.
-                recordCheckinObservation(attendeeId).catch(e =>
-                    console.error('[WiFiLearn] 관측 실패', e));
+                // 학습용 관측은 여기서 하지 않는다. 체크인 순간의 랜 상태를 그
+                // 회원의 후보로 적는 방식은 함께 온 사람들의 폰을 서로에게 모두
+                // 기록해 구분이 안 됐다. 지금은 방문 기록(visits)과 (영업일, MAC)
+                // 관측을 나중에 맞춘다 — wifiLearning.ts 참고.
             } catch (e) {
                 console.error(`[${source}] Failed to check-in ${attendeeId}`, e);
             }
@@ -736,6 +735,12 @@ export async function checkAutoCheckout() {
 export async function processWifiReport(_scannerId: string, devices: { mac: string }[]) {
     await ensureCachesLoaded('WiFi');
 
+    // 학습용 관측은 시간대와 무관하게 전부 남긴다. 아래에서 영업시간 밖이라
+    // 일찍 반환하더라도 이건 먼저 해둔다 — 사람이 없는 시간의 관측이야말로
+    // "이 기기는 누구의 폰도 아니다"를 증명하는 증거다.
+    recordDayMacs(devices.map(d => d.mac)).catch(e =>
+        console.error('[WiFiLearn] 관측 기록 실패', e));
+
     // 오픈 시간 전후 2시간 범위 밖이면 스캔 처리 완전 스킵
     const nowCheck = new Date();
     const kstCheck = new Date(nowCheck.getTime() + 9 * 60 * 60 * 1000);
@@ -782,14 +787,6 @@ export async function processWifiReport(_scannerId: string, devices: { mac: stri
         console.log(`[${kstTime()}][WiFi] Gym closed & before opening window, skipping (${devices.length} devices)`);
         return;
     }
-
-    // 최신 랜 상태를 들고 있는다. MAC 자동 학습이 BLE 체크인 순간에 이 값을 쓴다.
-    // 체크인은 아무 때나 일어나고 WiFi 보고는 몇 분에 한 번이라, 그때 스캐너를
-    // 다시 부를 수 없다.
-    //
-    // 등록자가 0명이라 아래에서 일찍 반환하더라도 이건 먼저 해둔다 —
-    // 등록자가 없을 때야말로 학습이 가장 필요하다.
-    setLatestLanMacs(devices.map(d => d.mac));
 
     if (wifiMacCache.size === 0) {
         console.log(`[${kstTime()}][WiFi] No WiFi MACs registered, skipping`);

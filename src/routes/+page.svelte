@@ -693,6 +693,22 @@
         };
     };
 
+    // 참여 요청 승인/거절.
+    //
+    // 실패해도 화면이 그대로였다 — 이 페이지는 form.error를 어디에도 렌더링하지
+    // 않아서, 권한 문제로 403이 나도 "승인을 눌렀는데 요청이 그대로 남아 있다"로만
+    // 보였다. 실패한 이유는 누른 사람에게 말해줘야 한다.
+    const handleJoinRequestDecision: import('@sveltejs/kit').SubmitFunction = () => {
+        return async ({ result }) => {
+            if (result.type === 'failure') {
+                showAlert((result.data?.error as string) || '처리에 실패했습니다.');
+            } else if (result.type === 'success') {
+                await invalidateAll();
+            }
+            await applyAction(result);
+        };
+    };
+
     const filteredGames = $derived((data.allGames as any[])?.filter((g: any) =>
         g.name.toLowerCase().includes(selectedGameName.toLowerCase())
     ) || []);
@@ -1328,13 +1344,13 @@
                                             <span class="res-name">{req.attendee_name}</span>
                                             {#if data.user && req.attendee_id !== data.user.id}
                                                 <div class="request-actions">
-                                                    <form method="POST" action="?/approveJoinRequest" use:enhance class="inline-form">
+                                                    <form method="POST" action="?/approveJoinRequest" use:enhance={handleJoinRequestDecision} class="inline-form">
                                                         <input type="hidden" name="reservationId" value={req.id}>
                                                         <button class="btn-icon check" aria-label="승인">
                                                             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
                                                         </button>
                                                     </form>
-                                                    <form method="POST" action="?/rejectJoinRequest" use:enhance class="inline-form">
+                                                    <form method="POST" action="?/rejectJoinRequest" use:enhance={handleJoinRequestDecision} class="inline-form">
                                                         <input type="hidden" name="reservationId" value={req.id}>
                                                         <button class="btn-icon cross" aria-label="거절">
                                                             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
@@ -3984,7 +4000,12 @@
     .request-actions {
         display: flex;
         align-items: center;
-        gap: 0.1rem;
+        /* 승인(✓)과 거절(✗) 사이는 최소 16px 떨어져 있어야 한다.
+           .btn-icon::after가 터치 영역을 사방 8px씩 넓히는데, 예전 간격(0.1rem)
+           으로는 두 버튼의 확장 영역이 겹쳐서 — 뒤에 오는 거절 쪽이 위에 깔린다 —
+           승인 버튼 오른쪽 가장자리를 누르면 거절이 눌렸다. 되돌릴 수 없는 쪽이
+           이기는 겹침이라 간격으로 떼어놓는다. */
+        gap: 0.75rem;
         padding-left: 0.2rem;
         margin-left: 0.4rem;
         border-left: 1px solid var(--bg-hover); /* Thin vertical bar */

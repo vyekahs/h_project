@@ -939,52 +939,82 @@ export const actions: Actions = {
         const data = await request.formData();
         const reservationId = data.get('reservationId');
         const userSessionToken = cookies.get('user_session');
+        // 관리자도 승인할 수 있어야 한다. 화면(canManageGame)은 관리자에게 모든
+        // 게임의 승인 버튼을 보여주는데 이쪽 권한 검사에는 관리자가 빠져 있었고,
+        // 거절(rejectJoinRequest)만 관리자를 허용했다. 그래서 관리자가 승인을
+        // 누르면 403으로 조용히 실패하고 요청이 참여 요청 목록에 그대로 남았다.
+        const adminSessionToken = cookies.get('admin_session');
+        const isAdmin = adminSessionToken ? await verifyAdminSession(adminSessionToken) : false;
 
-        if (!userSessionToken) return fail(401, { error: '로그인이 필요합니다.' });
-        const user = await verifyAttendeeSession(userSessionToken);
-        if (!user) return fail(401, { error: 'Invalid session' });
+        const user = userSessionToken ? await verifyAttendeeSession(userSessionToken) : null;
+        if (!user && !isAdmin) return fail(401, { error: '로그인이 필요합니다.' });
+
+        // 승인이 실패해도 서버에 아무 흔적이 남지 않았다. 화면도 조용하고 로그도
+        // 조용해서 "승인을 눌렀는데 요청이 그대로 있다"는 신고가 들어와도 어느
+        // 단계에서 막혔는지 알 방법이 없었다. 실패한 지점을 남긴다.
+        const who = `user=${user?.id ?? '-'} admin=${isAdmin}`;
+        const deny = (code: number, why: string, msg: string) => {
+            console.warn(`[APPROVE] 거부 res=${reservationId} ${who} — ${why}`);
+            return fail(code, { error: msg });
+        };
 
         // 1. Get Reservation Info
         const resInfo = await db.execute(sql`SELECT session_id, status FROM reservations WHERE id = ${reservationId}`);
-        if (resInfo.length === 0) return fail(404, { error: '요청을 찾을 수 없습니다.' });
+        if (resInfo.length === 0) return deny(404, '예약 행 없음', '요청을 찾을 수 없습니다.');
         const { session_id, status } = resInfo[0] as any;
 
         // 2. Concurrency Check: Status must be 'pending_approval'
         if (status !== 'pending_approval') {
-             return fail(400, { error: '이미 처리된 요청입니다.' });
+             return deny(400, `status=${status}`, '이미 처리된 요청입니다.');
         }
 
-        // 3. Authorization: Host OR Participant
-        const isParticipant = await db.execute(sql`SELECT 1 FROM session_participants WHERE session_id = ${session_id} AND attendee_id = ${user.id}`);
-
-        let authorized = false;
-        if (isParticipant.length > 0) {
-            authorized = true;
-        } else {
-             const gameInfo = await db.execute(sql`SELECT created_by FROM game_sessions WHERE id = ${session_id}`);
-             if (gameInfo.length > 0 && (gameInfo[0] as any).created_by === user.id && user.can_manage_games) {
-                 authorized = true;
-             }
+        // 3. Authorization: Admin OR Host OR Participant
+        let authorized = isAdmin;
+        if (!authorized && user) {
+            const isParticipant = await db.execute(sql`SELECT 1 FROM session_participants WHERE session_id = ${session_id} AND attendee_id = ${user.id}`);
+            if (isParticipant.length > 0) {
+                authorized = true;
+            } else {
+                 const gameInfo = await db.execute(sql`SELECT created_by FROM game_sessions WHERE id = ${session_id}`);
+                 if (gameInfo.length > 0 && (gameInfo[0] as any).created_by === user.id && user.can_manage_games) {
+                     authorized = true;
+                 }
+            }
         }
 
-        if (!authorized) return fail(403, { error: '승인 권한이 없습니다. 게임 참여자만 승인할 수 있습니다.' });
+        if (!authorized) return deny(403, `세션 ${session_id}의 참가자도 생성자도 아님`, '승인 권한이 없습니다. 게임 참여자만 승인할 수 있습니다.');
 
         try {
             const result = await db.transaction(async (tx) => {
                 const r = await tx.execute(sql`UPDATE reservations SET status = 'confirmed' WHERE id = ${reservationId} AND status = 'pending_approval' RETURNING attendee_id, session_id`);
                 if (r.length > 0) {
                     const { attendee_id, session_id } = r[0] as any;
-                    await tx.execute(sql`INSERT INTO session_participants (session_id, attendee_id) VALUES (${session_id}, ${attendee_id})`);
+                    // session_participants에는 (session_id, attendee_id) 유니크 제약이
+                    // 없다. 요청을 보낸 뒤 승인 전에 관리자가 먼저 참가자로 넣어두면
+                    // 같은 사람이 참가자 목록에 두 번 뜬다.
+                    await tx.execute(sql`
+                        INSERT INTO session_participants (session_id, attendee_id)
+                        -- 캐스트를 붙인다. db.execute는 파라미터 타입을 추론하지
+                        -- 않으므로 FROM 없는 SELECT의 $1/$2는 타입이 모호해진다.
+                        SELECT ${session_id}::int, ${attendee_id}::int
+                        WHERE NOT EXISTS (
+                            SELECT 1 FROM session_participants
+                            WHERE session_id = ${session_id} AND attendee_id = ${attendee_id}
+                        )
+                    `);
                     return { success: true };
                 } else {
                     return { error: '이미 처리되었거나 유효하지 않은 요청입니다.' };
                 }
             });
-            if ('error' in result) return fail(400, result);
+            if ('error' in result) return deny(400, 'UPDATE가 0행 (동시에 처리됨)', result.error as string);
+            console.log(`[APPROVE] 승인 완료 res=${reservationId} session=${session_id} ${who}`);
             emitLiveEvent('games');
             return { success: true };
         } catch (e) {
-            return fail(500, { error: 'Failed' });
+            // 여기서 아무것도 남기지 않아 500이 나도 원인을 추적할 수 없었다.
+            console.error(`[APPROVE] 실패 res=${reservationId} ${who}:`, e);
+            return fail(500, { error: '승인 처리 중 오류가 발생했습니다.' });
         }
     },
 
@@ -1027,6 +1057,9 @@ export const actions: Actions = {
         if (!authorized) return fail(403, { error: '권한이 없습니다.' });
 
         await db.execute(sql`UPDATE reservations SET status = 'cancelled' WHERE id = ${reservationId} AND status = 'pending_approval'`);
+        // 승인 쪽에만 있고 여기엔 없었다. 그래서 거절은 누른 사람 화면에서만
+        // 사라지고, 요청을 보낸 사람은 계속 "승인 대기"를 보고 있었다.
+        emitLiveEvent('games');
         return { success: true };
     },
 
