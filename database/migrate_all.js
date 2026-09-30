@@ -156,24 +156,23 @@ async function migrate() {
         // WiFi는 접속해 있으면 항상 잡히지만 어느 MAC이 누구 것인지 알아야 쓸 수 있고,
         // 회원 32명에게 직접 등록시키는 것은 현실적이지 않다.
         //
-        // BLE로 확인된 날마다 "그때 랜에 있던 MAC" 집합을 모아 날짜별로 교차시킨다.
-        // 며칠 반복하면 그 사람이 올 때마다 늘 있던 MAC 하나만 남는다.
+        // 관측을 (영업일, MAC) 단위로 남기고, 방문 기록(visits)과 맞춰 누구 것인지
+        // 가린다. 판정 기준은 "그 사람이 온 날·시간대에는 있었고, 안 온 날에는
+        // 한 번도 없었다"다. 자세한 근거는 src/lib/server/wifiLearning.ts 참고.
         console.log('[13-2] Checking WiFi MAC learning tables...');
         await pool.query(`
-            -- 회원이 BLE로 확인된 날 수
-            CREATE TABLE IF NOT EXISTS wifi_learn_attendee_days (
-                attendee_id INTEGER PRIMARY KEY REFERENCES attendees(id) ON DELETE CASCADE,
-                days_seen   INTEGER NOT NULL DEFAULT 0,
-                last_day    DATE
-            );
-            -- 그 회원이 있던 날 중 이 MAC도 랜에 있던 날 수.
-            -- days_seen이 위 표의 값과 같으면 "올 때마다 늘 함께 있었다"는 뜻이다.
-            CREATE TABLE IF NOT EXISTS wifi_mac_candidates (
-                attendee_id INTEGER NOT NULL REFERENCES attendees(id) ON DELETE CASCADE,
-                mac         VARCHAR(17) NOT NULL,
-                days_seen   INTEGER NOT NULL DEFAULT 0,
-                last_day    DATE,
-                PRIMARY KEY (attendee_id, mac)
+            -- 이 영업일(KST 09시 기준 = UTC 날짜)에 랜에서 본 MAC과 그 시간대.
+            --
+            -- 시각이 필요한 이유: 날짜만으로는 늘 같이 오는 회원들이 갈리지 않는다.
+            -- 같은 날에도 도착·퇴장 시각은 다르므로(이리 14:01~23:20, 랜팜
+            -- 18:49~21:19) 방문 구간과 겹치는지까지 봐야 구분된다.
+            CREATE TABLE IF NOT EXISTS wifi_day_macs (
+                day           DATE NOT NULL,
+                mac           VARCHAR(17) NOT NULL,
+                first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                last_seen_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                samples       INTEGER NOT NULL DEFAULT 1,
+                PRIMARY KEY (day, mac)
             );
             -- 영업이 끝난 새벽에도 랜에 있던 기기. 공유기, TV, 스캐너 같은 상시 장비다.
             -- 회원 폰이 새벽 3시에 동아리방 WiFi에 붙어 있을 수는 없다.
@@ -182,6 +181,17 @@ async function migrate() {
                 first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                 last_seen_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
             );
+        `);
+        // 회원별 카운터 방식(wifi_learn_attendee_days, wifi_mac_candidates)은 버린다.
+        //
+        // 10일 돌려 자동 등록 0명이었다. "그 사람이 온 날에 함께 있었다"만 세면
+        // 사람 출입과 상관된 매장 장비가 똑같이 만족하기 때문이다 — 한 MAC이 전체
+        // 회원 방문일의 84%에 나타나 18명 전원의 1순위였다. 그 안에 담긴 값은 전부
+        // 이 방식에서 파생된 집계라 새 판정에 쓸 수 없고, 남겨두면 다음에 이 문제를
+        // 볼 사람이 낡은 표를 읽게 된다.
+        await pool.query(`
+            DROP TABLE IF EXISTS wifi_mac_candidates;
+            DROP TABLE IF EXISTS wifi_learn_attendee_days;
         `);
         // 몇 밤 연속으로 나타났는지 센다.
         //
