@@ -65,7 +65,7 @@
 				<span class="sheet-title">전투 기록</span>
 				<button class="sheet-close" onclick={() => { open = false; }}>✕</button>
 			</div>
-			<div class="sheet-entries" bind:this={scrollEl} ontouchmove={(e) => e.stopPropagation()}>
+			<div class="sheet-entries" bind:this={scrollEl} data-scrollable>
 				{#if entries.length === 0}
 					<div class="sheet-empty">전투 기록이 없습니다</div>
 				{:else}
@@ -183,6 +183,8 @@
 	}
 
 	.sheet-entries {
+		flex: 1 1 auto;
+		min-height: 0;
 		overflow-y: auto;
 		overscroll-behavior: contain;
 		padding: 8px 16px 16px;

@@ -1,8 +1,10 @@
 <script lang="ts">
 	import Card from './Card.svelte';
-	import type { Card as CardType } from '$lib/games/regicide/types';
+	import { SUIT_SYMBOL, SUIT_COLOR, RANK_LABEL } from '$lib/games/regicide/types';
+	import type { Card as CardType, Enemy } from '$lib/games/regicide/types';
 
 	let {
+		enemy,
 		hand,
 		discardIds,
 		effectiveAttack,
@@ -13,6 +15,7 @@
 		onConfirm,
 		onFlipJester
 	}: {
+		enemy: Enemy;
 		hand: CardType[];
 		discardIds: Set<number>;
 		effectiveAttack: number;
@@ -26,11 +29,17 @@
 
 	const progressPct = $derived(Math.min(100, effectiveAttack > 0 ? (discardTotal / effectiveAttack) * 100 : 0));
 	const isMet = $derived(discardTotal >= effectiveAttack);
+	const enemyLabel = $derived(`${RANK_LABEL[enemy.card.rank]}${SUIT_SYMBOL[enemy.card.suit]}`);
+	const enemyColor = $derived(SUIT_COLOR[enemy.card.suit] === 'red' ? '#ef4444' : 'var(--text-primary)');
 </script>
 
 <div class="discard-overlay">
 	<div class="discard-modal">
 		<div class="modal-header">
+			<div class="enemy-line">
+				<span class="enemy-name" style:color={enemyColor}>{enemyLabel}</span>
+				<span class="enemy-hp">HP {enemy.currentHp}/{enemy.maxHp}</span>
+			</div>
 			<h3>적의 공격!</h3>
 			<p class="attack-info">공격력 <strong>{effectiveAttack}</strong> 이상의 카드를 버리세요</p>
 		</div>
@@ -51,7 +60,7 @@
 		</div>
 
 		<div class="cards-section">
-			<div class="cards-scroll">
+			<div class="cards-scroll" data-scrollable>
 				{#each hand as card (card.id)}
 					<Card
 						{card}
@@ -114,6 +123,27 @@
 	.modal-header {
 		text-align: center;
 		margin-bottom: 1rem;
+	}
+
+	.enemy-line {
+		display: inline-flex;
+		align-items: baseline;
+		gap: 0.5rem;
+		margin-bottom: 0.35rem;
+		padding: 0.2rem 0.7rem;
+		border: 1px solid var(--border-primary);
+		border-radius: 999px;
+		background: var(--bg-surface);
+	}
+
+	.enemy-name {
+		font-size: 1.05rem;
+		font-weight: 800;
+	}
+
+	.enemy-hp {
+		font-size: 0.8rem;
+		color: var(--text-tertiary);
 	}
 
 	.modal-header h3 {
