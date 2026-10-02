@@ -85,6 +85,17 @@
         return null;
     })();
 
+    // 정기권 변경 내역. 지금 정기권의 이력만 온다(서버에서 pass_id로 걸러둠).
+    // "며칠에 있었던 일인가"와 "그래서 만료일이 어떻게 바뀌었나"가 한 줄에
+    // 라벨 없이 섞여 있으면 뭘 보고 있는지 알 수 없다("9/10 → 9/10 · 9/10"
+    // 같은 표기가 실제로 그랬다) — 두 종류를 분리하고 "만료일"이라고 못박는다.
+    let showPassLogModal = false;
+    const PASS_ACTION_LABEL: Record<string, string> = { grant: '발급', adjust: '조정', cancel: '해지' };
+    function passLogFullDate(dateStr: string): string {
+        const d = new Date(dateStr);
+        return `${d.getMonth() + 1}월 ${d.getDate()}일`;
+    }
+
     let showGuideModal = false;
 
     // Title Management
@@ -418,13 +429,16 @@
             <div class="tab-content">
                 {#if hasSeasonPass}
                     <div class="season-pass-banner">
-                        <div class="pass-info">
-                            <span class="badge">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px; position:relative; top:1px;"><path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/><path d="M13 5v2"/><path d="M13 17v2"/><path d="M13 11v2"/></svg>
-                                정기권 사용 중
-                            </span>
-                            <span class="d-day">D-{seasonPassDaysLeft}</span>
-                        </div>
+                        <span class="badge">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px; position:relative; top:1px;"><path d="M2 9a3 3 0 0 1 0 6v2a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-2a3 3 0 0 1 0-6V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/><path d="M13 5v2"/><path d="M13 17v2"/><path d="M13 11v2"/></svg>
+                            정기권 사용 중
+                        </span>
+                        {#if data.seasonPassLogs && data.seasonPassLogs.length > 0}
+                            <button type="button" class="pass-log-open" on:click={() => showPassLogModal = true}>
+                                변경 내역 <span class="log-count">{data.seasonPassLogs.length}</span>
+                            </button>
+                        {/if}
+                        <span class="d-day">D-{seasonPassDaysLeft}</span>
                         <div class="pass-date">
                             종료일: {seasonPassEndDate}
                         </div>
@@ -436,6 +450,11 @@
                             정기권 만료
                         </span>
                         <div class="pass-expired-date">{expiredPass.expiredDate} 만료</div>
+                        {#if data.seasonPassLogs && data.seasonPassLogs.length > 0}
+                            <button type="button" class="pass-log-open" on:click={() => showPassLogModal = true}>
+                                변경 내역 <span class="log-count">{data.seasonPassLogs.length}</span>
+                            </button>
+                        {/if}
                     </div>
                 {/if}
 
@@ -737,6 +756,43 @@
                 </li>
             </ol>
             <button class="modal-close-btn" on:click={() => showGuideModal = false}>닫기</button>
+        </div>
+    </div>
+{/if}
+
+{#if showPassLogModal}
+    <div
+        class="modal-backdrop"
+        on:click|self={() => showPassLogModal = false}
+        role="presentation"
+    >
+        <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="pass-log-modal-title" tabindex="-1" use:trapFocus={{ onEscape: () => showPassLogModal = false }}>
+            <h3 id="pass-log-modal-title">변경 내역</h3>
+            {#if !data.seasonPassLogs || data.seasonPassLogs.length === 0}
+                <p class="pass-log-empty">이력이 없습니다.</p>
+            {:else}
+                <ul class="pass-log-list">
+                    {#each data.seasonPassLogs as l (l.id)}
+                        <li>
+                            <span class="log-date">{passLogFullDate(l.created_at)}</span>
+                            <span class="log-head">
+                                <b>{PASS_ACTION_LABEL[l.action] ?? l.action}</b>
+                                {l.reason_label}
+                                {#if l.days}<em>{l.days > 0 ? '+' : ''}{l.days}일</em>{/if}
+                            </span>
+                            <span class="log-meta">
+                                {#if l.expires_before}
+                                    만료일 {passLogFullDate(l.expires_before)} → {l.expires_after ? passLogFullDate(l.expires_after) : '해지'}
+                                {:else}
+                                    만료일 {passLogFullDate(l.expires_after)}까지
+                                {/if}
+                            </span>
+                            {#if l.note}<span class="log-note">{l.note}</span>{/if}
+                        </li>
+                    {/each}
+                </ul>
+            {/if}
+            <button class="modal-close-btn" on:click={() => showPassLogModal = false}>닫기</button>
         </div>
     </div>
 {/if}
@@ -1084,6 +1140,9 @@
 
 
     /* Season Pass Banner */
+    /* 2×2 그리드 — 1행: 배지 / 변경내역, 2행: D-day / 종료일.
+       두 열의 각 행이 서로 정확히 나란히 놓여야 해서(내용 높이가 달라도)
+       한쪽은 세로 쌓기, 한쪽은 가로 배치 같은 식으로 흉내내지 않고 grid로 못박는다. */
     .season-pass-banner {
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         color: var(--bg-primary);
@@ -1091,13 +1150,21 @@
         border-radius: 12px;
         margin-bottom: 2rem;
         box-shadow: 0 4px 15px var(--shadow-md);
-        display: flex;
+        display: grid;
+        /* 1fr을 쓰면 왼쪽 칸이 필요 이상으로 넓어져, 그 안에서 중앙 정렬한
+           배지가 배너 왼쪽 가장자리에서 붕 떠 보인다(오른쪽 칸은 auto라
+           종료일이 가장자리에 바짝 붙는 것과 대비됨). 두 칸 다 내용 너비만큼만
+           차지하게 하고, justify-content로 배너 양 끝에 붙인다. */
+        grid-template-columns: auto auto;
         justify-content: space-between;
+        column-gap: 1rem;
+        row-gap: 0.5rem;
         align-items: center;
     }
     .season-pass-banner.expired {
         background: linear-gradient(135deg, var(--text-tertiary) 0%, var(--text-dark) 100%);
         opacity: 0.85;
+        display: flex;
         flex-direction: column;
         align-items: center;
         text-align: center;
@@ -1107,12 +1174,10 @@
         font-size: 0.8rem;
         opacity: 0.7;
     }
-    .pass-info {
-        display: flex;
-        align-items: center;
-        gap: 1rem;
-    }
-    .pass-info .badge {
+    .season-pass-banner .badge {
+        grid-column: 1;
+        grid-row: 1;
+        justify-self: center;
         background: rgba(255,255,255,0.2);
         padding: 0.4rem 0.8rem;
         border-radius: 20px;
@@ -1120,26 +1185,74 @@
         font-size: 0.9rem;
         backdrop-filter: blur(5px);
     }
-    .pass-info .d-day {
+    .season-pass-banner .d-day {
+        grid-column: 1;
+        grid-row: 2;
+        justify-self: center;
         font-size: 1.5rem;
         font-weight: 800;
         color: var(--bg-primary);
     }
     .pass-date {
+        grid-column: 2;
+        grid-row: 2;
+        justify-self: end;
         font-size: 0.9rem;
         opacity: 0.9;
     }
-    
-    @media (max-width: 480px) {
-        .season-pass-banner {
-            flex-direction: column;
-            align-items: flex-start;
-            gap: 0.5rem;
-        }
-        .pass-date {
-            align-self: flex-end;
-        }
+
+    /* 정기권 배너 안의 이력 버튼 — 배너가 보라색 그라디언트라 .badge와 같은
+       반투명 흰색 톤을 쓴다(본문 var(--text-secondary) 등은 이 배경에서 안 보인다) */
+    .pass-log-open {
+        grid-column: 2;
+        grid-row: 1;
+        justify-self: end;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        min-height: 32px;
+        padding: 0 0.7rem;
+        background: rgba(255, 255, 255, 0.15);
+        border: none;
+        border-radius: 999px;
+        color: var(--bg-primary);
+        font-family: inherit;
+        font-size: 0.78rem;
+        cursor: pointer;
     }
+    .pass-log-open:hover { background: rgba(255, 255, 255, 0.25); }
+    .pass-log-open .log-count {
+        padding: 0 0.45em;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.25);
+    }
+    .season-pass-banner.expired .pass-log-open { color: var(--bg-primary); }
+
+    /* 정기권 이력 모달 목록 — /admin/passes 의 표기를 그대로 따른다 */
+    .pass-log-empty {
+        margin: 0 0 1rem;
+        font-size: 0.85rem;
+        color: var(--text-secondary);
+    }
+    .pass-log-list {
+        list-style: none;
+        margin: 0 0 1.5rem;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+    .pass-log-list li { display: flex; flex-direction: column; gap: 0.15rem; }
+    .pass-log-list .log-date {
+        font-size: 0.7rem;
+        font-weight: 700;
+        color: var(--text-tertiary);
+    }
+    .pass-log-list .log-head { font-size: 0.85rem; color: var(--text-primary); word-break: keep-all; }
+    .pass-log-list .log-head b { font-weight: 700; margin-right: 0.35em; }
+    .pass-log-list .log-head em { font-style: normal; color: var(--text-secondary); margin-left: 0.35em; }
+    .pass-log-list .log-meta { font-size: 0.75rem; color: var(--text-secondary); }
+    .pass-log-list .log-note { font-size: 0.75rem; color: var(--text-secondary); word-break: keep-all; }
 
     /* History Headers & Filters */
     .section-header {

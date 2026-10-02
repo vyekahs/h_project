@@ -7,6 +7,8 @@ export interface GameConfig {
 	difficultyLabels: Record<string, string>;
 	localStorageSaveKey: string;
 	hasTutorials: boolean;
+	/** 시작 화면에서 고를 수 없게 막은 모드. 목록에는 남겨 두어 기존 기록·랭킹 라벨은 그대로 보인다 */
+	disabledDifficulties?: string[];
 }
 
 export const GAME_REGISTRY: Record<string, GameConfig> = {
@@ -172,6 +174,8 @@ export const GAME_REGISTRY: Record<string, GameConfig> = {
 			classic: '클래식',
 			special: '플러스(beta)'
 		},
+		// 플러스 모드에 오류가 있어 잠시 막아 둔다 (2026-09-26)
+		disabledDifficulties: ['special'],
 		localStorageSaveKey: 'block_blaster_save',
 		hasTutorials: false
 	},

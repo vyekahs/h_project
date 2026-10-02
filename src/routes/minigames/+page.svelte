@@ -86,15 +86,14 @@
             accentColor: '#059669',
             category: '카드'
         },
-        // {
-        //     id: 'regicide',
-        //     name: '레지사이드',
-        //     tagline: '12명의 적을 무찔러라',
-        //     url: '/minigames/start/regicide',
-        //     accentColor: '#dc2626',
-        //     releasedAt: '2026-03-26',
-        //     forceNew: true
-        // },
+        {
+            id: 'regicide',
+            name: '레지사이드',
+            tagline: '12명의 적을 무찔러라',
+            url: '/minigames/start/regicide',
+            accentColor: '#dc2626',
+            category: '카드'
+        },
         {
             id: 'block-blaster',
             name: '블럭블라스터',

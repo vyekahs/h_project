@@ -27,6 +27,8 @@ export interface BggImportedGame {
 	minAge: number;
 	complexity: number;
 	bestPlayers: string;
+	categories: string;
+	mechanics: string;
 	description: string;
 	imageUrl: string;
 }
@@ -181,5 +183,10 @@ export async function fetchAndTranslateBggGame(bggId: string, searchName?: strin
 			.join(', ');
 	}
 
-	return { name, minPlayers, maxPlayers, playtimeMin, playtimeMax, minAge, complexity, bestPlayers, description, imageUrl };
+	// item/dynamicinfo와 같은 호출에 이미 들어있는 값이라 API를 더 부르지 않는다.
+	// BGG는 카테고리(장르)와 메카닉(스타일)을 별개 분류로 둔다 — 합치지 않는다.
+	const categories = (item.links?.boardgamecategory ?? []).map((l: any) => l.name).join(', ');
+	const mechanics = (item.links?.boardgamemechanic ?? []).map((l: any) => l.name).join(', ');
+
+	return { name, minPlayers, maxPlayers, playtimeMin, playtimeMax, minAge, complexity, bestPlayers, categories, mechanics, description, imageUrl };
 }

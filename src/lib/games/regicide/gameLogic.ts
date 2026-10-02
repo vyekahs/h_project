@@ -1,4 +1,4 @@
-import type { Card, Enemy, Suit, VictoryTier } from './types.js';
+import type { Card, Enemy, EnemyRank, Suit, VictoryTier } from './types.js';
 import {
 	SUITS,
 	RANKS,
@@ -415,6 +415,50 @@ export function checkWin(enemiesDefeated: number): boolean {
 /** In solo mode, no yielding allowed. Lose if hand empty AND no jesters left. */
 export function checkCanPlay(hand: Card[], jestersRemaining: number): boolean {
 	return hand.length > 0 || jestersRemaining > 0;
+}
+
+// ─────────────────────────────────────────────────────────────
+// Scoring
+// ─────────────────────────────────────────────────────────────
+
+/** 적 한 명을 처치할 때 주는 점수. 적은 항상 J 4명 → Q 4명 → K 4명 순서로 나온다 */
+export const KILL_SCORE: Record<EnemyRank, number> = { J: 20, Q: 40, K: 60 };
+
+/** 클리어 시 등급 보너스 (광대 0 / 1 / 2회) */
+export const VICTORY_TIER_BONUS: Record<VictoryTier, number> = { gold: 300, silver: 150, bronze: 50 };
+
+/** 클리어 시 시간 보너스: (이 시간 - 클리어 시간) × 배수 */
+export const TIME_BONUS_LIMIT_SEC = 600;
+export const TIME_BONUS_PER_SEC = 2;
+
+/**
+ * 처치한 적 수만큼의 점수. 클리어하지 못해도 여기까지는 받는다.
+ * 12명 전부면 480점.
+ */
+export function getKillScore(enemiesDefeated: number): number {
+	const n = Math.max(0, Math.min(TOTAL_ENEMIES, Math.floor(enemiesDefeated)));
+	const perRank = TOTAL_ENEMIES / 3;
+	let score = 0;
+	for (let i = 0; i < n; i++) {
+		const rank: EnemyRank = i < perRank ? 'J' : i < perRank * 2 ? 'Q' : 'K';
+		score += KILL_SCORE[rank];
+	}
+	return score;
+}
+
+/**
+ * 한 판의 최종 점수.
+ *
+ * 예전에는 클리어한 판만 등록됐고 점수도 등급·시간 보너스뿐이었다. 12명을 다 잡기가
+ * 어려운 게임이라 대부분의 판이 기록에 남지 않았다. 이제는 처치한 적마다 점수를 주고,
+ * 클리어하면 그 위에 등급·시간 보너스를 얹는다.
+ */
+export function calculateScore(enemiesDefeated: number, jestersUsed: number, clearTimeSec: number): number {
+	const kills = getKillScore(enemiesDefeated);
+	if (!checkWin(enemiesDefeated)) return kills;
+	const tierBonus = VICTORY_TIER_BONUS[getVictoryTier(jestersUsed)];
+	const timeBonus = Math.max(0, (TIME_BONUS_LIMIT_SEC - clearTimeSec) * TIME_BONUS_PER_SEC);
+	return kills + tierBonus + timeBonus;
 }
 
 /** Victory tier based on jesters used: 0 = gold, 1 = silver, 2 = bronze. */

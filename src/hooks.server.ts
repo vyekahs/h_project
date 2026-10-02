@@ -9,6 +9,9 @@ import {
 	getActiveDbConnections,
 	getDbPoolStats
 } from '$lib/server/performance';
+import { checkScannerHealth } from '$lib/server/scannerHealth';
+import { promoteConfidentMacs } from '$lib/server/wifiLearning';
+import { addWifiMacToCache } from '$lib/server/ble';
 import { runDataRetention } from '$lib/server/retention';
 
 let requestIdSeq = 0;
@@ -35,6 +38,45 @@ if (!dbPoolMonitorInterval) {
 		},
 		30 * 1000
 	);
+}
+
+// BLE 스캐너 무응답 점검 (5분 주기)
+//
+// 스캐너는 전원이 켜져 있어도 WiFi가 끊기면 보고하지 못한다. 눈으로는 구분이
+// 안 되기 때문에, 한 대가 나흘 동안 죽어 있는 것을 아무도 몰랐고 다른 한 대는
+// 운영 도중에 멈춘 채로 저녁을 보냈다. 그동안 회원들이 자리에 있는데도
+// 자동 체크아웃됐다.
+//
+// 무응답 판정은 10분이므로 5분 주기면 최대 15분 안에 알림이 간다.
+// 타이머 상한(2^31-1ms)에 한참 못 미치는 값이라 안전하다.
+const SCANNER_CHECK_INTERVAL_MS = 5 * 60 * 1000;
+let scannerCheckInterval: NodeJS.Timeout | null = null;
+if (!scannerCheckInterval) {
+	scannerCheckInterval = setInterval(() => {
+		checkScannerHealth().catch((e) => console.error('[SCANNER] 점검 실패:', e));
+	}, SCANNER_CHECK_INTERVAL_MS);
+}
+
+// WiFi MAC 자동 학습 승격 (1시간 주기)
+//
+// BLE로 확인된 순간의 동시 출현을 세어, 어느 MAC이 누구 폰인지 스스로 알아낸다.
+// 표본이 충분히 쌓이고 근거가 확실해진 것만 실제 등록으로 올린다.
+//
+// 자주 돌릴 이유가 없다. 표본은 WiFi 보고마다 쌓이고 판정은 수십 개가 모여야
+// 의미가 생기므로, 1시간이면 충분히 빠르다.
+const WIFI_LEARN_INTERVAL_MS = 60 * 60 * 1000;
+let wifiLearnInterval: NodeJS.Timeout | null = null;
+if (!wifiLearnInterval) {
+	wifiLearnInterval = setInterval(async () => {
+		try {
+			const promoted = await promoteConfidentMacs();
+			// 승격된 MAC은 캐시에도 넣어야 다음 보고부터 바로 재실로 잡힌다.
+			// DB만 바꾸면 다음 재시작까지 아무 효과가 없다.
+			for (const p of promoted) addWifiMacToCache(p.attendeeId, p.mac);
+		} catch (e) {
+			console.error('[WiFiLearn] 승격 실패:', e);
+		}
+	}, WIFI_LEARN_INTERVAL_MS);
 }
 
 // 데이터 보존 정리

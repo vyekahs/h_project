@@ -83,6 +83,8 @@ export const actions: Actions = {
         const description = data.get('description');
         const imageUrl = data.get('image_url');
         const includedDlcs = data.get('included_dlcs');
+        const categories = blankToNull(data.get('categories'));
+        const mechanics = blankToNull(data.get('mechanics'));
         // 상세 모달이 표시하던 세 필드 — 지금까지 폼에도 SQL에도 없어서
         // 손으로 넣은 게임은 영구히 "분~분 / 연령 -" 상태였다
         const maxPlaytime = blankToNull(data.get('max_playtime'));
@@ -93,8 +95,8 @@ export const actions: Actions = {
 
         try {
             const inserted = await db.execute(sql`
-                INSERT INTO games (name, min_players, max_players, playtime_min, max_playtime, min_age, best_players, complexity, description, image_url, included_dlcs)
-                VALUES (${name}, ${minPlayers}, ${maxPlayers}, ${playtimeMin}, ${maxPlaytime}, ${minAge}, ${bestPlayers}, ${complexity}, ${description}, ${imageUrl}, ${includedDlcs})
+                INSERT INTO games (name, min_players, max_players, playtime_min, max_playtime, min_age, best_players, complexity, description, image_url, included_dlcs, categories, mechanics)
+                VALUES (${name}, ${minPlayers}, ${maxPlayers}, ${playtimeMin}, ${maxPlaytime}, ${minAge}, ${bestPlayers}, ${complexity}, ${description}, ${imageUrl}, ${includedDlcs}, ${categories}, ${mechanics})
                 RETURNING id
             `);
             const newId = (inserted as any[])[0].id as number;
@@ -117,6 +119,8 @@ export const actions: Actions = {
         const description = data.get('description');
         const imageUrl = data.get('image_url');
         const includedDlcs = data.get('included_dlcs');
+        const categories = blankToNull(data.get('categories'));
+        const mechanics = blankToNull(data.get('mechanics'));
         const maxPlaytime = blankToNull(data.get('max_playtime'));
         const minAge = blankToNull(data.get('min_age'));
         const bestPlayers = blankToNull(data.get('best_players'));
@@ -128,7 +132,8 @@ export const actions: Actions = {
                 UPDATE games SET
                 name = ${name}, min_players = ${minPlayers}, max_players = ${maxPlayers}, playtime_min = ${playtimeMin},
                 max_playtime = ${maxPlaytime}, min_age = ${minAge}, best_players = ${bestPlayers},
-                complexity = ${complexity}, description = ${description}, image_url = ${imageUrl}, included_dlcs = ${includedDlcs}
+                complexity = ${complexity}, description = ${description}, image_url = ${imageUrl}, included_dlcs = ${includedDlcs},
+                categories = ${categories}, mechanics = ${mechanics}
                 WHERE id = ${id}
             `);
             return { success: true, savedName: name?.toString() ?? '' };
@@ -249,7 +254,9 @@ export const actions: Actions = {
                     { key: 'max_playtime', label: '최대 시간', next: game.playtimeMax },
                     { key: 'min_age', label: '연령', next: game.minAge },
                     { key: 'best_players', label: '베스트 인원', next: game.bestPlayers },
-                    { key: 'complexity', label: '난이도', next: Number(game.complexity.toFixed(2)) }
+                    { key: 'complexity', label: '난이도', next: Number(game.complexity.toFixed(2)) },
+                    { key: 'categories', label: '카테고리', next: game.categories },
+                    { key: 'mechanics', label: '메카닉', next: game.mechanics }
                 ];
                 const changes = FIELDS.filter(
                     (f) => String(existing[f.key] ?? '') !== String(f.next ?? '')
@@ -275,15 +282,17 @@ export const actions: Actions = {
             const finalName = keep('name', game.name) as string;
 
             const upserted = await db.execute(sql`
-                INSERT INTO games (name, min_players, max_players, playtime_min, max_playtime, min_age, complexity, best_players, description, image_url, bgg_id)
+                INSERT INTO games (name, min_players, max_players, playtime_min, max_playtime, min_age, complexity, best_players, categories, mechanics, description, image_url, bgg_id)
                 VALUES (${finalName}, ${keep('min_players', game.minPlayers)}, ${keep('max_players', game.maxPlayers)},
                         ${keep('playtime_min', game.playtimeMin)}, ${keep('max_playtime', game.playtimeMax)}, ${keep('min_age', game.minAge)},
                         ${keep('complexity', game.complexity.toFixed(2))}, ${keep('best_players', game.bestPlayers)},
+                        ${keep('categories', game.categories)}, ${keep('mechanics', game.mechanics)},
                         ${keep('description', game.description)}, ${keep('image_url', game.imageUrl)}, ${bggId})
                 ON CONFLICT (bgg_id) DO UPDATE SET
                 name = EXCLUDED.name, min_players = EXCLUDED.min_players, max_players = EXCLUDED.max_players,
                 playtime_min = EXCLUDED.playtime_min, max_playtime = EXCLUDED.max_playtime, min_age = EXCLUDED.min_age,
-                complexity = EXCLUDED.complexity, best_players = EXCLUDED.best_players, description = EXCLUDED.description,
+                complexity = EXCLUDED.complexity, best_players = EXCLUDED.best_players,
+                categories = EXCLUDED.categories, mechanics = EXCLUDED.mechanics, description = EXCLUDED.description,
                 image_url = EXCLUDED.image_url
                 RETURNING id
             `);

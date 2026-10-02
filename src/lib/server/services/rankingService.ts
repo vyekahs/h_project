@@ -1,9 +1,15 @@
 import { db } from '$lib/server/db/index';
 import { sql } from 'drizzle-orm';
 import { PointService } from './pointService';
+import { calculateScore as calculateRegicideScore } from '$lib/games/regicide/gameLogic';
 
 export const RankingService = {
-    async submitScore(userId: number, gameId: string, difficulty: string, clearTime: number, score?: number, skipReward: boolean = false, mistakes: number = 0) {
+    /**
+     * @param cleared false면 끝까지 가지 못한 판(레지사이드처럼 진행한 만큼 점수를 주는 게임).
+     *   점수·랭킹에는 그대로 더하되 플레이 로그에 'partial'로 남겨, 활동 알림의 "클리어!"와
+     *   월별 클리어 횟수 집계에서는 빠진다.
+     */
+    async submitScore(userId: number, gameId: string, difficulty: string, clearTime: number, score?: number, skipReward: boolean = false, mistakes: number = 0, cleared: boolean = true) {
         
         // 0. Get Previous Rank Before Score Update
         const previousRank = await this.getUserRank(userId, gameId);
@@ -189,15 +195,11 @@ export const RankingService = {
              calculatedScore = Math.max(baseScore, baseScore + timeBonus - undoPenalty);
         } else if (gameId === 'regicide') {
              // Regicide: single 'classic' difficulty
-             // mistakes = jestersUsed (0, 1, 2)
-             // Victory tier bonus: gold(0 jesters)=300, silver(1)=150, bronze(2)=50
-             const tierBonus = mistakes === 0 ? 300 : mistakes === 1 ? 150 : 50;
-
-             // Time bonus: faster = more points (time limit 10 min)
-             const timeLimit = 600;
-             const timeBonus = Math.max(0, (timeLimit - clearTime) * 2);
-
-             calculatedScore = tierBonus + timeBonus;
+             // score = 처치한 적 수 (0~12), mistakes = jestersUsed (0, 1, 2)
+             // 12명을 다 잡았으면 클리어로 보고 등급·시간 보너스를 얹는다.
+             // 계산은 클라이언트와 같은 함수(getKillScore 등)를 쓴다 — 시작 화면의 설명과
+             // 결과창 표시가 어긋나지 않도록.
+             calculatedScore = calculateRegicideScore(score ?? 0, mistakes, clearTime);
         } else {
              calculatedScore = score || 0;
         }
@@ -235,8 +237,8 @@ export const RankingService = {
                     score_updated_at = NOW()
             `),
             db.execute(sql`
-                INSERT INTO minigame_play_log (game_id, difficulty, user_id, score, clear_time)
-                VALUES (${gameId}, ${difficulty}, ${userId}, ${calculatedScore}, ${clearTime})
+                INSERT INTO minigame_play_log (game_id, difficulty, user_id, score, clear_time, type)
+                VALUES (${gameId}, ${difficulty}, ${userId}, ${calculatedScore}, ${clearTime}, ${cleared ? 'clear' : 'partial'})
             `),
             db.execute(sql`
                 INSERT INTO minigame_rankings (game_id, difficulty, user_id, clear_time, score, mistakes, achieved_at)
@@ -303,7 +305,7 @@ export const RankingService = {
                 p.played_at as achieved_at
             FROM minigame_play_log p
             LEFT JOIN attendees a ON p.user_id = a.id
-            WHERE p.type != 'start'
+            WHERE p.type = 'clear'
             ${gameFilter}
             ORDER BY p.played_at DESC
             LIMIT ${limit}

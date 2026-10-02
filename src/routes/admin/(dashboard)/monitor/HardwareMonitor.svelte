@@ -52,11 +52,23 @@
 		connections: { sse: number };
 		stuckRequests?: StuckRequest[];
 		abandonedRequests?: AbandonedRequest[];
+		scanners?: ScannerHealth[];
 		uptime: number;
 		timestamp: number;
 		history?: MetricsSnapshot[];
 		autoLogs?: AutoLog[];
 	}
+
+	// BLE 스캐너 상태. 스캐너는 전원이 켜져 있어도 WiFi가 끊기면 보고하지 못해서,
+	// 눈으로 봐서는 죽은 걸 알 수 없다 — 실제로 한 대가 나흘간 조용히 죽어 있었다.
+	type ScannerHealth = {
+		id: string;
+		silentSeconds: number;
+		isDown: boolean;
+		deviceTotal: number | null;
+		freeHeap: number | null;
+		alertEnabled: boolean;
+	};
 
 	let metrics: Metrics | null = $state(null);
 	let connected = $state(false);
@@ -261,6 +273,42 @@
 		connectSSE();
 	});
 
+	// 스캐너별 알림 on/off. 예비 스캐너를 치워두거나 등록용 단말을 꺼두는 일이
+	// 있는데, 그때마다 무응답 알림이 오면 알림 자체를 무시하게 된다.
+	//
+	// 응답을 받고 나서야 화면을 바꾼다. 먼저 바꿔두면 요청이 실패했을 때 껐다고
+	// 믿고 있다가 계속 알림을 받게 된다.
+	let togglingId = $state<string | null>(null);
+	async function toggleScannerAlert(sc: ScannerHealth) {
+		if (togglingId) return;
+		togglingId = sc.id;
+		try {
+			const res = await fetch('/api/admin/scanners/alert', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ id: sc.id, enabled: !sc.alertEnabled })
+			});
+			if (res.ok) {
+				sc.alertEnabled = !sc.alertEnabled;
+				metrics = metrics;  // 다음 SSE 갱신 전까지 화면에 반영
+			} else {
+				console.error('스캐너 알림 설정 실패', await res.text());
+			}
+		} catch (e) {
+			console.error('스캐너 알림 설정 실패', e);
+		} finally {
+			togglingId = null;
+		}
+	}
+
+	// 마지막 보고 이후 경과. 초 단위 그대로는 "3947초 전"처럼 읽기 어렵다.
+	function formatSilent(sec: number): string {
+		if (sec < 60) return `${sec}초 전`;
+		if (sec < 3600) return `${Math.floor(sec / 60)}분 전`;
+		if (sec < 86400) return `${Math.floor(sec / 3600)}시간 전`;
+		return `${Math.floor(sec / 86400)}일 전`;
+	}
+
 	onDestroy(() => {
 		destroyed = true;
 		if (eventSource) {
@@ -287,6 +335,51 @@
 	</div>
 
 	{#if metrics}
+		<!-- -2. BLE 스캐너 상태 —
+		     스캐너는 전원 LED가 켜져 있어도 WiFi가 끊기면 보고하지 못한다.
+		     현장에서 눈으로는 구분이 안 돼서 한 대가 나흘간 죽어 있었고,
+		     다른 한 대는 운영 중에 멈춰 회원들이 자리에 있는데도 자동 체크아웃됐다.
+		     죽은 스캐너를 맨 위에 두어 먼저 보이게 한다. -->
+		{#if metrics.scanners}
+			<div class="detail-card scanner-card" class:has-down={metrics.scanners.some((sc) => sc.isDown && sc.alertEnabled)}>
+				<h3>
+					BLE 스캐너
+					{#if metrics.scanners.some((sc) => sc.isDown && sc.alertEnabled)}
+						<span class="scanner-alarm">⚠️ 무응답 {metrics.scanners.filter((sc) => sc.isDown && sc.alertEnabled).length}대</span>
+					{/if}
+				</h3>
+				<div class="scanner-rows">
+					{#if metrics.scanners.length === 0}
+						<!-- 목록이 비면 카드를 숨기지 않고 이렇게 알린다. 숨기면 "스캐너가
+						     없다"와 "조회에 실패했다"가 화면에서 구분되지 않는다. -->
+						<p class="scanner-empty">등록된 스캐너가 없거나 목록을 불러오지 못했습니다.</p>
+					{/if}
+					{#each [...metrics.scanners].sort((a, b) => Number(b.isDown) - Number(a.isDown)) as sc}
+						<div class="scanner-row" class:down={sc.isDown && sc.alertEnabled} class:muted={!sc.alertEnabled}>
+							<span class="sc-dot" aria-hidden="true"></span>
+							<span class="sc-id">{sc.id}</span>
+							<span class="sc-ago">{formatSilent(sc.silentSeconds)}</span>
+							<span class="sc-meta">
+								{#if sc.deviceTotal !== null}기기 {sc.deviceTotal}{/if}
+								{#if sc.deviceTotal !== null && sc.freeHeap !== null}·{/if}
+								{#if sc.freeHeap !== null}힙 {Math.round(sc.freeHeap / 1024)}KB{/if}
+							</span>
+							<button
+								type="button"
+								class="sc-alert-toggle"
+								class:on={sc.alertEnabled}
+								disabled={togglingId === sc.id}
+								onclick={() => toggleScannerAlert(sc)}
+								title={sc.alertEnabled ? '무응답 시 알림을 보냅니다' : '이 기기는 알림을 보내지 않습니다'}
+							>
+								{sc.alertEnabled ? '🔔 감시 중' : '🔕 알림 끔'}
+							</button>
+						</div>
+					{/each}
+				</div>
+			</div>
+		{/if}
+
 		<!-- -1. 멈춘 요청 경고 (5초 이상 응답 못 준 요청) -->
 		{#if metrics.stuckRequests && metrics.stuckRequests.length > 0}
 			<div class="detail-card stuck-card">
@@ -738,22 +831,24 @@
 	}
 
 	/* Log Card */
+	/*
+		아래 여백은 카드마다 따로 붙어 있었다(.log-card / .stuck-card /
+		.abandoned-card). 그러다 보니 .scanner-card 만 빠져서 BLE 스캐너 카드가
+		다음 카드에 딱 붙어 있었다 — 간격 0. 공통 규칙으로 올려 빠질 수 없게 한다.
+	*/
 	.detail-card {
 		background: white;
 		padding: var(--space-5);
 		border-radius: var(--radius-card);
 		border: 1px solid var(--border-light);
+		margin-bottom: var(--space-5);
 	}
 	.detail-card h3 {
 		margin: 0 0 var(--space-4) 0;
 		font-size: var(--text-base);
 		color: var(--text-primary);
 	}
-	.log-card {
-		margin-bottom: var(--space-5);
-	}
 	.stuck-card {
-		margin-bottom: var(--space-5);
 		border: 1px solid var(--color-red-dark);
 		background: var(--color-error-bg);
 		animation: pulse-border 2s infinite;
@@ -766,7 +861,6 @@
 		color: var(--color-red-darker);
 	}
 	.abandoned-card {
-		margin-bottom: var(--space-5);
 		border: 1px solid var(--color-orange);
 		background: var(--color-warning-bg);
 	}
@@ -843,8 +937,9 @@
 		color: var(--color-blue-bright);
 		font-weight: 600;
 	}
+	/* --text-muted(#999)는 흰 바탕에서 2.52:1 — 본문으로 쓸 수 없다 */
 	.empty-state {
-		color: var(--text-muted);
+		color: var(--text-secondary);
 		text-align: center;
 		padding: var(--space-6);
 	}
@@ -937,4 +1032,74 @@
 			grid-template-columns: 1fr;
 		}
 	}
+
+	/* BLE 스캐너 상태 —
+	   무응답은 되돌릴 수 없는 조작이 아니라(다시 보고하면 자동 복구) 주의를 끌어야
+	   하는 상태일 뿐이므로, "채움 빨강은 블랙 등록만"(admin-tokens.test.ts) 원칙에
+	   따라 danger가 아닌 warning 계열 토큰을 쓴다. */
+	.scanner-card.has-down {
+		border-color: var(--border-warning);
+		background: var(--color-warning-bg);
+	}
+	.scanner-alarm {
+		margin-left: 8px;
+		font-size: 0.78rem;
+		font-weight: 700;
+		color: var(--color-orange-text);
+	}
+	.scanner-rows { display: flex; flex-direction: column; gap: 6px; }
+	.scanner-row {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		font-size: 0.85rem;
+		flex-wrap: wrap;
+	}
+	.sc-dot {
+		width: 8px;
+		height: 8px;
+		border-radius: 50%;
+		background: var(--color-green);
+		flex: none;
+	}
+	.scanner-row.down .sc-dot { background: var(--color-orange-dark); }
+	.sc-id { font-weight: 600; }
+	/*
+		이 카드(.detail-card)는 흰 배경인데 아래 색들이 전부 흰색 계열이었다.
+		다크 테마 시절의 잔재로 보인다 — 「등록된 스캐너가 없습니다」 문구는
+		흰 바탕에 흰 글자(1:1)라 아예 안 보였고, 그래서 제목 아래가 텅 빈
+		공간으로 읽혔다. 알림 토글과 음소거 점도 마찬가지였다.
+
+		흰 바탕 기준 대비: --text-secondary 5.43:1, --color-green-dark 6.59:1,
+		--color-orange-text 5.18:1. 예전 값은 #f87171 2.77:1, #86efac 1.4:1 이었다.
+	*/
+	.sc-ago { color: var(--text-secondary); }
+	.scanner-row.down .sc-id { color: var(--color-orange-text); }
+	.scanner-empty {
+		margin: 0;
+		font-size: 0.82rem;
+		color: var(--text-secondary);
+	}
+	/*
+		알림을 꺼둔 줄은 예전에 opacity 0.55 로 흐렸다. 흐리기는 글자까지 같이
+		죽여서(#666 이 실질 2.3:1) 스캐너 이름을 읽을 수 없게 만든다. 꺼져
+		있다는 사실은 점과 토글 버튼이 이미 말하므로 글자는 건드리지 않는다.
+	*/
+	.scanner-row.muted .sc-dot { background: var(--text-tertiary); }
+	.sc-alert-toggle {
+		padding: 2px 8px;
+		border-radius: 999px;
+		border: 1px solid var(--border-control);
+		background: transparent;
+		color: var(--text-secondary);
+		font-size: 0.7rem;
+		cursor: pointer;
+		white-space: nowrap;
+	}
+	.sc-alert-toggle.on {
+		border-color: var(--color-green-dark);
+		color: var(--color-green-dark);
+	}
+	.sc-alert-toggle:disabled { opacity: 0.5; cursor: default; }
+	.sc-meta { margin-left: auto; font-size: 0.75rem; color: var(--text-tertiary); }
 </style>

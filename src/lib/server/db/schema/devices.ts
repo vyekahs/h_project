@@ -1,4 +1,4 @@
-import { pgTable, serial, integer, varchar, text, timestamp, jsonb } from 'drizzle-orm/pg-core';
+import { pgTable, serial, integer, varchar, text, timestamp, jsonb, boolean } from 'drizzle-orm/pg-core';
 import { attendees } from './core';
 
 export const userDevices = pgTable('user_devices', {
@@ -30,4 +30,8 @@ export const scanners = pgTable('scanners', {
 	ipAddress: text('ip_address'),
 	metadata: jsonb('metadata'),
 	status: text('status').default('active'),
+	// 무응답 알림을 보낸 시각. NULL이면 정상이거나 아직 안 알린 상태.
+	alertedDownAt: timestamp('alerted_down_at', { withTimezone: true }),
+	// 이 스캐너의 무응답 알림을 보낼지. 일부러 꺼두는 기기는 false로 둔다.
+	alertEnabled: boolean('alert_enabled').notNull().default(true),
 });

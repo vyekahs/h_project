@@ -18,7 +18,8 @@
         })
     );
 
-    // 혼놀 보유 여부와 무관하게, 본인이 직접 소장 중이라고 체크한 게임.
+    // 혼놀 보유 여부와 무관하게, 본인도 이 게임을 갖고 있다고 체크한 목록.
+    // 장식장의 그 물건이 내 것이라는 뜻이 아니다 — 같은 게임을 여러 사람이 각자 체크한다.
     const ownedGameIds = $derived(new Set<number>(data.ownedGameIds));
     function isOwned(gameId: number) {
         return ownedGameIds.has(gameId);
@@ -125,6 +126,7 @@
         editingSessionId = null;
         historyEditError = '';
         ownershipError = '';
+        ratingError = '';
     }
 
     // 게임 종료 시 승자/점수를 잘못 입력했을 때 이 모달 안에서 바로 고칠 수 있게 한다
@@ -137,6 +139,18 @@
     let editingSessionId: number | null = $state(null);
     let historyEditError = $state('');
     let ownershipError = $state('');
+    let ratingError = $state('');
+    const myRating = $derived(selectedGameId ? (data.ratingsByGameId[selectedGameId] ?? null) : null);
+
+    // 추천은 누르기 전엔 계산만 해두고 화면엔 안 보여준다 — 매번 들어올 때마다
+    // 뜨면 "혼놀데이 누가 오나" 확인하러 온 사람한테 원치 않는 게 먼저 보인다.
+    let showRecommendations = $state(false);
+    let showRecFilters = $state(false);
+    const excludedCategories = $derived(new Set((data.recExclusions ?? []).filter((e) => e.kind === 'category').map((e) => e.value)));
+    const excludedDifficulties = $derived(new Set((data.recExclusions ?? []).filter((e) => e.kind === 'difficulty').map((e) => e.value)));
+    function isCategoryExcluded(cat: string) { return excludedCategories.has(cat); }
+    function isDifficultyExcluded(v: string) { return excludedDifficulties.has(v); }
+    const recExclusionCount = $derived((data.recExclusions ?? []).length);
     function openPlayEdit(play: any) {
         historyEditError = '';
         editingSessionId = play.sessionId;
@@ -330,7 +344,7 @@
             </div>
             <label class="owned-only-toggle">
                 <input type="checkbox" bind:checked={showOwnedOnly} />
-                내가 보유한 것만 보기
+                내가 갖고 있는 것만
             </label>
         {:else}
             <!-- 게임별 보기의 검색창과 같은 자리에 둬서, 뷰를 전환해도 손가락이 다시
@@ -421,6 +435,90 @@
         </section>
     {/if}
 
+    {#if viewMode === 'byGame' && data.recommendations && (data.recommendations.friendsPlay.length > 0 || data.recommendations.similarStyle.length > 0 || data.recommendations.similarTaste.length > 0)}
+        <section class="rec-section">
+            <div class="section-header">
+                <h2>이런 게임 어때요?</h2>
+                <div class="rec-header-actions">
+                    <button type="button" class="btn-quiet" onclick={() => (showRecFilters = !showRecFilters)}>
+                        제외 설정{recExclusionCount > 0 ? ` (${recExclusionCount})` : ''}
+                    </button>
+                    <button type="button" class="btn-rec-reveal" onclick={() => (showRecommendations = !showRecommendations)}>
+                        {showRecommendations ? '접기' : '추천 보기'}
+                    </button>
+                </div>
+            </div>
+
+            {#if showRecFilters}
+                <div class="rec-filters">
+                    <p class="rec-filters-label">난이도</p>
+                    <div class="rec-filter-chips">
+                        {#each data.difficultyBuckets as b (b.value)}
+                            {@const excluded = isDifficultyExcluded(b.value)}
+                            <form method="POST" action="?/toggleRecExclusion" use:enhance={() => {
+                                return async ({ result, update }) => { if (result.type === 'success') await update(); };
+                            }}>
+                                <input type="hidden" name="kind" value="difficulty" />
+                                <input type="hidden" name="value" value={b.value} />
+                                <input type="hidden" name="excluded" value={(!excluded).toString()} />
+                                <button type="submit" class="rec-filter-chip" class:excluded>{b.label}</button>
+                            </form>
+                        {/each}
+                    </div>
+                    {#if data.recCategories.length > 0}
+                        <p class="rec-filters-label">카테고리</p>
+                        <div class="rec-filter-chips">
+                            {#each data.recCategories as cat (cat)}
+                                {@const excluded = isCategoryExcluded(cat)}
+                                <form method="POST" action="?/toggleRecExclusion" use:enhance={() => {
+                                    return async ({ result, update }) => { if (result.type === 'success') await update(); };
+                                }}>
+                                    <input type="hidden" name="kind" value="category" />
+                                    <input type="hidden" name="value" value={cat} />
+                                    <input type="hidden" name="excluded" value={(!excluded).toString()} />
+                                    <button type="submit" class="rec-filter-chip" class:excluded>{cat}</button>
+                                </form>
+                            {/each}
+                        </div>
+                    {/if}
+                    <p class="rec-filters-hint">눌러서 제외 — 눌린 건 추천에서 빠져요.</p>
+                </div>
+            {/if}
+
+            {#if showRecommendations}
+                {#each [
+                    { title: '함께 자주 하는 사람들이 한 게임', items: data.recommendations.friendsPlay },
+                    { title: '높게 평가한 게임과 비슷한 게임', items: data.recommendations.similarStyle },
+                    { title: '취향 비슷한 사람이 좋아한 게임', items: data.recommendations.similarTaste }
+                ] as group (group.title)}
+                    {#if group.items.length > 0}
+                        <div class="rec-group">
+                            <h3 class="rec-group-title">{group.title}</h3>
+                            <div class="rec-grid">
+                                {#each group.items as g (g.id)}
+                                    <div class="rec-card" title={g.reason}>
+                                        <div class="rec-cover">
+                                            {#if g.imageUrl}
+                                                <img src={g.imageUrl} alt="" loading="lazy" />
+                                            {:else}
+                                                <div class="rec-cover-placeholder" aria-hidden="true"></div>
+                                            {/if}
+                                        </div>
+                                        <span class="rec-name">{g.name}</span>
+                                        <span class="rec-meta">
+                                            {#if g.playtimeMin}{g.playtimeMin}분{/if}
+                                            {#if g.complexity}{g.playtimeMin ? ' · ' : ''}난이도 {g.complexity.toFixed(1)}{/if}
+                                        </span>
+                                    </div>
+                                {/each}
+                            </div>
+                        </div>
+                    {/if}
+                {/each}
+            {/if}
+        </section>
+    {/if}
+
     {#if viewMode === 'byGame'}
         {#if totalCount === 0}
             <div class="empty-state">
@@ -431,7 +529,7 @@
                 {#if searchQuery.trim()}
                     <p>"{searchQuery}"에 맞는 게임이 없어요.</p>
                 {:else if showOwnedOnly}
-                    <p>내가 보유한 것으로 표시한 게임이 없어요.</p>
+                    <p>갖고 있다고 표시한 게임이 없어요.</p>
                 {:else}
                     <p>조건에 맞는 게임이 없어요.</p>
                 {/if}
@@ -440,7 +538,7 @@
             <p class="shelf-legend">
                 <span class="legend-item">
                     <svg class="legend-star" width="10" height="10" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 21 12 17.77 5.82 21 7 14.14l-5-4.87 6.91-1.01L12 2z"/></svg>
-                    내 소장
+                    내가 갖고 있음
                 </span>
                 <span class="legend-item"><span class="legend-swatch unplayed" aria-hidden="true"></span>아직 플레이 안 함</span>
             </p>
@@ -454,7 +552,7 @@
                         class:played={!!played}
                         class:locked={!played}
                         onclick={() => openGameModal(game)}
-                        aria-label="{game.name}{played ? ` — ${played.length}회 플레이` : ' — 아직 플레이하지 않음'}{owned ? ', 내 소장 게임' : ''}"
+                        aria-label="{game.name}{played ? ` — ${played.length}회 플레이` : ' — 아직 플레이하지 않음'}{owned ? ', 내가 갖고 있는 게임' : ''}"
                     >
                         <div class="cover">
                             {#if game.image_url}
@@ -465,7 +563,7 @@
                                 </div>
                             {/if}
                             {#if owned}
-                                <span class="owned-badge" title="내 소장 게임" aria-hidden="true">
+                                <span class="owned-badge" title="내가 갖고 있는 게임" aria-hidden="true">
                                     <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87L18.18 21 12 17.77 5.82 21 7 14.14l-5-4.87 6.91-1.01L12 2z"/></svg>
                                 </span>
                             {/if}
@@ -550,13 +648,49 @@
                 <input type="hidden" name="owned" value={(!isOwned(selectedGame.id)).toString()} />
                 <button type="submit" class="btn-ownership-toggle" class:active={isOwned(selectedGame.id)}>
                     <svg width="16" height="16" viewBox="0 0 24 24" fill={isOwned(selectedGame.id) ? 'currentColor' : 'none'} stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
-                    {isOwned(selectedGame.id) ? '내가 소장 중' : '내 소장 게임으로 표시'}
+                    <!-- 눌린 상태는 사실("갖고 있음"), 안 눌린 상태는 누르면 할 말("나도 갖고 있어요").
+                         예전 문구 '내 소장 게임으로 표시'는 장식장의 그 물건을 내 것으로
+                         지정하는 것처럼 읽혔다. 실제로는 같은 게임을 여러 사람이 각자
+                         체크하는 개인 표시다. -->
+                    {isOwned(selectedGame.id) ? '갖고 있음' : '나도 갖고 있어요'}
                 </button>
             </form>
 
             {#if selectedGamePlays.length === 0}
                 <p class="no-play-results">아직 플레이 기록이 없어요.</p>
             {:else}
+                {#if ratingError}
+                    <p class="inline-error">{ratingError}</p>
+                {/if}
+                <form
+                    method="POST"
+                    action="?/rateGame"
+                    class="rating-form"
+                    use:enhance={() => {
+                        ratingError = '';
+                        return async ({ result, update }) => {
+                            if (result.type === 'success') {
+                                await update();
+                            } else if (result.type === 'failure') {
+                                ratingError = (result.data as any)?.error || '처리에 실패했습니다.';
+                            }
+                        };
+                    }}
+                >
+                    <input type="hidden" name="gameId" value={selectedGame.id} />
+                    <label for="rating-select">내 평점</label>
+                    <select
+                        id="rating-select"
+                        name="rating"
+                        value={myRating ?? ''}
+                        onchange={(e) => e.currentTarget.form?.requestSubmit()}
+                    >
+                        <option value="">평가 안 함</option>
+                        {#each Array(10) as _, i}
+                            <option value={i + 1}>{i + 1}점</option>
+                        {/each}
+                    </select>
+                </form>
                 <button
                     type="button"
                     class="filter-disclosure-toggle"
@@ -708,6 +842,130 @@
         color: var(--border-medium);
         text-align: center;
         justify-content: center;
+    }
+
+    /* 추천 게임 */
+    .rec-section { margin-bottom: 1.5rem; }
+    .rec-section .section-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        margin: 0 0 0.6rem 0;
+        border-bottom: 1px solid var(--border-light);
+        padding-bottom: 0.45rem;
+    }
+    .rec-section .section-header h2 {
+        margin: 0;
+        font-size: 0.82rem;
+        color: var(--text-secondary);
+    }
+    .rec-header-actions {
+        display: flex;
+        gap: 0.4rem;
+    }
+    .btn-quiet, .btn-rec-reveal {
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: var(--text-secondary);
+        background: var(--bg-primary);
+        border: 1px solid var(--border-default);
+        padding: 0.35rem 0.65rem;
+        border-radius: 100px;
+        cursor: pointer;
+        white-space: nowrap;
+    }
+    .btn-rec-reveal {
+        color: var(--color-blue-bright);
+        border-color: var(--color-blue-bright);
+    }
+    .rec-filters {
+        margin-bottom: 1rem;
+        padding: 0.7rem;
+        background: var(--bg-secondary);
+        border-radius: 8px;
+    }
+    .rec-filters-label {
+        margin: 0.5rem 0 0.35rem;
+        font-size: 0.72rem;
+        font-weight: 600;
+        color: var(--text-tertiary);
+    }
+    .rec-filters-label:first-child { margin-top: 0; }
+    .rec-filter-chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.35rem;
+    }
+    .rec-filter-chip {
+        font-size: 0.72rem;
+        color: var(--text-secondary);
+        background: var(--bg-primary);
+        border: 1px solid var(--border-default);
+        padding: 0.25rem 0.6rem;
+        border-radius: 100px;
+        cursor: pointer;
+    }
+    .rec-filter-chip.excluded {
+        background: var(--bg-tertiary);
+        color: var(--text-hint);
+        text-decoration: line-through;
+    }
+    .rec-filters-hint {
+        margin: 0.6rem 0 0;
+        font-size: 0.7rem;
+        color: var(--text-hint);
+    }
+    /* section-header 바로 뒤(필터 패널이 열려 있으면 그 뒤)에 오는 그룹은
+       위 여백이 필요 없다 — section-header가 이미 padding-bottom과 테두리로
+       구분해준다. 필터 패널 유무에 따라 앞에 오는 형제가 달라지므로
+       :first-child 대신 그룹 스스로의 margin을 기본값으로 두고, 그 앞이
+       필터든 헤더든 상관없이 다음 그룹부터만 간격을 준다. */
+    .rec-group { margin-top: 0; }
+    .rec-group + .rec-group { margin-top: 1rem; }
+    .rec-group-title {
+        margin: 0 0 0.5rem;
+        font-size: 0.78rem;
+        font-weight: 600;
+        color: var(--text-secondary);
+    }
+    .rec-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+        gap: 0.6rem;
+    }
+    .rec-card {
+        display: flex;
+        flex-direction: column;
+        gap: 0.2rem;
+    }
+    .rec-cover {
+        aspect-ratio: 1;
+        border-radius: 8px;
+        overflow: hidden;
+        background: var(--bg-tertiary);
+    }
+    .rec-cover img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+    }
+    .rec-cover-placeholder {
+        width: 100%;
+        height: 100%;
+    }
+    .rec-name {
+        font-size: 0.78rem;
+        font-weight: 600;
+        color: var(--text-primary);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    .rec-meta {
+        font-size: 0.7rem;
+        color: var(--text-tertiary);
     }
     .btn-catalog {
         flex-shrink: 0;
@@ -1113,6 +1371,30 @@
         background: var(--color-warning-bg);
         border-color: var(--color-amber);
         color: var(--color-achievement-text);
+    }
+    .rating-form {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.5rem;
+        margin-bottom: 1rem;
+        padding: 0.5rem 0.7rem;
+        border: 1px solid var(--border-default);
+        border-radius: 8px;
+        background: var(--bg-secondary);
+    }
+    .rating-form label {
+        font-size: 0.82rem;
+        font-weight: 600;
+        color: var(--text-secondary);
+    }
+    .rating-form select {
+        padding: 0.3rem 0.5rem;
+        border: 1px solid var(--border-default);
+        border-radius: 6px;
+        background: var(--bg-primary);
+        color: var(--text-primary);
+        font-size: 0.82rem;
     }
     /* 필터가 항상 펼쳐져 있으면 컨트롤 5~6개가 정작 기록 몇 건보다 눈에 띈다 —
        기본은 접어두고 몇 개 걸려있는지만 보여준다 */

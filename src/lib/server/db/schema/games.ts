@@ -16,6 +16,8 @@ export const games = pgTable('games', {
 	minAge: integer('min_age'),
 	complexity: real('complexity'),
 	bestPlayers: text('best_players'),
+	categories: text('categories'),
+	mechanics: text('mechanics'),
 	isActive: boolean('is_active').default(true),
 	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 });
@@ -63,6 +65,29 @@ export const gameOwnership = pgTable('game_ownership', {
 	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
 }, (table) => [
 	primaryKey({ columns: [table.attendeeId, table.gameId] }),
+]);
+
+// 본인이 해본 게임에 매기는 10점 만점 평점. 소장 체크(game_ownership)와 달리
+// 플레이 기록이 있는 게임에만 의미가 있다 — UI가 그 범위로 노출을 제한한다.
+export const gameRatings = pgTable('game_ratings', {
+	attendeeId: integer('attendee_id').notNull().references(() => attendees.id, { onDelete: 'cascade' }),
+	gameId: integer('game_id').notNull().references(() => games.id, { onDelete: 'cascade' }),
+	rating: integer('rating').notNull(),
+	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+	updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow(),
+}, (table) => [
+	primaryKey({ columns: [table.attendeeId, table.gameId] }),
+]);
+
+// 게임 추천에서 빼고 싶은 카테고리·난이도. (attendee_id, kind, value) 복합키라
+// 같은 값을 두 번 넣어도 조용히 무시된다(ON CONFLICT DO NOTHING으로 토글).
+export const gameRecExclusions = pgTable('game_rec_exclusions', {
+	attendeeId: integer('attendee_id').notNull().references(() => attendees.id, { onDelete: 'cascade' }),
+	kind: varchar('kind', { length: 20 }).notNull(),
+	value: text('value').notNull(),
+	createdAt: timestamp('created_at', { withTimezone: true }).defaultNow(),
+}, (table) => [
+	primaryKey({ columns: [table.attendeeId, table.kind, table.value] }),
 ]);
 
 export const reservations = pgTable('reservations', {

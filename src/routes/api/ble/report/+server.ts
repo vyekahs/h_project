@@ -50,11 +50,34 @@ export const POST: RequestHandler = async ({ request }) => {
         }
 
         // 2. Log Scanner Heartbeat (fire-and-forget, 응답 차단 방지)
+        //
+        // 스캔한 기기 수와 남은 힙을 함께 남긴다. 이게 없어서 "사람이 많은 날에만
+        // 스캐너가 보고를 멈춘다"를 확인할 방법이 없었다 — 시리얼을 꽂고 현장에
+        // 있어야만 알 수 있었다. 기기가 수백 대까지 가는지, 힙이 줄어드는지를
+        // 사후에 볼 수 있어야 원인을 데이터로 가릴 수 있다.
+        //
+        // 옛 펌웨어는 이 값을 안 보내므로, 없으면 기존 metadata를 덮지 않는다.
+        const deviceTotal = Number.isFinite(Number(body.device_total))
+            ? Number(body.device_total)
+            : null;
+        const scanMeta =
+            deviceTotal === null
+                ? null
+                : JSON.stringify({
+                      device_total: deviceTotal,
+                      free_heap: Number.isFinite(Number(body.free_heap))
+                          ? Number(body.free_heap)
+                          : null,
+                      total_batches: total_batches ?? 1
+                  });
+
         db.execute(sql`
-            INSERT INTO scanners (id, last_seen_at, status)
-            VALUES (${actualScannerId}, NOW(), 'active')
+            INSERT INTO scanners (id, last_seen_at, status, metadata)
+            VALUES (${actualScannerId}, NOW(), 'active', ${scanMeta}::jsonb)
             ON CONFLICT (id) DO UPDATE
-            SET last_seen_at = NOW(), status = 'active'
+            SET last_seen_at = NOW(),
+                status = 'active',
+                metadata = COALESCE(EXCLUDED.metadata, scanners.metadata)
         `).catch(e => {
             console.error('Failed to update scanner heartbeat', e);
         });

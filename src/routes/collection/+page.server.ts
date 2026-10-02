@@ -4,6 +4,7 @@ import { redirect, fail } from '@sveltejs/kit';
 import type { PageServerLoad, Actions } from './$types';
 import { verifyAttendeeSession } from '$lib/server/auth';
 import { editGameResult, GameHistoryEditError } from '$lib/server/services/gameHistoryService';
+import { getRecommendations, DIFFICULTY_BUCKETS } from '$lib/server/recommendations';
 
 export const load: PageServerLoad = async ({ cookies }) => {
     const userSessionToken = cookies.get('user_session');
@@ -15,7 +16,7 @@ export const load: PageServerLoad = async ({ cookies }) => {
         throw redirect(303, '/login?redirectTo=/collection');
     }
 
-    const [gamesResult, playedResult, ownedResult] = await Promise.all([
+    const [gamesResult, playedResult, ownedResult, ratedResult, recommendations, categoryRows, exclusionRows] = await Promise.all([
         db.execute(sql`
             SELECT id, name, image_url, playtime_min, min_players, max_players, difficulty
             FROM games
@@ -53,8 +54,22 @@ export const load: PageServerLoad = async ({ cookies }) => {
             WHERE sp.attendee_id = ${user.id} AND gs.status = 'finished'
             ORDER BY gs.end_time DESC
         `),
-        // 혼놀 보유 여부와 무관하게 본인이 직접 체크한 "내 소장 게임" 목록
-        db.execute(sql`SELECT game_id FROM game_ownership WHERE attendee_id = ${user.id}`)
+        // 혼놀 보유 여부와 무관하게, 본인도 그 게임을 갖고 있다고 체크한 목록.
+        // (attendee_id, game_id) 복합키라 같은 게임을 여러 사람이 각자 체크한다 —
+        // 장식장의 그 물건이 누구 것이라는 뜻이 아니다.
+        db.execute(sql`SELECT game_id FROM game_ownership WHERE attendee_id = ${user.id}`),
+        db.execute(sql`SELECT game_id, rating FROM game_ratings WHERE attendee_id = ${user.id}`),
+        getRecommendations(user.id).catch(() => null),
+        // 제외 설정 화면의 카테고리 목록 — 실제 카탈로그에 있는 값만 보여준다
+        // (BGG 전체 분류를 다 나열하면 대부분 이 클럽엔 없는 게임의 태그다).
+        db.execute(sql`
+            SELECT trim(cat) AS category, COUNT(*)::int AS cnt
+            FROM games, unnest(string_to_array(categories, ',')) AS cat
+            WHERE is_active = true AND categories IS NOT NULL
+            GROUP BY trim(cat)
+            ORDER BY cnt DESC, category ASC
+        `),
+        db.execute(sql`SELECT kind, value FROM game_rec_exclusions WHERE attendee_id = ${user.id}`)
     ]);
 
     const playedByGameId: Record<number, any[]> = {};
@@ -81,7 +96,12 @@ export const load: PageServerLoad = async ({ cookies }) => {
         // 마이페이지 활동기록 탭을 대체하는 "전체 기록" 보기용 —
         // 게임과 무관하게 시간순으로 쭉 훑어야 하는 경우("지난주에 뭐 했더라")를 위한 것.
         allPlays,
-        ownedGameIds: (ownedResult as any[]).map((r) => r.game_id)
+        ownedGameIds: (ownedResult as any[]).map((r) => r.game_id),
+        ratingsByGameId: Object.fromEntries((ratedResult as any[]).map((r) => [r.game_id, r.rating])),
+        recommendations,
+        recCategories: (categoryRows as any[]).map((r) => r.category as string),
+        difficultyBuckets: DIFFICULTY_BUCKETS,
+        recExclusions: (exclusionRows as any[]).map((r) => ({ kind: r.kind as string, value: r.value as string }))
     };
 };
 
@@ -127,6 +147,79 @@ export const actions: Actions = {
                 await db.execute(sql`DELETE FROM game_ownership WHERE attendee_id = ${user.id} AND game_id = ${gameId}`);
             }
             return { success: true, ownershipToggled: true };
+        } catch (e) {
+            return fail(500, { error: '처리에 실패했습니다.' });
+        }
+    },
+
+    // 평점은 본인이 해본 게임에만 의미가 있다 — 여기서도 한 번 더 막는다
+    // (game_ownership과 달리 플레이 기록 없이 매길 수 있으면 추천 신호가 흐려진다).
+    rateGame: async ({ request, cookies }) => {
+        const userSessionToken = cookies.get('user_session');
+        if (!userSessionToken) return fail(401, { error: '로그인이 필요합니다.' });
+        const user = await verifyAttendeeSession(userSessionToken);
+        if (!user) return fail(401, { error: '로그인이 필요합니다.' });
+
+        const data = await request.formData();
+        const gameId = data.get('gameId')?.toString();
+        const ratingStr = data.get('rating')?.toString() ?? '';
+        if (!gameId) return fail(400, { error: '잘못된 요청입니다.' });
+
+        try {
+            const hasPlayed = await db.execute(sql`
+                SELECT 1 FROM session_participants sp
+                JOIN game_sessions gs ON sp.session_id = gs.id
+                WHERE sp.attendee_id = ${user.id} AND gs.status = 'finished'
+                  AND (gs.game_id = ${gameId} OR (gs.game_id IS NULL AND gs.game_name = (SELECT name FROM games WHERE id = ${gameId})))
+                LIMIT 1
+            `);
+            if (hasPlayed.length === 0) return fail(403, { error: '플레이한 게임만 평가할 수 있습니다.' });
+
+            if (ratingStr === '') {
+                await db.execute(sql`DELETE FROM game_ratings WHERE attendee_id = ${user.id} AND game_id = ${gameId}`);
+                return { success: true, ratingCleared: true };
+            }
+            const rating = Number(ratingStr);
+            if (!Number.isInteger(rating) || rating < 1 || rating > 10) {
+                return fail(400, { error: '평점은 1~10 사이여야 합니다.' });
+            }
+            await db.execute(sql`
+                INSERT INTO game_ratings (attendee_id, game_id, rating) VALUES (${user.id}, ${gameId}, ${rating})
+                ON CONFLICT (attendee_id, game_id) DO UPDATE SET rating = EXCLUDED.rating, updated_at = NOW()
+            `);
+            return { success: true, rated: true };
+        } catch (e) {
+            return fail(500, { error: '평점 저장에 실패했습니다.' });
+        }
+    },
+
+    // 추천에서 특정 난이도/카테고리를 빼고 싶을 때. (attendee_id, kind, value)
+    // 복합키라 ON CONFLICT DO NOTHING으로 켜고, 없으면 그냥 지워서 끈다.
+    toggleRecExclusion: async ({ request, cookies }) => {
+        const userSessionToken = cookies.get('user_session');
+        if (!userSessionToken) return fail(401, { error: '로그인이 필요합니다.' });
+        const user = await verifyAttendeeSession(userSessionToken);
+        if (!user) return fail(401, { error: '로그인이 필요합니다.' });
+
+        const data = await request.formData();
+        const kind = data.get('kind')?.toString();
+        const value = data.get('value')?.toString();
+        const excluded = data.get('excluded') === 'true';
+        if (kind !== 'category' && kind !== 'difficulty') return fail(400, { error: '잘못된 요청입니다.' });
+        if (!value) return fail(400, { error: '잘못된 요청입니다.' });
+
+        try {
+            if (excluded) {
+                await db.execute(sql`
+                    INSERT INTO game_rec_exclusions (attendee_id, kind, value) VALUES (${user.id}, ${kind}, ${value})
+                    ON CONFLICT DO NOTHING
+                `);
+            } else {
+                await db.execute(sql`
+                    DELETE FROM game_rec_exclusions WHERE attendee_id = ${user.id} AND kind = ${kind} AND value = ${value}
+                `);
+            }
+            return { success: true, exclusionToggled: true };
         } catch (e) {
             return fail(500, { error: '처리에 실패했습니다.' });
         }

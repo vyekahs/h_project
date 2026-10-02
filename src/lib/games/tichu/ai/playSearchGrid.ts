@@ -59,7 +59,12 @@ const TICHU_EXIT_WEIGHT = 2.0;
  * 너무 높이면 내 A·용만 낭비되므로 10~13 구간에만 보너스를 주고, 그 위로는
  * 보너스도 벌점도 없다.
  */
-const DENY_BONUS = 0.3;
+// 0.3 → 0.1.
+// 고정 덱 + 결정론 모드로 다시 재보니 0.3은 과했다.
+//   덱 7800개 / 650게임:  0 → 66.5% · 0.08 → 63.8% · 0.15 → 64.2% · 0.22 → 65.5% · 0.30 → 65.7%
+//   덱 12000개 / 1000게임: 0 → 68.3% · 0.10 → 65.1% · 0.30 → 65.7%
+// 두 덱 세트 모두에서 0.1 부근이 최적이고, 0.3은 효과가 절반 이하로 줄어든다.
+const DENY_BONUS = 0.1;
 const DENY_LO = 10;
 const DENY_HI = 13;
 
@@ -215,6 +220,16 @@ export function searchBestPlay(
 interface ExitInfo {
 	rate: number;
 	turns: number;
+	/**
+	 * 보너스를 섞지 않은 순수 평균 승률 — 최소 턴 분할의 각 조합이 실제로
+	 * 선을 잡을 확률의 평균이다.
+	 *
+	 * rate는 여기에 "큰 조합이 많으면 좋다"는 보너스(턴 효율 0.25 + 콤보 비율 0.15)를
+	 * 섞은 값이라, 선을 몇 번 잡을 수 있는지와 무관한 요소가 40%를 차지한다.
+	 * 플레이 판단에는 그 보너스가 쓸모 있지만, 티츄 선언처럼 "정말 먼저 나갈 수
+	 * 있는가"를 물을 때는 순수 승률을 봐야 한다.
+	 */
+	pureWinRate: number;
 }
 
 /**
@@ -247,7 +262,7 @@ const FORCED_OUT_BEATABLE_THRESHOLD = 0.75;
  * 각 턴의 승률을 합산하여 효율을 계산. 폭탄은 파티션 후보에서 제외(강패 보존).
  */
 export function calcExitRate(hand: Card[], tracker: CardTracker): ExitInfo {
-	if (hand.length === 0) return { rate: 1.0, turns: 0 };
+	if (hand.length === 0) return { rate: 1.0, turns: 0, pureWinRate: 1 };
 
 	const combos = findAllPlayableCombinations(hand);
 	const nonBombCombos = combos.filter(c => !isBomb(c));
@@ -256,7 +271,7 @@ export function calcExitRate(hand: Card[], tracker: CardTracker): ExitInfo {
 	const selected = chosen.filter(c => c.cards.length > 1);
 	const singleCards = chosen.filter(c => c.cards.length === 1).map(c => c.cards[0]);
 
-	if (totalTurns === 0) return { rate: 1.0, turns: 0 };
+	if (totalTurns === 0) return { rate: 1.0, turns: 0, pureWinRate: 1 };
 
 	// 각 콤보/싱글의 승률 합산
 	let totalWinProb = 0;
@@ -297,7 +312,7 @@ export function calcExitRate(hand: Card[], tracker: CardTracker): ExitInfo {
 		+ comboCardRatio * 0.15   // 콤보 비율 보너스
 	);
 
-	return { rate, turns: totalTurns };
+	return { rate, turns: totalTurns, pureWinRate: avgWinProb };
 }
 
 // ===== Context Modifier =====

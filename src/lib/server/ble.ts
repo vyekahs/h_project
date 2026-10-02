@@ -3,6 +3,7 @@ import { db } from '$lib/server/db/index';
 import { sql } from 'drizzle-orm';
 import crypto from 'crypto';
 import { emitLiveEvent } from '$lib/server/liveEvents';
+import { markInfraMacs, recordDayMacs } from '$lib/server/wifiLearning';
 
 // Types
 interface ScanResult {
@@ -48,12 +49,23 @@ const ATTENDEE_CACHE_TTL_MS = 5 * 60 * 1000; // 5분
 // BLE/WiFi 분리: 둘 중 하나라도 최근 감지되면 체크아웃 방지 (OR 조건)
 const lastSeenBleMap = new Map<number, number>();
 const lastSeenWifiMap = new Map<number, number>();
+// 게임에 참여 중인 것으로 확인된 시각.
+//
+// BLE/WiFi 맵과 따로 둔다. 게임 참여를 lastSeenBleMap에 적으면 "BLE로 봤다"는
+// 기록이 되어, 나중에 auto_checkout_logs의 ble_seen_at을 보고 탐지 상태를
+// 진단할 때 실제로는 못 잡은 시간을 잡은 것으로 오해하게 된다.
+const lastSeenGameMap = new Map<number, number>();
 
 // System Settings Cache (영구 캐시, 변경 시 updateSettingsCache 호출)
-let settingsCache: { isOpen: boolean; openingTime: string } | null = null;
+let settingsCache: {
+    isOpen: boolean;
+    openingTime: string;
+    weekendDays: number[];
+} | null = null;
 
 // Constants
 const CHECKOUT_TIMEOUT_MS = 20 * 60 * 1000; // 20 minutes
+
 
 /** 한국 시간 타임스탬프 (HH:mm:ss) */
 function kstTime(): string {
@@ -64,7 +76,9 @@ function kstTime(): string {
 interface AutoLog {
     time: string;
     type: 'checkin' | 'checkout' | 'auto-open';
-    source: 'BLE' | 'WiFi';
+    // GAME은 "게임 참여를 근거로 재실로 판단했다"는 뜻이다. BLE/WiFi로 못 잡았지만
+    // 게임 기록상 자리에 있던 경우라, 탐지 상태를 진단할 때 구분되어야 한다.
+    source: 'BLE' | 'WiFi' | 'GAME';
     userName: string;
     attendeeId: number;
 }
@@ -83,7 +97,13 @@ export function getAutoCheckinLogs(): AutoLog[] {
 /** 설정 캐시 업데이트 (외부에서 is_open 변경 시 호출) */
 export function updateSettingsCache(isOpen: boolean, openingTime?: string) {
     if (!settingsCache) {
-        settingsCache = { isOpen, openingTime: openingTime || '09:00' };
+        // 주말 설정은 여기서 알 수 없으므로 기본값으로 둔다. ensureCachesLoaded가
+        // 곧 DB에서 채운다.
+        settingsCache = {
+            isOpen,
+            openingTime: openingTime || '09:00',
+            weekendDays: [5, 6]
+        };
     } else {
         settingsCache.isOpen = isOpen;
         if (openingTime !== undefined) settingsCache.openingTime = openingTime;
@@ -99,6 +119,7 @@ export function markAllLeft() {
     }
     lastSeenBleMap.clear();
     lastSeenWifiMap.clear();
+    lastSeenGameMap.clear();
 }
 
 /** BLE lastSeen 업데이트 (Rust BLE 서버에서 호출) */
@@ -106,16 +127,61 @@ export function updateLastSeenBle(attendeeId: number, timestamp: number) {
     lastSeenBleMap.set(attendeeId, timestamp);
 }
 
-/** 오토오픈 윈도우 계산 (오픈시간 ±2시간) */
+/** 오픈 몇 분 전부터 자동 오픈을 허용할지. 일찍 지나가는 사람에게 열리면 안 된다. */
+const AUTO_OPEN_LEAD_MINUTES = 5;
+
+/**
+ * 오픈 시각으로부터 몇 분까지 자동 오픈을 허용할지.
+ *
+ * 관리자가 제시간에 오지 못하는 날을 위한 여유지, 하루 종일 열어두는 스위치가
+ * 아니다. 늦게 오는 날도 오픈 4시간 안에는 도착한다.
+ */
+const AUTO_OPEN_DURATION_MINUTES = 4 * 60;
+
+function toMinutes(hhmm: string, fallback: number): number {
+    const [h, m] = hhmm.split(':').map(Number);
+    if (!Number.isFinite(h) || !Number.isFinite(m)) return fallback;
+    return h * 60 + m;
+}
+
+/**
+ * 지금이 자동 오픈을 허용할 시간대인가.
+ *
+ * 오픈 5분 전부터 오픈 4시간 뒤까지다(14시 오픈이면 13:55~18:00).
+ *
+ * 한때 "오픈시간 ±2시간"이었다. 14시 오픈이면 12시부터 열렸고 — 점심때 지나가던
+ * 관리자에게 가게가 열렸다 — 16시가 지나면 정작 안 열렸다. 그래서 창 끝을 그날
+ * 마감까지 늘렸는데, 이번에는 마감한 뒤에도 창이 살아 있는 게 문제가 됐다:
+ * 일요일 23:20에 마감하자 19초 뒤 자동 오픈이 가게를 다시 열었고, 다시 열린
+ * 하루는 자동 마감의 "오늘은 이미 마감함" 가드에 막혀 끝나지 않았다. 새벽 2시에
+ * 사람이 손으로 닫아야 했다.
+ *
+ * 자동 오픈이 해결하려는 것은 "관리자가 와 있는데 가게가 닫혀 있는" 상황이고,
+ * 그건 오픈 무렵에만 생긴다. 마감 시각은 여기에 쓰지 않는다 — 마감 시각까지
+ * 열어둘 이유가 없고, 마감과 자동 오픈이 같은 시각을 공유하면 둘이 서로를
+ * 되돌리게 된다.
+ *
+ * 오픈이 늦은 시간이면(예: 22시) 창이 자정을 넘길 수 있어 그 경우만 하루를
+ * 더해 비교한다.
+ *
+ * 같은 계산이 세 군데(BLE 처리, WiFi 처리, 내부 API)에 복사돼 있었다.
+ * 하나만 고치면 나머지가 어긋나므로 여기로 모은다.
+ */
 export function calculateAutoOpenWindow(): boolean {
     if (!settingsCache) return false;
-    const now = new Date();
-    const kstNow = new Date(now.getTime() + 9 * 60 * 60 * 1000);
-    const currentMins = kstNow.getUTCHours() * 60 + kstNow.getUTCMinutes();
-    const [openHour, openMinute] = settingsCache.openingTime.split(':').map(Number);
-    const openMins = openHour * 60 + openMinute;
-    const diff = currentMins - openMins;
-    return diff >= -120 && diff <= 120;
+
+    const kstNow = new Date(Date.now() + 9 * 60 * 60 * 1000);
+    const nowMins = kstNow.getUTCHours() * 60 + kstNow.getUTCMinutes();
+
+    const openMins = toMinutes(settingsCache.openingTime, 9 * 60);
+
+    const start = openMins - AUTO_OPEN_LEAD_MINUTES;
+    const end = openMins + AUTO_OPEN_DURATION_MINUTES;
+    // 창이 자정을 넘겨야만 지금 시각에 하루를 더한다. 창이 자정 안에서 끝나는데도
+    // 더하면(예: 13:55~18:00에 새벽 2시) 창 밖인 시각이 창 안으로 들어온다.
+    const now = nowMins < start && end > 1440 ? nowMins + 1440 : nowMins;
+
+    return now >= start && now <= end;
 }
 
 /** 기기 등록 시 IRK 캐시에 즉시 추가 (중복 IRK는 업데이트) */
@@ -250,19 +316,38 @@ function verifyMetric(hash: Buffer, prand: Buffer, key: Buffer, padding: 'Head'|
 export async function ensureCachesLoaded(source: string = 'BLE') {
     if (!settingsCache) {
         try {
-            const settingsRes = await db.execute(sql`SELECT key, value FROM system_settings WHERE key IN ('is_open', 'opening_time')`);
+            // weekend_days는 자동 오픈이 아니라 WiFi 상시기기 판정(주말 밤 제외)에 쓴다.
+            const settingsRes = await db.execute(sql`
+                SELECT key, value FROM system_settings
+                WHERE key IN ('is_open', 'opening_time', 'weekend_days')
+            `);
             let isOpen = false;
             let openingTime = '09:00';
+            let weekendDays = [5, 6];
             for (const row of settingsRes) {
                 const r = row as any;
                 if (r.key === 'is_open') isOpen = r.value === 'true';
                 if (r.key === 'opening_time') openingTime = r.value;
+                if (r.key === 'weekend_days') {
+                    const parsed = String(r.value)
+                        .split(',')
+                        .map((v: string) => Number(v.trim()))
+                        .filter((n: number) => Number.isInteger(n) && n >= 0 && n <= 6);
+                    if (parsed.length > 0) weekendDays = parsed;
+                }
             }
-            settingsCache = { isOpen, openingTime };
-            console.log(`[${kstTime()}][${source}] Settings cache loaded: isOpen=${isOpen}, openingTime=${openingTime}`);
+            settingsCache = { isOpen, openingTime, weekendDays };
+            console.log(
+                `[${kstTime()}][${source}] Settings cache loaded: isOpen=${isOpen}, ` +
+                `open=${openingTime}, weekend=[${weekendDays}]`
+            );
         } catch (e) {
             console.error('Failed to fetch settings', e);
-            settingsCache = { isOpen: false, openingTime: '09:00' };
+            settingsCache = {
+                isOpen: false,
+                openingTime: '09:00',
+                weekendDays: [5, 6]
+            };
         }
     }
     if (!irkCache) {
@@ -416,17 +501,9 @@ export async function processScanResults(scannerId: string, timestamp: number, s
     }
 
     // 3. Auto Check-in Logic & Auto-Open Logic
-    const now = new Date();
-    const kstNow = new Date(now.getTime() + 9 * 60 * 60 * 1000);
-    const currentHour = kstNow.getUTCHours();
-    const currentMinute = kstNow.getUTCMinutes();
-    const [openHour, openMinute] = settingsCache!.openingTime.split(':').map(Number);
-
-    // 오픈시간 전후 2시간만 자동 오픈 허용 (예: 09:00 오픈이면 07:00~11:00)
-    const currentMins = currentHour * 60 + currentMinute;
-    const openMins = openHour * 60 + openMinute;
-    const diffFromOpening = currentMins - openMins;
-    const isWithinAutoOpenWindow = diffFromOpening >= -120 && diffFromOpening <= 120;
+    // 시각 계산은 calculateAutoOpenWindow 안으로 옮겼다. 같은 계산이 여기저기
+    // 흩어져 있으면 한쪽만 고쳤을 때 조용히 어긋난다.
+    const isWithinAutoOpenWindow = calculateAutoOpenWindow();
 
     await processAutoCheckin(detectedAttendeeIds, isWithinAutoOpenWindow, 'BLE');
 
@@ -470,16 +547,70 @@ export async function processAutoCheckin(detectedAttendeeIds: Set<number>, isWit
                 continue;
             }
 
+            // 오늘 자동 체크아웃된 방문이 있으면 새 방문을 만들지 않고 그것을 다시 연다.
+            //
+            // 시간 제한을 두지 않는다. 이 기록으로 알고 싶은 것은 "오늘 왔는가"와
+            // "얼마나 있었는가"이지 중간에 편의점을 다녀왔는지가 아니다. 사람당
+            // 하루 한 방문으로 두면 방문 횟수·체류 시간·자주 만난 친구가 모두
+            // 탐지 품질에 흔들리지 않는다. 실제로 어떤 회원은 자리에 앉아 있었는데도
+            // 하루가 네 조각으로 남았다(19:17~21:15, 21:26~21:47, 22:21~22:54,
+            // 22:57~23:08).
+            //
+            // 다만 수동 체크아웃은 병합하지 않는다. 관리자가 손으로 내보낸 것은
+            // "나갔다"는 사람의 판단이라 되돌리면 안 되고, 마감 처리 후 스친 신호가
+            // 방문을 다시 열어버리는 것도 막아야 한다. auto_checkout_logs의
+            // checked_out_at과 visits.departure_time이 같은 트랜잭션의 NOW()라
+            // 정확히 일치하는 점으로 구분한다.
+            //
+            // 자정을 넘겨 운영하면 날짜가 갈리며 방문이 나뉜다. 바로 위의
+            // "이미 열린 방문" 판정도 같은 기준을 쓰므로 동작이 어긋나지는 않는다.
+            let merged = false;
+            try {
+                const reopened = (await db.execute(sql`
+                    UPDATE visits v
+                    SET departure_time = NULL
+                    WHERE v.id = (
+                        SELECT v2.id FROM visits v2
+                        JOIN auto_checkout_logs l
+                          ON l.attendee_id = v2.attendee_id
+                         AND l.checked_out_at = v2.departure_time
+                        WHERE v2.attendee_id = ${attendeeId}
+                          AND v2.departure_time IS NOT NULL
+                          AND (v2.arrival_time AT TIME ZONE 'Asia/Seoul')::date
+                              = (NOW() AT TIME ZONE 'Asia/Seoul')::date
+                        ORDER BY v2.departure_time DESC
+                        LIMIT 1
+                    )
+                    RETURNING v.id
+                `)) as any[];
+                merged = reopened.length > 0;
+                if (merged) {
+                    console.log(`[${kstTime()}][${source}] User ${attendeeId} 직전 자동 체크아웃을 취소하고 방문을 이어붙임 (visit ${reopened[0].id})`);
+                }
+            } catch (e) {
+                // 병합에 실패해도 체크인 자체는 진행한다. 방문이 쪼개질 뿐이다.
+                console.error(`[${kstTime()}][${source}] 방문 병합 실패 (새 방문으로 진행)`, e);
+            }
+
             console.log(`[${kstTime()}][${source}] Auto Checking-in User ${attendeeId}`);
             try {
                 await db.transaction(async (tx) => {
-                    await tx.execute(sql`UPDATE attendees SET status = 'present', arrival_time = NOW(), updated_at = NOW() WHERE id = ${attendeeId}`);
-                    await tx.execute(sql`INSERT INTO visits (attendee_id, arrival_time) VALUES (${attendeeId}, NOW())`);
+                    await tx.execute(sql`UPDATE attendees SET status = 'present', updated_at = NOW() WHERE id = ${attendeeId}`);
+                    if (!merged) {
+                        // 병합했으면 arrival_time을 건드리지 않는다. 덮어쓰면 처음
+                        // 도착한 시각이 사라져 체류 시간이 잘못 계산된다.
+                        await tx.execute(sql`UPDATE attendees SET arrival_time = NOW() WHERE id = ${attendeeId}`);
+                        await tx.execute(sql`INSERT INTO visits (attendee_id, arrival_time) VALUES (${attendeeId}, NOW())`);
+                    }
                     await tx.execute(sql`DELETE FROM daily_visit_plans WHERE attendee_id = ${attendeeId} AND plan_date = CURRENT_DATE`);
                 });
                 attendee.status = 'present';
                 pushAutoLog('checkin', source, attendee.name, attendeeId);
                 emitLiveEvent('visitors');
+                // 학습용 관측은 여기서 하지 않는다. 체크인 순간의 랜 상태를 그
+                // 회원의 후보로 적는 방식은 함께 온 사람들의 폰을 서로에게 모두
+                // 기록해 구분이 안 됐다. 지금은 방문 기록(visits)과 (영업일, MAC)
+                // 관측을 나중에 맞춘다 — wifiLearning.ts 참고.
             } catch (e) {
                 console.error(`[${source}] Failed to check-in ${attendeeId}`, e);
             }
@@ -524,17 +655,37 @@ export async function checkAutoCheckout() {
     }
 
     for (const attendee of presentUsers) {
-        if (playingUserIds.has(attendee.id)) continue;
+        if (playingUserIds.has(attendee.id)) {
+            // 게임 중이면 자리에 있는 것이 확실하다.
+            //
+            // 예전에는 체크아웃만 건너뛰었다. 그런데 미탐지 시간은 그동안에도
+            // 계속 쌓이기 때문에, 게임이 끝나는 순간 누적된 시간이 임계를 넘겨
+            // 곧바로 체크아웃됐다. 두 시간짜리 게임을 끝내고 일어서자마자
+            // "나간 사람"이 되는 셈이다.
+            //
+            // 게임 참여 자체를 '봤다'로 취급해 시계를 되감는다. 게임이 끝난 뒤
+            // 다시 20분을 못 잡아야 체크아웃된다.
+            lastSeenGameMap.set(attendee.id, now);
+            continue;
+        }
         const bleSeen = lastSeenBleMap.get(attendee.id) ?? 0;
         const wifiSeen = lastSeenWifiMap.get(attendee.id) ?? 0;
-        const lastSeen = Math.max(bleSeen, wifiSeen);
+        const gameSeen = lastSeenGameMap.get(attendee.id) ?? 0;
+        const lastSeen = Math.max(bleSeen, wifiSeen, gameSeen);
 
         if (lastSeen === 0) continue;
 
         if (lastSeen < timeoutThreshold) {
             const bleAgo = bleSeen ? `${Math.round((now - bleSeen) / 60000)}분 전` : 'never';
             const wifiAgo = wifiSeen ? `${Math.round((now - wifiSeen) / 60000)}분 전` : 'never';
-            const lastSource = bleSeen >= wifiSeen ? 'BLE' : 'WiFi';
+            // 무엇을 근거로 '마지막에 봤다'고 판단했는지. 게임 참여가 근거였다면
+            // BLE로 잡았다고 적으면 안 된다 — 사후 진단이 어긋난다.
+            const lastSource =
+                gameSeen >= bleSeen && gameSeen >= wifiSeen
+                    ? 'GAME'
+                    : bleSeen >= wifiSeen
+                      ? 'BLE'
+                      : 'WiFi';
             console.log(`[${kstTime()}][AUTO] Checking-out User ${attendee.id} (${attendee.name}). BLE: ${bleAgo}, WiFi: ${wifiAgo}`);
 
             try {
@@ -568,6 +719,7 @@ export async function checkAutoCheckout() {
                 attendee.status = 'left';
                 lastSeenBleMap.delete(attendee.id);
                 lastSeenWifiMap.delete(attendee.id);
+                lastSeenGameMap.delete(attendee.id);
                 pushAutoLog('checkout', lastSource, attendee.name, attendee.id);
                 emitLiveEvent('visitors');
             } catch (e) {
@@ -583,6 +735,12 @@ export async function checkAutoCheckout() {
 export async function processWifiReport(_scannerId: string, devices: { mac: string }[]) {
     await ensureCachesLoaded('WiFi');
 
+    // 학습용 관측은 시간대와 무관하게 전부 남긴다. 아래에서 영업시간 밖이라
+    // 일찍 반환하더라도 이건 먼저 해둔다 — 사람이 없는 시간의 관측이야말로
+    // "이 기기는 누구의 폰도 아니다"를 증명하는 증거다.
+    recordDayMacs(devices.map(d => d.mac)).catch(e =>
+        console.error('[WiFiLearn] 관측 기록 실패', e));
+
     // 오픈 시간 전후 2시간 범위 밖이면 스캔 처리 완전 스킵
     const nowCheck = new Date();
     const kstCheck = new Date(nowCheck.getTime() + 9 * 60 * 60 * 1000);
@@ -594,6 +752,38 @@ export async function processWifiReport(_scannerId: string, devices: { mac: stri
     const beforeOpeningWindow = currentMinutesTotal < (openMinutesTotal - 120);
 
     if (!settingsCache!.isOpen && beforeOpeningWindow) {
+        // 영업이 끝난 새벽에도 랜에 남아 있는 기기는 공유기·TV·스캐너 같은 상시 장비다.
+        // 회원 폰일 수 없으므로 MAC 자동 학습에서 통째로 제외하기 위해 기록해둔다.
+        // (재실 판정은 아래처럼 그대로 건너뛴다)
+        // 아무도 없는 새벽에만 상시 장비를 기록한다.
+        //
+        // 운영자는 새벽에도 남아 있을 수 있다. 그때 수집하면 그 사람의 폰이
+        // 상시 장비로 찍히고, 한 번 찍히면 후보에서 영구 제외되어 영영 학습되지
+        // 않는다. BLE로 최근에 잡힌 사람이 하나라도 있으면 건너뛴다.
+        const someoneHere = [...lastSeenBleMap.values()].some(
+            ts => Date.now() - ts < 30 * 60 * 1000
+        );
+
+        // 주말 밤은 수집하지 않는다.
+        //
+        // 주말은 마감이 늦어(06:00) 새벽까지 사람이 남아 있을 수 있다. 그때 수집하면
+        // 그 사람들의 폰이 상시 장비로 찍힌다.
+        //
+        // '밤'은 전날에 속한다 — 토요일 밤 모임은 일요일 새벽까지 이어진다. 그래서
+        // 오늘이 아니라 어제 요일로 판단한다. 지금은 02~07시 구간이므로 이 밤의
+        // 시작일은 언제나 어제다.
+        const prevDay = (kstCheck.getUTCDay() + 6) % 7;
+        const isWeekendNight = settingsCache!.weekendDays.includes(prevDay);
+
+        if (checkHour >= 2 && checkHour < 7 && !someoneHere && !isWeekendNight) {
+            markInfraMacs(devices.map(d => d.mac)).catch(e =>
+                console.error('[WiFi] 상시 장비 기록 실패', e));
+        } else if (checkHour >= 2 && checkHour < 7) {
+            console.log(
+                `[${kstTime()}][WiFi] 새벽 상시 장비 수집 건너뜀 ` +
+                `(${isWeekendNight ? '주말 밤' : '사람 있음'})`
+            );
+        }
         console.log(`[${kstTime()}][WiFi] Gym closed & before opening window, skipping (${devices.length} devices)`);
         return;
     }
@@ -627,17 +817,9 @@ export async function processWifiReport(_scannerId: string, devices: { mac: stri
 
     if (detectedAttendeeIds.size === 0) return;
 
-    const now = new Date();
-    const kstNow = new Date(now.getTime() + 9 * 60 * 60 * 1000);
-    const currentHour = kstNow.getUTCHours();
-    const currentMinute = kstNow.getUTCMinutes();
-    const [openHour, openMinute] = settingsCache!.openingTime.split(':').map(Number);
-
-    // 오픈시간 전후 2시간만 자동 오픈 허용 (예: 09:00 오픈이면 07:00~11:00)
-    const currentMins = currentHour * 60 + currentMinute;
-    const openMins = openHour * 60 + openMinute;
-    const diffFromOpening = currentMins - openMins;
-    const isWithinAutoOpenWindow = diffFromOpening >= -120 && diffFromOpening <= 120;
+    // 시각 계산은 calculateAutoOpenWindow 안으로 옮겼다. 같은 계산이 여기저기
+    // 흩어져 있으면 한쪽만 고쳤을 때 조용히 어긋난다.
+    const isWithinAutoOpenWindow = calculateAutoOpenWindow();
 
     await processAutoCheckin(detectedAttendeeIds, isWithinAutoOpenWindow, 'WiFi');
 

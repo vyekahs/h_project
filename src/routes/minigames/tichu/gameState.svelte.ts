@@ -10,6 +10,7 @@ import { getLessonById, LESSONS } from '$lib/games/tichu/tutorial/tutorialScenar
 import type { TutorialStep } from '$lib/games/tichu/tutorial/tutorialTypes';
 import { getPhoenixSubstituteRank } from '$lib/games/tichu/combinations';
 import { trackGameStart } from '$lib/games/utils';
+import { resetDecisionLog, observePhase, observeState, observeEvent } from './decisionLog';
 
 export type GameView = 'setup' | 'game' | 'tutorial';
 export type ToastType = 'info' | 'success' | 'error' | 'warning';
@@ -179,6 +180,9 @@ export function createTichuGameState() {
 			// Reset selection on phase change
 			selectedCards = new Set();
 
+			// 선언 판단 기록 (그랜드 시점 8장 → 교환 후 14장 → 라운드 결과)
+			if (!isTutorialMode) observePhase(currentPhase, prevPhase, engine, partnerStrategy);
+
 			if (currentPhase === 'exchange') {
 				exchangePartner = null;
 				exchangeLeft = null;
@@ -266,6 +270,8 @@ export function createTichuGameState() {
 
 	function handleStateChange() {
 		stateVersion++;
+		// 스몰 티츄가 언제 불렸는지는 phase 전환으로 안 보여서 상태 변화마다 확인한다
+		if (!isTutorialMode) observeState(engine);
 	}
 
 	/**
@@ -301,6 +307,8 @@ export function createTichuGameState() {
 	}
 
 	function handleEvent(event: GameEvent) {
+		if (!isTutorialMode) observeEvent(event, engine);
+
 		// AI tichu declaration → show modal
 		if (event.type === 'tichu_declare') {
 			const playerName = engine?.state.players[event.seat]?.name ?? `Player ${event.seat}`;
@@ -346,6 +354,7 @@ export function createTichuGameState() {
 
 		lastPhase = null;
 		resetTransientUi();
+		resetDecisionLog();
 		view = 'game';
 		engine.startGame();
 	}

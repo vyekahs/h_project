@@ -6,6 +6,8 @@
  * 컴포넌트 밖으로 뺐다. 스토어라서 룬/비룬 컴포넌트 양쪽에서 동작한다.
  */
 import { writable } from 'svelte/store';
+import { deserialize } from '$app/forms';
+import { invalidateAll } from '$app/navigation';
 
 export type AlertKind = 'error' | 'success' | 'info';
 
@@ -155,4 +157,39 @@ export function forgetAction(id: number) {
 /** 10분이 지난 것은 서버가 이미 거절한다. 화면도 같은 시각을 본다. */
 export function pruneActions(now = Date.now()) {
 	recentActions.update((list) => list.filter((a) => now - a.at < UNDO_WINDOW_MS));
+}
+
+/**
+ * 되돌릴 수 있는 조치를 알린다.
+ *
+ * 되돌리기 버튼은 두 곳에 선다: 30초짜리 토스트와, 서버 창이 끝날 때까지 남는
+ * 「최근 조치」. 같은 실행을 둘이 나눠 갖고, 한쪽이 쓰면 둘 다 거둔다.
+ *
+ * 대시보드 컴포넌트 안에 있던 것을 여기로 옮겼다. 정기권처럼 다른 라우트도
+ * 되돌릴 수 있는 조치를 하는데, 컴포넌트 안에 있으면 그 라우트는 토스트만 있고
+ * 「최근 조치」에는 안 잡히는 반쪽짜리가 된다. POST 대상이 상대 경로(`?/...`)라
+ * 어느 라우트에서 눌러도 그 라우트의 액션으로 가고, 적용은 서버의 applyUndo 가
+ * 종류를 보고 처리한다.
+ */
+export function toastUndoable(message: string, undo: { id: number; label: string } | undefined) {
+	if (!undo) {
+		showToast(message);
+		return;
+	}
+	let recentId = 0;
+	const run = async () => {
+		forgetAction(recentId);
+		const body = new FormData();
+		body.set('undoId', String(undo.id));
+		try {
+			const res = await fetch('?/undoAdminAction', { method: 'POST', body });
+			const result: any = deserialize(await res.text());
+			if (!reportResult(result)) showToast(`되돌렸습니다 · ${undo.label}`);
+		} catch {
+			showAlert('되돌리지 못했습니다. 네트워크를 확인해주세요.');
+		}
+		await invalidateAll();
+	};
+	recentId = rememberAction({ label: undo.label, run });
+	showToast(message, { label: '되돌리기', run });
 }

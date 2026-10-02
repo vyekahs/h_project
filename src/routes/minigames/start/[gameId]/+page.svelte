@@ -22,10 +22,13 @@
     // Difficulty - Initialize with default, but update via effect
     let difficulty = $state('');
 
+    const isDisabled = (diff: string) => gameConfig.disabledDifficulties?.includes(diff) ?? false;
+
     // Ensure valid difficulty when config changes
     $effect(() => {
-        if (!difficulty || !gameConfig.difficulties.includes(difficulty)) {
-            difficulty = gameConfig.difficulties[1] || gameConfig.difficulties[0];
+        if (!difficulty || !gameConfig.difficulties.includes(difficulty) || isDisabled(difficulty)) {
+            const selectable = gameConfig.difficulties.filter(d => !isDisabled(d));
+            difficulty = selectable[1] || selectable[0];
         }
     });
 
@@ -246,9 +249,12 @@
                                     <div class="difficulty-select">
                                         <div class="options">
                                             {#each gameConfig.difficulties as diff}
-                                                <label class:selected={difficulty === diff} class="diff-btn">
-                                                    <input type="radio" name="difficulty" value={diff} bind:group={difficulty}>
+                                                <label class:selected={difficulty === diff} class:disabled={isDisabled(diff)} class="diff-btn" aria-disabled={isDisabled(diff)}>
+                                                    <input type="radio" name="difficulty" value={diff} bind:group={difficulty} disabled={isDisabled(diff)}>
                                                     <span class="diff-name">{gameConfig.difficultyLabels[diff]}</span>
+                                                    {#if isDisabled(diff)}
+                                                        <span class="diff-disabled-tag">비활성화</span>
+                                                    {/if}
                                                 </label>
                                             {/each}
                                         </div>
@@ -295,7 +301,7 @@
                                 {:else if gameConfig.id === 'match-crash'}
                                     <p class="score-desc">점수 = 매치 점수 × 콤보 배율 + 특수 타일 보너스</p>
                                 {:else if gameConfig.id === 'regicide'}
-                                    <p class="score-desc">점수 = 승리등급(🥇300/🥈150/🥉50) + (10분 - 클리어시간) x 2</p>
+                                    <p class="score-desc">점수 = 적 처치(J 20 / Q 40 / K 60, 전부 480) + 클리어 시 승리등급(🥇300/🥈150/🥉50) + (10분 - 클리어시간) x 2</p>
                                 {:else}
                                     <p class="score-desc">점수 = 기본점수 + 시간보너스 - 실수페널티(15%/회)</p>
                                 {/if}
@@ -717,6 +723,30 @@
     .diff-btn.selected .diff-name {
         color: var(--bg-primary);
         font-weight: 700;
+    }
+
+    .diff-btn.disabled {
+        cursor: not-allowed;
+        opacity: 0.55;
+        filter: grayscale(1);
+        gap: 0.5rem;
+    }
+
+    .diff-btn.disabled:hover {
+        background: var(--glass-surface-faint);
+    }
+
+    .diff-btn.disabled .diff-name {
+        color: var(--text-muted);
+    }
+
+    .diff-disabled-tag {
+        font-size: 0.75rem;
+        font-weight: 600;
+        color: var(--text-muted);
+        border: 1px solid var(--glass-border-strong);
+        border-radius: 999px;
+        padding: 0.1rem 0.5rem;
     }
 
     .options input {

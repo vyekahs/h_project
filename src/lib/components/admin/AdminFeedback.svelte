@@ -11,15 +11,30 @@
 		dismissToast
 	} from '$lib/stores/adminFeedback';
 	import { trapFocus } from '$lib/actions/modal';
+
+	/*
+		최신이 맨 앞. 예전에는 세로로 나란히 쌓아서 셋이 동시에 살아 있으면
+		화면 아래 절반을 덮었다 — 폰에서는 알림이 아니라 가림막이었다.
+		이제 한 장만 온전히 보이고 나머지는 뒤에 겹쳐 선다.
+	*/
+	const stacked = $derived([...$toasts].reverse());
 </script>
 
 <!-- 라이브 리전은 항상 DOM에 있어야 스크린리더가 변화를 읽는다 -->
 <div class="toast-region" role="status" aria-live="polite">
-	<!-- 최신이 아래에 오도록 쌓는다 — 새 결과가 늘 엄지 가까이에 있다 -->
-	{#each $toasts as toast (toast.id)}
-		<div class="toast">
+	<!--
+		맨 앞 한 장만 읽히고 눌린다. 뒤에 선 것들은 「아직 더 있다」를 모서리로만
+		말한다 — 화면을 가리지 않으면서 사라지지 않았다는 것은 보여야 한다.
+	-->
+	{#each stacked as toast, depth (toast.id)}
+		<div
+			class="toast"
+			class:is-front={depth === 0}
+			style="--depth: {depth}"
+			aria-hidden={depth === 0 ? undefined : 'true'}
+		>
 			<span class="toast-text">{toast.message}</span>
-			{#if toast.action}
+			{#if toast.action && depth === 0}
 				<!-- 되돌리기는 결과를 알리는 그 자리에 있어야 눌린다 -->
 				<button
 					type="button"
@@ -38,9 +53,10 @@
 			<button
 				type="button"
 				class="toast-close"
+				tabindex={depth === 0 ? undefined : -1}
 				onclick={() => dismissToast(toast.id)}
 				aria-label="알림 닫기{toast.action ? ` — ${toast.message}` : ''}"
-			>×</button>
+			><svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
 		</div>
 	{/each}
 </div>
@@ -88,13 +104,20 @@
 		z-index: 1200;
 		pointer-events: none;
 		width: min(28rem, calc(100vw - 2rem));
-		/* 여러 개가 동시에 살아 있을 수 있으므로 세로로 쌓는다 */
-		display: flex;
-		flex-direction: column;
-		align-items: stretch;
-		gap: var(--space-2, 0.5rem);
+		/*
+			높이를 갖지 않는다. 카드들이 이 선에 바닥을 맞추고 위로 겹쳐 자라므로,
+			몇 장이 살아 있든 화면에서 차지하는 자리는 한 장 높이다.
+		*/
+		height: 0;
 	}
 	.toast {
+		position: absolute;
+		left: 0;
+		right: 0;
+		bottom: 0;
+		/* 뒤로 갈수록 조금 올라가고 조금 작아진다 — 모서리만 남는다 */
+		transform: translateY(calc(var(--depth) * -7px)) scale(calc(1 - var(--depth) * 0.04));
+		z-index: calc(10 - var(--depth));
 		display: flex;
 		align-items: center;
 		gap: var(--space-3, 0.75rem);
@@ -109,6 +132,13 @@
 		box-shadow: var(--shadow-lg, 0 10px 25px rgba(0, 0, 0, 0.15));
 		word-break: keep-all;
 		overflow-wrap: anywhere;
+	}
+	/* 맨 앞 한 장만 누를 수 있다. 뒤의 것을 잘못 눌러 엉뚱한 알림이 닫히면 안 된다. */
+	.toast:not(.is-front) {
+		pointer-events: none;
+	}
+	.toast:not(.is-front) .toast-close {
+		visibility: hidden;
 	}
 	.toast-text {
 		flex: 1;
@@ -145,8 +175,9 @@
 		background: none;
 		color: inherit;
 		opacity: 0.7;
-		font-size: 1.25rem;
-		line-height: 1;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
 		cursor: pointer;
 	}
 	.toast-close:hover {

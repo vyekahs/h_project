@@ -119,6 +119,92 @@ async function migrate() {
             );
             CREATE INDEX IF NOT EXISTS idx_scanners_last_seen ON scanners(last_seen_at);
         `);
+        // 무응답 알림을 이미 보냈는지 표시한다. 없으면 5분마다 같은 알림이 반복된다.
+        // 값이 NULL이면 "정상 또는 아직 안 알림", 시각이 있으면 "무응답을 알린 상태".
+        // 스캐너가 다시 보고를 시작하면 복구 알림과 함께 NULL로 되돌린다.
+        await pool.query('ALTER TABLE scanners ADD COLUMN IF NOT EXISTS alerted_down_at TIMESTAMPTZ;');
+        // 스캐너별 알림 스위치. 일부러 꺼두는 기기(등록용 단말, 예비 스캐너)까지
+        // 무응답 알림이 오면 알림 자체를 무시하게 된다. 어드민 모니터에서 토글한다.
+        //
+        // 전부 켜진 상태로 시작한다. "오래 조용하면 치워둔 것"이라고 추측해
+        // 꺼둘 수도 있지만, 그러면 관리자가 "이건 왜 꺼져 있지?"를 먼저 풀어야 한다.
+        // 감시할지 말지는 사람이 정하는 것이므로 기본값은 감시로 두고 끄게 한다.
+        await pool.query(`
+            DO $$ BEGIN
+                ALTER TABLE scanners ADD COLUMN alert_enabled BOOLEAN NOT NULL DEFAULT TRUE;
+                -- 등록용 단말(esp32_s3_registration)은 평소 꺼두고 필요할 때만 켜서 쓴다.
+                -- 켜진 채로 두면 영업 때마다 "무응답" 알림이 오고, 그런 알림이 쌓이면
+                -- 진짜 고장 알림까지 함께 무시하게 된다.
+                --
+                -- 컬럼을 '방금 만든 경우에만' 끈다(중복 컬럼이면 위에서 예외로 빠짐).
+                -- 매번 돌리면 나중에 관리자가 켜둔 설정을 재기동마다 되돌려버린다.
+                UPDATE scanners SET alert_enabled = FALSE WHERE id = 'esp32_s3_registration';
+            EXCEPTION WHEN duplicate_column THEN null; END $$;
+        `);
+        // 스캐너 무응답 알림은 그 시각 혼놀에 있는 관리자에게 보낸다. 아무도 없으면
+        // 이 사람에게 보낸다. 바꾸려면 이 행의 value를 다른 attendee id로 UPDATE하면 된다.
+        await pool.query(`
+            INSERT INTO system_settings (key, value)
+            SELECT 'scanner_alert_fallback_user_id', id::text
+            FROM attendees WHERE name = '이리' LIMIT 1
+            ON CONFLICT (key) DO NOTHING;
+        `);
+
+        // 13-2. WiFi MAC 자동 학습
+        //
+        // BLE 광고는 폰이 내킬 때만 해서 어떤 회원은 33시간에 13번밖에 안 잡힌다.
+        // WiFi는 접속해 있으면 항상 잡히지만 어느 MAC이 누구 것인지 알아야 쓸 수 있고,
+        // 회원 32명에게 직접 등록시키는 것은 현실적이지 않다.
+        //
+        // 관측을 (영업일, MAC) 단위로 남기고, 방문 기록(visits)과 맞춰 누구 것인지
+        // 가린다. 판정 기준은 "그 사람이 온 날·시간대에는 있었고, 안 온 날에는
+        // 한 번도 없었다"다. 자세한 근거는 src/lib/server/wifiLearning.ts 참고.
+        console.log('[13-2] Checking WiFi MAC learning tables...');
+        await pool.query(`
+            -- 이 영업일(KST 09시 기준 = UTC 날짜)에 랜에서 본 MAC과 그 시간대.
+            --
+            -- 시각이 필요한 이유: 날짜만으로는 늘 같이 오는 회원들이 갈리지 않는다.
+            -- 같은 날에도 도착·퇴장 시각은 다르므로(이리 14:01~23:20, 랜팜
+            -- 18:49~21:19) 방문 구간과 겹치는지까지 봐야 구분된다.
+            CREATE TABLE IF NOT EXISTS wifi_day_macs (
+                day           DATE NOT NULL,
+                mac           VARCHAR(17) NOT NULL,
+                first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                last_seen_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                samples       INTEGER NOT NULL DEFAULT 1,
+                PRIMARY KEY (day, mac)
+            );
+            -- 영업이 끝난 새벽에도 랜에 있던 기기. 공유기, TV, 스캐너 같은 상시 장비다.
+            -- 회원 폰이 새벽 3시에 동아리방 WiFi에 붙어 있을 수는 없다.
+            CREATE TABLE IF NOT EXISTS wifi_infra_macs (
+                mac           VARCHAR(17) PRIMARY KEY,
+                first_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                last_seen_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            );
+        `);
+        // 회원별 카운터 방식(wifi_learn_attendee_days, wifi_mac_candidates)은 버린다.
+        //
+        // 10일 돌려 자동 등록 0명이었다. "그 사람이 온 날에 함께 있었다"만 세면
+        // 사람 출입과 상관된 매장 장비가 똑같이 만족하기 때문이다 — 한 MAC이 전체
+        // 회원 방문일의 84%에 나타나 18명 전원의 1순위였다. 그 안에 담긴 값은 전부
+        // 이 방식에서 파생된 집계라 새 판정에 쓸 수 없고, 남겨두면 다음에 이 문제를
+        // 볼 사람이 낡은 표를 읽게 된다.
+        await pool.query(`
+            DROP TABLE IF EXISTS wifi_mac_candidates;
+            DROP TABLE IF EXISTS wifi_learn_attendee_days;
+        `);
+        // 몇 밤 연속으로 나타났는지 센다.
+        //
+        // "새벽에 랜에 있으면 상시 장비"라는 판단에는 구멍이 있다. 운영자는 새벽에도
+        // 있을 수 있고, 그러면 그 사람의 폰이 상시 장비로 영구 차단되어 영영
+        // 학습되지 않는다. 진짜 상시 장비는 매일 밤 나타나므로, 여러 밤 반복된
+        // 것만 인정하면 하룻밤 머문 사람의 기기와 구분된다.
+        await pool.query(`
+            DO $$ BEGIN
+                ALTER TABLE wifi_infra_macs ADD COLUMN nights_seen INTEGER NOT NULL DEFAULT 1;
+                ALTER TABLE wifi_infra_macs ADD COLUMN last_night DATE;
+            EXCEPTION WHEN duplicate_column THEN null; END $$;
+        `);
 
         // 14. Guest support in session_participants
         console.log('[14] Adding guest support to session_participants...');
