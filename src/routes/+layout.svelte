@@ -3,22 +3,29 @@
     import { page } from '$app/stores';
     import { onMount, onDestroy } from 'svelte';
     import { afterNavigate } from '$app/navigation';
-    import { version, dev } from '$app/environment';
     import PointDisplay from '$lib/components/gamification/PointDisplay.svelte';
     import AdBanner from '$lib/components/ads/AdBanner.svelte';
     import RankUpModal from '$lib/components/gamification/RankUpModal.svelte';
     import NotificationToast from '$lib/components/notifications/NotificationToast.svelte';
     import NotificationBell from '$lib/components/notifications/NotificationBell.svelte';
     import NetworkStatusBanner from '$lib/components/NetworkStatusBanner.svelte';
+    import UpdateAvailableBanner from '$lib/components/UpdateAvailableBanner.svelte';
     import { themeStore } from '$lib/stores/theme.svelte';
     import { user } from '$lib/stores/user';
     import { initNotificationsSSE } from '$lib/stores/notifications.svelte';
     import { initNetworkHealthCheck } from '$lib/stores/networkHealth.svelte';
+    import { getUpdateAvailable, initUpdateCheck, applyUpdate } from '$lib/stores/appUpdate.svelte';
     import { isInGame } from '$lib/games/isInGame';
 
 	let { children } = $props();
 
-    let versionCheckTimer: ReturnType<typeof setInterval> | null = null;
+    // 어드민·오락실 게임 중·tools·party는 하단 네비 자체가 없다 — 그 동안은
+    // 새 버전 체크도, 체크됐다는 걸 알려줄 배너도 의미가 없다.
+    const navVisible = $derived.by(() => {
+        const p = $page.url.pathname;
+        return !p.startsWith('/admin') && !p.startsWith('/minigames/') && !p.startsWith('/tools/') && !p.startsWith('/party/');
+    });
+    const updateAvailable = $derived(getUpdateAvailable());
 
     // 하단 네비게이션 물방울 인디케이터
     const navActiveIndex = $derived.by(() => {
@@ -83,26 +90,11 @@
         */
         if (!$page.url.pathname.startsWith('/admin')) user.refresh();
         initNetworkHealthCheck();
-
-        // /_app/version.json은 프로덕션 빌드에만 생성됨 (vite dev에선 없어서 항상 404) — dev 모드에선 폴링 생략
-        if (dev) return;
-
-        versionCheckTimer = setInterval(async () => {
-            try {
-                const res = await fetch(`/_app/version.json`, { cache: 'no-store' });
-                if (!res.ok) return;
-                const data = await res.json();
-                if (data.version && data.version !== version) {
-                    if (!isInGame($page.url.pathname)) {
-                        location.reload();
-                    }
-                }
-            } catch {}
-        }, 60_000);
+        // /_app/version.json은 프로덕션 빌드에만 생성됨(dev 모드는 store 안에서 자체적으로 건너뜀)
+        initUpdateCheck(() => navVisible);
     });
 
     onDestroy(() => {
-        if (versionCheckTimer) clearInterval(versionCheckTimer);
         if (navSquashTimer) clearTimeout(navSquashTimer);
     });
 </script>
@@ -126,12 +118,12 @@
 	-->
 	<svelte:element this={$page.url.pathname.startsWith('/admin') ? 'div' : 'main'} class="content">
 		{@render children()}
-        {#if !$page.url.pathname.startsWith('/admin') && !$page.url.pathname.includes('/minigames/') && !$page.url.pathname.startsWith('/tools/') && !$page.url.pathname.startsWith('/party/')}
+        {#if navVisible}
              <AdBanner adSlot="footer-banner" />
         {/if}
 	</svelte:element>
 
-	{#if !$page.url.pathname.startsWith('/admin') && !$page.url.pathname.startsWith('/minigames/') && !$page.url.pathname.startsWith('/tools/') && !$page.url.pathname.startsWith('/party/')}
+	{#if navVisible}
 	<footer class="site-footer">
 		<a href="/about">소개</a>
 		<span class="divider">|</span>
@@ -170,6 +162,7 @@
 			<span class="label">마이페이지</span>
 		</a>
 	</nav>
+	<UpdateAvailableBanner visible={updateAvailable} onRefresh={applyUpdate} />
 	{/if}
 
 	{#if !$page.url.pathname.startsWith('/admin') && !isInGame($page.url.pathname) && !$page.url.pathname.startsWith('/minigames/') && $page.url.pathname !== '/' && !$page.url.pathname.startsWith('/mypage')}
