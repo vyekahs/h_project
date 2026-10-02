@@ -16,7 +16,7 @@ import { canBeat, isBomb } from '../../combinations';
  * - 팔로우: 적극적으로 뺏음
  * - 파트너 트릭: 기본 (패스)
  * - Dog: 빨리 털어버림 (첫 리드 등에서 바로 사용)
- * - 폭탄: 내고도 리드 잡거나 나갈 수 있을 때
+ * - 폭탄: 폭탄으로 나가거나, 내고 나서 4턴 이내에 나갈 수 있을 때
  * - 드래곤: 그 다음에도 리드 잡거나 나갈 수 있을 때
  * - Wish: 내가 나갈 때 방해될 것 같은 카드 (내 손패에 없는 높은 랭크)
  * - 티츄: 적극적으로 부름 (낮은 기준)
@@ -80,13 +80,10 @@ export const aggressiveBehavior: PresetBehavior = {
 				return bomb;
 			}
 
-			// 남은 패에 높은 카드가 있어서 리드 잡을 수 있는지
-			const normalCards = remaining.filter(c => c.type === 'normal') as NormalCard[];
-			const hasDragon = remaining.some(c => c.type === 'special' && c.special === 'dragon');
-			const hasAce = normalCards.some(c => c.rank === 14);
-			if (hasDragon || hasAce) {
-				return bomb;
-			}
+			// "남은 패에 A나 용이 있으면 폭탄" 조건은 뺐다. A 한 장은 거의 늘 있어서
+			// 사실상 아무 때나 터뜨렸다 — 실제 기록에서 이유 없는 AI 폭탄 11건 중 7건이
+			// 이 경로였다(첫 트릭에 상대가 12~13장일 때 2·5·J 낱장 위). 빼도 AI끼리
+			// 시뮬레이션 점수는 중립(시드 3개×100게임: +0.5 / 섞은 구성 −1.4, 오차 범위).
 		}
 
 		return 'skip';
