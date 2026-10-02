@@ -594,6 +594,22 @@ export function decidePlay(
 	const partner = players[partnerSeat];
 	const partnerWinning = lastPlay.seat === partnerSeat;
 
+	// 파트너가 폭탄으로 이기고 있는 트릭은 덮지 않는다.
+	// 아래 "파트너가 이기고 있으면" 분기가 폭탄을 제외해서, 폭탄 위에는 폭탄만 얹을 수
+	// 있는데도 일반 팔로우 경로로 내려가 "결정적 상황"(상대 티츄 등) 판정에 걸리면
+	// 파트너 폭탄 위에 내 폭탄을 덮었다. 트릭은 이미 우리 것이라 폭탄만 버린다.
+	// 예외는 그 폭탄으로 손패가 비는 경우뿐이다 (파트너 티츄가 걸려 있으면 그것도 안 됨).
+	if (partnerWinning && isBomb(lastCombo)) {
+		// 소원 숫자를 (폭탄으로) 낼 수 있으면 규칙상 패스할 수 없다
+		if (wish.active && wish.requestedRank !== null && mustPlayWishedRank(hand, wish) &&
+			canPlayWishedCombo(hand, wish, lastCombo)) {
+			return findWishedPlay(hand, wish, lastCombo);
+		}
+		const partnerTichu = partner.finishOrder === null && (partner.grandTichu === true || partner.smallTichu);
+		const finishing = findBeatablePlays(hand, lastCombo).find(c => c.cards.length === hand.length);
+		return finishing && !partnerTichu ? finishing.cards.map(c => c.id) : 'pass';
+	}
+
 	// If partner is winning the trick
 	if (partnerWinning && !isBomb(lastCombo)) {
 		// Must play wish if enforced

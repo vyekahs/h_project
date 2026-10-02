@@ -48,6 +48,21 @@ export interface PlayCandidate {
 const TICHU_EXIT_WEIGHT = 2.0;
 
 /**
+ * 팔로우 후보끼리 비교할 때, 낸 뒤 남은 손패를 비우는 데 다른 후보보다 한 턴 더
+ * 걸릴 때마다 깎는 점수.
+ *
+ * exitRate는 남은 분할의 **평균** 승률이 중심이라 턴 수를 거의 보지 못한다. 그래서
+ * 센 낱장이 많이 남는 수(턴은 많지만 평균 승률이 높음)가 손패를 두 덩어리로 정리하는
+ * 수보다 높게 나왔다. 실제 기록(id 265): A 9 J Q K 6 6 봉을 들고 상대 Q를 받을 때
+ * A로 받으면 남은 패가 9-봉-J-Q-K + 66 두 턴인데, K로 받아 다섯 턴짜리로 만들었다.
+ *
+ * 검증 (고정 덱 + 결정론, 시드 7개 × 100게임, 한 팀에만 적용):
+ *   0.05 / 0.1 / 0.2 → 라운드당 +4.4(시드 3개) / +4.0 / +4.5, 1등률 +1.4 / +1.9 / +1.8%p
+ *   0.1은 시드 7개 모두 플러스, 0.2는 한 시드에서 마이너스 → 0.1 채택
+ */
+const FOLLOW_EXTRA_TURN_PENALTY = 0.1;
+
+/**
  * 티츄 선언자 **바로 앞 순서**일 때, 그들이 낮은 패를 헐값에 털지 못하게
  * 카드를 적당히 높여 낸다.
  *
@@ -208,6 +223,12 @@ export function searchBestPlay(
 		}
 
 		results.push({ combo, winProb, exitRate, finishTurns, contextMod, totalScore });
+	}
+
+	// 팔로우: 다른 후보보다 남은 손패가 몇 턴 더 걸리는지만큼 감점
+	if (mode === 'follow' && results.length > 1) {
+		const minTurns = Math.min(...results.map(r => r.finishTurns));
+		for (const r of results) r.totalScore -= FOLLOW_EXTRA_TURN_PENALTY * (r.finishTurns - minTurns);
 	}
 
 	// 점수 내림차순 정렬
