@@ -174,8 +174,6 @@ export const GAME_REGISTRY: Record<string, GameConfig> = {
 			classic: '클래식',
 			special: '플러스(beta)'
 		},
-		// 플러스 모드에 오류가 있어 잠시 막아 둔다 (2026-09-26)
-		disabledDifficulties: ['special'],
 		localStorageSaveKey: 'block_blaster_save',
 		hasTutorials: false
 	},
