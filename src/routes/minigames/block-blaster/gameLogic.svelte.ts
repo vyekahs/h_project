@@ -268,6 +268,13 @@ function generateSeededGrid(blocks: (BlockShape | null)[]): BoardGrid {
 interface GridSnapshot {
 	grid: BoardGrid;
 	currentBlocks: (BlockShape | null)[];
+	/**
+	 * grid만 되돌리면 셀의 위험 마커(cellMeta)와 어긋난다.
+	 * 되돌린 뒤 grid는 빈 칸인데 마커만 남으면 화면은 돌로 그리고
+	 * canPlaceBlock/findCompletedLines는 빈 칸으로 봐서, 그 위에 블록이 놓이고
+	 * 꽉 찬 줄이 안 지워진다. 항상 grid와 함께 저장/복원한다.
+	 */
+	cellMeta: CellMetaMap;
 }
 
 export function createBlockBlasterGame() {
@@ -555,7 +562,9 @@ export function createBlockBlasterGame() {
 	function snapshotState() {
 		lastSnapshots.push({
 			grid: cloneGrid(grid),
-			currentBlocks: currentBlocks.map(b => (b ? { ...b, cells: b.cells.map(c => [...c] as [number, number]) } : null))
+			currentBlocks: currentBlocks.map(b => (b ? { ...b, cells: b.cells.map(c => [...c] as [number, number]) } : null)),
+			// 얕은 복사로 충분 — 각 CellMeta는 항상 새 객체로 교체되지 제자리 변경되지 않는다
+			cellMeta: { ...cellMeta }
 		});
 		if (lastSnapshots.length > 3) lastSnapshots.shift();
 	}
@@ -1068,9 +1077,15 @@ export function createBlockBlasterGame() {
 
 	function hasUsableActiveAbility(): boolean {
 		if (!isSpecialMode()) return false;
-		// 쿨다운 0인 액티브 스킬이 1개라도 있으면 위기 탈출 가능
+		// 쿨다운 0인 액티브 스킬이 1개라도 있으면 위기 탈출 가능.
+		// 봉인된 슬롯은 useAbility()가 막으므로 여기서도 빼야 한다. 안 빼면
+		// "능력으로 탈출하라"며 게임오버를 보류해놓고 정작 누를 수 있는 능력이
+		// 없어, 게임이 끝나지도 진행되지도 않는 상태로 멈춘다.
 		return inventory.some(
-			o => !isPassive(o.ability) && o.cooldownRemaining === 0
+			(o, i) =>
+				!isPassive(o.ability) &&
+				o.cooldownRemaining === 0 &&
+				!sealedSlots.some(x => x.slotIndex === i)
 		);
 	}
 
@@ -1115,11 +1130,19 @@ export function createBlockBlasterGame() {
 			[filled[i], filled[j]] = [filled[j], filled[i]];
 		}
 		const next = cloneGrid(grid);
+		// 셀을 비울 때 cellMeta도 같이 지운다. 안 지우면 그리드는 빈 칸(0)인데
+		// 화면은 메타를 보고 검은 돌·위험 칸으로 계속 그려서, 그 위에 블록이
+		// 놓이고(canPlaceBlock은 0을 보고 허용) 꽉 차 보이는 줄이
+		// findCompletedLines에선 미완성이라 안 지워진다.
+		// (다른 클리어 경로들은 모두 이렇게 정리하고 있다)
+		const nextMeta = { ...cellMeta };
 		for (let i = 0; i < removeCount; i++) {
 			const [r, c] = filled[i];
 			next[r][c] = 0;
+			delete nextMeta[cellKey(r, c)];
 		}
 		grid = next;
+		cellMeta = nextMeta;
 	}
 
 	async function submitScore() {
@@ -2926,6 +2949,8 @@ export function createBlockBlasterGame() {
 				if (snap) {
 					grid = snap.grid;
 					currentBlocks = snap.currentBlocks;
+					// cellMeta를 같이 되돌리지 않으면 유령 셀이 남는다 (GridSnapshot 주석 참고)
+					cellMeta = snap.cellMeta ?? {};
 					selectedBlockIndex = null;
 				}
 				return true;

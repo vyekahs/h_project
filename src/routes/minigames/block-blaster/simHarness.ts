@@ -159,6 +159,10 @@ export function chooseMove(game: Game): Move | null {
 }
 
 /** 능력을 쓸 만한 상황인지 판단하고 사용. 사용했으면 true. */
+/** 직전에 사용한 능력 id — 유령 셀 발생 경로 추적용 */
+export let lastUsedAbilityId = '';
+export function resetLastUsedAbility() { lastUsedAbilityId = ''; }
+
 function tryUseAbility(game: Game, stuck: boolean): boolean {
 	const inv = game.inventory;
 	const usable: number[] = [];
@@ -196,6 +200,7 @@ function tryUseAbility(game: Game, stuck: boolean): boolean {
 			const id = inv[si].ability.id;
 			if (id !== 'swap-block' && id !== 'rotate-block' && id !== 'shrink') continue;
 			const cdBefore = inv[si].cooldownRemaining;
+			lastUsedAbilityId = game.inventory[si]?.ability.id ?? "?";
 			game.useAbility(si);
 			if (game.pendingAbilitySlot !== si && inv[si].cooldownRemaining === cdBefore) continue;
 			game.applyAbilityToTarget({ kind: 'block', index: jamIdx });
@@ -217,6 +222,7 @@ function tryUseAbility(game: Game, stuck: boolean): boolean {
 				if (n > bestN) { bestN = n; bestIdx = i; }
 			}
 			if (bestN > 0) {
+				lastUsedAbilityId = game.inventory[si]?.ability.id ?? "?";
 				game.useAbility(si);
 				game.applyAbilityToTarget(id === 'clear-row'
 					? { kind: 'cell', row: bestIdx, col: 0 }
@@ -225,11 +231,13 @@ function tryUseAbility(game: Game, stuck: boolean): boolean {
 			}
 		}
 		if (id === 'clear-row' && dRows.size > 0) {
+			lastUsedAbilityId = game.inventory[si]?.ability.id ?? "?";
 			game.useAbility(si);
 			game.applyAbilityToTarget({ kind: 'cell', row: [...dRows][0], col: 0 });
 			return true;
 		}
 		if (id === 'clear-col' && dCols.size > 0) {
+			lastUsedAbilityId = game.inventory[si]?.ability.id ?? "?";
 			game.useAbility(si);
 			game.applyAbilityToTarget({ kind: 'cell', row: 0, col: [...dCols][0] });
 			return true;
@@ -255,6 +263,7 @@ function tryUseAbility(game: Game, stuck: boolean): boolean {
 		}
 		if (bestN === 0) continue; // 부술 게 없으면 다른 능력으로
 		const cdBefore = inv[si].cooldownRemaining;
+		lastUsedAbilityId = game.inventory[si]?.ability.id ?? "?";
 		game.useAbility(si);
 		if (game.pendingAbilitySlot !== si && inv[si].cooldownRemaining === cdBefore) continue;
 		game.applyAbilityToTarget({ kind: 'cell', row: bestR, col: bestC });
@@ -266,6 +275,7 @@ function tryUseAbility(game: Game, stuck: boolean): boolean {
 		for (const si of usable) {
 			if (inv[si].ability.id !== 'freeze') continue;
 			const cdBefore = inv[si].cooldownRemaining;
+			lastUsedAbilityId = game.inventory[si]?.ability.id ?? "?";
 			game.useAbility(si);
 			if (inv[si].cooldownRemaining !== cdBefore) return true;
 		}
@@ -275,6 +285,7 @@ function tryUseAbility(game: Game, stuck: boolean): boolean {
 	for (const si of usable) {
 		const ab = inv[si].ability;
 		const cdBefore = inv[si].cooldownRemaining;
+		lastUsedAbilityId = game.inventory[si]?.ability.id ?? "?";
 		game.useAbility(si);
 		// useAbility에는 모바일 더블탭 방지용 "동일 슬롯 250ms 내 중복 호출 무시" 가드가
 		// 있다. 시뮬레이션은 그보다 훨씬 빠르게 반복 호출하므로 무시당한 채 true를
@@ -413,6 +424,12 @@ export interface RunResult {
 	/** 스테이지별로 몇 턴 만에 도달했는지 (index = stagesCleared 값) */
 	stageTurn: number[];
 	stalled: boolean;
+	/**
+	 * 판 도중 관측된 "유령 셀" — grid는 비었는데(0) cellMeta에 채워짐을 뜻하는
+	 * 마커가 남은 칸. 화면은 돌로 그리는데 로직은 빈 칸으로 봐서, 그 위에 블록이
+	 * 놓이고 꽉 찬 줄이 안 지워지는 증상이 난다. (portalMark는 의도된 빈 칸이라 제외)
+	 */
+	ghostCells: string[];
 	/** 종료 시점에 활성 상태(미해결)였던 위험 종류 */
 	dangersAtDeath: string[];
 	/** 게임 전체에서 등장한 위험 종류별 횟수 */
@@ -487,11 +504,43 @@ export async function runGame(opts: RunOptions = {}): Promise<RunResult> {
 		}
 	};
 
+	const ghostCells: string[] = [];
+	const knownGhosts = new Set<string>();
+	let prevGrid: BoardGrid | null = null;
+	// 유령 셀이 새로 생긴 순간을 직전 동작과 함께 남긴다 — 발생 경로 추적용
+	let lastAction = 'init';
+	const scanGhosts = () => {
+		if (ghostCells.length >= 8) return; // 표본만 모은다
+		const g = game.grid as BoardGrid;
+		const meta = game.cellMeta as Record<string, Record<string, unknown>>;
+		for (let r = 0; r < GRID_SIZE; r++) {
+			for (let c = 0; c < GRID_SIZE; c++) {
+				const key = `${r},${c}`;
+				if (g[r][c] !== 0) { knownGhosts.delete(key); continue; }
+				const m = meta[key];
+				if (!m) { knownGhosts.delete(key); continue; }
+				// portalMark는 빈 칸에 붙는 게 정상(플레이어가 놓아서 발동)
+				const rest = Object.keys(m).filter(k => k !== 'portalMark');
+				if (rest.length === 0) { knownGhosts.delete(key); continue; }
+				if (knownGhosts.has(key)) continue; // 이미 보고한 셀
+				knownGhosts.add(key);
+				// 직전 스캔 때 이 칸이 채워져 있었나? → 지워지며 메타만 남은 것.
+				// 비어 있었나? → 빈 칸에 메타가 새로 붙은 것. 원인 분기가 갈린다.
+				const wasFilled = prevGrid ? prevGrid[r][c] !== 0 : null;
+				const origin = wasFilled === null ? '알수없음' : wasFilled ? '채워짐→비워짐(메타잔존)' : '빈칸에메타추가';
+				ghostCells.push(`turn${turns} ${key} → ${rest.join(',')} [${origin}] (직전동작: ${lastAction})`);
+				if (ghostCells.length >= 8) { prevGrid = g.map(row => [...row]); return; }
+			}
+		}
+		prevGrid = g.map(row => [...row]);
+	};
+
 	while (game.gameState === 'playing' && turns < maxTurns) {
 		await new Promise(r => setTimeout(r, 0));
 		if (game.isAnimating) { idle++; if (idle > IDLE_LIMIT) break; continue; }
-		if (resolveModals(game, draftPolicy)) { idle++; if (idle > IDLE_LIMIT) break; continue; }
+		if (resolveModals(game, draftPolicy)) { lastAction = `모달해소(직전능력:${lastUsedAbilityId})`; idle++; if (idle > IDLE_LIMIT) break; continue; }
 
+		scanGhosts();
 		trackDangers();
 
 		if (game.stagesCleared > lastStages) {
@@ -502,7 +551,7 @@ export async function runGame(opts: RunOptions = {}): Promise<RunResult> {
 		const mv = chooseMove(game);
 		if (!mv) {
 			// 놓을 곳이 없음 — 능력으로 탈출 시도
-			if (tryUseAbility(game, true)) { idle++; if (idle > IDLE_LIMIT) break; continue; }
+			if (tryUseAbility(game, true)) { lastAction = `ability탈출:${lastUsedAbilityId}`; idle++; if (idle > IDLE_LIMIT) break; continue; }
 			// 능력도 없으면 afterPlace가 setTimeout으로 게임오버를 예약해둔 상태다.
 			// 타이머가 실제로 발동해 gameState가 'finished'가 될 때까지 기다린다.
 			// (30에서 끊었더니 사망이 gameOverReason 없는 'unknown'으로 집계돼
@@ -513,7 +562,7 @@ export async function runGame(opts: RunOptions = {}): Promise<RunResult> {
 		}
 
 		// 위험이 임박하면 능력을 먼저 쓸지 판단
-		if (tryUseAbility(game, false)) { idle++; if (idle > IDLE_LIMIT) break; continue; }
+		if (tryUseAbility(game, false)) { lastAction = `ability선제:${lastUsedAbilityId}`; idle++; if (idle > IDLE_LIMIT) break; continue; }
 
 		// 상태 지표 수집 — 이 턴에 놓을 수 있었던 자리 수와 보드 점유율
 		{
@@ -534,6 +583,7 @@ export async function runGame(opts: RunOptions = {}): Promise<RunResult> {
 		game.selectBlock(mv.blockIndex);
 		const before = game.score;
 		game.placeBlockAt(mv.row, mv.col);
+		lastAction = 'placeBlock';
 		void before;
 		idle = 0;
 		turns++;
@@ -560,6 +610,7 @@ export async function runGame(opts: RunOptions = {}): Promise<RunResult> {
 		abilitiesTaken: inv,
 		stageTurn,
 		stalled: turns >= maxTurns || idle > IDLE_LIMIT,
+		ghostCells,
 		dangersAtDeath,
 		dangersSeen,
 		dangersResolved,
