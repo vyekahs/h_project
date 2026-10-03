@@ -557,10 +557,21 @@ export async function processAutoCheckin(detectedAttendeeIds: Set<number>, isWit
             // 22:57~23:08).
             //
             // 다만 수동 체크아웃은 병합하지 않는다. 관리자가 손으로 내보낸 것은
-            // "나갔다"는 사람의 판단이라 되돌리면 안 되고, 마감 처리 후 스친 신호가
-            // 방문을 다시 열어버리는 것도 막아야 한다. auto_checkout_logs의
+            // "나갔다"는 사람의 판단이라 되돌리면 안 된다. auto_checkout_logs의
             // checked_out_at과 visits.departure_time이 같은 트랜잭션의 NOW()라
             // 정확히 일치하는 점으로 구분한다.
+            //
+            // 그리고 마감 이후에는 그 전의 방문을 잇지 않는다.
+            //
+            // "수동 체크아웃만 거르면 마감도 걸러진다"고 봤는데 아니었다. 자동
+            // 체크아웃으로 닫힌 방문이 마감을 거쳐 다음 영업에 다시 열리는 경로가
+            // 남아 있었다. 실제로 사루비아의 방문이 10-03 00:08에 시작해 00:28에
+            // 자동 체크아웃됐고, 05:32 마감을 지나 그날 저녁에 다시 와서 그 방문이
+            // 되살아났다 — 하나의 방문이 마감을 넘어 20시간으로 남았다.
+            //
+            // 날짜 비교로는 막을 수 없다. 자정을 넘겨 운영하는 날이 있어서 "같은
+            // 달력 날짜"가 같은 영업을 뜻하지 않는다(00:08 도착과 그날 저녁 도착은
+            // 날짜가 같지만 다른 영업이다). 마감한 시각을 직접 보고 가른다.
             //
             // 자정을 넘겨 운영하면 날짜가 갈리며 방문이 나뉜다. 바로 위의
             // "이미 열린 방문" 판정도 같은 기준을 쓰므로 동작이 어긋나지는 않는다.
@@ -578,6 +589,13 @@ export async function processAutoCheckin(detectedAttendeeIds: Set<number>, isWit
                           AND v2.departure_time IS NOT NULL
                           AND (v2.arrival_time AT TIME ZONE 'Asia/Seoul')::date
                               = (NOW() AT TIME ZONE 'Asia/Seoul')::date
+                          -- 마감 뒤에 끝난 방문만 잇는다. 형식이 깨진 값으로 체크인
+                          -- 전체가 막히지 않게 패턴을 확인하고 읽는다.
+                          AND v2.departure_time > COALESCE((
+                                  SELECT value::timestamptz FROM system_settings
+                                  WHERE key = 'last_close_at'
+                                    AND value ~ '^\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}:\\d{2}'
+                              ), '-infinity'::timestamptz)
                         ORDER BY v2.departure_time DESC
                         LIMIT 1
                     )
