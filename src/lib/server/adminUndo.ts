@@ -257,7 +257,7 @@ export async function applyUndo(entry: UndoEntry): Promise<ApplyUndoResult> {
                     }
                 });
             } else if (entry.kind === 'close_day') {
-                const { attendeeIds, visitIds, playing, scheduledIds, visitPlans, prevIsOpen, prevLastAutoClose } = entry.payload;
+                const { attendeeIds, visitIds, playing, scheduledIds, visitPlans, prevIsOpen, prevLastAutoClose, prevLastCloseAt } = entry.payload;
                 await db.transaction(async (tx) => {
                     for (const attendeeId of (attendeeIds ?? []) as number[]) {
                         await tx.execute(sql`UPDATE attendees SET status = 'present' WHERE id = ${attendeeId}`);
@@ -293,6 +293,16 @@ export async function applyUndo(entry: UndoEntry): Promise<ApplyUndoResult> {
                         await tx.execute(sql`
                             INSERT INTO system_settings (key, value) VALUES ('last_auto_close_date', ${prevLastAutoClose})
                             ON CONFLICT (key) DO UPDATE SET value = ${prevLastAutoClose}
+                        `);
+                    }
+                    // 마감 시각도 되돌린다. 남겨두면 "마감 이후에 끝난 방문만 병합"
+                    // 조건이 계속 걸려, 마감을 무른 뒤에도 그 세션 내내 방문이 쪼개진다.
+                    if (prevLastCloseAt === null || prevLastCloseAt === undefined) {
+                        await tx.execute(sql`DELETE FROM system_settings WHERE key = 'last_close_at'`);
+                    } else {
+                        await tx.execute(sql`
+                            INSERT INTO system_settings (key, value) VALUES ('last_close_at', ${prevLastCloseAt})
+                            ON CONFLICT (key) DO UPDATE SET value = ${prevLastCloseAt}
                         `);
                     }
                 });

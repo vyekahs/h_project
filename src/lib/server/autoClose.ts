@@ -96,6 +96,10 @@ async function performCloseDay(businessDate: string) {
             `);
             await tx.execute(sql`DELETE FROM game_sessions WHERE status = 'scheduled' AND scheduled_at <= NOW()`);
             await tx.execute(sql`INSERT INTO system_settings (key, value) VALUES ('last_auto_close_date', ${businessDate}) ON CONFLICT (key) DO UPDATE SET value = ${businessDate}`);
+            // 마감한 '시각'도 남긴다. 날짜만으로는 "이 방문이 마감 전인지 후인지"를
+            // 알 수 없어서, 자동 체크아웃된 방문을 마감 뒤에 다시 열어 붙이는 일이
+            // 있었다(ble.ts의 방문 병합 참고).
+            await tx.execute(sql`INSERT INTO system_settings (key, value) VALUES ('last_close_at', NOW()::text) ON CONFLICT (key) DO UPDATE SET value = NOW()::text`);
         });
         emitLiveEvent('visitors');
         emitLiveEvent('games');

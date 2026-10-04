@@ -593,10 +593,13 @@ export const actions: Actions = {
             WHERE status = 'scheduled' AND scheduled_at::date = ${businessDateOuter}::date
         `)) as any[]).map((r) => Number(r.id));
         const prevSettings = (await db.execute(sql`
-            SELECT key, value FROM system_settings WHERE key IN ('is_open', 'last_auto_close_date')
+            SELECT key, value FROM system_settings WHERE key IN ('is_open', 'last_auto_close_date', 'last_close_at')
         `)) as any[];
         const prevIsOpen = prevSettings.find((r) => r.key === 'is_open')?.value ?? null;
         const prevLastAutoClose = prevSettings.find((r) => r.key === 'last_auto_close_date')?.value ?? null;
+        // 되돌리기로 마감을 무를 때 이것도 복원해야 한다. 남겨두면 방문 병합이
+        // "마감 이후에 끝난 방문만" 조건에 걸려 그 세션 내내 병합되지 않는다.
+        const prevLastCloseAt = prevSettings.find((r) => r.key === 'last_close_at')?.value ?? null;
 
         /*
             새벽 마감(자정~9시)은 businessDate가 이미 어제다 — 즉 지금의 "오늘 갈래요"는
@@ -632,6 +635,10 @@ export const actions: Actions = {
 
                 // Record business date to prevent auto-close from re-triggering if reopened
                 await tx.execute(sql`INSERT INTO system_settings (key, value) VALUES ('last_auto_close_date', ${businessDate}) ON CONFLICT (key) DO UPDATE SET value = ${businessDate}`);
+                // 마감한 '시각'도 남긴다. 날짜만으로는 "이 방문이 마감 전인지 후인지"를
+                // 알 수 없어서, 자동 체크아웃된 방문을 마감 뒤에 다시 열어 붙이는 일이
+                // 있었다(ble.ts의 방문 병합 참고).
+                await tx.execute(sql`INSERT INTO system_settings (key, value) VALUES ('last_close_at', NOW()::text) ON CONFLICT (key) DO UPDATE SET value = NOW()::text`);
             });
             emitLiveEvent('visitors');
             emitLiveEvent('games');
@@ -641,7 +648,7 @@ export const actions: Actions = {
 
         const undo = await recordUndo(
             'close_day',
-            { attendeeIds, visitIds, playing, scheduledIds, visitPlans, prevIsOpen, prevLastAutoClose },
+            { attendeeIds, visitIds, playing, scheduledIds, visitPlans, prevIsOpen, prevLastAutoClose, prevLastCloseAt },
             `마감 · ${attendeeIds.length}명 퇴장 · ${playing.length}판 종료`
         );
         return { success: true, undo, closed: { people: attendeeIds.length, games: playing.length } };
