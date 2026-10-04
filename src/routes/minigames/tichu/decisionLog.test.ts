@@ -108,12 +108,19 @@ describe('선언 판단 기록', () => {
 				}
 			}
 
-			// 플레이 기록: 사람 행에만, 낸 카드를 다 합치면 최소 세 명분(42장)은 나와야 한다
+			// 플레이 기록: 사람 행에만. 낸 카드를 다 합치면 먼저 나간 사람들 몫은 반드시 나온다.
+			// 보통은 세 명이 나가므로 42장이지만, 원투로 끝나면 두 명분(28장)뿐이다.
+			// 개는 카드가 아니라 `D>` 기록으로 남으므로 한 장을 빼 준다.
 			for (const r of rows) {
 				if (r.seat !== 0) { expect(r.plays).toBeNull(); continue; }
 				const cards = (r.plays as [number, string][])
 					.filter(([, x]) => /^[a-z]/.test(x)).flatMap(([, x]) => x.split(' '));
-				expect(cards.length, '플레이 기록이 비어 있음').toBeGreaterThanOrEqual(42);
+				// eslint-disable-next-line @typescript-eslint/no-explicit-any
+				const rr = rows.filter((x: any) => x.roundNumber === r.roundNumber);
+				// eslint-disable-next-line @typescript-eslint/no-explicit-any
+				const seatAt = (pos: number) => rr.find((x: any) => x.finishPosition === pos).seat;
+				const oneTwo = seatAt(1) % 2 === seatAt(2) % 2;
+				expect(cards.length, '플레이 기록이 비어 있음').toBeGreaterThanOrEqual(oneTwo ? 27 : 41);
 				expect(new Set(cards).size, '같은 카드가 두 번 기록됨').toBe(cards.length);
 			}
 
