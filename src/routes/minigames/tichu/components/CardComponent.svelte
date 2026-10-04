@@ -1,11 +1,13 @@
 <script lang="ts">
 	import type { Card } from '$lib/games/tichu/types';
 
-	let { card, selected = false, highlighted = false, small = false, onclick = undefined } = $props<{
+	let { card, selected = false, highlighted = false, small = false, bomb = false, onclick = undefined } = $props<{
 		card: Card;
 		selected?: boolean;
 		highlighted?: boolean;
 		small?: boolean;
+		/** 손패의 폭탄 조합에 속한 카드 — 모서리에 표시 */
+		bomb?: boolean;
 		onclick?: () => void;
 	}>();
 
@@ -106,6 +108,7 @@
 	class:selected
 	class:highlighted
 	class:small
+	class:bomb
 	class:special={isSpecial}
 	style="--card-color: {displayInfo.color}"
 	{onclick}
@@ -147,6 +150,9 @@
 				style="background-color: {displayInfo.color}; -webkit-mask-image: url('{displayInfo.imageSrc}'); mask-image: url('{displayInfo.imageSrc}'); transform: scale({displayInfo.scale})"
 			></div>
 		</div>
+	{/if}
+	{#if bomb}
+		<span class="bomb-mark" aria-label="폭탄 조합">💣</span>
 	{/if}
 </button>
 
@@ -317,5 +323,19 @@
 	.small .suit-icon-small { width: 6px; height: 6px; }
 	.small .suit-icon-large { width: 14px; height: 14px; }
 	.small .special-image { width: 24px; height: 24px; }
+
+	/* 폭탄 조합에 속한 카드 */
+	.card.bomb:not(.selected):not(.highlighted) {
+		box-shadow: inset 0 -3px 0 #dc2626, 0 2px 5px rgba(0,0,0,0.15);
+	}
+	.bomb-mark {
+		position: absolute;
+		top: 2px;
+		right: 2px;
+		font-size: 10px;
+		line-height: 1;
+		pointer-events: none;
+		z-index: 2;
+	}
 
 </style>

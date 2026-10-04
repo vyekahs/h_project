@@ -2,6 +2,7 @@
 	import type { Card } from '$lib/games/tichu/types';
 	import CardComponent from './CardComponent.svelte';
 	import { detectCombination, isBomb } from '$lib/games/tichu/combinations';
+	import { findBombs } from '$lib/games/tichu/ai/handEvaluator';
 
 	let { game } = $props<{ game: any }>();
 
@@ -24,20 +25,38 @@
 		return combo !== null && isBomb(combo);
 	});
 
-	// 9장 이상이면 2줄 배치
-	const useDoubleRow = $derived(hand.length > 8);
-	const topRow = $derived(useDoubleRow ? hand.slice(0, Math.ceil(hand.length / 2)) : []);
-	const bottomRow = $derived(useDoubleRow ? hand.slice(Math.ceil(hand.length / 2)) : hand);
+	// 장수와 상관없이 항상 2줄. 장수에 따라 1줄↔2줄이 바뀌고 카드 간격이 늘었다 줄었다
+	// 하면 손패 영역 높이와 카드 위치가 계속 움직여서 눈이 따라가기 불편했다.
+	const topRow = $derived(hand.slice(0, Math.ceil(hand.length / 2)));
+	const bottomRow = $derived(hand.slice(Math.ceil(hand.length / 2)));
 
-	// Dynamic card overlap based on per-row card count
+	// 카드 간격도 최대 장수(한 줄 7장) 기준으로 고정한다
+	const MAX_PER_ROW = 7;
 	const cardOverlap = $derived.by(() => {
-		const perRow = useDoubleRow ? Math.ceil(hand.length / 2) : hand.length;
-		if (perRow <= 1) return 0;
 		const maxWidth = Math.min(window.innerWidth - 32, 400);
 		const cardW = 46;
-		const needed = cardW - (maxWidth - cardW) / (perRow - 1);
+		const needed = cardW - (maxWidth - cardW) / (MAX_PER_ROW - 1);
 		return Math.max(needed, 0);
 	});
+
+	// 손패의 폭탄 조합 — 긴 스트레이트 플러시의 부분 조합은 빼고 가장 큰 것만 보여 준다
+	const bombGroups = $derived.by((): Card[][] => {
+		const sets = findBombs(hand).map(b => b.cards);
+		return sets.filter((cs, i) => !sets.some((o, j) =>
+			j !== i && o.length > cs.length && cs.every(c => o.some(x => x.id === c.id))));
+	});
+	const bombCardIds = $derived(new Set(bombGroups.flatMap(cs => cs.map(c => c.id))));
+
+	function bombLabel(cards: Card[]): string {
+		return cards
+			.map(c => (c.type === 'normal' ? ({ 10: '10', 11: 'J', 12: 'Q', 13: 'K', 14: 'A' } as Record<number, string>)[c.rank] ?? String(c.rank) : ''))
+			.join(' ');
+	}
+
+	function selectBomb(cards: Card[]) {
+		game.clearSelection();
+		for (const c of cards) game.toggleCard(c.id);
+	}
 
 	function handleCardClick(card: Card) {
 		if (isExchangePhase) {
@@ -167,39 +186,19 @@
 		</div>
 	{/if}
 
-	{#if useDoubleRow}
+	{#each [topRow, bottomRow] as row, i (i)}
 		<div class="hand-cards" style="--card-overlap: -{cardOverlap}px">
-			{#each topRow as card (card.id)}
+			{#each row as card (card.id)}
 				<CardComponent
 					{card}
 					selected={game.selectedCards.has(card.id) || isCardUsedInExchange(card.id) || exchangePendingCard === card.id}
 					highlighted={highlightIds.has(card.id)}
+					bomb={bombCardIds.has(card.id)}
 					onclick={() => handleCardClick(card)}
 				/>
 			{/each}
 		</div>
-		<div class="hand-cards" style="--card-overlap: -{cardOverlap}px">
-			{#each bottomRow as card (card.id)}
-				<CardComponent
-					{card}
-					selected={game.selectedCards.has(card.id) || isCardUsedInExchange(card.id) || exchangePendingCard === card.id}
-					highlighted={highlightIds.has(card.id)}
-					onclick={() => handleCardClick(card)}
-				/>
-			{/each}
-		</div>
-	{:else}
-		<div class="hand-cards" style="--card-overlap: -{cardOverlap}px">
-			{#each hand as card (card.id)}
-				<CardComponent
-					{card}
-					selected={game.selectedCards.has(card.id) || isCardUsedInExchange(card.id) || exchangePendingCard === card.id}
-					highlighted={highlightIds.has(card.id)}
-					onclick={() => handleCardClick(card)}
-				/>
-			{/each}
-		</div>
-	{/if}
+	{/each}
 
 	{#if !isExchangePhase && (isPlaying || isDragonGift)}
 		<div class="play-controls">
@@ -218,6 +217,14 @@
 				>
 					패스
 				</button>
+			{/if}
+			<!-- 손패의 폭탄 조합 바로가기. 카드를 고르기 시작하면 폭탄!/취소 버튼이 나오므로 숨긴다 -->
+			{#if isPlaying && game.selectedCards.size === 0}
+				{#each bombGroups as cards (cards.map(c => c.id).join())}
+					<button class="bomb-chip" onclick={() => selectBomb(cards)} title="이 폭탄 카드들을 선택">
+						💣 {bombLabel(cards)}
+					</button>
+				{/each}
 			{/if}
 			{#if selectedIsBomb}
 				<button class="btn-bomb" disabled={busy} onclick={playBomb}>
@@ -282,6 +289,25 @@
 		justify-content: center;
 		padding: 4px 0;
 		align-items: flex-end;
+		/* 카드가 없는 줄도 높이를 유지해 손패 영역이 줄었다 늘었다 하지 않게 한다 */
+		min-height: 66px;
+		box-sizing: content-box;
+	}
+
+	.bomb-chip {
+		padding: 10px 14px;
+		border-radius: 14px;
+		border: 1px solid rgba(239, 68, 68, 0.6);
+		background: rgba(127, 29, 29, 0.55);
+		color: #fecaca;
+		font-size: 0.85rem;
+		font-weight: 700;
+		cursor: pointer;
+		font-family: inherit;
+		white-space: nowrap;
+	}
+	.bomb-chip:hover {
+		background: rgba(153, 27, 27, 0.75);
 	}
 
 	/* Overlap cards dynamically based on hand size */
@@ -312,6 +338,10 @@
 		justify-content: center;
 		gap: 12px;
 		margin-top: 12px;
+	}
+	/* 버튼이 4개(내기·패스·폭탄!·취소)까지 늘어도 글자가 꺾여 줄 높이가 변하지 않게 */
+	.play-controls button {
+		white-space: nowrap;
 	}
 	.btn-play {
 		padding: 10px 32px;
@@ -519,5 +549,13 @@
 	.btn-exchange-submit:hover {
 		transform: translateY(-2px);
 		box-shadow: 0 8px 20px rgba(168,130,79,0.5);
+	}
+
+	/* 좁은 화면: 버튼 기본 스타일보다 뒤에 있어야 덮어쓴다 */
+	@media (max-width: 420px) {
+		.play-controls { gap: 8px; }
+		.btn-play { padding: 10px 20px; }
+		.btn-pass, .btn-bomb, .bomb-chip { padding: 10px 16px; }
+		.btn-clear { padding: 10px 12px; }
 	}
 </style>
