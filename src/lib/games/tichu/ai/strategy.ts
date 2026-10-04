@@ -211,6 +211,13 @@ export function decideSmallTichu(hand: Card[], weights: PersonalityWeights, cont
 	const partner = context.players.find(p => p.seat === getPartnerSeat(context.currentSeat));
 	if (partner?.grandTichu === true || partner?.smallTichu) return false;
 
+	// === 하드 거부: 이미 누가 나갔음 ===
+	// 티츄는 1등으로 나가야 성공이라, 누가 먼저 나간 뒤에 부르면 확정 실패(−100)다.
+	// 첫 카드를 아직 안 냈으면 선언 자격은 남아 있어서 실제로 이 경로를 탔다 —
+	// 파트너가 개를 내고 나간 뒤 선을 넘겨받은 AI가 14장 그대로인 손패를 보고 불렀다.
+	// 파트너 검사와 같은 이유로 프리셋 훅보다 먼저 둔다.
+	if (context.players.some(p => p.finishOrder !== null)) return false;
+
 	// Behavior hook
 	const override = behavior.shouldDeclareSmallTichu?.(hand, context);
 	if (override !== null && override !== undefined) return override;
