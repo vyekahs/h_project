@@ -1399,13 +1399,21 @@ export function findAllTwoTurnFinishes(
 /**
  * Try 3-turn finishes with win probability scoring.
  *
- * 3턴 완성(X → 중간 → 마지막)에는 두 가지 플랜이 있음:
- * - 체인 플랜: X를 리드해 이기고 선 유지 → 중간 콤보 리드해 이기고 → 마지막 콤보로 나감.
- *   마지막 콤보는 내는 순간 손패가 비어 나가는 것이므로 이길 필요가 없음 — 중간까지만 이기면 됨.
- * - 덤프 플랜: 약한 X를 일부러 버려 선을 내주고, 나중에 강한 재진입 콤보로 팔로우해서
- *   선을 되찾은 뒤 마지막 콤보로 나감. 약한 카드를 마지막까지 쥐고 갇히는 것보다,
- *   먼저 버리고 강한 카드를 "선 탈환 수단"으로 아끼는 쪽이 더 안전한 경우가 많음.
- * 두 플랜 중 높은 점수를 그 X의 점수로 사용.
+ * 첫 리드 X를 낸 뒤 남은 두 조합(rc, last)으로 나가는 확률의 기대값으로 비교한다.
+ *   - X가 이기면(확률 L): 다시 선을 잡고 둘 중 하나를 리드한다. 그게 이기면 나머지는
+ *     내는 순간 손이 비므로 끝. 잡히면 남은 하나로 선을 되찾아야 한다.
+ *   - X가 잡히면(1−L): 두 조합 **어느 쪽으로든** 남의 패를 받아 선을 되찾으면, 다른
+ *     하나를 리드해 나간다. 재진입 길이 두 갈래다.
+ *
+ * 예전에는 "체인(이기면서 연달아 내기)"과 "덤프(버리고 되찾기)" 점수를 따로 내서 큰 쪽을
+ * 썼는데, 체인은 중간이 잡혀도 30%를 인정하면서 그 뒤 갇히는 손해를 안 셌고, 덤프는
+ * 재진입 두 갈래 중 하나만 셌고 X가 그냥 이기는 경우를 뺐다. 그래서 A A 7 9를 들고
+ * AA부터 냈다가(이기고 9 리드 → 잡힘) 7 한 장을 쥐고 갇혔다(기록 id 2001).
+ * 낱장을 먼저 내면 잡혀도 AA로 남의 페어를, 9로 낮은 낱장을 받아 선을 되찾을 수 있다.
+ *
+ * 검증 (고정 덱 + 결정론, 시드 7개 × 100게임, 한 팀에만 적용):
+ *   라운드당 +6.5 / +5.7 / +3.0 / +4.7 / +4.3 / +4.0 / +4.8 (평균 +4.7, 7/7 플러스),
+ *   1등률 7/7 상승 (+0.7~+1.8%p).
  */
 export function findTwoStepFinishScored(
 	hand: Card[],
@@ -1418,6 +1426,14 @@ export function findTwoStepFinishScored(
 	const candidates: { combo: Combination; score: number }[] = [];
 	const useMc = worlds.length > 0 && partnerSeat !== undefined;
 
+	// 리드했을 때 이길 확률 (몬테카를로, 폴백 시 정적 확률)
+	const safety = (c: Combination) => useMc
+		? evaluateLeadSafety(c, worlds, partnerSeat!).effectiveWinProb
+		: comboLikelyToWin(c, tracker, hand);
+	// 남의 패를 받아 선을 되찾을 확률. 싱글은 팔로우 기회가 흔하지만, 페어/스트레이트 등은
+	// 같은 타입 트릭이 와야만 재진입할 수 있어 훨씬 불확실하다
+	const reentry = (c: Combination) => safety(c) * (c.type === 'single' ? 0.85 : 0.4);
+
 	for (const combo of plan.allCombos) {
 		if (isDogCombo(combo)) continue;
 		if (isBomb(combo)) continue;
@@ -1425,45 +1441,25 @@ export function findTwoStepFinishScored(
 		const remainingCards = hand.filter(c => !combo.cards.some(cc => cc.id === c.id));
 		if (remainingCards.length <= 1) continue;
 
-		const remainingCombos = findAllPlayableCombinations(remainingCards);
-		let bestMiddleWinProb = -Infinity;
-		let bestReentryScore = -Infinity;
-		let validSplit = false;
-
-		for (const rc of remainingCombos) {
+		const L = safety(combo);
+		let best = -Infinity;
+		for (const rc of findAllPlayableCombinations(remainingCards)) {
 			const afterFirst = remainingCards.filter(c => !rc.cards.some(cc => cc.id === c.id));
 			if (afterFirst.length === 0) continue;
+			const last = detectCombination(afterFirst);
+			if (!last) continue;
 
-			const lastCombo = detectCombination(afterFirst);
-			if (!lastCombo) continue;
-			validSplit = true;
-
-			// 체인 플랜: rc(중간)만 이기면 됨 — lastCombo는 내는 순간 나가므로 승률 무관
-			// (중간 단계는 성능/범위 절충으로 기존 정적 확률 유지)
-			const rcProb = comboLikelyToWin(rc, tracker, remainingCards);
-			bestMiddleWinProb = Math.max(bestMiddleWinProb, rcProb);
-
-			// 덤프 플랜: rc를 재진입 콤보로 사용 — 재진입 성공 확률이 플랜의 성패를 가르므로
-			// 첫 리드와 같은 급으로 취급해 몬테카를로 적용 (폴백 시 정적 확률)
-			const reentryProb = useMc
-				? evaluateLeadSafety(rc, worlds, partnerSeat!).effectiveWinProb
-				: rcProb;
-			// 싱글은 팔로우 기회가 흔하지만, 페어/스트레이트 등은 같은 타입 트릭이 와야만
-			// 재진입할 수 있어 훨씬 불확실함
-			const reentryTypeFactor = rc.type === 'single' ? 0.85 : 0.4;
-			bestReentryScore = Math.max(bestReentryScore, reentryProb * reentryTypeFactor);
+			// X가 이겨 다시 리드: 더 나은 순서로 하나를 내고, 잡히면 남은 하나로 재진입
+			const leadAgain = Math.max(
+				safety(rc) + (1 - safety(rc)) * reentry(last),
+				safety(last) + (1 - safety(last)) * reentry(rc)
+			);
+			// X가 잡힘: 둘 중 어느 쪽으로든 재진입하면 나머지를 리드해 나간다
+			const regain = 1 - (1 - reentry(rc)) * (1 - reentry(last));
+			best = Math.max(best, L * leadAgain + (1 - L) * regain);
 		}
 
-		if (validSplit) {
-			const leadScore = useMc
-				? evaluateLeadSafety(combo, worlds, partnerSeat!).effectiveWinProb
-				: comboLikelyToWin(combo, tracker, hand);
-			const chainScore = leadScore * (0.3 + 0.7 * bestMiddleWinProb);
-			// 덤프 플랜에서 X 자체의 승률은 무관 (버리는 카드) — 대신 약한 카드를 먼저
-			// 버리는 쪽을 미세하게 선호 (강한 카드는 재진입/마지막 용도로 보존)
-			const dumpScore = bestReentryScore + (1 - leadScore) * 0.02;
-			candidates.push({ combo, score: Math.max(chainScore, dumpScore) - leadPenalty(combo) });
-		}
+		if (best > -Infinity) candidates.push({ combo, score: best - leadPenalty(combo) });
 	}
 
 	if (candidates.length === 0) return null;
