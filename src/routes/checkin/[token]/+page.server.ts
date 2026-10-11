@@ -4,6 +4,7 @@ import { fail, redirect } from '@sveltejs/kit';
 import type { Actions, PageServerLoad } from './$types';
 import { verifyAttendeeSession } from '$lib/server/auth';
 import { emitLiveEvent } from '$lib/server/liveEvents';
+import { reopenAutoClosedVisit } from '$lib/server/visitMerge';
 
 export const load: PageServerLoad = async ({ params, cookies, url }) => {
     const token = params.token;
@@ -86,8 +87,19 @@ export const actions: Actions = {
                     return { duplicate: true };
                 }
 
-                await tx.execute(sql`UPDATE attendees SET status = ${'present'}, arrival_time = NOW(), updated_at = NOW() WHERE id = ${user.id}`);
-                await tx.execute(sql`INSERT INTO visits (attendee_id, arrival_time) VALUES (${user.id}, NOW())`);
+                // 오늘 자동 체크아웃된 방문이 있으면 새로 만들지 않고 이어붙인다.
+                //
+                // 예전에는 이 병합이 BLE 자동 체크인에만 있었다. 그래서 자리에
+                // 있는데 자동 체크아웃된 사람이 QR로 다시 들어오면 — 바로 그걸
+                // 눈치챈 사람이 하는 행동이다 — 하루가 두 조각으로 남았다
+                // (동동 10-05 14:16~20:23 + 20:39~23:12).
+                const reopenedId = await reopenAutoClosedVisit(tx, user.id);
+
+                await tx.execute(sql`UPDATE attendees SET status = ${'present'}, updated_at = NOW() WHERE id = ${user.id}`);
+                if (reopenedId === null) {
+                    await tx.execute(sql`UPDATE attendees SET arrival_time = NOW() WHERE id = ${user.id}`);
+                    await tx.execute(sql`INSERT INTO visits (attendee_id, arrival_time) VALUES (${user.id}, NOW())`);
+                }
                 await tx.execute(sql`DELETE FROM daily_visit_plans WHERE attendee_id = ${user.id} AND plan_date = CURRENT_DATE`);
                 return { success: true };
             });
