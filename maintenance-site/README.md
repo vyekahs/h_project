@@ -63,7 +63,7 @@ cp public/index.html public/404.html
 
 | 항목 | 값 | 뜻 |
 |---|---|---|
-| A 레코드 | `58.79.132.122` | 집 서버 |
+| A 레코드 | 집 서버 IP | 전환 전에 **반드시 메모**해 둘 값 |
 | TTL | **3600초 (1시간)** | 전환이 최대 1시간 걸린다 |
 | `mooo.com` CAA | 없음 | 어느 CA든 인증서를 낼 수 있다 |
 | HSTS 헤더 | 없음 | https 강제 고정은 걸려 있지 않다 |
@@ -93,7 +93,8 @@ Pages → 프로젝트 → Custom domains → `damonpyo.mooo.com` 추가. 이때
 
 ### 중단할 때
 
-1. afraid.org에서 A 레코드 `58.79.132.122`를 **메모**해 둔다
+1. afraid.org에서 지금 들어 있는 A 레코드 값을 **메모**해 둔다
+   (`dig +short damonpyo.mooo.com` 으로도 확인된다)
 2. A 레코드를 지우고 CNAME `damonpyo.mooo.com → <프로젝트>.pages.dev` 추가
 3. TTL만큼 기다리면 전원이 안내 페이지를 본다
 
@@ -119,7 +120,7 @@ Pages → 프로젝트 → Custom domains → `damonpyo.mooo.com` 추가. 이때
 이쪽은 DNS가 이미 Cloudflare에 있고 TTL이 300초라 훨씬 쉽다. 인증서도 같은
 계정의 존이라 자동으로 나온다.
 
-1. Cloudflare → DNS → A 레코드(`58.79.132.122`)를 메모
+1. Cloudflare → DNS → 지금 들어 있는 A 레코드 값을 메모
 2. 지우고 CNAME `honnol.org → <프로젝트>.pages.dev` (프록시 ON / 주황 구름)
 3. 5분 뒤 적용. 복구는 역순(새 IP 주의)
 
