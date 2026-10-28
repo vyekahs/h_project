@@ -95,7 +95,6 @@
     font-size: 0.9375rem;
     font-weight: 600;
   }
-  .when span { display: block; margin-top: 0.25rem; font-weight: 400; font-size: 0.875rem; color: var(--text-dim); }
   button {
     margin-top: 1.5rem;
     width: 100%;
@@ -110,11 +109,6 @@
     cursor: pointer;
   }
   button:active { opacity: 0.85; }
-  .note {
-    margin-top: 1rem;
-    font-size: 0.8125rem;
-    color: var(--text-dim);
-  }
 </style>
 </head>
 <body>
@@ -128,13 +122,11 @@
     점검이 끝나면 그대로 다시 열립니다.
   </p>
   <div class="when">
-    점검이 끝나면 다시 열립니다
-    <span>자세한 일정은 단톡방에 올려둘게요</span>
+    11월 27일(금)부터 1~2일
   </div>
   <!-- ↑↑↑ 고칠 곳 ↑↑↑ -->
 
   <button type="button" onclick="location.reload()">다시 시도</button>
-  <p class="note">기록은 그대로 있습니다. 사라지는 건 없어요.</p>
 </main>
 
 <script>
