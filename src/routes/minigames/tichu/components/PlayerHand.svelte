@@ -25,13 +25,15 @@
 		return combo !== null && isBomb(combo);
 	});
 
-	// 장수와 상관없이 항상 2줄. 장수에 따라 1줄↔2줄이 바뀌고 카드 간격이 늘었다 줄었다
-	// 하면 손패 영역 높이와 카드 위치가 계속 움직여서 눈이 따라가기 불편했다.
-	const topRow = $derived(hand.slice(0, Math.ceil(hand.length / 2)));
-	const bottomRow = $derived(hand.slice(Math.ceil(hand.length / 2)));
-
-	// 카드 간격도 최대 장수(한 줄 7장) 기준으로 고정한다
+	// 카드 간격은 최대 장수(한 줄 7장) 기준으로 고정한다
 	const MAX_PER_ROW = 7;
+
+	// 한 줄에 다 들어가면(7장 이하) 한 줄, 넘으면 두 줄로 나눈다.
+	// 손패 영역 높이는 장수와 상관없이 두 줄 높이로 고정한다 — 영역이 줄었다 늘었다 하면
+	// 카드 위치가 계속 움직여서 눈이 따라가기 불편했다. 한 줄일 때는 그 가운데에 놓는다.
+	const rows = $derived(hand.length <= MAX_PER_ROW
+		? [hand]
+		: [hand.slice(0, Math.ceil(hand.length / 2)), hand.slice(Math.ceil(hand.length / 2))]);
 	const cardOverlap = $derived.by(() => {
 		const maxWidth = Math.min(window.innerWidth - 32, 400);
 		const cardW = 46;
@@ -186,8 +188,8 @@
 		</div>
 	{/if}
 
-	{#each [topRow, bottomRow] as row, i (i)}
-		<div class="hand-cards" style="--card-overlap: -{cardOverlap}px">
+	{#each rows as row, i (i)}
+		<div class="hand-cards" class:single-row={rows.length === 1} style="--card-overlap: -{cardOverlap}px">
 			{#each row as card (card.id)}
 				<CardComponent
 					{card}
@@ -292,6 +294,11 @@
 		/* 카드가 없는 줄도 높이를 유지해 손패 영역이 줄었다 늘었다 하지 않게 한다 */
 		min-height: 66px;
 		box-sizing: content-box;
+	}
+	/* 한 줄일 때도 두 줄 높이(카드 66px × 2 + 줄 여백 8px + 줄 사이 gap 2px)를 차지하고 그 가운데에 놓는다 */
+	.hand-cards.single-row {
+		min-height: 142px;
+		align-items: center;
 	}
 
 	.bomb-chip {
