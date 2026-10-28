@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>정기 점검 중 · 혼놀</title>
+<link rel="icon" href="/favicon.png">
+<link rel="apple-touch-icon" href="/icon-192.png">
+<meta name="theme-color" content="#ffffff">
+<!--
+  서버 중단 안내.
+
+  서버가 꺼져 있을 때 보여야 하므로 네트워크에 의존하는 것이 하나도 없어야 한다.
+  CSS는 인라인, 글꼴은 시스템 글꼴만 쓴다(app.html은 Google Fonts를 불러오지만
+  서버가 없으면 그것도 못 받는다). 아이콘은 서비스워커가 미리 캐시해 둔 것이다.
+
+  이 페이지는 서비스워커가 설치 시점에 캐시하고, 네비게이션 요청이 실패하면
+  대신 내보낸다(src/service-worker.ts 참고). 그래서 **중단 전에 한 번 배포**해야
+  회원들 기기에 들어간다.
+
+  날짜/문구는 아래 한 군데만 고치면 된다.
+-->
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #ffffff;
+    --bg-soft: #f8f9fa;
+    --line: #e9ecef;
+    --text: #212529;
+    --text-dim: #868e96;
+    --accent: #4c6ef5;
+  }
+  /* 앱과 같은 규칙: 명시적 선택은 data-theme, 없으면 시스템 설정 */
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #1a1b1e;
+      --bg-soft: #25262b;
+      --line: #2c2e33;
+      --text: #e5e7eb;
+      --text-dim: #9ca3af;
+      --accent: #748ffc;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #1a1b1e;
+    --bg-soft: #25262b;
+    --line: #2c2e33;
+    --text: #e5e7eb;
+    --text-dim: #9ca3af;
+    --accent: #748ffc;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo",
+                 "Malgun Gothic", "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem;
+    padding-bottom: calc(1.5rem + env(safe-area-inset-bottom));
+  }
+  main {
+    width: 100%;
+    max-width: 24rem;
+    text-align: center;
+  }
+  .mark {
+    font-size: 3.5rem;
+    line-height: 1;
+    margin-bottom: 1.25rem;
+  }
+  h1 {
+    font-size: 1.375rem;
+    font-weight: 700;
+    margin: 0 0 0.625rem;
+    letter-spacing: -0.01em;
+  }
+  p {
+    margin: 0;
+    font-size: 0.9375rem;
+    line-height: 1.65;
+    color: var(--text-dim);
+  }
+  .when {
+    margin-top: 1.5rem;
+    padding: 0.875rem 1rem;
+    background: var(--bg-soft);
+    border: 1px solid var(--line);
+    border-radius: 0.75rem;
+    font-size: 0.9375rem;
+    font-weight: 600;
+  }
+  button {
+    margin-top: 1.5rem;
+    width: 100%;
+    padding: 0.8125rem;
+    font: inherit;
+    font-size: 0.9375rem;
+    font-weight: 600;
+    color: #fff;
+    background: var(--accent);
+    border: 0;
+    border-radius: 0.75rem;
+    cursor: pointer;
+  }
+  button:active { opacity: 0.85; }
+</style>
+</head>
+<body>
+<main>
+  <div class="mark">🛠️</div>
+
+  <!-- ↓↓↓ 고칠 곳: 제목 · 설명 · 기간 ↓↓↓ -->
+  <h1>정기 점검 중입니다</h1>
+  <p>
+    서버 점검 중이라 잠시 접속할 수 없습니다.<br>
+    점검이 끝나면 그대로 다시 열립니다.
+  </p>
+  <div class="when">
+    11월 27일(금)부터 1~2일
+  </div>
+  <!-- ↑↑↑ 고칠 곳 ↑↑↑ -->
+
+  <button type="button" onclick="location.reload()">다시 시도</button>
+</main>
+
+<script>
+  // 앱과 같은 테마 선택을 따른다. 저장된 값이 없으면 시스템 설정(CSS)이 처리한다.
+  // 시크릿 모드 등에서 localStorage 접근 자체가 예외를 던지므로 감싼다.
+  try {
+    var t = localStorage.getItem('theme');
+    if (t === 'dark' || t === 'light') document.documentElement.dataset.theme = t;
+  } catch (e) {}
+
+  // 네트워크가 돌아오면 알아서 들어가게 한다. 사용자가 새로고침을 반복하지
+  // 않아도 되고, 서버가 켜진 순간을 놓치지 않는다.
+  addEventListener('online', function () { location.reload(); });
+</script>
+</body>
+</html>
