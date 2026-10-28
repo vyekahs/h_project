@@ -19,7 +19,11 @@
 
 ## 들어 있는 것
 
-| 파일 | 역할 |
+**업로드할 것은 `public/` 폴더뿐이다.** 이 README는 올리지 않는다 — Pages는
+폴더에 있는 파일을 전부 공개하므로, 같이 올리면 이 문서가 `/README.md`로
+누구나 볼 수 있게 된다.
+
+| `public/` 안의 파일 | 역할 |
 |---|---|
 | `index.html` | 안내 페이지 (`static/offline.html`과 같은 내용) |
 | `404.html` | 같은 내용. 호스팅이 없는 경로에 이걸 쓴다 |
@@ -35,14 +39,19 @@
 (원본은 `static/offline.html`이다 — 거기를 고친 뒤 다시 복사하는 편이 안전하다.)
 
 ```sh
-cp ../static/offline.html index.html
-cp index.html 404.html
+cp ../static/offline.html public/index.html
+cp public/index.html public/404.html
 ```
 
 ## 올리기 (두 주소 공통)
 
-1. Cloudflare → Workers & Pages → Create → Pages → Upload assets
-2. 이 폴더를 그대로 업로드. 프로젝트 이름은 아무거나(예: `honnol-maintenance`)
+1. Cloudflare → Workers & Pages → Create
+   화면 맨 아래 **"Continue to Pages"** 를 누른다. 위쪽의 "Upload your static
+   files"를 고르면 Workers로 만들어지는데, Workers의 커스텀 도메인은 도메인
+   전체가 Cloudflare 존으로 올라가 있어야 한다. Pages의 커스텀 도메인만 외부
+   DNS(afraid.org)를 그대로 두고 CNAME 하나로 연결할 수 있다.
+2. Upload assets → **`public/` 폴더만** 업로드. 프로젝트 이름은 아무거나
+   (예: `honnol-maintenance`)
 3. 배포되면 `https://<프로젝트>.pages.dev`로 열어서 안내가 뜨는지 확인
 4. **DNS는 아직 바꾸지 않는다.** 여기까지가 준비다
 
