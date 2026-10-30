@@ -21,17 +21,27 @@ import { getMacCandidates, promoteConfidentMacs } from './wifiLearning';
 const enabled = process.env.WIFI_LEARN_TEST_DB === '1';
 
 /**
+ * 테스트용 MAC. 첫 옥텟의 로컬 관리 비트(0x02)가 폰과 장비를 가른다 —
+ * 판정이 이 비트를 보므로 픽스처도 실제 형식이어야 한다.
+ *
+ *   AE:00:00:00:00:0x  무작위 MAC = 개인 폰   (0xAE & 0x02 = 2)
+ *   A0:00:00:00:00:0x  제조사 MAC = 매장 장비 (0xA0 & 0x02 = 0)
+ */
+
+/**
  * 시나리오 — 관측 10일(2026-09-01 ~ 09-10).
  *
  * 영업일은 UTC 날짜이고 KST 14:00 = UTC 05:00이라, 아래 시각은 모두 같은
  * 영업일 안에 들어간다.
  *
- * - GEAR:A    매장 장비. 매일 종일. 상시 목록에는 없다(밤에 전원을 내려서).
- * - 이리      1~8일 방문, 폰 PHONE:IRI
- * - 동동      1,3,5,7,9일 방문, 폰 PHONE:DD
+ * - A0:00:00:00:00:0A    매장 장비. 매일 종일. 상시 목록에는 없다(밤에 전원을 내려서).
+ * - 이리      1~8일 방문, 폰 AE:00:00:00:00:01
+ * - 동동      1,3,5,7,9일 방문, 폰 AE:00:00:00:00:02
  * - 트윈A/B   똑같이 2,4,6일 같은 시간에 방문, 각자 폰 → 구분 불가
  * - 매일이    10일 전부 방문 → 비방문일이 없어 부정 증거를 세울 수 없다
- * - 늦둥이    1~3일이지만 시간대가 다르다(KST 18~21시), 폰 PHONE:LATE
+ * - 늦둥이    1~3일이지만 시간대가 다르다(KST 18~21시), 폰 AE:00:00:00:00:05
+ * - 매장지기  2~9일 방문(문을 여는 사람). 그가 켜는 장비 A0:A0:00:00:00:00:0B 가
+ *             방문일과 **완전히 일치**한다 — 날짜 증거로는 폰과 구분되지 않는다.
  */
 async function seed() {
 	await db.execute(sql`
@@ -71,21 +81,21 @@ async function seed() {
 		INSERT INTO user_devices (attendee_id, wifi_mac) SELECT id, NULL FROM attendees;
 
 		INSERT INTO wifi_day_macs (day, mac, first_seen_at, last_seen_at, samples)
-		SELECT d::date, 'GEAR:A', d + interval '3 hours', d + interval '14 hours', 600
+		SELECT d::date, 'A0:00:00:00:00:0A', d + interval '3 hours', d + interval '14 hours', 600
 		FROM generate_series('2026-09-01'::date, '2026-09-10'::date, '1 day') d;
 
 		INSERT INTO visits (attendee_id, arrival_time, departure_time)
 		SELECT 1, d + interval '5 hours', d + interval '14 hours'
 		FROM generate_series('2026-09-01'::date,'2026-09-08'::date,'1 day') d;
 		INSERT INTO wifi_day_macs (day, mac, first_seen_at, last_seen_at)
-		SELECT d::date, 'PHONE:IRI', d + interval '5 hours', d + interval '14 hours'
+		SELECT d::date, 'AE:00:00:00:00:01', d + interval '5 hours', d + interval '14 hours'
 		FROM generate_series('2026-09-01'::date,'2026-09-08'::date,'1 day') d;
 
 		INSERT INTO visits (attendee_id, arrival_time, departure_time)
 		SELECT 2, d + interval '5 hours', d + interval '13 hours'
 		FROM generate_series('2026-09-01'::date,'2026-09-09'::date,'2 days') d;
 		INSERT INTO wifi_day_macs (day, mac, first_seen_at, last_seen_at)
-		SELECT d::date, 'PHONE:DD', d + interval '5 hours', d + interval '13 hours'
+		SELECT d::date, 'AE:00:00:00:00:02', d + interval '5 hours', d + interval '13 hours'
 		FROM generate_series('2026-09-01'::date,'2026-09-09'::date,'2 days') d;
 
 		INSERT INTO visits (attendee_id, arrival_time, departure_time)
@@ -94,17 +104,28 @@ async function seed() {
 		INSERT INTO wifi_day_macs (day, mac, first_seen_at, last_seen_at)
 		SELECT d::date, m, d + interval '6 hours', d + interval '12 hours'
 		FROM generate_series('2026-09-02'::date,'2026-09-06'::date,'2 days') d,
-		     (VALUES ('PHONE:TA'),('PHONE:TB')) x(m);
+		     (VALUES ('AE:00:00:00:00:03'),('AE:00:00:00:00:04')) x(m);
 
 		INSERT INTO visits (attendee_id, arrival_time, departure_time)
 		SELECT 5, d + interval '5 hours', d + interval '14 hours'
 		FROM generate_series('2026-09-01'::date,'2026-09-10'::date,'1 day') d;
 
+		INSERT INTO attendees (id, name) VALUES (7,'매장지기');
+		SELECT setval('attendees_id_seq', 7);
+		INSERT INTO user_devices (attendee_id, wifi_mac) VALUES (7, NULL);
+		INSERT INTO visits (attendee_id, arrival_time, departure_time)
+		SELECT 7, d + interval '5 hours', d + interval '14 hours'
+		FROM generate_series('2026-09-02'::date,'2026-09-09'::date,'1 day') d;
+		-- 매장지기가 켜는 장비. 방문일과 한 날도 어긋나지 않는다(제조사 OUI).
+		INSERT INTO wifi_day_macs (day, mac, first_seen_at, last_seen_at)
+		SELECT d::date, 'A0:00:00:00:00:0B', d + interval '5 hours', d + interval '14 hours'
+		FROM generate_series('2026-09-02'::date,'2026-09-09'::date,'1 day') d;
+
 		INSERT INTO visits (attendee_id, arrival_time, departure_time)
 		SELECT 6, d + interval '9 hours', d + interval '12 hours'
 		FROM generate_series('2026-09-01'::date,'2026-09-03'::date,'1 day') d;
 		INSERT INTO wifi_day_macs (day, mac, first_seen_at, last_seen_at)
-		SELECT d::date, 'PHONE:LATE', d + interval '9 hours', d + interval '12 hours'
+		SELECT d::date, 'AE:00:00:00:00:05', d + interval '9 hours', d + interval '12 hours'
 		FROM generate_series('2026-09-01'::date,'2026-09-03'::date,'1 day') d;
 	`);
 }
@@ -129,10 +150,10 @@ describe.skipIf(!enabled)('WiFi MAC 학습 판정', () => {
 		`)) as any[];
 		const byName = new Map(rows.map((r) => [r.name as string, r.wifi_mac as string | null]));
 
-		expect(byName.get('이리')).toBe('PHONE:IRI');
-		expect(byName.get('동동')).toBe('PHONE:DD');
+		expect(byName.get('이리')).toBe('AE:00:00:00:00:01');
+		expect(byName.get('동동')).toBe('AE:00:00:00:00:02');
 		// 시간대가 달라도 날짜 근거가 충분하면 등록된다.
-		expect(byName.get('늦둥이')).toBe('PHONE:LATE');
+		expect(byName.get('늦둥이')).toBe('AE:00:00:00:00:05');
 
 		// 늘 같은 날·같은 시간에 오는 두 사람은 서로의 폰이 구분되지 않는다.
 		expect(byName.get('트윈A')).toBeNull();
@@ -140,19 +161,37 @@ describe.skipIf(!enabled)('WiFi MAC 학습 판정', () => {
 		// 매일 오는 사람은 비방문일이 없어 부정 증거를 세울 수 없다.
 		expect(byName.get('매일이')).toBeNull();
 		// 매장 장비는 누구에게도 붙지 않는다.
-		expect(rows.every((r) => r.wifi_mac !== 'GEAR:A')).toBe(true);
+		expect(rows.every((r) => r.wifi_mac !== 'A0:00:00:00:00:0A')).toBe(true);
+	});
+
+	it('문을 여는 사람의 장비는 날짜가 완벽히 일치해도 등록하지 않는다', async () => {
+		const cands = await getMacCandidates(500);
+		const gear = cands.find((c) => c.name === '매장지기' && c.mac === 'A0:00:00:00:00:0B')!;
+
+		// 날짜 증거만 보면 흠잡을 데가 없다 — 부정 증거도 0이다.
+		expect(gear.daysWith).toBe(gear.daysVisited);
+		expect(gear.daysWithout).toBe(0);
+		expect(gear.daysAbsent).toBeGreaterThanOrEqual(2);
+
+		// 그런데도 등록되면 안 된다. 제조사 OUI라 사람의 폰이 아니다.
+		await promoteConfidentMacs();
+		const rows = (await db.execute(sql`
+			SELECT ud.wifi_mac FROM user_devices ud
+			JOIN attendees a ON a.id = ud.attendee_id WHERE a.name = '매장지기'
+		`)) as any[];
+		expect(rows[0].wifi_mac).toBeNull();
 	});
 
 	it('매장 장비는 온 날에 100% 함께 있어도 비방문일 출현으로 탈락한다', async () => {
 		const cands = await getMacCandidates(500);
 
-		const iriGear = cands.find((c) => c.name === '이리' && c.mac === 'GEAR:A')!;
+		const iriGear = cands.find((c) => c.name === '이리' && c.mac === 'A0:00:00:00:00:0A')!;
 		expect(iriGear.daysWith).toBe(iriGear.daysVisited); // 온 날에는 늘 있었다
 		expect(iriGear.daysWithout).toBeGreaterThan(0); // 안 온 날에도 있었다 → 탈락
 
 		// 매일 오는 사람에게 매장 장비는 모든 조건을 만족해 보인다.
 		// 이 한 행이 MIN_ABSENT_DAYS가 필요한 이유다.
-		const dailyGear = cands.find((c) => c.name === '매일이' && c.mac === 'GEAR:A')!;
+		const dailyGear = cands.find((c) => c.name === '매일이' && c.mac === 'A0:00:00:00:00:0A')!;
 		expect(dailyGear.daysWith).toBe(dailyGear.daysVisited);
 		expect(dailyGear.daysWithout).toBe(0);
 		expect(dailyGear.daysAbsent).toBe(0); // 근거로 쓸 비방문일이 없다
@@ -162,7 +201,7 @@ describe.skipIf(!enabled)('WiFi MAC 학습 판정', () => {
 		const cands = await getMacCandidates(500);
 		// 늦둥이는 1~3일만 왔고 그 3일 모두 이리의 폰과 겹쳤다(이리도 그날 있었다).
 		// 긍정 증거만 보면 100%지만, 이리 폰은 늦둥이가 안 온 날에도 있었다.
-		const lateWithIri = cands.find((c) => c.name === '늦둥이' && c.mac === 'PHONE:IRI')!;
+		const lateWithIri = cands.find((c) => c.name === '늦둥이' && c.mac === 'AE:00:00:00:00:01')!;
 		expect(lateWithIri.daysWith).toBe(lateWithIri.daysVisited);
 		expect(lateWithIri.daysWithout).toBeGreaterThan(0);
 	});

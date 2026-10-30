@@ -185,6 +185,8 @@ export interface MacCandidate {
 	daysAbsent: number;
 	/** 그중 이 MAC이 있던 날 수 — 0이어야 그 사람의 폰이다 */
 	daysWithout: number;
+	/** 영업이 끝난 새벽에 아무도 없는데 랜에 있던 밤의 수 */
+	infraNights: number;
 }
 
 /**
@@ -264,7 +266,9 @@ export async function getMacCandidates(limit = 30): Promise<MacCandidate[]> {
 		const rows = (await db.execute(sql`
 			${PAIR_STATS}
 			SELECT p.attendee_id, a.name, p.mac,
-			       p.days_visited, p.days_with, p.days_absent, p.days_without
+			       p.days_visited, p.days_with, p.days_absent, p.days_without,
+			       COALESCE((SELECT i.nights_seen FROM wifi_infra_macs i WHERE i.mac = p.mac), 0)
+			           AS infra_nights
 			FROM pair p
 			JOIN attendees a ON a.id = p.attendee_id
 			WHERE p.days_visited >= ${MIN_DAYS}
@@ -279,12 +283,41 @@ export async function getMacCandidates(limit = 30): Promise<MacCandidate[]> {
 			daysVisited: Number(r.days_visited),
 			daysWith: Number(r.days_with),
 			daysAbsent: Number(r.days_absent),
-			daysWithout: Number(r.days_without)
+			daysWithout: Number(r.days_without),
+			infraNights: Number(r.infra_nights)
 		}));
 	} catch (e) {
 		console.error('[WiFiLearn] 후보 조회 실패:', e);
 		return [];
 	}
+}
+
+/**
+ * 개인 폰의 MAC인가 — 첫 옥텟의 로컬 관리 비트(0x02)로 가린다.
+ *
+ * 요즘 폰은 SSID마다 무작위 MAC을 만들어 쓰는 것이 기본이고, 그 MAC은 반드시
+ * 로컬 관리 비트가 켜져 있다. 반대로 노트북·프린터·공유기·TV 같은 장비는 제조사가
+ * 부여한 주소를 그대로 쓴다.
+ *
+ * 왜 날짜 증거만으로는 부족한가:
+ *
+ * 매장을 여는 사람의 출석은 그 사람이 켜는 장비와 패턴이 **완전히 같다.** 실제로
+ * 이리(매장을 여는 분)에게 A0:F2:62:A6:63:00이 등록됐는데, 관측 30일 중 이리 방문
+ * 25일과 그 MAC 출현 25일이 하나도 어긋나지 않았다. "안 온 날에는 없었다"는 부정
+ * 증거를 완벽히 만족한 것이다. 나중에 확인해 보니 매장 노트북과 빌지프린터였고,
+ * 같은 제조사 주소 두 개가 매일 5분 안쪽 간격으로 함께 켜지고 있었다.
+ *
+ * 새벽 관측(wifi_infra_macs)으로 거르는 방법도 생각했지만 쓰지 않았다. BLE가
+ * 사람을 놓치는 날이 있어서, 운영자가 새벽까지 남아 있었는데 안 잡힌 밤이 있으면
+ * 그 사람의 폰이 영구히 장비로 찍힌다. 잘못 등록하는 것만큼 나쁘다.
+ *
+ * 이 기준의 실패 방향은 안전하다. 무작위 MAC을 꺼둔 사람은 자동 등록이 안 될 뿐이고,
+ * 그런 사람은 기기등록으로 한 번에 끝낼 수 있다. 장비를 사람으로 등록하면 그 사람은
+ * 장비가 켜져 있는 내내 재실로 잡힌다 — 되돌리기 전까지 계속 틀린다.
+ */
+export function isPhoneMac(mac: string): boolean {
+	const firstOctet = Number.parseInt(mac.slice(0, 2), 16);
+	return Number.isFinite(firstOctet) && (firstOctet & 0x02) !== 0;
 }
 
 /** 등록된 MAC이 최근 이만큼의 방문일 동안 한 번도 안 잡히면 낡은 값으로 본다. */
@@ -370,7 +403,9 @@ export async function promoteConfidentMacs(): Promise<
 			c.daysWith >= c.daysVisited - MAX_MISSES &&
 			// 부정 증거 — 이 두 줄이 매장 장비를 걸러낸다.
 			c.daysAbsent >= MIN_ABSENT_DAYS &&
-			c.daysWithout <= MAX_FALSE_DAYS
+			c.daysWithout <= MAX_FALSE_DAYS &&
+			// 개인 폰만 받는다 — 아래 isPhoneMac 설명 참고.
+			isPhoneMac(c.mac)
 	);
 
 	// 한 기기가 두 사람의 폰일 수는 없다.
@@ -407,7 +442,8 @@ export async function promoteConfidentMacs(): Promise<
 				console.log(
 					`[WiFiLearn] ${c.name} → ${c.mac} 자동 등록 ` +
 						`(방문 ${c.daysVisited}일 중 ${c.daysWith}일 동행, ` +
-						`비방문 ${c.daysAbsent}일 중 ${c.daysWithout}일 출현)`
+						`비방문 ${c.daysAbsent}일 중 ${c.daysWithout}일 출현, ` +
+						`새벽 ${c.infraNights}밤)`
 				);
 			}
 		} catch (e) {
