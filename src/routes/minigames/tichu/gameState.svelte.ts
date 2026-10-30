@@ -8,7 +8,6 @@ import { rankUpStore } from '$lib/stores/rankUpStore.svelte';
 import { TutorialEngine } from '$lib/games/tichu/tutorial/tutorialEngine';
 import { getLessonById, LESSONS } from '$lib/games/tichu/tutorial/tutorialScenarios';
 import type { TutorialStep } from '$lib/games/tichu/tutorial/tutorialTypes';
-import { getPhoenixSubstituteRank } from '$lib/games/tichu/combinations';
 import { trackGameStart } from '$lib/games/utils';
 import { resetDecisionLog, observePhase, observeState, observeEvent } from './decisionLog';
 
@@ -134,19 +133,16 @@ export function createTichuGameState() {
 		const hand = (getState()?.players[0]?.hand ?? []).filter(c => c != null);
 		if (!hand.length) return [];
 
-		// 봉황이 선택된 상태에서 유효 조합이면, 대체하는 랭크 위치로 정렬
-		let phoenixSortRank: number | null = null;
-		if (selectedCards.has('phoenix')) {
-			const selectedCardObjs = hand.filter(c => selectedCards.has(c.id));
-			phoenixSortRank = getPhoenixSubstituteRank(selectedCardObjs);
-		}
-
+		// 선택 상태에 따라 정렬을 바꾸지 않는다. 예전에는 봉황을 고르면 대체하는 숫자
+		// 옆으로 옮겨 정렬했는데, 카드를 고르는 도중에 봉황이 이동하면서 사이 카드들이
+		// 한 칸씩 밀려(두 줄일 때는 줄을 넘어) 다음에 누르려던 자리에 다른 카드가 와 있었다.
+		// 페어·트리플을 고를 때 이미 고른 카드가 다시 눌리는 원인이었다.
 		const getSortValue = (c: Card): number => {
 			if (c.type === 'normal') return c.rank;
 			switch (c.special) {
 				case 'dog': return 0;
 				case 'mahjong': return 1;
-				case 'phoenix': return phoenixSortRank ?? 14.5;
+				case 'phoenix': return 14.5;
 				case 'dragon': return 15;
 				default: return 0;
 			}

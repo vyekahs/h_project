@@ -325,19 +325,21 @@
 	.hand-cards :global(.card:first-child) {
 		margin-left: 0;
 	}
+	/*
+	 * 카드를 고르는 동안 카드 위치가 움직이지 않게 한다.
+	 * 예전에는 마우스를 올리면 20px 뜨면서 커지고 다음 카드를 20px 밀어냈고, 선택한
+	 * 카드 다음 카드도 6px 밀었다. 겨냥한 자리에서 카드가 비켜나거나, 떠오른 아래 줄
+	 * 카드가 위 줄 카드를 덮어서 이미 고른 카드가 다시 눌렸다.
+	 * 떠오르는 높이는 줄 사이 여백(위아래 패딩 4px×2 + 간격 2px = 10px) 안으로 둔다.
+	 */
+	.hand-cards :global(.card.selected) {
+		transform: translateY(-8px);
+	}
 	@media (hover: hover) {
-		.hand-cards :global(.card:hover) {
-			transform: translateY(-20px) scale(1.1) rotate(2deg);
+		.hand-cards :global(.card:not(.selected):hover) {
+			transform: translateY(-4px);
 			z-index: 10;
 		}
-		/* Add extra space for the hovered card so neighbors aren't obscured */
-		.hand-cards :global(.card:hover + .card) {
-			margin-left: calc(var(--card-overlap, 0px) + 20px);
-		}
-	}
-	/* Give breathing room after selected cards */
-	.hand-cards :global(.card.selected + .card) {
-		margin-left: calc(var(--card-overlap, 0px) + 6px);
 	}
 
 	.play-controls {
