@@ -57,7 +57,11 @@
 		<div class="exit-overlay" onkeydown={(e) => e.key === 'Escape' && game.resumeFromPause()}>
 			<div class="exit-modal">
 				<h3>종료하시겠습니까?</h3>
-				<p>게임을 종료하면 진행 중인 게임이 삭제됩니다.</p>
+				{#if game.currentForfeitScore !== null}
+					<p>지금 나가면 <strong>포기</strong>로 기록되어 랭킹 점수 <strong class="forfeit-score">{game.currentForfeitScore}점</strong>이 반영됩니다.</p>
+				{:else}
+					<p>게임을 종료하면 진행 중인 게임이 삭제됩니다.</p>
+				{/if}
 				<div class="exit-actions">
 					<button class="exit-btn exit-btn-cancel" onclick={() => game.resumeFromPause()}>
 						계속하기
@@ -222,6 +226,9 @@
 		font-size: 0.85rem;
 		color: #9ca3af;
 		line-height: 1.4;
+	}
+	.exit-modal .forfeit-score {
+		color: #fca5a5;
 	}
 	.exit-actions {
 		display: flex;
