@@ -342,6 +342,14 @@
                     <h3>게임 설명</h3>
                     <p>{selectedDetailGame.description || '설명이 없습니다.'}</p>
                 </div>
+
+                {#if selectedDetailGame.bgg_id}
+                    <!-- BGG XML API 이용 조건: 출처 표기 + BGG 링크 -->
+                    <p class="bgg-credit">
+                        게임 정보 출처:
+                        <a href="https://boardgamegeek.com/boardgame/{selectedDetailGame.bgg_id}" target="_blank" rel="noopener noreferrer">BoardGameGeek</a>
+                    </p>
+                {/if}
             </div>
 
             <div class="modal-actions">
@@ -933,6 +941,15 @@
         margin: 0;
         color: var(--text-darker);
         line-height: 1.6;
+    }
+    .bgg-credit {
+        margin: 0 0 1rem 0;
+        font-size: 0.8rem;
+        color: var(--text-muted);
+    }
+    .bgg-credit a {
+        color: inherit;
+        text-decoration: underline;
     }
     .modal-actions {
         display: flex;
