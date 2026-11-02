@@ -23,6 +23,8 @@
 
 	let forceSetup = $state(false);
 	let showSetup = $derived(!game.savedGameAvailable || forceSetup);
+	// 이어하기 대신 새로 시작하면 저장된 게임은 포기로 기록된다 — 미리 알려 준다
+	const savedForfeit = $derived(game.savedGameAvailable ? game.savedForfeitScore() : null);
 	let activeTab = $state<'setup' | 'ranking' | 'tutorial' | 'comments'>('setup');
 
 	// Ranking state
@@ -129,6 +131,9 @@
 					</div>
 				</section>
 
+				{#if savedForfeit !== null}
+					<p class="forfeit-note">진행 중인 게임은 <strong>포기</strong>로 기록됩니다 (랭킹 {savedForfeit}점)</p>
+				{/if}
 				<button class="start-btn" onclick={() => game.startGame()}>
 					게임 시작
 				</button>
@@ -138,6 +143,9 @@
 				</button>
 				<button class="new-game-btn" onclick={() => { forceSetup = true; }}>
 					새 게임
+					{#if savedForfeit !== null}
+						<span class="new-game-sub">진행 중인 게임은 포기 처리 ({savedForfeit}점)</span>
+					{/if}
 				</button>
 			{/if}
 
@@ -148,6 +156,7 @@
 			<div class="ranking-container">
 				<p class="ranking-desc">매월 1일 초기화</p>
 				<p class="ranking-formula">우리팀 점수 - 상대팀 점수 (최소 100점)</p>
+				<p class="ranking-formula">중간에 그만두면 포기: 지고 있던 점수차 - 100점</p>
 				<div class="ranking-panel">
 					<h3 class="ranking-title">이달의 랭킹</h3>
 					{#if rankingLoading}
@@ -487,6 +496,19 @@
 	}
 
 	/* New Game Button */
+	.forfeit-note {
+		margin: 0 0 10px;
+		text-align: center;
+		font-size: 0.8rem;
+		color: #fca5a5;
+	}
+	.new-game-sub {
+		display: block;
+		margin-top: 4px;
+		font-size: 0.75rem;
+		font-weight: 500;
+		color: #fca5a5;
+	}
 	.new-game-btn {
 		width: 100%;
 		padding: 18px;

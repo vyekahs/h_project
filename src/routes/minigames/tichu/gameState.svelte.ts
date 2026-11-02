@@ -8,7 +8,6 @@ import { rankUpStore } from '$lib/stores/rankUpStore.svelte';
 import { TutorialEngine } from '$lib/games/tichu/tutorial/tutorialEngine';
 import { getLessonById, LESSONS } from '$lib/games/tichu/tutorial/tutorialScenarios';
 import type { TutorialStep } from '$lib/games/tichu/tutorial/tutorialTypes';
-import { getPhoenixSubstituteRank } from '$lib/games/tichu/combinations';
 import { trackGameStart } from '$lib/games/utils';
 import { resetDecisionLog, observePhase, observeState, observeEvent } from './decisionLog';
 
@@ -134,19 +133,16 @@ export function createTichuGameState() {
 		const hand = (getState()?.players[0]?.hand ?? []).filter(c => c != null);
 		if (!hand.length) return [];
 
-		// 봉황이 선택된 상태에서 유효 조합이면, 대체하는 랭크 위치로 정렬
-		let phoenixSortRank: number | null = null;
-		if (selectedCards.has('phoenix')) {
-			const selectedCardObjs = hand.filter(c => selectedCards.has(c.id));
-			phoenixSortRank = getPhoenixSubstituteRank(selectedCardObjs);
-		}
-
+		// 선택 상태에 따라 정렬을 바꾸지 않는다. 예전에는 봉황을 고르면 대체하는 숫자
+		// 옆으로 옮겨 정렬했는데, 카드를 고르는 도중에 봉황이 이동하면서 사이 카드들이
+		// 한 칸씩 밀려(두 줄일 때는 줄을 넘어) 다음에 누르려던 자리에 다른 카드가 와 있었다.
+		// 페어·트리플을 고를 때 이미 고른 카드가 다시 눌리는 원인이었다.
 		const getSortValue = (c: Card): number => {
 			if (c.type === 'normal') return c.rank;
 			switch (c.special) {
 				case 'dog': return 0;
 				case 'mahjong': return 1;
-				case 'phoenix': return phoenixSortRank ?? 14.5;
+				case 'phoenix': return 14.5;
 				case 'dragon': return 15;
 				default: return 0;
 			}
@@ -339,6 +335,13 @@ export function createTichuGameState() {
 			engine.destroy();
 		}
 
+		// 이어하기가 남아 있는데 새 게임을 시작하면 그 게임은 버려진다 → 포기로 기록.
+		// (게임 중 탭을 닫고 돌아오지 않은 경우도 여기서 잡힌다)
+		const abandoned = loadTichuGame();
+		if (abandoned && abandoned.state.phase !== 'game_end') {
+			submitForfeit(abandoned.state.cumulativeScoreA, abandoned.state.cumulativeScoreB);
+		}
+
 		clearTichuSave();
 		savedGameAvailable = false;
 		selectedCards = new Set();
@@ -398,6 +401,44 @@ export function createTichuGameState() {
 		return Math.max(100, teamAScore - teamBScore);
 	}
 
+	/**
+	 * 진행 중인 게임을 버리면(나가기, 이어하기 대신 새 게임) 포기로 기록한다.
+	 *
+	 * 예전에는 버린 게임은 아무것도 남지 않았고, 끝까지 치면 져도 최소 100점이었다.
+	 * 그래서 매 라운드 그랜드를 부르고 실패하면 게임을 버리고 다시 시작하는 쪽이
+	 * 가장 효율적이었다(실제로 한 유저가 게임 43판을 시작해 21판만 완주, 남은 라운드는
+	 * 전부 그랜드 성공). 포기는 끝까지 쳐서 지는 것(+100)보다 항상 손해가 되게 한다.
+	 * 첫 라운드 전 포기도 봐주지 않는다 — 8장을 보고 마음에 안 들면 다시 뽑는 길이 남는다.
+	 */
+	const FORFEIT_PENALTY = 100;
+	function calculateForfeitScore(teamAScore: number, teamBScore: number): number {
+		return Math.min(0, teamAScore - teamBScore) - FORFEIT_PENALTY;
+	}
+
+	function submitForfeit(teamAScore: number, teamBScore: number) {
+		const score = calculateForfeitScore(teamAScore, teamBScore);
+		// 화면 전환을 막지 않도록 기다리지 않는다. 실패(비로그인 등)해도 조용히 넘어간다.
+		fetch('/api/game/record', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ gameId: 'tichu', difficulty: 'default', clearTime: 0, score, cleared: false })
+		}).catch(() => {});
+	}
+
+	/** 지금 진행 중인 게임을 버리면 받을 점수 (나가기 확인 창 표시용) */
+	const currentForfeitScore = $derived.by(() => {
+		const s = getState();
+		if (!s || s.phase === 'game_end' || isTutorialMode) return null;
+		return calculateForfeitScore(s.cumulativeScoreA, s.cumulativeScoreB);
+	});
+
+	/** 저장된(이어하기) 게임을 버리고 새로 시작하면 받을 점수 (시작 화면 표시용) */
+	function savedForfeitScore(): number | null {
+		const save = loadTichuGame();
+		if (!save || save.state.phase === 'game_end') return null;
+		return calculateForfeitScore(save.state.cumulativeScoreA, save.state.cumulativeScoreB);
+	}
+
 	async function submitTichuScore(teamAScore: number, teamBScore: number) {
 		if (scoreSubmitting) return;
 		scoreSubmitting = true;
@@ -454,6 +495,10 @@ export function createTichuGameState() {
 			exitTutorial();
 			showExitConfirmModal = false;
 			return;
+		}
+		const s = engine?.state;
+		if (s && s.phase !== 'game_end') {
+			submitForfeit(s.cumulativeScoreA, s.cumulativeScoreB);
 		}
 		clearTichuSave();
 		savedGameAvailable = false;
@@ -846,6 +891,8 @@ export function createTichuGameState() {
 
 		// Save/restore
 		get savedGameAvailable() { return savedGameAvailable; },
+		get currentForfeitScore() { return currentForfeitScore; },
+		savedForfeitScore,
 		resumeGame,
 		flushSave,
 
