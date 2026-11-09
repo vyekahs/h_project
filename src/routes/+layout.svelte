@@ -13,6 +13,7 @@
     import { themeStore } from '$lib/stores/theme.svelte';
     import { user } from '$lib/stores/user';
     import { initNotificationsSSE } from '$lib/stores/notifications.svelte';
+    import { syncPushSubscription } from '$lib/utils/pushSubscription';
     import { initNetworkHealthCheck } from '$lib/stores/networkHealth.svelte';
     import { isInGame } from '$lib/games/isInGame';
 
@@ -67,9 +68,15 @@
     //  컴포넌트 마운트에 연결을 묶으면 페이지 이동마다 재연결됨)
     // $user.id는 세션이 없어도 dev/test용 폴백(1번 Guest)으로 채워지므로,
     // 실제 세션 검증을 통과했는지는 authenticated 플래그로 따로 확인한다.
+    // 푸시 구독은 로그인 확인 후 한 번만 서버와 맞춘다 ($user는 포인트 등으로 자주 바뀐다)
+    let pushSynced = false;
     $effect(() => {
         if ($user.authenticated) {
             initNotificationsSSE();
+            if (!pushSynced) {
+                pushSynced = true;
+                syncPushSubscription().catch(() => {});
+            }
         }
     });
 

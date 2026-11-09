@@ -3,7 +3,7 @@
     import { hapticsEnabled } from '$lib/stores/haptics';
     import { themeStore } from '$lib/stores/theme.svelte';
     import { user } from '$lib/stores/user';
-    import { isPushSupported, isPushSubscribed, isStandalone, subscribeToPush, unsubscribeFromPush } from '$lib/utils/pushSubscription';
+    import { isPushSupported, isPushSubscribed, isStandalone, subscribeToPush, unsubscribeFromPush, syncPushSubscription } from '$lib/utils/pushSubscription';
 
     let { open = $bindable(false) } = $props();
 
@@ -45,6 +45,8 @@
 
         if (pushSupported) {
             pushSubscribed = await isPushSubscribed();
+            // 폰에 구독이 있으면 서버에도 있는지 맞춘다 (토글이 켜짐인데 서버엔 없는 상태 방지)
+            if (pushSubscribed) syncPushSubscription().catch(() => {});
         }
 
         if ($user.id) {
