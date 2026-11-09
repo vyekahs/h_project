@@ -20,7 +20,10 @@ const channels: NotificationChannel[] = [new SSENotificationChannel(), new PushN
 // mention은 기존 호환: 행 없으면 ON. 나머지 새 알림은 행 없으면 OFF.
 // scanner_down은 운영 알림이라 기본 ON이다. 행이 없으면 OFF로 취급하는 규칙을
 // 그대로 두면, 설정을 만진 적 없는 매니저에게는 스캐너가 죽어도 아무것도 안 간다.
-const DEFAULT_ON_TYPES = ['mention', 'wtp_message', 'party_message', 'party_invite', 'scanner_down'];
+// rank_change를 기본으로 켠다. 오락실에서 사람을 다시 불러오는 건 1등을 주고받는 경쟁인데
+// (9월 에너지 서킷: 두 사람이 1등을 33번씩 주고받음), 기본이 꺼져 있어 켠 사람이 4명뿐이라
+// 밀려나도 대부분 몰랐다. 같은 게임·같은 달 알림은 upsertNotify로 하나로 합쳐진다.
+const DEFAULT_ON_TYPES = ['mention', 'wtp_message', 'party_message', 'party_invite', 'scanner_down', 'rank_change'];
 
 function normalizeIds(userIds: number[]): number[] {
 	return [...new Set(userIds.map(Number))].filter((id) => Number.isInteger(id));
@@ -75,7 +78,7 @@ export const NotificationService = {
 		if (prefResult.length > 0) {
 			if ((prefResult[0] as any).enabled === false) return;
 		} else {
-			// 행 없음: mention은 ON, 나머지는 OFF
+			// 행 없음: DEFAULT_ON_TYPES만 ON
 			if (!DEFAULT_ON_TYPES.includes(payload.type)) return;
 		}
 
@@ -286,12 +289,12 @@ export const NotificationService = {
 			SELECT notification_type, enabled FROM notification_preferences
 			WHERE attendee_id = ${userId}
 		`);
-		// mention 기본 ON, 나머지 기본 OFF
+		// 기본값은 DEFAULT_ON_TYPES와 같아야 한다 (설정 화면 토글 표시용)
 		const prefs: Record<string, boolean> = {
 			mention: true,
 			visit_plan: false,
 			game_join: false,
-			rank_change: false,
+			rank_change: true,
 			wtp_join: false,
 			wtp_message: true,
 			party_message: true,
