@@ -1,6 +1,7 @@
 /// <reference types="@sveltejs/kit" />
 /// <reference lib="webworker" />
 import { build, files, version } from '$service-worker';
+import { PUBLIC_VAPID_KEY } from '$env/static/public';
 
 // Create a unique cache name for this deployment
 const CACHE = `cache-${version}`;
@@ -93,43 +94,77 @@ self.addEventListener('fetch', (e) => {
 });
 
 // Push notification handler
+//
+// 푸시를 받으면 **항상** 알림을 띄운다. 예전에는 알림 대상 페이지를 보고 있으면
+// 건너뛰었는데(SSE 토스트가 처리), 아이폰 사파리는 푸시를 받고 알림을 안 띄우는 일이
+// 반복되면 구독을 몰래 취소한다. 서버가 이미 앱을 보고 있는 사람(SSE 연결)에게는
+// 푸시를 보내지 않으므로, 여기서 건너뛸 일은 거의 없었다.
 self.addEventListener('push', (e) => {
 	const event = e as PushEvent;
-	if (!event.data) return;
+	const sw = self as unknown as ServiceWorkerGlobalScope;
+	let data: { title?: string; body?: string; url?: string; type?: string } = {};
+	try {
+		data = event.data ? event.data.json() : {};
+	} catch {
+		// 형식이 깨진 푸시여도 알림은 띄운다
+	}
 
 	event.waitUntil(
-		(self as unknown as ServiceWorkerGlobalScope).clients
-			.matchAll({ type: 'window', includeUncontrolled: true })
-			.then((clientList) => {
-				const data = event.data!.json();
-				const targetUrl = data.url || '/';
-
-				// 해당 URL의 페이지를 보고 있으면 push 알림 스킵 (SSE 토스트가 처리)
-				const isViewingTarget = clientList.some((c) => {
-					if (!c.focused) return false;
-					try {
-						const clientUrl = new URL(c.url);
-						return clientUrl.pathname === targetUrl || clientUrl.pathname.startsWith(targetUrl);
-					} catch {
-						return false;
-					}
-				});
-				if (isViewingTarget) return;
-
-				return (self as unknown as ServiceWorkerGlobalScope).registration.showNotification(
-					data.title,
-					{
-						body: data.body,
-						icon: '/icon-192.png',
-						badge: '/icon-192.png',
-						data: { url: targetUrl },
-						tag: data.type, // 같은 타입 알림 그룹핑
-						renotify: true,
-					}
-				);
-			})
+		sw.registration.showNotification(data.title || '새 알림', {
+			body: data.body || '',
+			icon: '/icon-192.png',
+			badge: '/icon-192.png',
+			data: { url: data.url || '/' },
+			tag: data.type, // 같은 타입 알림 그룹핑
+			renotify: true,
+		})
 	);
 });
+
+// 브라우저가 구독(주소)을 바꾸면 새 구독을 서버에 올린다.
+// 이 처리가 없어서 폰에서 구독이 바뀌어도 서버는 옛 주소로 계속 보냈다.
+self.addEventListener('pushsubscriptionchange', (e) => {
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	const event = e as any;
+	const sw = self as unknown as ServiceWorkerGlobalScope;
+	const toBase64url = (buf: ArrayBuffer | null) =>
+		buf ? btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '') : '';
+
+	event.waitUntil((async () => {
+		const oldSub: PushSubscription | null = event.oldSubscription ?? null;
+		const newSub: PushSubscription = event.newSubscription
+			?? await sw.registration.pushManager.subscribe({
+				userVisibleOnly: true,
+				applicationServerKey: oldSub?.options.applicationServerKey ?? urlBase64ToUint8Array(PUBLIC_VAPID_KEY),
+			});
+
+		await fetch('/api/push/subscribe', {
+			method: 'POST',
+			credentials: 'include',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({
+				endpoint: newSub.endpoint,
+				keys: { p256dh: toBase64url(newSub.getKey('p256dh')), auth: toBase64url(newSub.getKey('auth')) },
+			}),
+		});
+		if (oldSub && oldSub.endpoint !== newSub.endpoint) {
+			await fetch('/api/push/unsubscribe', {
+				method: 'POST',
+				credentials: 'include',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ endpoint: oldSub.endpoint }),
+			});
+		}
+	})().catch(() => {}));
+});
+
+function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
+	const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+	const raw = atob((base64String + padding).replace(/-/g, '+').replace(/_/g, '/'));
+	const out = new Uint8Array(raw.length);
+	for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+	return out;
+}
 
 // 알림 클릭 시 해당 URL로 이동
 self.addEventListener('notificationclick', (e) => {
