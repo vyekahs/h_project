@@ -7,6 +7,7 @@ import { sql } from 'drizzle-orm';
 import { NotificationService } from '$lib/server/services/notificationService';
 import { mapWithConcurrency } from '$lib/server/concurrency';
 import { GAME_REGISTRY } from '$lib/games/gameRegistry';
+import { displacedRankRange } from '$lib/server/rankChange';
 
 import type { RequestHandler } from './$types';
 
@@ -83,8 +84,7 @@ export const POST: RequestHandler = async ({ request, locals, cookies }) => {
                 if (oldRank === null || newRank < oldRank) {
                     const now = new Date();
                     const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-                    const rangeStart = newRank;
-                    const rangeEnd = oldRank ? oldRank : newRank + 5;
+                    const { above, upTo } = displacedRankRange(newRank, oldRank);
 
                     const displacedUsers = await db.execute(sql`
                         SELECT ranked.user_id, a.name as nickname FROM (
@@ -93,7 +93,7 @@ export const POST: RequestHandler = async ({ request, locals, cookies }) => {
                             WHERE game_id = ${gameId} AND month_key = ${monthKey}
                         ) ranked
                         JOIN attendees a ON ranked.user_id = a.id
-                        WHERE ranked.rank > ${rangeStart} AND ranked.rank <= ${rangeEnd + 1}
+                        WHERE ranked.rank > ${above} AND ranked.rank <= ${upTo}
                         AND ranked.user_id != ${userId}
                     `);
 
