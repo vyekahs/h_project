@@ -12,6 +12,7 @@
 		formatTime,
 		type Difficulty
 	} from './gameLogic.svelte';
+	import { kstDateKey } from '$lib/games/dailyPuzzle';
 
 	const game = createWaterSortGame();
 
@@ -28,7 +29,11 @@
 	onMount(() => {
 		if (!browser) return;
 		const params = new URLSearchParams(window.location.search);
-		if (params.get('autostart') === 'true') {
+		if (params.get('daily') === '1') {
+			// 오늘의 퍼즐 (오락실 카드에서 진입)
+			replaceState(window.location.pathname, {});
+			user.refresh().then(() => game.startDaily(kstDateKey()));
+		} else if (params.get('autostart') === 'true') {
 			isAutostart = true;
 			const diff = params.get('difficulty');
 			if (diff) game.difficulty = diff as Difficulty;
@@ -76,7 +81,7 @@
 		>
 			<header>
 				<div class="header-info">
-					<span class="difficulty-badge">{difficultyLabels[game.difficulty]}</span>
+					<span class="difficulty-badge">{game.dailyDate ? '오늘의 퍼즐' : difficultyLabels[game.difficulty]}</span>
 					<span class="moves">{game.moveCount}회</span>
 				</div>
 				<div class="timer-controls">
@@ -140,7 +145,7 @@
 					{#if game.history.length > 0}
 						<button class="banner-btn" onclick={game.undo}>되돌리기</button>
 					{/if}
-					<button class="banner-btn" onclick={game.startGame}>다시 도전</button>
+					<button class="banner-btn" onclick={game.dailyDate ? game.restartGame : game.startGame}>다시 도전</button>
 					<button class="banner-close" onclick={() => dismissedWarning = true} aria-label="닫기">
 						<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
 					</button>
@@ -156,15 +161,39 @@
 				]}
 				onResume={game.resumeGame}
 				onQuit={() => {
-					game.stopTimer();
-					localStorage.removeItem('watersort_save');
-					goto('/minigames/start/water-sort');
+					const wasDaily = !!game.dailyDate;
+					game.quitGame();
+					goto(wasDaily ? '/minigames' : '/minigames/start/water-sort');
 				}}
 				onRestart={game.restartGame}
 			/>
 		{/if}
 
-		{#if game.gameState === 'finished'}
+		{#if game.gameState === 'finished' && game.dailyDate}
+			<GameResultModal
+				isWon={true}
+				title="오늘의 퍼즐 완료!"
+				message={game.dailyResult && !game.dailyResult.recorded
+					? '오늘의 기록은 첫 클리어만 남습니다'
+					: undefined}
+				stats={[
+					{ label: '시간', value: formatTime(game.timerValue) },
+					{ label: '이동', value: `${game.moveCount}회` },
+					...(game.dailyResult?.rank
+						? [{ label: '오늘 순위', value: `${game.dailyResult.rank}위 / ${game.dailyResult.total}명`, highlight: true }]
+						: []),
+					...(game.dailyResult && game.dailyResult.streak > 1
+						? [{ label: '연속 참여', value: `🔥 ${game.dailyResult.streak}일` }]
+						: [])
+				]}
+				showVisitPrompt={game.showVisitPrompt}
+				primaryAction={{ label: '오락실로', onclick: () => goto('/minigames') }}
+				secondaryAction={{
+					label: '일반 게임 하기',
+					onclick: () => goto('/minigames/start/water-sort')
+				}}
+			/>
+		{:else if game.gameState === 'finished'}
 			<GameResultModal
 				isWon={true}
 				message={game.hasRestarted
@@ -209,6 +238,8 @@
 					onclick: () => {
 						if (game.history.length > 0) {
 							game.undo();
+						} else if (game.dailyDate) {
+							game.restartGame();
 						} else {
 							game.startGame();
 						}
@@ -217,9 +248,9 @@
 				secondaryAction={{
 					label: '나가기',
 					onclick: () => {
-						game.stopTimer();
-						localStorage.removeItem('watersort_save');
-						goto('/minigames/start/water-sort');
+						const wasDaily = !!game.dailyDate;
+						game.quitGame();
+						goto(wasDaily ? '/minigames' : '/minigames/start/water-sort');
 					}
 				}}
 			/>
