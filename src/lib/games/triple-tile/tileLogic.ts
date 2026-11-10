@@ -140,3 +140,22 @@ export function removeMatchedFromStaging(
 export function stagingOccupied(staging: (Tile | null)[]): number {
 	return staging.filter((t) => t !== null).length;
 }
+
+/**
+ * 타일 하나를 넣은 직후 세 장이 모였으면 터뜨린 뒤의 상태를 미리 계산한다.
+ *
+ * 타일은 칸으로 날아가는 동안에도 다음 타일을 고를 수 있고, 그때 남은 공간은
+ * "날아가는 중인 타일까지 들어간 가상의 칸"으로 계산한다. 예전에는 이 가상 칸에서
+ * 터질 세 장을 그대로 두어서, 세 번째 타일이 날아가는 사이 다른 타일을 고르면
+ * 곧 비워질 세 칸 때문에 꽉 찼다고 게임이 끝났다.
+ */
+export function resolveStagingMatch(
+	staging: (Tile | null)[],
+	capacity: number
+): { matchedType: number; resolved: (Tile | null)[] } {
+	const matchedType = checkStagingMatch(staging);
+	return {
+		matchedType,
+		resolved: matchedType >= 0 ? removeMatchedFromStaging(staging, matchedType, capacity) : staging
+	};
+}

@@ -6,6 +6,7 @@ import {
 	checkStagingMatch,
 	removeMatchedFromStaging,
 	stagingOccupied,
+	resolveStagingMatch,
 } from '$lib/games/triple-tile/tileLogic';
 import { DIFFICULTY_CONFIG, type Difficulty, type Tile } from '$lib/games/triple-tile/types';
 import { goto } from '$app/navigation';
@@ -68,7 +69,9 @@ export function createTripleTileGame() {
 	let matchingTypeId = $state(-1); // type currently being matched (for animation)
 	let matchingSlots: { index: number; typeId: number }[] = $state([]); // slots with match animation overlay
 	let matchAnimTimer: ReturnType<typeof setTimeout> | null = null; // track match animation timeout
-	let pendingQueue: { newStaging: (Tile | null)[]; tileId: number }[] = [];
+	// newStaging: 이 타일이 들어간 직후(터지기 전) — 도착했을 때 화면에 반영하고 매치를 처리한다
+	// resolved: 세 장이 모였으면 터뜨린 뒤 — 날아가는 동안 다음 타일의 공간 계산에 쓴다
+	let pendingQueue: { newStaging: (Tile | null)[]; resolved: (Tile | null)[]; tileId: number }[] = [];
 
 	// Initial state for restart
 	let initialTiles: Tile[] = [];
@@ -237,7 +240,7 @@ export function createTripleTileGame() {
 	/** Get the virtual staging state including all pending (in-flight) tiles. */
 	function getVirtualStaging(): (Tile | null)[] {
 		if (pendingQueue.length === 0) return [...staging];
-		return pendingQueue[pendingQueue.length - 1].newStaging;
+		return pendingQueue[pendingQueue.length - 1].resolved;
 	}
 
 	/**
@@ -275,7 +278,8 @@ export function createTripleTileGame() {
 		tiles = tiles.map((t) => (t.id === tileId ? { ...t, removed: true } : t));
 
 		// Add to pending queue
-		pendingQueue = [...pendingQueue, { newStaging: result.newStaging, tileId: tile.id }];
+		const { resolved } = resolveStagingMatch(result.newStaging, config.stagingCapacity);
+		pendingQueue = [...pendingQueue, { newStaging: result.newStaging, resolved, tileId: tile.id }];
 
 		return { typeId: tile.typeId, insertIndex: result.insertIndex, tileId: tile.id };
 	}
@@ -285,48 +289,54 @@ export function createTripleTileGame() {
 		const idx = pendingQueue.findIndex((p) => p.tileId === tileId);
 		if (idx === -1) return;
 
-		// Commit this tile and all tiles before it (preserve order)
+		const config = DIFFICULTY_CONFIG[difficulty];
+
+		// Commit this tile and all tiles before it (preserve order).
+		// 매치는 타일마다 처리한다 — 뒤 타일들의 staging은 앞 매치가 터진 상태를 기준으로
+		// 계산돼 있어서, 한꺼번에 반영하고 마지막에만 확인하면 앞 매치를 놓친다.
+		let matchedLast = false;
 		for (let i = 0; i <= idx; i++) {
 			staging = pendingQueue[i].newStaging;
 			moveCount++;
+			const matchedType = checkStagingMatch(staging);
+			matchedLast = matchedType >= 0;
+			if (matchedLast) applyMatch(matchedType, config.stagingCapacity);
 		}
 		pendingQueue = pendingQueue.slice(idx + 1);
 
-		const config = DIFFICULTY_CONFIG[difficulty];
-
-		// Check for match
-		const matchedType = checkStagingMatch(staging);
-		if (matchedType >= 0) {
-			// Cancel previous match animation timer if still pending
-			if (matchAnimTimer !== null) clearTimeout(matchAnimTimer);
-
-			// Record matched slot positions for animation overlay
-			matchingSlots = staging
-				.map((t, i) => (t && t.typeId === matchedType ? { index: i, typeId: t.typeId } : null))
-				.filter((x): x is { index: number; typeId: number } => x !== null);
-			matchingTypeId = matchedType;
-
-			// Update staging immediately (remove matched + compact)
-			staging = removeMatchedFromStaging(staging, matchedType, config.stagingCapacity);
-			matchCount++;
-
-			// Clear animation overlay after CSS animation completes
-			matchAnimTimer = setTimeout(() => {
-				matchAnimTimer = null;
-				matchingTypeId = -1;
-				matchingSlots = [];
-
-				// Check win only when no more pending tiles
-				if (pendingQueue.length === 0 && tiles.every((t) => t.removed)) {
-					handleWin();
-				}
-			}, 400);
-		} else if (pendingQueue.length === 0) {
+		if (!matchedLast && pendingQueue.length === 0) {
 			// Check if staging is now full (no match possible)
 			if (stagingOccupied(staging) >= config.stagingCapacity) {
 				handleGameOver();
 			}
 		}
+	}
+
+	function applyMatch(matchedType: number, capacity: number) {
+		// Cancel previous match animation timer if still pending
+		if (matchAnimTimer !== null) clearTimeout(matchAnimTimer);
+
+		// Record matched slot positions for animation overlay
+		matchingSlots = staging
+			.map((t, i) => (t && t.typeId === matchedType ? { index: i, typeId: t.typeId } : null))
+			.filter((x): x is { index: number; typeId: number } => x !== null);
+		matchingTypeId = matchedType;
+
+		// Update staging immediately (remove matched + compact)
+		staging = removeMatchedFromStaging(staging, matchedType, capacity);
+		matchCount++;
+
+		// Clear animation overlay after CSS animation completes
+		matchAnimTimer = setTimeout(() => {
+			matchAnimTimer = null;
+			matchingTypeId = -1;
+			matchingSlots = [];
+
+			// Check win only when no more pending tiles
+			if (pendingQueue.length === 0 && tiles.every((t) => t.removed)) {
+				handleWin();
+			}
+		}, 400);
 	}
 
 	function undo() {
