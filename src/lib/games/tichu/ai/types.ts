@@ -22,6 +22,12 @@ export const AI_SPEED_DELAYS: Record<AiSpeed, number> = {
 export interface PersonalityWeights {
 	aggressiveness: number;   // Play strong cards early vs save them
 	tichoPropensity: number;  // Likelihood to declare tichu
+	/** 그랜드 티츄만 따로 맞출 때 (없으면 tichoPropensity) — 캐릭터를 사람 기록에 맞춘 값 */
+	grandPropensity?: number;
+	/** 스몰 티츄만 따로 맞출 때 (없으면 tichoPropensity) */
+	smallPropensity?: number;
+	/** 그랜드 티츄 — 교환 후 손패에 요구하는 최소 순수 승률 (없으면 기본 0.45) */
+	grandMinPureWin?: number;
 	bombHolding: number;      // Hold bombs for strategic moments vs play early
 	partnerAwareness: number; // Prioritize helping partner finish
 	riskTolerance: number;    // Take risks vs play safe

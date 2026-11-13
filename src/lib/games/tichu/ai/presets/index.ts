@@ -82,6 +82,7 @@ export function getRandomStrategy(exclude: AiStrategy[] = []): AiStrategy {
 export function applyWildVariance(weights: PersonalityWeights): PersonalityWeights {
 	const vary = (v: number) => Math.max(0, Math.min(1, v + (Math.random() - 0.5) * 0.4));
 	return {
+		...weights,
 		aggressiveness: vary(weights.aggressiveness),
 		tichoPropensity: vary(weights.tichoPropensity),
 		bombHolding: vary(weights.bombHolding),

@@ -149,7 +149,7 @@ export function decideGrandTichu(hand8: Card[], weights: PersonalityWeights, beh
 	// 강도 30 이상 전체는 60.2%인데 38 이상은 65.2%, 42 이상은 67.5%였다.
 	// 그랜드는 ±200점이라 60%도 기대값은 양수지만, 부르는 값어치를 내려면 65% 선이 맞다.
 	// 48 - p*14 → 공격적 36.8 / 변칙적 39.6 / 밸런스·전략적 41 / 수비적 45.9
-	const threshold = 48 - weights.tichoPropensity * 14;
+	const threshold = 48 - (weights.grandPropensity ?? weights.tichoPropensity) * 14;
 	if (!(strength >= threshold)) return false;
 
 	// 8장만 보고 부르지만 실제로는 6장을 더 받고 교환까지 거친다.
@@ -164,7 +164,7 @@ export function decideGrandTichu(hand8: Card[], weights: PersonalityWeights, beh
 	// 실패가 70건 → 35건으로 절반이 되고, ±200점이라 진폭 감소 효과가 크다.
 	if (context) {
 		const q = estimateGrandTichuQuality(context, 16);
-		if (q >= 0 && q < GRAND_TICHU_MIN_PURE_WIN) return false;
+		if (q >= 0 && q < (weights.grandMinPureWin ?? GRAND_TICHU_MIN_PURE_WIN)) return false;
 	}
 	return true;
 }
@@ -238,7 +238,8 @@ export function decideSmallTichu(hand: Card[], weights: PersonalityWeights, cont
 	// ±100점이므로 기대값이 뚜렷하게 양수이면서, 라운드당 누군가 부를 확률이 약 8.5%로
 	// 게임에서 티츄가 여전히 보인다.
 	// 55 - p*10 → 공격적 47 / 변칙적 49 / 밸런스 50 / 수비적 53.5
-	const threshold = 55 - weights.tichoPropensity * 10;
+	const smallP = weights.smallPropensity ?? weights.tichoPropensity;
+	const threshold = 55 - smallP * 10;
 
 	// Don't declare if someone on opposing team already declared
 	const myTeam = getTeam(context.currentSeat);
@@ -281,7 +282,7 @@ export function decideSmallTichu(hand: Card[], weights: PersonalityWeights, cont
 	// 값이라(턴 효율 0.25 + 콤보 비율 0.15), 선을 몇 번 잡을 수 있는지와 무관한
 	// 요소가 판단을 좌우했다. 예를 들어 6턴이 필요한데 A 트리플과 K 페어뿐이라
 	// 선을 두 번밖에 못 잡는 손패도, 조합이 크다는 이유로 문턱을 통과했다.
-	const exitGate = SMALL_TICHU_MIN_PURE_WIN - (weights.tichoPropensity - 0.5) * 0.12;
+	const exitGate = SMALL_TICHU_MIN_PURE_WIN - (smallP - 0.5) * 0.12;
 	if (calcExitRate(hand, buildCardTracker(context)).pureWinRate < exitGate) return false;
 
 	// "내가 먼저 나갈 수 있나"를 실제로 시뮬레이션한다.

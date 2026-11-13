@@ -41,6 +41,33 @@ const PERSONA_OF: Record<AiStrategy, (typeof PERSONAS)[number] | null> = {
 	defensive: null
 };
 
+/**
+ * 캐릭터별 경향 보정 — 모델 점수에 더한다.
+ *
+ * 사람 표시(u_*)만으로는 기록이 적어 캐릭터가 거의 같게 두었다(AI끼리 같은 수 98%).
+ * 그런데 실제 기록에는 뚜렷한 경향 차이가 있다: 라미는 상대가 이길 때 22%만 패스하고
+ * (아랭 34%, 오딘 41%), 손패 9장 이상에서 큰 조합부터 내는 비율이 76%다(아랭 60%).
+ *
+ * 그 사람이 실제로 겪은 상황들에서 AI가 고른 수의 비율이 그 사람의 비율과 같아지는 값을
+ * 찾고(학습 스크립트 calib2.py), 전체 기록에 맞춘 값을 뺀 **차이만** 넣는다. 이리는 0.
+ * 사람 비율을 그대로 따라 하면 모두에게 공통인 사람의 약점(파트너 트릭을 덮는 실수 —
+ * 모델 89% vs 사람 76% 패스)까지 따라 해서 라운드당 −5점이었다(시드 7개, 7/7 손해).
+ * 차이만 넣으면 손해가 없다(+2, 시드 7개 중 4개 플러스).
+ *  - passOpp: 상대가 이기고 있는 트릭에서 패스
+ *  - passPartner: 파트너가 이기고 있는 트릭에서 패스
+ *  - bigLead: 손패 9장 이상일 때 3장 이상 조합(폭탄 제외)으로 리드
+ *  - highFollow: 받을 때 A·용·봉황 낱장
+ * 같은 상황 7천 번에 두게 하면 캐릭터끼리 같은 수 91~97%.
+ */
+type Tendency = { passOpp: number; passPartner: number; bigLead: number; highFollow: number };
+const PERSONA_BIAS: Record<AiStrategy, Tendency> = {
+	aggressive: { passOpp: -0.2, passPartner: -0.1, bigLead: 0.1, highFollow: 0 },
+	tricky: { passOpp: -0.5, passPartner: 0.8, bigLead: 0.1, highFollow: -0.5 },
+	balanced: { passOpp: -0.2, passPartner: -0.4, bigLead: -0.1, highFollow: -0.2 },
+	wild: { passOpp: -0.3, passPartner: -0.3, bigLead: 1.1, highFollow: -0.3 },
+	defensive: { passOpp: 0, passPartner: 0, bigLead: 0, highFollow: 0 }
+};
+
 export const MODEL_PRESETS: AiStrategy[] = ['aggressive', 'balanced', 'defensive', 'tricky', 'wild'];
 const TYPES = ['single', 'pair', 'triple', 'full_house', 'straight', 'stairs', 'four_bomb', 'straight_flush_bomb'];
 
@@ -200,15 +227,30 @@ export function decideHumanPlay(
 	// 개는 후보에 없다(학습에서 뺐다) — 규칙 AI가 개를 냈으면 그대로 따른다
 	if (fb && fb !== 'pass' && fb.length === 1 && ctx.hand.some(c => c.id === fb[0] && isDog(c))) return fb;
 	if (set.cands.length === 0) return null;
+	const bias = __personaBias.on ? PERSONA_BIAS[preset] : null;
 	let best = 0;
 	let bestScore = -Infinity;
 	set.feats.forEach((f, i) => {
-		const s = scoreFeatures(model, model.features.length > f.length ? [...f, ...persona] : f);
+		let s = scoreFeatures(model, model.features.length > f.length ? [...f, ...persona] : f);
+		if (bias) s += tendencyBias(f, bias);
 		if (s > bestScore) { bestScore = s; best = i; }
 	});
 	const c = set.cands[best];
 	return c ? c.cards.map(x => x.id) : 'pass';
 }
+
+const FI = Object.fromEntries(FEATURE_NAMES.map((n, i) => [n, i])) as Record<string, number>;
+
+function tendencyBias(f: number[], b: Tendency): number {
+	if (f[FI.pass] === 1) return f[FI.topPartner] === 1 ? b.passPartner : b.passOpp;
+	if (f[FI.lead] === 0) return f[FI.high] === 1 ? b.highFollow : 0;
+	const bomb = f[FI.t_four_bomb] === 1 || f[FI.t_straight_flush_bomb] === 1;
+	if (f[FI.hand] >= 9 && f[FI.n] >= 3 && !bomb) return b.bigLead;
+	return 0;
+}
+
+/** 실험용 스위치 (시뮬레이션에서 보정을 끄고 비교) */
+export const __personaBias = { on: true };
 
 // ===== 불러오기 =====
 // 모델 파일(약 400KB)은 티츄를 열 때만 따로 받는다. 받기 전이나 실패하면 규칙 AI로 둔다.
