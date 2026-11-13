@@ -3,6 +3,7 @@ import type { AiStrategy, AiDecisionContext, PersonalityWeights } from './types'
 import type { PresetBehavior } from './presets/types';
 import { getWeightsForStrategy, applyWildVariance, getBehaviorForStrategy } from './presets';
 import { __deterministic } from './strategy';
+import { decideHumanPlay, getHumanModel, loadHumanModel } from './humanModel';
 import {
 	decideGrandTichu,
 	decideSmallTichu,
@@ -27,6 +28,7 @@ export class AiPlayer {
 	 * behavior는 항상 strategy 기준으로 다시 로드하여 프리셋 고유 행동을 보존한다.
 	 */
 	static fromWeights(seat: SeatIndex, strategy: AiStrategy, weights: PersonalityWeights, isPartner: boolean): AiPlayer {
+		void loadHumanModel();
 		const player = Object.create(AiPlayer.prototype) as AiPlayer;
 		(player as any).seat = seat;
 		(player as any).strategy = strategy;
@@ -38,6 +40,7 @@ export class AiPlayer {
 	}
 
 	constructor(seat: SeatIndex, strategy: AiStrategy, isPartner: boolean) {
+		void loadHumanModel();
 		this.seat = seat;
 		this.strategy = strategy;
 		this.isPartner = isPartner;
@@ -64,6 +67,13 @@ export class AiPlayer {
 	}
 
 	makePlayDecision(context: AiDecisionContext): string[] | 'pass' {
+		// 카드 내기는 사람 기록으로 학습한 모델이 고른다 (humanModel.ts).
+		// 모델이 아직 안 왔거나 다루지 않는 경우(소원 강제 등)는 규칙 AI.
+		const model = getHumanModel();
+		if (model) {
+			const d = decideHumanPlay(context, model, this.strategy);
+			if (d !== null) return d;
+		}
 		return decidePlay(context, this.weights, this.behavior);
 	}
 
