@@ -10,6 +10,7 @@ import { getLessonById, LESSONS } from '$lib/games/tichu/tutorial/tutorialScenar
 import type { TutorialStep } from '$lib/games/tichu/tutorial/tutorialTypes';
 import { trackGameStart } from '$lib/games/utils';
 import { resetDecisionLog, observePhase, observeState, observeEvent } from './decisionLog';
+import { pickLine, type LineEvent } from '$lib/games/tichu/ai/personaLines';
 
 export type GameView = 'setup' | 'game' | 'tutorial';
 export type ToastType = 'info' | 'success' | 'error' | 'warning';
@@ -75,8 +76,14 @@ export function createTichuGameState() {
 	let lastEventTimer: ReturnType<typeof setTimeout> | null = null;
 
 	// AI tichu declaration modal
-	let aiTichuDeclareInfo = $state<{ playerName: string; tichuType: 'grand' | 'small' } | null>(null);
+	let aiTichuDeclareInfo = $state<{ playerName: string; tichuType: 'grand' | 'small'; line: string | null } | null>(null);
 	let aiTichuDeclareTimer: ReturnType<typeof setTimeout> | null = null;
+
+	// AI 캐릭터 말풍선 (좌석별)
+	let aiSpeech = $state<(string | null)[]>([null, null, null, null]);
+	const aiSpeechTimers: (ReturnType<typeof setTimeout> | null)[] = [null, null, null, null];
+	/** 1등 대사를 이미 한 라운드 */
+	let firstLineRound = -1;
 
 	// Tutorial state
 	let tutorialEngine = $state<TutorialEngine | null>(null);
@@ -268,6 +275,35 @@ export function createTichuGameState() {
 		stateVersion++;
 		// 스몰 티츄가 언제 불렸는지는 phase 전환으로 안 보여서 상태 변화마다 확인한다
 		if (!isTutorialMode) observeState(engine);
+		// AI가 1등으로 나가면 한마디 — 나가는 순간은 이벤트가 따로 없어 상태에서 본다
+		const r = engine?.state.round;
+		if (!isTutorialMode && r && firstLineRound !== r.roundNumber) {
+			const first = engine!.state.players.find(p => p.finishOrder === 1);
+			if (first) {
+				firstLineRound = r.roundNumber;
+				if (first.seat !== 0) speak(first.seat, 'first');
+			}
+		}
+	}
+
+	function lineFor(seat: number, event: LineEvent): string | null {
+		const strategy = (engine as unknown as { aiPlayers?: Map<number, { strategy: AiStrategy }> })?.aiPlayers?.get(seat)?.strategy;
+		return strategy ? pickLine(strategy, event) : null;
+	}
+
+	function speak(seat: number, event: LineEvent) {
+		const line = lineFor(seat, event);
+		if (!line) return;
+		const next = [...aiSpeech];
+		next[seat] = line;
+		aiSpeech = next;
+		if (aiSpeechTimers[seat]) clearTimeout(aiSpeechTimers[seat]!);
+		aiSpeechTimers[seat] = setTimeout(() => {
+			const cleared = [...aiSpeech];
+			cleared[seat] = null;
+			aiSpeech = cleared;
+			aiSpeechTimers[seat] = null;
+		}, 2500);
 	}
 
 	/**
@@ -284,6 +320,9 @@ export function createTichuGameState() {
 		if (aiTichuDeclareTimer) { clearTimeout(aiTichuDeclareTimer); aiTichuDeclareTimer = null; }
 		lastEvent = null;
 		aiTichuDeclareInfo = null;
+		for (let i = 0; i < 4; i++) { if (aiSpeechTimers[i]) clearTimeout(aiSpeechTimers[i]!); aiSpeechTimers[i] = null; }
+		aiSpeech = [null, null, null, null];
+		firstLineRound = -1;
 		showDragonGiftModal = false;
 		showWishModal = false;
 		showRoundEndModal = false;
@@ -304,11 +343,16 @@ export function createTichuGameState() {
 
 	function handleEvent(event: GameEvent) {
 		if (!isTutorialMode) observeEvent(event, engine);
+		if (!isTutorialMode && event.seat !== 0) {
+			if (event.type === 'bomb') speak(event.seat, 'bomb');
+			else if (event.type === 'dog') speak(event.seat, 'dog');
+		}
 
 		// AI tichu declaration → show modal
 		if (event.type === 'tichu_declare') {
 			const playerName = engine?.state.players[event.seat]?.name ?? `Player ${event.seat}`;
-			aiTichuDeclareInfo = { playerName, tichuType: event.tichuType };
+			// 선언 안내 창이 말풍선을 가리므로 한마디는 창 안에 넣는다
+			aiTichuDeclareInfo = { playerName, tichuType: event.tichuType, line: event.seat !== 0 && !isTutorialMode ? lineFor(event.seat, event.tichuType) : null };
 			if (aiTichuDeclareTimer) clearTimeout(aiTichuDeclareTimer);
 			aiTichuDeclareTimer = setTimeout(() => { aiTichuDeclareInfo = null; }, 2000);
 			return;
@@ -876,6 +920,7 @@ export function createTichuGameState() {
 		get toasts() { return toasts; },
 		get lastEvent() { return lastEvent; },
 		get aiTichuDeclareInfo() { return aiTichuDeclareInfo; },
+		get aiSpeech() { return aiSpeech; },
 		dismissAiTichuDeclare,
 		get exchangeResultData() { return exchangeResultData; },
 
