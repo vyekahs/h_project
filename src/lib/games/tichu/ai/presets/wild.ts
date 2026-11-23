@@ -1,9 +1,9 @@
 import type { PresetBehavior } from './types';
 import type { Card, NormalCard, Combination, SeatIndex } from '../../types';
 import type { AiDecisionContext } from '../types';
-import { findAllPlayableCombinations, findBeatablePlays, findBombs, estimateSimpleTurns } from '../handEvaluator';
+import { findBeatablePlays, findBombs } from '../handEvaluator';
 import { getTeam, getPartnerSeat } from '../../constants';
-import { canBeat, isBomb } from '../../combinations';
+import { isBomb } from '../../combinations';
 import { buildCardTracker, comboLikelyToWin } from '../cardTracker';
 
 /**
@@ -21,6 +21,9 @@ import { buildCardTracker, comboLikelyToWin } from '../cardTracker';
  * - Wish: 교환 때 상대에게 준 카드 랭크
  */
 export const wildBehavior: PresetBehavior = {
+	// 라미: 용이 깔린 25점 이상 트릭은 폭탄으로 가져온다(5/10). 마지막 폭탄은 자기 카드 위에. 개는 중반에
+	habits: { bombForPoints: 25, bombOwnTrick: true, dogLead: [0.18, 0.75] },
+
 	selectPartnerExchangeCard(hand, singletons, rankGroups, protectedIds) {
 		// 특수카드/A/K 제외한 높은 싱글(8~Q) 중에서 선택
 		const candidates = singletons
@@ -132,62 +135,6 @@ export const wildBehavior: PresetBehavior = {
 		}
 
 		return score;
-	},
-
-	shouldUseBomb(hand, bombs, context, lastPlay) {
-		const myTeam = getTeam(context.currentSeat);
-		const playTeam = getTeam(lastPlay.seat);
-		if (playTeam === myTeam) return 'skip';
-
-		// 상대 중 티츄 선언자가 나갈 것 같을 때
-		const opponentWithTichu = context.players.find(
-			p =>
-				getTeam(p.seat) !== myTeam &&
-				(p.grandTichu === true || p.smallTichu) &&
-				p.finishOrder === null &&
-				p.hand.length <= 3
-		);
-		if (opponentWithTichu) {
-			const beatable = bombs.filter(b => canBeat(lastPlay.combination, b));
-			if (beatable.length > 0) {
-				beatable.sort((a, b) => a.rank - b.rank);
-				return beatable[0];
-			}
-		}
-
-		// 고득점 트릭은 회수 — 아끼기만 하면 라운드 종료 시 손패에 남아 상대 점수가 된다
-		const trickPoints = (context.trick?.plays ?? [])
-			.flatMap(p => p.combination.cards)
-			.reduce((sum, c) => {
-				if (c.type === 'special') return sum + (c.special === 'dragon' ? 25 : c.special === 'phoenix' ? -25 : 0);
-				if (c.rank === 5) return sum + 5;
-				if (c.rank === 10 || c.rank === 13) return sum + 10;
-				return sum;
-			}, 0);
-		if (trickPoints >= 15) {
-			const beatable = bombs.filter(b => canBeat(lastPlay.combination, b));
-			if (beatable.length > 0) {
-				beatable.sort((a, b) => a.rank - b.rank);
-				return beatable[0];
-			}
-		}
-
-		// 내가 나갈 것 같을 때 (폭탄 쓰고도 나갈 수 있으면)
-		if (hand.length <= 6) {
-			for (const bomb of bombs) {
-				if (!canBeat(lastPlay.combination, bomb)) continue;
-				const remaining = hand.filter(c => !bomb.cards.some(bc => bc.id === c.id));
-				const remainingCombos = findAllPlayableCombinations(remaining);
-				const nonBombCombos = remainingCombos.filter(c => !isBomb(c) && c.type !== 'single');
-				// 남은 패로 몇 턴 안에 나갈 수 있는지 대략 계산
-				const turnsNeeded = estimateSimpleTurns(remaining);
-				if (turnsNeeded <= 3) {
-					return bomb;
-				}
-			}
-		}
-
-		return 'skip'; // 그 외에는 사용하지 않음
 	},
 
 	shouldDeclareGrandTichu: () => null, // 기본 로직

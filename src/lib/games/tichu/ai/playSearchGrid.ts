@@ -63,6 +63,35 @@ const TICHU_EXIT_WEIGHT = 2.0;
 const FOLLOW_EXTRA_TURN_PENALTY = 0.1;
 
 /**
+ * 손패 9장 이상에서 3장 이상 조합(스트레이트·연속 페어·풀하우스·트리플) 리드에 더하는 점수.
+ *
+ * 사람의 결정 7,034개를 같은 순간의 AI와 비교하니, 손패가 많을 때 큰 조합으로 리드하는
+ * 비율이 사람은 42~74%, AI는 26%였다(회원 6명 모두 AI보다 높음). AI는 낱장·페어로 리드하고
+ * 큰 조합을 아꼈다.
+ * 검증 (고정 덱 + 결정론, 시드 7개 × 100게임, 한 팀에만 적용, 라운드당 점수차):
+ *   0.1 → +1.9 (7개 중 6개 플러스), 0.2 → +1.6 (5/7)
+ */
+const BIG_LEAD_BONUS = 0.1;
+
+/**
+ * 이번 라운드에 우리 팀에서 파트너가 먼저 나가야 하는지(내가 밀어줄 쪽인지).
+ *
+ * 사람은 "내가 먼저 나갈지, 파트너가 먼저 나갈지"를 계속 따지는데, AI는 파트너가 티츄를
+ * 불렀거나 3장 이하일 때만 파트너를 밀어줬다. 손패 차이가 크면 그때부터 밀어준다.
+ * 내가 티츄를 불렀으면 내가 달린다.
+ * 검증 (고정 덱 + 결정론, 시드 5개 × 100게임, 한 팀에만 적용): 라운드당 +0.1(중립).
+ */
+export function partnerIsRunner(context: AiDecisionContext): boolean {
+	const me = context.players[context.currentSeat];
+	const partner = context.players[getPartnerSeat(context.currentSeat)];
+	if (partner.finishOrder !== null || partner.hand.length === 0) return false;
+	if (me.grandTichu === true || me.smallTichu) return false;
+	if (partner.grandTichu === true || partner.smallTichu) return true;
+	return partner.hand.length <= 3 || partner.hand.length + 3 <= context.hand.length;
+}
+
+
+/**
  * 티츄 선언자 **바로 앞 순서**일 때, 그들이 낮은 패를 헐값에 털지 못하게
  * 카드를 적당히 높여 낸다.
  *
@@ -223,6 +252,11 @@ export function searchBestPlay(
 		}
 
 		results.push({ combo, winProb, exitRate, finishTurns, contextMod, totalScore });
+	}
+
+	// 손패가 많을 때 큰 조합을 먼저 리드한다
+	if (mode === 'lead' && hand.length >= 9) {
+		for (const r of results) if (r.combo.cards.length >= 3 && !isBomb(r.combo)) r.totalScore += BIG_LEAD_BONUS;
 	}
 
 	// 팔로우: 다른 후보보다 남은 손패가 몇 턴 더 걸리는지만큼 감점
@@ -461,8 +495,8 @@ function calcContextModifier(
 			}
 		}
 
-		// 파트너 카드 1~3장 → 낮은 리드로 지원
-		if (!partnerFinished && partner.hand.length <= 3 && partner.hand.length > 0) {
+		// 파트너가 달리는 쪽이면(3장 이하이거나 나보다 훨씬 적음) 낮은 리드로 지원
+		if (partnerIsRunner(context) && !partnerDeclaredTichu) {
 			if (combo.rank <= 8) mod += 0.06;
 		}
 

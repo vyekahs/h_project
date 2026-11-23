@@ -36,10 +36,28 @@ export function selectBestPartnerCard(
 }
 
 /**
+ * 사람 기록에서 뽑은 캐릭터 습관 (규칙은 habits.ts).
+ */
+export interface CharacterHabits {
+	/** 점수만 보고 폭탄을 내는 문턱. null이면 점수만으로는 안 낸다 */
+	bombForPoints: number | null;
+	/** 내가 낸 카드 위에 마지막 장들인 폭탄을 얹어 바로 나간다 */
+	bombOwnTrick: boolean;
+	/** 선을 잡았을 때 개를 낼 확률 — [손패 10장 이상, 5~9장] */
+	dogLead: [number, number];
+}
+
+/** 사람 전체 평균 — 캐릭터에 습관이 따로 없을 때 */
+export const DEFAULT_HABITS: CharacterHabits = { bombForPoints: null, bombOwnTrick: false, dogLead: [0.28, 0.6] };
+
+/**
  * 프리셋별 고유 행동을 정의하는 인터페이스.
  * 각 훅은 null을 반환하면 기본 로직으로 폴백.
  */
 export interface PresetBehavior {
+	/** 사람 기록에서 뽑은 습관 — 끼어드는 폭탄과 개를 낼 시점 (없으면 사람 평균) */
+	habits?: CharacterHabits;
+
 	/** 파트너에게 줄 교환 카드 선택 (null → 기본 로직) */
 	selectPartnerExchangeCard?(
 		hand: Card[],
@@ -80,14 +98,6 @@ export interface PresetBehavior {
 		trickPoints: number,
 		opponentWinning: boolean
 	): number | null;
-
-	/** 폭탄 사용 판단 (Combination=사용, 'skip'=사용안함, null=기본) */
-	shouldUseBomb?(
-		hand: Card[],
-		bombs: Combination[],
-		context: AiDecisionContext,
-		lastPlay: { seat: SeatIndex; combination: Combination }
-	): Combination | 'skip' | null;
 
 	/** 그랜드 티츄 선언 오버라이드 (true/false/null=기본) */
 	shouldDeclareGrandTichu?(hand8: Card[]): boolean | null;

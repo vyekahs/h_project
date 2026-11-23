@@ -4,8 +4,8 @@ import type { Card, NormalCard, Combination, SeatIndex } from '../../types';
 import type { AiDecisionContext } from '../types';
 import { findAllPlayableCombinations, estimateSimpleTurns } from '../handEvaluator';
 import { buildCardTracker } from '../cardTracker';
-import { getTeam, getPartnerSeat } from '../../constants';
-import { canBeat, isBomb } from '../../combinations';
+import { getPartnerSeat } from '../../constants';
+import { isBomb } from '../../combinations';
 
 /**
  * 공격적 (Aggressive) 프리셋 고유 행동
@@ -22,6 +22,9 @@ import { canBeat, isBomb } from '../../combinations';
  * - 티츄: 적극적으로 부름 (낮은 기준)
  */
 export const aggressiveBehavior: PresetBehavior = {
+	// 아랭: 점수만 보고는 안 터뜨린다(1/24). 마지막 폭탄은 자기 카드 위에 바로 얹는다(7/9). 개는 일찍
+	habits: { bombForPoints: null, bombOwnTrick: true, dogLead: [0.35, 0.55] },
+
 	selectPartnerExchangeCard(hand, singletons, rankGroups, protectedIds) {
 		return selectBestPartnerCard(hand, singletons, rankGroups, protectedIds);
 	},
@@ -60,33 +63,6 @@ export const aggressiveBehavior: PresetBehavior = {
 		if (partner.finishOrder !== null) return false;
 		// 빨리 털어버림 — 거의 항상 사용
 		return true;
-	},
-
-	shouldUseBomb(hand, bombs, context, lastPlay) {
-		const myTeam = getTeam(context.currentSeat);
-		const playTeam = getTeam(lastPlay.seat);
-		if (playTeam === myTeam) return 'skip';
-
-		// 폭탄 내고도 리드 잡거나 나갈 수 있을 때
-		for (const bomb of bombs) {
-			if (!canBeat(lastPlay.combination, bomb)) continue;
-
-			const remaining = hand.filter(c => !bomb.cards.some(bc => bc.id === c.id));
-			if (remaining.length === 0) return bomb; // 폭탄으로 나감
-
-			// 남은 패로 나갈 수 있는지 확인
-			const turnsNeeded = estimateSimpleTurns(remaining);
-			if (turnsNeeded <= 4) {
-				return bomb;
-			}
-
-			// "남은 패에 A나 용이 있으면 폭탄" 조건은 뺐다. A 한 장은 거의 늘 있어서
-			// 사실상 아무 때나 터뜨렸다 — 실제 기록에서 이유 없는 AI 폭탄 11건 중 7건이
-			// 이 경로였다(첫 트릭에 상대가 12~13장일 때 2·5·J 낱장 위). 빼도 AI끼리
-			// 시뮬레이션 점수는 중립(시드 3개×100게임: +0.5 / 섞은 구성 −1.4, 오차 범위).
-		}
-
-		return 'skip';
 	},
 
 	shouldDeclareGrandTichu(hand8) {

@@ -1,4 +1,5 @@
 import type { PresetBehavior } from './types';
+import { DEFAULT_HABITS } from './types';
 import { selectBestPartnerCard } from './types';
 import type { Card, NormalCard, Combination, SeatIndex } from '../../types';
 import type { AiDecisionContext } from '../types';
@@ -20,6 +21,9 @@ import { isBomb } from '../../combinations';
  * - Wish: 기본 로직
  */
 export const defensiveBehavior: PresetBehavior = {
+	// 이리: 사람 평균
+	habits: DEFAULT_HABITS,
+
 	selectPartnerExchangeCard(hand, singletons, rankGroups, protectedIds) {
 		return selectBestPartnerCard(hand, singletons, rankGroups, protectedIds);
 	},
@@ -77,46 +81,6 @@ export const defensiveBehavior: PresetBehavior = {
 		}
 
 		return score;
-	},
-
-	shouldUseBomb(hand, bombs, context, lastPlay) {
-		const myTeam = getTeam(context.currentSeat);
-		const playTeam = getTeam(lastPlay.seat);
-		if (playTeam === myTeam) return 'skip';
-
-		// 상대 티츄 저지: 티츄 선언한 상대가 나갈 것 같을 때만
-		const opponentWithTichu = context.players.find(
-			p =>
-				getTeam(p.seat) !== myTeam &&
-				(p.grandTichu === true || p.smallTichu) &&
-				p.finishOrder === null &&
-				p.hand.length <= 3
-		);
-		if (opponentWithTichu) {
-			return null; // 기본 로직으로 (폭탄 사용)
-		}
-
-		// 상대가 나가기 직전이면 저지
-		const opponentAboutToFinish = context.players.some(
-			p => getTeam(p.seat) !== myTeam && p.finishOrder === null && p.hand.length <= 2
-		);
-		if (opponentAboutToFinish) return null;
-
-		// 고득점 트릭은 수비적이어도 막는다.
-		// 끝까지 아끼기만 하면 폭탄은 라운드 종료 시 손패에 남아 상대 점수가 될 뿐이다.
-		// (실측: 수비적 30라운드 동안 폭탄 사용 0회 — 사실상 사장된 자원이었음)
-		const trickPoints = (context.trick?.plays ?? [])
-			.flatMap(p => p.combination.cards)
-			.reduce((sum, c) => {
-				if (c.type === 'special') return sum + (c.special === 'dragon' ? 25 : c.special === 'phoenix' ? -25 : 0);
-				if (c.rank === 5) return sum + 5;
-				if (c.rank === 10 || c.rank === 13) return sum + 10;
-				return sum;
-			}, 0);
-		if (trickPoints >= 15) return null;
-
-		// 그 외에는 최대한 아껴둠
-		return 'skip';
 	},
 
 	shouldDeclareGrandTichu() {

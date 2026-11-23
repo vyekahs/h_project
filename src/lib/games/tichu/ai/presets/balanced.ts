@@ -1,10 +1,11 @@
 import type { PresetBehavior } from './types';
+import { DEFAULT_HABITS } from './types';
 import { selectBestPartnerCard } from './types';
 import type { Card, NormalCard, Combination, SeatIndex } from '../../types';
 import type { AiDecisionContext } from '../types';
 import { findAllPlayableCombinations, estimateSimpleTurns } from '../handEvaluator';
 import { getTeam, getPartnerSeat } from '../../constants';
-import { canBeat, isBomb } from '../../combinations';
+import { isBomb } from '../../combinations';
 
 /**
  * 밸런스 (Balanced / 모피) 프리셋 고유 행동
@@ -20,6 +21,9 @@ import { canBeat, isBomb } from '../../combinations';
  * - 드래곤 리드: 지고 있을 때만
  */
 export const balancedBehavior: PresetBehavior = {
+	// 오딘: 점수만 보고는 드물게(2/10), 자기 카드 위 폭탄은 안 쓴다(0/9). 개는 기록이 적다 → 사람 평균
+	habits: DEFAULT_HABITS,
+
 	selectPartnerExchangeCard(hand, singletons, rankGroups, protectedIds) {
 		return selectBestPartnerCard(hand, singletons, rankGroups, protectedIds);
 	},
@@ -85,53 +89,6 @@ export const balancedBehavior: PresetBehavior = {
 		}
 
 		return null; // 중립: 기본 로직
-	},
-
-	shouldUseBomb(hand, bombs, context, lastPlay) {
-		const myTeam = getTeam(context.currentSeat);
-		const playTeam = getTeam(lastPlay.seat);
-		if (playTeam === myTeam) return 'skip';
-
-		// 상대 티츄 저지: 티츄 선언한 상대가 나갈 것 같을 때
-		const opponentWithTichu = context.players.find(
-			p =>
-				getTeam(p.seat) !== myTeam &&
-				(p.grandTichu === true || p.smallTichu) &&
-				p.finishOrder === null &&
-				p.hand.length <= 4
-		);
-		if (opponentWithTichu) {
-			const beatable = bombs.filter(b => canBeat(lastPlay.combination, b));
-			if (beatable.length > 0) {
-				beatable.sort((a, b) => a.rank - b.rank);
-				return beatable[0];
-			}
-		}
-
-		// 고포인트 트릭: 20점 이상이면 폭탄 사용
-		if (context.trick) {
-			let trickPoints = 0;
-			for (const p of context.trick.plays) {
-				for (const card of p.combination.cards) {
-					if (card.type === 'special') {
-						if (card.special === 'dragon') trickPoints += 25;
-						if (card.special === 'phoenix') trickPoints -= 25;
-					} else {
-						if (card.rank === 5) trickPoints += 5;
-						if (card.rank === 10 || card.rank === 13) trickPoints += 10;
-					}
-				}
-			}
-			if (trickPoints >= 20) {
-				const beatable = bombs.filter(b => canBeat(lastPlay.combination, b));
-				if (beatable.length > 0) {
-					beatable.sort((a, b) => a.rank - b.rank);
-					return beatable[0];
-				}
-			}
-		}
-
-		return 'skip'; // 그 외: 보존
 	},
 
 	shouldDeclareGrandTichu() {

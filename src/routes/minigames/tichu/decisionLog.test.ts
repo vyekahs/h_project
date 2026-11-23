@@ -122,6 +122,19 @@ describe('선언 판단 기록', () => {
 				const oneTwo = seatAt(1) % 2 === seatAt(2) % 2;
 				expect(cards.length, '플레이 기록이 비어 있음').toBeGreaterThanOrEqual(oneTwo ? 27 : 41);
 				expect(new Set(cards).size, '같은 카드가 두 번 기록됨').toBe(cards.length);
+
+				// 참새 바로 다음 줄에 소원이 남는다 — 소원이 걸린 동안의 수는 고른 게 아닐 수 있어서
+				// 학습에서 가려내야 한다. 참새가 그 라운드의 마지막 카드였다면 소원이 없을 수 있다.
+				const plays = r.plays as [number, string][];
+				const mj = plays.findIndex(([, x]) => x.split(' ').includes('mahjong'));
+				const wishes = plays.filter(([, x]) => x.startsWith('M:'));
+				if (mj >= 0 && mj < plays.length - 1) {
+					expect(plays[mj + 1][1], '참새 다음 줄이 소원이 아님').toMatch(/^M:(0|[2-9]|1[0-4])$/);
+					expect(plays[mj + 1][0], '소원을 건 자리가 참새를 낸 자리와 다름').toBe(plays[mj][0]);
+					expect(wishes.length).toBe(1);
+				} else {
+					expect(wishes.length).toBeLessThanOrEqual(1);
+				}
 			}
 
 			const row = human[0];

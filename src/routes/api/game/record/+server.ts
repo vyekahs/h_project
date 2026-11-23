@@ -101,8 +101,10 @@ export const POST: RequestHandler = async ({ request, locals, cookies }) => {
 
                     // 수신자마다 본문이 달라(닉네임 포함) 일괄 INSERT로 묶을 수 없다.
                     // 대신 동시 실행 수를 제한해 커넥션 풀이 한 번에 바닥나지 않게 한다.
+                    // 같은 게임·같은 달의 안 읽은 순위 알림은 새로 쌓지 않고 갱신한다
+                    // (많이 치는 사람에게 밀릴 때마다 알림 목록이 도배되지 않게)
                     await mapWithConcurrency(displacedUsers as any[], 4, (du) =>
-                        NotificationService.notify(
+                        NotificationService.upsertNotify(
                             du.user_id,
                             {
                                 type: 'rank_change',

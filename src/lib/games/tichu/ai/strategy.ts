@@ -1,7 +1,9 @@
 import type { Card, Combination, SeatIndex, ExchangeCards, WishState, NormalCard } from '../types';
 import { __deterministic } from './determinism';
+import { decideHabitBomb } from './habits';
 import type { AiDecisionContext, PersonalityWeights } from './types';
 import type { PresetBehavior } from './presets/types';
+import { DEFAULT_HABITS } from './presets/types';
 import { getTeam, getPartnerSeat, getLeftSeat, getRightSeat, getNextActiveSeat } from '../constants';
 import { canBeat, isBomb, detectCombination } from '../combinations';
 import { mustPlayWishedRank, playFulfillsWish, canPlayWishedCombo } from '../wish';
@@ -19,7 +21,7 @@ import {
 	hasOpponentDeclaredTichu,
 	type CardTracker
 } from './cardTracker';
-import { searchBestPlay, calcExitRate, isForcedOutIfLeading } from './playSearchGrid';
+import { searchBestPlay, calcExitRate, isForcedOutIfLeading, partnerIsRunner } from './playSearchGrid';
 import { buildSampleWorlds, evaluateLeadSafety, evaluateTwoTurnFinish, evaluateOvertakeFinish, getUnseenCards, estimateGoOutFirstProb, estimateGrandTichuQuality, type SampledWorld } from './monteCarlo';
 
 // ===== Hand Analysis Helpers =====
@@ -149,7 +151,7 @@ export function decideGrandTichu(hand8: Card[], weights: PersonalityWeights, beh
 	// 강도 30 이상 전체는 60.2%인데 38 이상은 65.2%, 42 이상은 67.5%였다.
 	// 그랜드는 ±200점이라 60%도 기대값은 양수지만, 부르는 값어치를 내려면 65% 선이 맞다.
 	// 48 - p*14 → 공격적 36.8 / 변칙적 39.6 / 밸런스·전략적 41 / 수비적 45.9
-	const threshold = 48 - weights.tichoPropensity * 14;
+	const threshold = 48 - (weights.grandPropensity ?? weights.tichoPropensity) * 14;
 	if (!(strength >= threshold)) return false;
 
 	// 8장만 보고 부르지만 실제로는 6장을 더 받고 교환까지 거친다.
@@ -164,7 +166,7 @@ export function decideGrandTichu(hand8: Card[], weights: PersonalityWeights, beh
 	// 실패가 70건 → 35건으로 절반이 되고, ±200점이라 진폭 감소 효과가 크다.
 	if (context) {
 		const q = estimateGrandTichuQuality(context, 16);
-		if (q >= 0 && q < GRAND_TICHU_MIN_PURE_WIN) return false;
+		if (q >= 0 && q < (weights.grandMinPureWin ?? GRAND_TICHU_MIN_PURE_WIN)) return false;
 	}
 	return true;
 }
@@ -238,7 +240,8 @@ export function decideSmallTichu(hand: Card[], weights: PersonalityWeights, cont
 	// ±100점이므로 기대값이 뚜렷하게 양수이면서, 라운드당 누군가 부를 확률이 약 8.5%로
 	// 게임에서 티츄가 여전히 보인다.
 	// 55 - p*10 → 공격적 47 / 변칙적 49 / 밸런스 50 / 수비적 53.5
-	const threshold = 55 - weights.tichoPropensity * 10;
+	const smallP = weights.smallPropensity ?? weights.tichoPropensity;
+	const threshold = 55 - smallP * 10;
 
 	// Don't declare if someone on opposing team already declared
 	const myTeam = getTeam(context.currentSeat);
@@ -281,7 +284,7 @@ export function decideSmallTichu(hand: Card[], weights: PersonalityWeights, cont
 	// 값이라(턴 효율 0.25 + 콤보 비율 0.15), 선을 몇 번 잡을 수 있는지와 무관한
 	// 요소가 판단을 좌우했다. 예를 들어 6턴이 필요한데 A 트리플과 K 페어뿐이라
 	// 선을 두 번밖에 못 잡는 손패도, 조합이 크다는 이유로 문턱을 통과했다.
-	const exitGate = SMALL_TICHU_MIN_PURE_WIN - (weights.tichoPropensity - 0.5) * 0.12;
+	const exitGate = SMALL_TICHU_MIN_PURE_WIN - (smallP - 0.5) * 0.12;
 	if (calcExitRate(hand, buildCardTracker(context)).pureWinRate < exitGate) return false;
 
 	// "내가 먼저 나갈 수 있나"를 실제로 시뮬레이션한다.
@@ -307,7 +310,13 @@ const LOOSE_SINGLE_MAX_RANK = 13;
  * 파트너가 이 랭크 이하로 이기고 있으면 "낮은 패"로 본다.
  * 상대가 같은 낮은 대역의 카드로 쉽게 덮을 수 있는 구간.
  */
+/** 사람 플레이어 자리 (엔진과 같다) */
+const HUMAN_SEAT = 0;
+
 const PARTNER_LOW_TRICK_RANK = 7;
+
+/** 파트너의 트리플이 이 랭크 이하면 "낮은 트리플"로 보고 덮을 수 있다 (그 외 3장+ 조합은 양보) */
+const PARTNER_LOW_COMBO_RANK = 6;
 
 // ===== Exchange Card Selection =====
 
@@ -644,9 +653,9 @@ export function decidePlay(
 			// 손패 1장이면 덮는 순간 내가 먼저 나가 티츄가 확정 실패 → 무조건 양보
 			if (hand.length <= 1) return 'pass';
 			if (!partnerPlayIsLow) return 'pass';
-		} else if (hand.length > 1 && partner.finishOrder === null && partner.hand.length <= 3) {
-			// 파트너 카드 ≤3장: 티츄가 걸린 게 아니므로 내가 1장이면 같이 나가는 편이 낫다
-			// (원투 성립) → 기존대로 hand.length > 1 일 때만 양보
+		} else if (hand.length > 1 && partnerIsRunner(context)) {
+			// 파트너가 달리는 쪽(3장 이하이거나 나보다 훨씬 적음): 티츄가 걸린 게 아니므로 내가
+			// 1장이면 같이 나가는 편이 낫다(원투 성립) → hand.length > 1 일 때만 양보
 			if (!partnerPlayIsLow) return 'pass';
 		}
 
@@ -656,6 +665,19 @@ export function decidePlay(
 			if (myCombo && canBeat(lastCombo, myCombo)) {
 				return [hand[0].id];
 			}
+		}
+
+		// 파트너가 3장 이상 조합으로 이기고 있으면 덮지 않는다.
+		// 조합을 낸다는 건 나가려는 의지가 높다는 신호인데, 양보 기준이 패의 높이만 봐서
+		// 7~10 스트레이트·낮은 풀하우스처럼 "낮아 보이는" 조합을 덮었다(기록: 사람의 3장+
+		// 조합 657번 중 22번). 사람은 낮은 트리플이 아니면 보통 패스한다.
+		// 예외: 낮은 트리플(아래 일반 로직에 맡김), 그 수로 내 손패를 다 털 수 있을 때(파트너 티츄 없음).
+		// 검증(시드 5개 × 100게임, 한 팀): 라운드당 −0.1(중립) — 사람 파트너의 불편을 고치는 규칙.
+		if (lastCombo.cards.length >= 3 && !(lastCombo.type === 'triple' && lastCombo.rank <= PARTNER_LOW_COMBO_RANK)) {
+			const finishing = !partnerDeclaredTichu &&
+				findBeatablePlays(hand, lastCombo).some(c => !isBomb(c) && c.cards.length === hand.length);
+			if (!finishing) return 'pass';
+			return findBeatablePlays(hand, lastCombo).find(c => !isBomb(c) && c.cards.length === hand.length)!.cards.map(c => c.id);
 		}
 
 		// Behavior hook: 파트너가 이기고 있을 때 행동 오버라이드
@@ -1100,6 +1122,30 @@ function decideLead(
 		}
 	}
 
+	// === 파트너가 1장 남았으면 가장 낮은 낱장으로 리드한다 ===
+	// 1장 남은 파트너는 낱장만 받을 수 있다. 그런데 손패 정리를 우선해서 페어·트리플로
+	// 리드하는 일이 잦았다(기록: 사람이 1장 남았을 때 AI 파트너 리드 56번 중 17번이 조합).
+	// 개가 있으면 위 개 처리에서 이미 선을 넘겼다.
+	//
+	// 파트너가 **사람**일 때만 적용한다. AI 파트너끼리는 오히려 손해였다(시드 5개 × 100게임,
+	// 한 팀: 라운드당 −1.8, 5개 중 4개 마이너스) — AI는 마지막 한 장이 낮은 카드인 경우가 많아
+	// 낮은 낱장을 내줘도 상대가 중간에 가로챈다. 사람은 자기 마지막 카드를 알고 낱장을 기다린다.
+	// 예외:
+	//  - 내 손패를 한 번에 다 낼 수 있으면 그게 낫다(우리 팀이 1등)
+	//  - 바로 다음 상대도 1장 남았으면 낮은 낱장이 그 상대를 내보낸다 → 아래 기존 판단
+	if (partnerSeat === HUMAN_SEAT && partner && partner.finishOrder === null && partner.hand.length === 1) {
+		const nextSeat = getNextActiveSeat(context.currentSeat, context.players) as SeatIndex;
+		const nextOpp = context.players[nextSeat];
+		const nextOppOut = getTeam(nextSeat) !== getTeam(context.currentSeat) && nextOpp.finishOrder === null && nextOpp.hand.length === 1;
+		const allAtOnce = plan.allCombos.some(c => c.cards.length === hand.length && !isDogCombo(c));
+		if (!nextOppOut && !allAtOnce) {
+			const singles = hand
+				.filter(c => !(c.type === 'special' && (c.special === 'dog' || c.special === 'dragon')))
+				.sort((a, b) => getCardSortRank(a) - getCardSortRank(b));
+			if (singles.length > 0) return [singles[0].id];
+		}
+	}
+
 	// === Close to finishing: play the combo that empties our hand ===
 	// 파트너가 티츄 선언하고 아직 안 나갔으면 → 내가 먼저 나가지 않음
 	const partnerForEndgame = context.players[getPartnerSeat(context.currentSeat)];
@@ -1185,6 +1231,33 @@ export function decideLeadEndgame(
 	const allAtOnce = plan.allCombos.find(c => c.cards.length === hand.length && !isDogCombo(c));
 	if (allAtOnce) {
 		return allAtOnce.cards.map(c => c.id);
+	}
+
+	// 낱장 두 장인데 높은 쪽이 확실히 이기면(안 보인 카드 중 더 높은 카드·봉황·용이 없음)
+	// 높은 쪽으로 선을 잡는다. 마지막 한 장은 내는 순간 손이 비므로 나가는 게 확정이다.
+	// 아래 2턴 마무리 점수가 이 경우에도 낮은 쪽을 고르는 일이 있었다(배포 후 기록: 높은 패가
+	// 확실한 113번 중 41번 낮은 패부터 → 잡히면 높은 패를 쥔 채 선을 놓친다).
+	// 폭탄은 어느 순서로 내도 똑같이 막히므로 따지지 않는다.
+	// 검증(시드 5개 × 100게임, 한 팀): 라운드당 +3.3, 5개 모두 플러스.
+	if (hand.length === 2 && hand.every(c => !(c.type === 'special' && c.special === 'dog'))) {
+		const [a, b] = [...hand].sort((x, y) => getCardSortRank(y) - getCardSortRank(x));
+		if (getCardSortRank(a) !== getCardSortRank(b) && !detectCombination(hand)) {
+			const unseen = getUnseenCards(context);
+			const highRank = a.type === 'normal' ? a.rank : null;
+			const certain = (a.type === 'special' && a.special === 'dragon') ||
+				(highRank !== null && !unseen.some(c => c.type === 'special'
+					? (c.special === 'dragon' || c.special === 'phoenix')
+					: c.rank > highRank));
+			if (certain) return [a.id];
+			// 확실하지 않으면 낮은 쪽부터. 낮은 패가 그냥 이기면 높은 패로 나가고, 잡혀도 높은 패로
+			// 그 위를 덮고 나간다. 높은 패부터 내서 잡히면 낮은 패를 쥔 채 갇힌다(배포 후 기록:
+			// 높은 패가 확실하지 않은 135번 중 104번 높은 패부터). 막히는 경우(높은 패보다 센 카드)는
+			// 두 순서가 같고, 봉황은 낮은 패 위에서만 덮을 수 있어 낮은 쪽이 오히려 유리하다.
+			// 단, 1장 남은 상대가 있으면 낮은 패가 그 상대를 내보내므로 아래 판단에 맡긴다.
+			const oppOnOne = context.players.some(p =>
+				getTeam(p.seat) !== getTeam(context.currentSeat) && p.finishOrder === null && p.hand.length === 1);
+			if (!oppOnOne) return [b.id];
+		}
 	}
 
 	// === 프리셋 성격 반영 ===
@@ -1643,116 +1716,24 @@ export function decideDragonGift(
  */
 export function shouldPlayBomb(
 	context: AiDecisionContext,
-	weights: PersonalityWeights,
+	_weights: PersonalityWeights,
 	lastPlay: { seat: SeatIndex; combination: Combination },
 	behavior: PresetBehavior = {}
 ): Combination | null {
 	const { hand, currentSeat, players } = context;
-	const myTeam = getTeam(currentSeat);
-	const playTeam = getTeam(lastPlay.seat);
 
 	// Don't bomb our own team
-	if (playTeam === myTeam) return null;
+	if (getTeam(lastPlay.seat) === getTeam(currentSeat)) return null;
 
-	const bombs = findBombs(hand);
-	if (bombs.length === 0) return null;
-
-	const beatable = bombs.filter(b => canBeat(lastPlay.combination, b));
+	const beatable = findBombs(hand).filter(b => canBeat(lastPlay.combination, b));
 	if (beatable.length === 0) return null;
-
 	beatable.sort((a, b) => a.rank - b.rank);
 
-	// === 필수 저지 로직: 프리셋의 shouldUseBomb 오버라이드보다 항상 우선 적용 ===
-	// (모든 프리셋이 shouldUseBomb에서 'skip'/콤보 중 하나를 반환해버리면
-	//  아래 공용 로직 전체가 죽은 코드가 되어버리는 문제를 방지)
-	if (isBomb(lastPlay.combination)) {
-		const attacker = players[lastPlay.seat];
-		if (attacker.hand.length <= 2) {
-			return beatable[0]; // 상대가 폭탄으로 나가려는 중이면 반드시 저지
-		}
-	} else {
-		const player = players[lastPlay.seat];
-		if (player.hand.length <= 2) {
-			return beatable[0]; // 상대가 곧 나갈 것 같으면 반드시 저지
-		}
-	}
+	// 그 상대가 2장 이하면 (폭탄으로 나가려는 중이어도) 반드시 막는다
+	if (players[lastPlay.seat].hand.length <= 2) return beatable[0];
 
-	// Behavior hook: 폭탄 사용 오버라이드 (필수 저지 이후, 선택적 상황)
-	const bombOverride = behavior.shouldUseBomb?.(hand, bombs, context, lastPlay);
-	if (bombOverride === 'skip') return null;
-	if (bombOverride !== null && bombOverride !== undefined) return bombOverride;
-
-	const tracker = buildCardTracker(context);
-
-	// Counter-bomb scenario (이미 나간 폭탄에 카운터폭탄 칠지)
-	if (isBomb(lastPlay.combination)) {
-		// 카운터폭탄은 트릭 포인트가 충분할 때만 (10점 이상)
-		const counterTrickCards = context.trick?.plays.flatMap(p => p.combination.cards) || [];
-		const counterTrickPoints = getTrickPoints(counterTrickCards);
-		if (weights.aggressiveness > 0.7 && weights.bombHolding < 0.4 && counterTrickPoints >= 10) {
-			return beatable[0];
-		}
-		return null;
-	}
-
-	// 소원이 활성화된 상태에서 낮은 포인트 트릭에 폭탄 자제
-	// (소원이 아직 충족 안 됐으면 상대가 결국 소원 카드를 내야 하므로 기다리는 게 유리)
-	if (context.wish.active && context.wish.requestedRank !== null) {
-		const wishTrickCards = context.trick?.plays.flatMap(p => p.combination.cards) || [];
-		const wishTrickPoints = getTrickPoints(wishTrickCards);
-		if (wishTrickPoints < 15) return null;
-	}
-
-	// High bomb holding = reluctant to use bombs
-	if (weights.bombHolding > 0.8) return null;
-
-	// 상대 티츄 선언 → 적극 폭탄 (카드 7장 이하)
-	if (hasOpponentDeclaredTichu(tracker)) {
-		const tichuer = tracker.opponents.find(o => o.declaredTichu && !o.finished);
-		if (tichuer && tichuer.cardsRemaining <= 7) {
-			return beatable[0];
-		}
-	}
-
-	// Check if trick has lots of points
-	const trickCards = context.trick?.plays.flatMap(p => p.combination.cards) || [];
-	const trickPoints = getTrickPoints(trickCards);
-
-	// 드래곤(25점) 포함 트릭은 적극 폭탄
-	if (lastPlay.combination.type === 'single' &&
-		lastPlay.combination.cards.some(c => c.type === 'special' && c.special === 'dragon')) {
-		return beatable[0];
-	}
-
-	// 포인트 임계값 하향: 15점 이상 + 상대가 이기고 있으면
-	if (trickPoints >= 15 && weights.aggressiveness > 0.2) {
-		return beatable[0];
-	}
-
-	// 나갈 수 있으면 폭탄: 폭탄 후 나머지 카드로 나갈 수 있으면 적극 사용
-	if (hand.length <= 6) {
-		for (const bomb of beatable) {
-			const afterBomb = hand.filter(c => !bomb.cards.some(bc => bc.id === c.id));
-			if (afterBomb.length === 0) return bomb; // 폭탄으로 나감!
-			const afterCombo = detectCombination(afterBomb);
-			if (afterCombo) return bomb; // 폭탄 후 1턴에 나갈 수 있음
-			// 2턴 체크
-			if (afterBomb.length <= 3) {
-				const afterCombos = findAllPlayableCombinations(afterBomb);
-				for (const ac of afterCombos) {
-					const remaining = afterBomb.filter(c => !ac.cards.some(acc => acc.id === c.id));
-					if (remaining.length === 0 || (remaining.length === 1)) return bomb;
-					const lastC = detectCombination(remaining);
-					if (lastC) return bomb;
-				}
-			}
-		}
-	}
-
-	// If I'm close to finishing and bombing would let me lead (최소 5점 트릭)
-	if (hand.length <= 4 && weights.aggressiveness > 0.3 && trickPoints >= 5) {
-		return beatable[0];
-	}
-
-	return null;
+	// 그 밖에는 사람 기록에서 뽑은 조건 조합을 따른다 (habits.ts).
+	// 예전에는 프리셋마다 훅이 있어서 "남은 패가 4턴 이내면 폭탄"(아랭), "15점 이상이면 폭탄"
+	// 같은 규칙으로 별일 없는 트릭에서도 터뜨렸다 — 같은 순간에 사람은 12%, 아랭 AI는 49%.
+	return decideHabitBomb(context, lastPlay, beatable, behavior.habits ?? DEFAULT_HABITS);
 }
