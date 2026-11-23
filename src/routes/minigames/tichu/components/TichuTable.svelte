@@ -236,7 +236,6 @@
 				player={leftPlayer}
 				isCurrentTurn={currentSeat === leftSeat}
 				position="left"
-				speech={game.aiSpeech[leftSeat]}
 				passed={passedSeats.has(leftSeat)}
 				stateVersion={game.stateVersion}
 			/>
@@ -246,7 +245,6 @@
 				player={topPlayer}
 				isCurrentTurn={currentSeat === topSeat}
 				position="top"
-				speech={game.aiSpeech[topSeat]}
 				isPartner
 				passed={passedSeats.has(topSeat)}
 				stateVersion={game.stateVersion}
@@ -257,7 +255,6 @@
 				player={rightPlayer}
 				isCurrentTurn={currentSeat === rightSeat}
 				position="right"
-				speech={game.aiSpeech[rightSeat]}
 				passed={passedSeats.has(rightSeat)}
 				stateVersion={game.stateVersion}
 			/>
@@ -314,7 +311,6 @@
 		<AiTichuDeclareModal
 			playerName={game.aiTichuDeclareInfo.playerName}
 			tichuType={game.aiTichuDeclareInfo.tichuType}
-			line={game.aiTichuDeclareInfo.line}
 			onDismiss={game.dismissAiTichuDeclare}
 		/>
 	{/if}

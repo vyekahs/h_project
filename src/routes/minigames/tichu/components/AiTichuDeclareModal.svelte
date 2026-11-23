@@ -1,9 +1,7 @@
 <script lang="ts">
-	let { playerName, tichuType, line = null, onDismiss } = $props<{
+	let { playerName, tichuType, onDismiss } = $props<{
 		playerName: string;
 		tichuType: 'grand' | 'small';
-		/** 캐릭터 한마디 */
-		line?: string | null;
 		onDismiss: () => void;
 	}>();
 
@@ -17,7 +15,6 @@
 		<div class="icon">{isGrand ? '🔥' : '⚡'}</div>
 		<div class="title">{label} 선언!</div>
 		<div class="player-name">{playerName}</div>
-		{#if line}<div class="line">“{line}”</div>{/if}
 		<div class="score-info">{scoreText}</div>
 	</div>
 </div>
@@ -46,14 +43,6 @@
 		width: 80%;
 		animation: slideIn 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 		pointer-events: none;
-	}
-
-	.line {
-		margin: 6px 0 10px;
-		font-size: 0.95rem;
-		font-weight: 700;
-		opacity: 0.95;
-		word-break: keep-all;
 	}
 
 	.content.grand {

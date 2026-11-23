@@ -1,15 +1,13 @@
 <script lang="ts">
 	import type { TichuPlayer } from '$lib/games/tichu/types';
 
-	let { player, isCurrentTurn = false, position, isPartner = false, passed = false, stateVersion = 0, speech = null } = $props<{
+	let { player, isCurrentTurn = false, position, isPartner = false, passed = false, stateVersion = 0 } = $props<{
 		player: TichuPlayer;
 		isCurrentTurn?: boolean;
 		position: 'left' | 'top' | 'right';
 		isPartner?: boolean;
 		passed?: boolean;
 		stateVersion?: number;
-		/** 캐릭터 한마디 (personaLines.ts) */
-		speech?: string | null;
 	}>();
 
 	// player is a mutable object — access stateVersion to force reactivity
@@ -21,11 +19,6 @@
 </script>
 
 <div class="opponent {position}" class:current-turn={isCurrentTurn}>
-	{#if speech}
-		{#key speech}
-			<div class="speech {position}" role="status">{speech}</div>
-		{/key}
-	{/if}
 	<div class="opponent-card">
 		<div class="avatar-container">
 			<div class="avatar team-{player.team}" class:finished={finishOrder !== null}>
@@ -208,39 +201,6 @@
 	.finish-banner.badge-2 { background: linear-gradient(135deg, #64748b, #334155); color: #fff; border: 1px solid #cbd5e1; }
 	.finish-banner.badge-3 { background: linear-gradient(135deg, #b45309, #78350f); color: #fff; border: 1px solid #fcd34d; }
 	.finish-banner.badge-4 { background: rgba(0,0,0,0.5); color: #9ca3af; border: 1px solid #4b5563; }
-
-	.speech {
-		position: absolute;
-		z-index: 30;
-		max-width: 9.5rem;
-		padding: 6px 10px;
-		border-radius: 12px;
-		background: var(--bg-primary, #fff);
-		color: var(--text-primary, #111);
-		border: 1px solid var(--glass-border-strong, rgba(0, 0, 0, 0.15));
-		box-shadow: var(--shadow-sm, 0 2px 6px rgba(0, 0, 0, 0.15));
-		font-size: 0.78rem;
-		font-weight: 700;
-		line-height: 1.25;
-		text-align: center;
-		white-space: normal;
-		word-break: keep-all;
-		pointer-events: none;
-		animation: speech-pop 2.5s ease forwards;
-	}
-	.speech.top { top: 100%; margin-top: 6px; }
-	.speech.left { left: 100%; margin-left: 6px; top: 0; }
-	.speech.right { right: 100%; margin-right: 6px; top: 0; }
-	@keyframes speech-pop {
-		0% { opacity: 0; transform: scale(0.85); }
-		8% { opacity: 1; transform: scale(1.04); }
-		14% { transform: scale(1); }
-		85% { opacity: 1; }
-		100% { opacity: 0; }
-	}
-	@media (prefers-reduced-motion: reduce) {
-		.speech { animation: none; }
-	}
 
 	.pass-badge {
 		position: absolute;
