@@ -4,6 +4,8 @@ import type { PresetBehavior } from './presets/types';
 import { getWeightsForStrategy, applyWildVariance, getBehaviorForStrategy } from './presets';
 import { __deterministic } from './strategy';
 import { decideHumanPlay, getHumanModel, loadHumanModel } from './humanModel';
+import { decideOwnTrickBomb } from './habits';
+import { DEFAULT_HABITS } from './presets/types';
 import {
 	decideGrandTichu,
 	decideSmallTichu,
@@ -83,6 +85,11 @@ export class AiPlayer {
 
 	makeDragonGiftDecision(context: AiDecisionContext): SeatIndex {
 		return decideDragonGift(context, this.seat, this.weights, this.behavior);
+	}
+
+	/** 방금 내가 낸 카드 위에 폭탄을 얹어 바로 나갈지 (habits.ts) */
+	checkOwnTrickBomb(hand: Card[]): Combination | null {
+		return decideOwnTrickBomb(hand, this.behavior.habits ?? DEFAULT_HABITS);
 	}
 
 	checkBombInterrupt(

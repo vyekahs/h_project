@@ -1,7 +1,9 @@
 import type { Card, Combination, SeatIndex, ExchangeCards, WishState, NormalCard } from '../types';
 import { __deterministic } from './determinism';
+import { decideHabitBomb } from './habits';
 import type { AiDecisionContext, PersonalityWeights } from './types';
 import type { PresetBehavior } from './presets/types';
+import { DEFAULT_HABITS } from './presets/types';
 import { getTeam, getPartnerSeat, getLeftSeat, getRightSeat, getNextActiveSeat } from '../constants';
 import { canBeat, isBomb, detectCombination } from '../combinations';
 import { mustPlayWishedRank, playFulfillsWish, canPlayWishedCombo } from '../wish';
@@ -1714,116 +1716,24 @@ export function decideDragonGift(
  */
 export function shouldPlayBomb(
 	context: AiDecisionContext,
-	weights: PersonalityWeights,
+	_weights: PersonalityWeights,
 	lastPlay: { seat: SeatIndex; combination: Combination },
 	behavior: PresetBehavior = {}
 ): Combination | null {
 	const { hand, currentSeat, players } = context;
-	const myTeam = getTeam(currentSeat);
-	const playTeam = getTeam(lastPlay.seat);
 
 	// Don't bomb our own team
-	if (playTeam === myTeam) return null;
+	if (getTeam(lastPlay.seat) === getTeam(currentSeat)) return null;
 
-	const bombs = findBombs(hand);
-	if (bombs.length === 0) return null;
-
-	const beatable = bombs.filter(b => canBeat(lastPlay.combination, b));
+	const beatable = findBombs(hand).filter(b => canBeat(lastPlay.combination, b));
 	if (beatable.length === 0) return null;
-
 	beatable.sort((a, b) => a.rank - b.rank);
 
-	// === 필수 저지 로직: 프리셋의 shouldUseBomb 오버라이드보다 항상 우선 적용 ===
-	// (모든 프리셋이 shouldUseBomb에서 'skip'/콤보 중 하나를 반환해버리면
-	//  아래 공용 로직 전체가 죽은 코드가 되어버리는 문제를 방지)
-	if (isBomb(lastPlay.combination)) {
-		const attacker = players[lastPlay.seat];
-		if (attacker.hand.length <= 2) {
-			return beatable[0]; // 상대가 폭탄으로 나가려는 중이면 반드시 저지
-		}
-	} else {
-		const player = players[lastPlay.seat];
-		if (player.hand.length <= 2) {
-			return beatable[0]; // 상대가 곧 나갈 것 같으면 반드시 저지
-		}
-	}
+	// 그 상대가 2장 이하면 (폭탄으로 나가려는 중이어도) 반드시 막는다
+	if (players[lastPlay.seat].hand.length <= 2) return beatable[0];
 
-	// Behavior hook: 폭탄 사용 오버라이드 (필수 저지 이후, 선택적 상황)
-	const bombOverride = behavior.shouldUseBomb?.(hand, bombs, context, lastPlay);
-	if (bombOverride === 'skip') return null;
-	if (bombOverride !== null && bombOverride !== undefined) return bombOverride;
-
-	const tracker = buildCardTracker(context);
-
-	// Counter-bomb scenario (이미 나간 폭탄에 카운터폭탄 칠지)
-	if (isBomb(lastPlay.combination)) {
-		// 카운터폭탄은 트릭 포인트가 충분할 때만 (10점 이상)
-		const counterTrickCards = context.trick?.plays.flatMap(p => p.combination.cards) || [];
-		const counterTrickPoints = getTrickPoints(counterTrickCards);
-		if (weights.aggressiveness > 0.7 && weights.bombHolding < 0.4 && counterTrickPoints >= 10) {
-			return beatable[0];
-		}
-		return null;
-	}
-
-	// 소원이 활성화된 상태에서 낮은 포인트 트릭에 폭탄 자제
-	// (소원이 아직 충족 안 됐으면 상대가 결국 소원 카드를 내야 하므로 기다리는 게 유리)
-	if (context.wish.active && context.wish.requestedRank !== null) {
-		const wishTrickCards = context.trick?.plays.flatMap(p => p.combination.cards) || [];
-		const wishTrickPoints = getTrickPoints(wishTrickCards);
-		if (wishTrickPoints < 15) return null;
-	}
-
-	// High bomb holding = reluctant to use bombs
-	if (weights.bombHolding > 0.8) return null;
-
-	// 상대 티츄 선언 → 적극 폭탄 (카드 7장 이하)
-	if (hasOpponentDeclaredTichu(tracker)) {
-		const tichuer = tracker.opponents.find(o => o.declaredTichu && !o.finished);
-		if (tichuer && tichuer.cardsRemaining <= 7) {
-			return beatable[0];
-		}
-	}
-
-	// Check if trick has lots of points
-	const trickCards = context.trick?.plays.flatMap(p => p.combination.cards) || [];
-	const trickPoints = getTrickPoints(trickCards);
-
-	// 드래곤(25점) 포함 트릭은 적극 폭탄
-	if (lastPlay.combination.type === 'single' &&
-		lastPlay.combination.cards.some(c => c.type === 'special' && c.special === 'dragon')) {
-		return beatable[0];
-	}
-
-	// 포인트 임계값 하향: 15점 이상 + 상대가 이기고 있으면
-	if (trickPoints >= 15 && weights.aggressiveness > 0.2) {
-		return beatable[0];
-	}
-
-	// 나갈 수 있으면 폭탄: 폭탄 후 나머지 카드로 나갈 수 있으면 적극 사용
-	if (hand.length <= 6) {
-		for (const bomb of beatable) {
-			const afterBomb = hand.filter(c => !bomb.cards.some(bc => bc.id === c.id));
-			if (afterBomb.length === 0) return bomb; // 폭탄으로 나감!
-			const afterCombo = detectCombination(afterBomb);
-			if (afterCombo) return bomb; // 폭탄 후 1턴에 나갈 수 있음
-			// 2턴 체크
-			if (afterBomb.length <= 3) {
-				const afterCombos = findAllPlayableCombinations(afterBomb);
-				for (const ac of afterCombos) {
-					const remaining = afterBomb.filter(c => !ac.cards.some(acc => acc.id === c.id));
-					if (remaining.length === 0 || (remaining.length === 1)) return bomb;
-					const lastC = detectCombination(remaining);
-					if (lastC) return bomb;
-				}
-			}
-		}
-	}
-
-	// If I'm close to finishing and bombing would let me lead (최소 5점 트릭)
-	if (hand.length <= 4 && weights.aggressiveness > 0.3 && trickPoints >= 5) {
-		return beatable[0];
-	}
-
-	return null;
+	// 그 밖에는 사람 기록에서 뽑은 조건 조합을 따른다 (habits.ts).
+	// 예전에는 프리셋마다 훅이 있어서 "남은 패가 4턴 이내면 폭탄"(아랭), "15점 이상이면 폭탄"
+	// 같은 규칙으로 별일 없는 트릭에서도 터뜨렸다 — 같은 순간에 사람은 12%, 아랭 AI는 49%.
+	return decideHabitBomb(context, lastPlay, beatable, behavior.habits ?? DEFAULT_HABITS);
 }

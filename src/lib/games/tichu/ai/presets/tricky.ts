@@ -1,10 +1,11 @@
 import type { PresetBehavior } from './types';
+import { DEFAULT_HABITS } from './types';
 import { selectBestPartnerCard } from './types';
 import type { Card, NormalCard, Combination, SeatIndex } from '../../types';
 import type { AiDecisionContext } from '../types';
 import { findAllPlayableCombinations, findBombs, estimateSimpleTurns } from '../handEvaluator';
-import { getTeam, getPartnerSeat } from '../../constants';
-import { canBeat, isBomb } from '../../combinations';
+import { getPartnerSeat } from '../../constants';
+import { isBomb } from '../../combinations';
 
 /**
  * 전략적 (Tricky) 프리셋 고유 행동
@@ -21,6 +22,9 @@ import { canBeat, isBomb } from '../../combinations';
  * - 티츄: 원투 선호, 확실히 나갈 수 있을 때만
  */
 export const trickyBehavior: PresetBehavior = {
+	// 메모: 폭탄은 자기가 나갈 때와 상대가 나가기 직전에만(10건 중 8건). 개는 교환 때 넘겨서 기록이 없다 → 사람 평균
+	habits: DEFAULT_HABITS,
+
 	selectPartnerExchangeCard(hand, singletons, rankGroups, protectedIds) {
 		return selectBestPartnerCard(hand, singletons, rankGroups, protectedIds);
 	},
@@ -100,27 +104,6 @@ export const trickyBehavior: PresetBehavior = {
 		if (hand.length >= 10) return true;
 
 		return null; // 기본 로직
-	},
-
-	shouldUseBomb(hand, bombs, context, lastPlay) {
-		const myTeam = getTeam(context.currentSeat);
-		const playTeam = getTeam(lastPlay.seat);
-		if (playTeam === myTeam) return 'skip';
-
-		// 폭탄 쓰고도 나갈 수 있을 때만
-		for (const bomb of bombs) {
-			if (!canBeat(lastPlay.combination, bomb)) continue;
-			const remaining = hand.filter(c => !bomb.cards.some(bc => bc.id === c.id));
-			if (remaining.length === 0) return bomb; // 폭탄으로 나감
-
-			const remainingCombos = findAllPlayableCombinations(remaining);
-			const turnsNeeded = estimateSimpleTurns(remaining);
-			if (turnsNeeded <= 3) {
-				return bomb;
-			}
-		}
-
-		return 'skip';
 	},
 
 	shouldDeclareGrandTichu(hand8) {

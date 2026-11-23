@@ -1308,11 +1308,11 @@ export class LocalGameEngine {
 
 			let foundBomber = false;
 
-			for (let i = 1; i <= 3; i++) {
+			// i = 0: 방금 낸 자리 — 자기 카드 위에 마지막 폭탄을 얹어 바로 나가는 경우
+			for (let i = 0; i <= 3; i++) {
 				const seat = ((currentLastPlaySeat + i) % 4) as SeatIndex;
 
 				if (seat === HUMAN_SEAT) continue;
-				if (seat === currentLastPlaySeat) continue;
 
 				const player = this.state.players[seat];
 				if (player.finishOrder !== null) continue;
@@ -1322,10 +1322,12 @@ export class LocalGameEngine {
 				if (!ai) continue;
 
 				const context = this.createAiContext(seat);
-				const bombCombo = ai.checkBombInterrupt(context, {
-					seat: currentLastPlaySeat,
-					combination: currentLastCombination
-				});
+				const bombCombo = i === 0
+					? (isBomb(currentLastCombination) ? null : ai.checkOwnTrickBomb(player.hand))
+					: ai.checkBombInterrupt(context, {
+						seat: currentLastPlaySeat,
+						combination: currentLastCombination
+					});
 
 				if (bombCombo) {
 					await this.delay();

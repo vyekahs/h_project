@@ -63,7 +63,10 @@ export interface DecisionRow {
 	/**
 	 * 그 라운드의 플레이 순서 — 사람 행(seat 0)에만 싣는다. [자리, 내용] 의 배열.
 	 *   "sword_14 jade_14" 낸 카드 / "P" 패스 / "W" 트릭 획득 / "D>2" 개로 2번에게 선 /
-	 *   "G>1" 용 트릭을 1번에게 줌 / "T:small" 선언
+	 *   "G>1" 용 트릭을 1번에게 줌 / "T:small" 선언 / "M:9" 참새 소원 9 (0 = 소원 없음)
+	 *
+	 * 소원이 걸린 동안 낸 카드는 사람이 고른 게 아닐 수 있다. 소원을 안 남기던 때의 기록으로
+	 * 학습한 AI는 "참새 위에는 A를 낸다"고 배웠다 — 상대 AI가 A를 소원해서 억지로 낸 것이었다.
 	 *
 	 * 시뮬레이션에서는 AI가 사람 자리를 대신 쳐도 무조건 그랜드 성공률이 37%인데
 	 * 실제 사람은 70%를 넘긴다. AI끼리 돌려서는 그 차이가 어디서 나는지 볼 수 없어서
@@ -83,6 +86,9 @@ interface Pending {
 	roundNumber: number;
 	seats: PendingSeat[];
 	plays: [number, string][];
+	/** 참새를 낸 자리 (아직 안 나왔으면 null) */
+	mahjongBy: number | null;
+	wishLogged: boolean;
 }
 
 /** 서버가 한 번에 받는 행 수 (한 라운드 = 4행) */
@@ -104,7 +110,9 @@ function ensurePending(roundNumber: number): Pending {
 		pending = {
 			roundNumber,
 			seats: [0, 1, 2, 3].map(() => ({ hand8: null, hand14: null, features: {}, smallCardsOut: null })),
-			plays: []
+			plays: [],
+			mahjongBy: null,
+			wishLogged: false
 		};
 	}
 	return pending;
@@ -203,11 +211,26 @@ export function commitRound(
 	pending = null;
 }
 
+/**
+ * 참새 소원을 플레이 기록에 남긴다 (참새 바로 다음 줄, 한 라운드에 한 번).
+ * 소원은 엔진 이벤트로 나오지 않아 상태에서 읽는다. `decided`는 소원 고르기가 끝났는지 —
+ * 끝났는데도 숫자가 없으면 소원을 안 건 것이다.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function noteWish(engine: any, decided: boolean) {
+	if (!pending || pending.wishLogged || pending.mahjongBy === null) return;
+	const rank: number | null = engine?.state?.round?.wish?.requestedRank ?? null;
+	if (rank === null && !decided) return;
+	pending.plays.push([pending.mahjongBy, `M:${rank ?? 0}`]);
+	pending.wishLogged = true;
+}
+
 /** 엔진 이벤트를 플레이 기록에 쌓는다 */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function observeEvent(event: GameEvent, engine: any) {
 	const roundNumber: number | undefined = engine?.state?.round?.roundNumber;
 	if (!pending || pending.roundNumber !== roundNumber || pending.plays.length >= MAX_PLAYS) return;
+	noteWish(engine, engine?.state?.phase !== 'wish_declare');
 	const entry =
 		event.type === 'play' || event.type === 'bomb' ? event.combo.cards.map(c => c.id).join(' ')
 		: event.type === 'pass' ? 'P'
@@ -216,6 +239,9 @@ export function observeEvent(event: GameEvent, engine: any) {
 		: event.type === 'dragon_gift' ? `G>${event.targetSeat}`
 		: `T:${event.tichuType}`;
 	pending.plays.push([event.seat, entry]);
+	if ((event.type === 'play' || event.type === 'bomb') && event.combo.cards.some(c => c.id === 'mahjong')) {
+		pending.mahjongBy = event.seat;
+	}
 }
 
 /**
@@ -226,6 +252,7 @@ export function observeEvent(event: GameEvent, engine: any) {
 export function observeState(engine: any) {
 	const s: TichuRoomState | null = engine?.state ?? null;
 	if (!s?.round || !pending || pending.roundNumber !== s.round.roundNumber) return;
+	noteWish(engine, false);
 	for (const player of s.players) {
 		const p = pending.seats[player.seat];
 		if (player.smallTichu && p.smallCardsOut === null) {
