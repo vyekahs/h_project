@@ -1,5 +1,5 @@
 import { GAME_CONFIG } from '$lib/config';
-import { generateLevel, generateDailyLevel, DAILY_DIFFICULTY, canPour, pourWater, checkWin, isStuck, isEffectivelyStuck } from '$lib/games/water-sort/levels';
+import { generateLevel, canPour, pourWater, checkWin, isStuck, isEffectivelyStuck } from '$lib/games/water-sort/levels';
 import { TUBE_CAPACITY, type Tube, type Difficulty } from '$lib/games/water-sort/types';
 import { goto } from '$app/navigation';
 import { formatTime, trackGameStart } from '$lib/games/utils';
@@ -7,18 +7,6 @@ import { browser } from '$app/environment';
 import { rankUpStore } from '$lib/stores/rankUpStore.svelte';
 
 export type GameState = 'start' | 'playing' | 'paused' | 'finished';
-
-const SAVE_KEY = 'watersort_save';
-/** 오늘의 퍼즐은 일반 게임 이어하기와 섞이지 않게 따로 저장한다 */
-export const DAILY_SAVE_KEY = 'watersort_daily_save';
-
-export interface DailyResult {
-	/** 이번 클리어가 오늘의 기록으로 남았는지 (이미 푼 적이 있으면 false) */
-	recorded: boolean;
-	rank: number | null;
-	total: number;
-	streak: number;
-}
 
 export const difficultyLabels: Record<string, string> = {
 	easy: '쉬움',
@@ -69,11 +57,6 @@ export function createWaterSortGame() {
 	// Initial state for restart (same puzzle)
 	let initialTubes: number[][] = [];
 	let initialMoveLimit = 0;
-
-	// 오늘의 퍼즐 — 날짜가 있으면 일일 모드
-	let dailyDate: string | null = $state(null);
-	let dailyResult: DailyResult | null = $state(null);
-	const saveKey = () => (dailyDate ? DAILY_SAVE_KEY : SAVE_KEY);
 
 	// Stuck detection
 	let isGameStuck = $state(false);
@@ -145,16 +128,15 @@ export function createWaterSortGame() {
 				hasRestarted,
 				initialTubes: initialTubes.map(l => [...l]),
 				initialMoveLimit,
-				isWarnedUnsolvable,
-				dailyDate
+				isWarnedUnsolvable
 			};
-			localStorage.setItem(saveKey(), JSON.stringify(data));
+			localStorage.setItem('watersort_save', JSON.stringify(data));
 		} catch {}
 	}
 
-	function loadGame(key: string = SAVE_KEY) {
+	function loadGame() {
 		try {
-			const raw = localStorage.getItem(key);
+			const raw = localStorage.getItem('watersort_save');
 			if (!raw) {
 				showAlert('저장된 게임이 없습니다.');
 				return;
@@ -163,7 +145,7 @@ export function createWaterSortGame() {
 			const data = JSON.parse(raw);
 			if (!data.tubes || !Array.isArray(data.tubes)) {
 				showAlert('저장 데이터가 손상되었습니다.');
-				localStorage.removeItem(key);
+				localStorage.removeItem('watersort_save');
 				hasSavedGame = false;
 				return;
 			}
@@ -178,7 +160,6 @@ export function createWaterSortGame() {
 			timerValue = data.timer || 0;
 			displayTimer = timerValue;
 			difficulty = data.difficulty || 'medium';
-			dailyDate = data.dailyDate ?? null;
 			history = (data.history || []).map((h: any) => ({
 				layers: h.layers.map((l: number[]) => [...l]),
 				moveCount: h.moveCount ?? 0
@@ -200,40 +181,16 @@ export function createWaterSortGame() {
 			startTimer();
 		} catch {
 			showAlert('저장 데이터를 불러올 수 없습니다.');
-			localStorage.removeItem(key);
+			localStorage.removeItem('watersort_save');
 			hasSavedGame = false;
 		}
 	}
 
 	// Game flow
 	function startGame() {
-		dailyDate = null;
 		trackGameStart('water-sort', difficulty);
-		localStorage.removeItem(SAVE_KEY);
-		beginLevel(generateLevel(difficulty));
-	}
-
-	/**
-	 * 오늘의 퍼즐. 같은 날 하던 판이 있으면 그 상태(시간 포함)로 이어간다 — 나갔다가
-	 * 새로 시작하면 문제를 미리 본 채로 시간을 다시 재는 셈이 되기 때문이다.
-	 */
-	function startDaily(dateKey: string) {
-		try {
-			const raw = localStorage.getItem(DAILY_SAVE_KEY);
-			if (raw && JSON.parse(raw).dailyDate === dateKey) {
-				loadGame(DAILY_SAVE_KEY);
-				return;
-			}
-		} catch {}
-		localStorage.removeItem(DAILY_SAVE_KEY);
-		dailyDate = dateKey;
-		difficulty = DAILY_DIFFICULTY;
-		dailyResult = null;
-		trackGameStart('water-sort', 'daily');
-		beginLevel(generateDailyLevel(dateKey));
-	}
-
-	function beginLevel(level: { tubes: Tube[]; moveLimit: number }) {
+		localStorage.removeItem('watersort_save');
+		const level = generateLevel(difficulty);
 		tubes = level.tubes;
 		moveLimit = level.moveLimit;
 		// Save initial state for restart
@@ -424,13 +381,11 @@ export function createWaterSortGame() {
 		// 그 사이 자동저장 틱이 끼어들면 방금 지운 저장이 되살아나고
 		// 시작 화면에 "이어하기"가 남는다.
 		stopTimer();
-		localStorage.removeItem(saveKey());
+		localStorage.removeItem('watersort_save');
 		setTimeout(() => {
 			gameState = 'finished';
 			hasSavedGame = false;
-			if (dailyDate) {
-				submitDaily();
-			} else if (!hasRestarted) {
+			if (!hasRestarted) {
 				submitScore();
 			}
 		}, 800);
@@ -475,36 +430,6 @@ export function createWaterSortGame() {
 		}
 	}
 
-	/** 오늘의 퍼즐 기록 제출. 월간 랭킹에는 넣지 않는다 */
-	async function submitDaily() {
-		try {
-			const res = await fetch('/api/daily-puzzle', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ gameId: 'water-sort', date: dailyDate, clearTime: timerValue, moves: moveCount })
-			});
-			if (res.ok) {
-				const data = await res.json();
-				dailyResult = {
-					recorded: data.recorded,
-					rank: data.board.mine?.rank ?? null,
-					total: data.board.total,
-					streak: data.board.streak
-				};
-			} else if (res.status === 401 || res.status === 403) {
-				showVisitPrompt = true;
-			}
-		} catch (e) {
-			console.error('Failed to submit daily result', e);
-		}
-	}
-
-	/** 그만두기. 오늘의 퍼즐은 저장을 남겨 같은 날 이어할 수 있게 한다 */
-	function quitGame() {
-		stopTimer();
-		if (!dailyDate) localStorage.removeItem(SAVE_KEY);
-	}
-
 	function pauseGame() {
 		gameState = 'paused';
 	}
@@ -513,20 +438,6 @@ export function createWaterSortGame() {
 	}
 
 	function restartGame() {
-		if (dailyDate) {
-			// 오늘의 퍼즐: 문제만 처음 상태로 되돌리고 시간·이동 수는 이어서 센다.
-			// (처음부터 다시 재면 한 번 본 문제를 외워서 다시 푸는 쪽이 유리해진다)
-			showConfirm('문제를 처음 상태로 되돌립니다. 시간과 이동 수는 이어서 셉니다.', () => {
-				tubes = initialTubes.map((layers, i) => ({ id: i, layers: [...layers] }));
-				history = [];
-				isGameStuck = false;
-				isWarnedUnsolvable = false;
-				selectedTubeId = null;
-				gameState = 'playing';
-				saveGame();
-			});
-			return;
-		}
 		showConfirm('다시시작하면 랭킹에 기록되지 않습니다. 계속하시겠습니까?', () => {
 			stopTimer();
 			hasRestarted = true;
@@ -581,8 +492,6 @@ export function createWaterSortGame() {
 		get isAnimating() { return isAnimating; },
 		get returningTubeId() { return returningTubeId; },
 		get justCompletedIds() { return justCompletedIds; },
-		get dailyDate() { return dailyDate; },
-		get dailyResult() { return dailyResult; },
 		// Functions
 		showAlert,
 		showConfirm,
@@ -592,8 +501,6 @@ export function createWaterSortGame() {
 		saveGame,
 		loadGame,
 		startGame,
-		startDaily,
-		quitGame,
 		selectTube,
 		undo,
 		pauseGame,

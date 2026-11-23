@@ -4,7 +4,6 @@ import { RankingService } from '$lib/server/services/rankingService';
 import { TitleService } from '$lib/server/services/titleService';
 import { db } from '$lib/server/db/index';
 import { sql } from 'drizzle-orm';
-import { getDailyBoard } from '$lib/server/dailyPuzzle';
 
 // +page.svelte의 games 배열에서 실제로 노출 중인 게임과 맞춰둔다 —
 // 여기 있던 unblock-me/regicide/match-crash는 +page.svelte에서는 이미
@@ -25,27 +24,21 @@ export const load: PageServerLoad = async ({ locals }) => {
     //
     // 맞추는 게 먼저다. 그래야 방금 칭호를 받은 사람이 같은 요청에서 축하 팝업까지
     // 받는다. 병렬로 돌리면 팝업 조회가 칭호 부여보다 먼저 끝나 한 박자 늦게 뜬다.
-    const [activityFeed, userRanks, [arcadeMaster, pendingTitle], dailyBoard] = await Promise.all([
+    const [activityFeed, userRanks, [arcadeMaster, pendingTitle]] = await Promise.all([
         RankingService.getRecentActivity(1, GAME_IDS),
         RankingService.getUserRanksForGames(userId, GAME_IDS),
         (async () => {
             const master = await TitleService.syncArcadeMaster();
             const pending = await claimPendingTitleAnnouncement(userId);
             return [master, pending] as const;
-        })(),
-        // 오늘의 퍼즐 카드 — 실패해도 오락실은 열려야 한다
-        getDailyBoard('water-sort', userId).catch((e) => {
-            console.error('[minigames] daily board failed:', e);
-            return null;
-        })
+        })()
     ]);
 
     return {
         activityFeed: activityFeed as any[],
         userRanks,
         pendingTitle,
-        arcadeMaster,
-        dailyBoard
+        arcadeMaster
     };
 };
 

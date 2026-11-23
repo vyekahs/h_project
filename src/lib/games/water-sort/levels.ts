@@ -3,11 +3,10 @@ import {
 	EASY_SEEDS, MEDIUM_SEEDS, HARD_SEEDS, EXPERT_SEEDS, MASTER_SEEDS,
 	type WaterSortSeed
 } from './seeds';
-import { dailySeed, seededRandom } from '../dailyPuzzle';
 
-function shuffle<T>(arr: T[], rng: () => number = Math.random): T[] {
+function shuffle<T>(arr: T[]): T[] {
 	for (let i = arr.length - 1; i > 0; i--) {
-		const j = Math.floor(rng() * (i + 1));
+		const j = Math.floor(Math.random() * (i + 1));
 		[arr[i], arr[j]] = [arr[j], arr[i]];
 	}
 	return arr;
@@ -212,9 +211,9 @@ const SEEDS_BY_DIFFICULTY: Record<Difficulty, WaterSortSeed[]> = {
  * Generate a level from pre-computed seeds.
  * Applies color permutation + tube order shuffle for variety.
  */
-export function generateLevel(difficulty: Difficulty, rng: () => number = Math.random): WaterSortLevel {
+export function generateLevel(difficulty: Difficulty): WaterSortLevel {
 	const seeds = SEEDS_BY_DIFFICULTY[difficulty];
-	const seed = seeds[Math.floor(rng() * seeds.length)];
+	const seed = seeds[Math.floor(Math.random() * seeds.length)];
 
 	// 1. Deep copy layers from seed
 	const layers = seed.t.map(l => [...l]);
@@ -225,23 +224,15 @@ export function generateLevel(difficulty: Difficulty, rng: () => number = Math.r
 		for (const c of tube) colorSet.add(c);
 	}
 	const numColors = colorSet.size;
-	const colorPerm = shuffle([...Array(numColors).keys()], rng);
+	const colorPerm = shuffle([...Array(numColors).keys()]);
 	const remapped = layers.map(tube =>
 		tube.map(c => colorPerm[c])
 	);
 
 	// 3. Shuffle tube order + assign ids
 	const tubes: Tube[] = remapped.map((l, i) => ({ id: i, layers: l }));
-	shuffle(tubes, rng);
+	shuffle(tubes);
 	tubes.forEach((t, i) => { t.id = i; });
 
 	return { tubes, moveLimit: seed.m };
-}
-
-/** 오늘의 퍼즐 난이도 — 매일 하기 부담 없게 '보통' */
-export const DAILY_DIFFICULTY: Difficulty = 'medium';
-
-/** 오늘의 퍼즐: 날짜로 시드·색·시험관 순서를 고정해 모두에게 같은 문제를 낸다 */
-export function generateDailyLevel(dateKey: string): WaterSortLevel {
-	return generateLevel(DAILY_DIFFICULTY, seededRandom(dailySeed(dateKey, 'water-sort')));
 }
