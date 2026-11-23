@@ -9,6 +9,7 @@
  *   OVERRIDE='{"wild":{"grandPropensity":1.4}}'        캐릭터 성향값(PersonalityWeights)을 덮어쓴다
  *   BIAS='{"balanced":{"passFree_near":0}}'            캐릭터 상황 보정값을 덮어쓴다
  *   AB=1 OLD_MODEL=<예전 humanModel.json>              한 팀은 지금 모델, 한 팀은 예전 모델로 같은 패를 두 번 친다
+ *   AB=1 LOGIC_AB=1                                    한 팀만 끝내기 계산(certain.ts)을 켜고 같은 패를 두 번 친다
  * 결과 정리: python3 scripts/tichu-model/bench_report.py parity|ab <결과 폴더>
  * (평소 테스트에서는 건너뛴다)
  */
@@ -18,6 +19,7 @@ import { loadHumanModel, __setHumanModel, SITUATION_BIAS, type HumanModel } from
 import { readFileSync } from 'node:fs';
 import { simulateGame, clampTimers, seedRandom } from '../simHarness';
 import { AiPlayer } from '../aiPlayer';
+import { __logic, logicStats } from '../certain';
 import { createShuffledDeck } from '../../deck';
 import { getPartnerSeat } from '../../constants';
 import { findBeatablePlays } from '../handEvaluator';
@@ -70,11 +72,14 @@ describe('캐릭터 측정', () => {
 		const newModel = (await loadHumanModel())!;
 		const oldModel: HumanModel | null = process.env.OLD_MODEL ? JSON.parse(readFileSync(process.env.OLD_MODEL, 'utf8')) : null;
 		let newTeam: 'A' | 'B' | null = null;
+		const logicAB = !!process.env.LOGIC_AB;
+		const logicBefore = { ...logicStats };
 		const ab = { rounds: 0, diff: 0, games: 0, wins: 0, perSet: [] as { diff: number; rounds: number }[] };
 		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		const useVersion = (ai: any) => {
 			const isNew = newTeam === null || (ai.seat % 2 === 0) === (newTeam === 'A');
 			__setHumanModel(isNew || !oldModel ? newModel : oldModel);
+			if (logicAB) __logic.on = isNew;
 		};
 		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		const applyOverride = (ai: any) => {
@@ -253,8 +258,10 @@ describe('캐릭터 측정', () => {
 			proto.checkOwnTrickBomb = origOwn;
 			proto.makeDragonGiftDecision = origGift;
 			__setHumanModel(newModel);
+			__logic.on = true;
 		}
-		const out = { seed, sets, totalRounds, seconds: Math.round((Date.now() - t0) / 1000), stats, perSet, ab };
+		const logic = Object.fromEntries(Object.entries(logicStats).map(([k, v]) => [k, v - logicBefore[k as keyof typeof logicStats]]));
+		const out = { seed, sets, totalRounds, seconds: Math.round((Date.now() - t0) / 1000), stats, perSet, ab, logic };
 		if (process.env.OUT) writeFileSync(process.env.OUT, JSON.stringify(out));
 		console.log(JSON.stringify({ seed, sets, totalRounds, seconds: out.seconds }));
 	}, 7_200_000);

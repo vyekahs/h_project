@@ -5,6 +5,7 @@ import { getWeightsForStrategy, applyWildVariance, getBehaviorForStrategy } from
 import { __deterministic } from './strategy';
 import { decideHumanPlay, getHumanModel, loadHumanModel } from './humanModel';
 import { decideOwnTrickBomb } from './habits';
+import { refineWithLogic, defersBombToTurn, soleActiveOpponent } from './certain';
 import { DEFAULT_HABITS } from './presets/types';
 import {
 	decideGrandTichu,
@@ -69,6 +70,11 @@ export class AiPlayer {
 	}
 
 	makePlayDecision(context: AiDecisionContext): string[] | 'pass' {
+		// 계산으로 답이 정해지는 순간(둘만 남았을 때, 확실한 마무리)에는 고른 수를 검산한다 (certain.ts)
+		return refineWithLogic(context, this.pickPlay(context));
+	}
+
+	private pickPlay(context: AiDecisionContext): string[] | 'pass' {
 		// 카드 내기는 사람 기록으로 학습한 모델이 고른다 (humanModel.ts).
 		// 모델이 아직 안 왔거나 다루지 않는 경우(소원 강제 등)는 규칙 AI.
 		const model = getHumanModel();
@@ -84,7 +90,7 @@ export class AiPlayer {
 	}
 
 	makeDragonGiftDecision(context: AiDecisionContext): SeatIndex {
-		return decideDragonGift(context, this.seat, this.weights, this.behavior);
+		return soleActiveOpponent(context, this.seat) ?? decideDragonGift(context, this.seat, this.weights, this.behavior);
 	}
 
 	/** 방금 내가 낸 카드 위에 폭탄을 얹어 바로 나갈지 (habits.ts) */
@@ -96,6 +102,7 @@ export class AiPlayer {
 		context: AiDecisionContext,
 		lastPlay: { seat: SeatIndex; combination: Combination }
 	): Combination | null {
+		if (defersBombToTurn(context, lastPlay.seat)) return null;
 		return shouldPlayBomb(context, this.weights, lastPlay, this.behavior);
 	}
 }

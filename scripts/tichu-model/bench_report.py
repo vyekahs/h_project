@@ -1,7 +1,7 @@
 """시뮬레이션 결과 정리.
 
   python3 scripts/tichu-model/bench_report.py parity <결과 폴더>   캐릭터끼리 실력·행동 비교 (characterBench)
-  python3 scripts/tichu-model/bench_report.py ab <결과 폴더>       새 팀 − 예전 팀 (characterBench AB=1)
+  python3 scripts/tichu-model/bench_report.py ab <결과 폴더>       새 팀 − 예전 팀 (characterBench AB=1: 모델 비교, LOGIC_AB=1: 끝내기 계산 켬/끔)
   python3 scripts/tichu-model/bench_report.py stop <결과 폴더>     티츄 저지 전술별 선언 성공률 (tichuStopBench)
 
 결과 폴더: 프로세스마다 OUT 으로 남긴 *.json 을 모아 둔 곳.
@@ -43,13 +43,20 @@ if mode == 'parity':
     row('내 카드 위 폭탄', lambda p: str(tot[p]['ownBomb']))
     row('개/100R', lambda p: f"{100 * tot[p]['dog'] / tot[p]['rounds']:.1f}")
 elif mode == 'ab':
-    sets = []; rounds = diff = games = wins = 0
+    sets = []; rounds = diff = games = wins = 0; logic = {}
     for f in files:
         d = json.load(open(f))
         a = d['ab']; rounds += a['rounds']; diff += a['diff']; games += a['games']; wins += a['wins']; sets += a['perSet']
+        for k, v in d.get('logic', {}).items(): logic[k] = logic.get(k, 0) + v
     m = [s['diff'] / s['rounds'] for s in sets]
     print(f"새 팀 − 예전 팀: 라운드당 {ci(m)}점 ({len(m)}묶음, {rounds}라운드)")
     print(f"새 팀 게임 승률 {pct(wins, games)} ({wins}/{games}), 묶음 부호 +{sum(1 for v in m if v > 0)}/−{sum(1 for v in m if v < 0)}")
+    if logic.get('twoLeft') or logic.get('sure'):
+        # 끝내기 계산이 실제로 끼어든 횟수 (켠 팀의 판단만 센다)
+        r = rounds
+        print(f"둘만 남았을 때 계산: {logic['twoLeft']}번 ({logic['twoLeft'] / r:.2f}번/라운드), 그중 모델의 수를 바꿈 {logic['twoLeftChanged']}번 "
+              f"({pct(logic['twoLeftChanged'], logic['twoLeft'])}), 바꿔서 얻은 점수 합 {logic['twoLeftGain']} · 계산량 초과로 포기 {logic['twoLeftBudget']}번")
+        print(f"확실한 마무리: {logic['sure']}번 ({logic['sure'] / r:.2f}번/라운드), 그중 모델의 수를 바꿈 {logic['sureChanged']}번 ({pct(logic['sureChanged'], logic['sure'])})")
 elif mode == 'stop':
     acc = {}; per = []
     for f in files:

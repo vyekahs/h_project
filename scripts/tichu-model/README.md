@@ -85,6 +85,10 @@ python3 scripts/tichu-model/bench_report.py parity $W/bench/par
 CHAR_BENCH=1 AB=1 OLD_MODEL=$W/old_model.json SEED=1 SETS=6 OUT=$W/bench/ab/1.json npx vitest run src/lib/games/tichu/ai/tools/characterBench.test.ts
 python3 scripts/tichu-model/bench_report.py ab $W/bench/ab
 
+# 끝내기 계산(certain.ts)을 한 팀만 켜고 겨룬다 — 계산이 끼어든 횟수도 같이 나온다
+CHAR_BENCH=1 AB=1 LOGIC_AB=1 SEED=1 SETS=6 OUT=$W/bench/logic/1.json npx vitest run src/lib/games/tichu/ai/tools/characterBench.test.ts
+python3 scripts/tichu-model/bench_report.py ab $W/bench/logic
+
 # 티츄 저지: 부른 자리의 성공률
 STOP_BENCH=1 SEED=1 SETS=3 VARIANTS='[{"name":"beat+3","beatCaller":3}]' OUT=$W/bench/stop/1.json npx vitest run src/lib/games/tichu/ai/tools/tichuStopBench.test.ts
 python3 scripts/tichu-model/bench_report.py stop $W/bench/stop
@@ -97,6 +101,24 @@ python3 scripts/tichu-model/bench_report.py stop $W/bench/stop
 캐릭터 하나가 앞서면 깎기 전에 기록과 대조한다(`calibrate.py`가 쓰는 `sc`·`tags`로 보정값을 바꿔
 그 사람의 순간에서 비율을 다시 계산할 수 있다). 라미는 AI가 사람보다 덜 넘기고 있어서,
 기록 쪽으로 옮기는 것만으로 실력이 맞았다.
+
+## 7. 계산으로 답이 정해지는 순간 (`ai/certain.ts`)
+
+모델이 고른 수를 계산으로 검산하는 층이다. 사람 기록과 무관하므로 재학습해도 손댈 필요가 없다.
+
+- **둘만 남았을 때**: 상대 손패 = 안 보이는 카드 전부라서 끝까지 계산한다(카드 점수 최대화).
+  둘이 합쳐 20장 이하일 때만, 계산량 한도 안에서. 넘으면 모델에 맡긴다.
+- **확실한 마무리**: 손패를 "아무도 못 이기는 조합들 + 나머지 하나"로 나눌 수 있으면 그 순서로 나간다.
+  안 보이는 카드로 폭탄이 만들어질 수 있거나, 파트너가 티츄를 불렀고 아직 아무도 안 나갔으면 쓰지 않는다.
+- 모델이 고른 수가 계산상 최선과 값이 같으면 그대로 둔다 — 캐릭터 차이는 답이 여럿인 곳에만 남는다.
+
+규칙을 따로 옮겨 적은 계산이라, `certain.test.ts`가 무작위 끝내기 300판을 실제 엔진으로 끝까지 쳐서
+계산값과 점수가 같은지 확인한다. 엔진의 트릭·용 선물·개·꼴찌 점수 규칙을 바꾸면 이 테스트가 먼저 깨진다.
+
+측정(2026-11-23, 같은 패 48묶음 12,285라운드, 한 팀만 켬): 켠 팀이 라운드당 +10.5 ±1.6점, 게임 승률 59.7%.
+둘만 남은 판단은 라운드당 2.5번, 그중 6.8%에서 모델의 수가 바뀌었다(상대가 한 장 남았는데 낮은 카드를
+리드하거나, 이길 수 있는데 패스하던 수들). 확실한 마무리는 라운드당 1.2번, 15.9%에서 바뀌었다.
+계산 시간은 판단당 평균 1ms 미만, 최대 35ms — 측정이 느리면 계산이 아니라 기계가 바쁜 것이다.
 
 ## 알아 둘 것
 
