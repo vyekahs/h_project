@@ -30,15 +30,63 @@ const ASSETS = new Set([
  */
 const OFFLINE_PAGE = '/offline.html';
 
+/**
+ * 캐시가 통째로 날아가도 보여줄 최소 안내.
+ *
+ * 서버가 멈췄을 때 캐시에 안내 페이지가 없으면 예전에는 Response.error()를
+ * 돌려줬다. 브라우저에서는 기본 오류 화면이 뜨지만, **홈 화면에 추가한 PWA에는
+ * 그 화면이 없다** — 주소창도 오류 UI도 없어서 그냥 흰 화면이 된다. 실제로
+ * 중단 시험에서 그렇게 나왔다.
+ *
+ * 그래서 마지막 수단은 캐시에 의존하지 않는다. 이 문자열은 서비스워커 안에
+ * 있으므로 캐시가 비어 있어도 반드시 나온다.
+ *
+ * 날짜는 넣지 않는다. 여기 적으면 static/offline.html과 따로 놀아 한쪽만
+ * 낡는다. 구체적인 일정은 캐시된 쪽(정상 경로)이 보여준다.
+ */
+const FALLBACK_HTML = `<!doctype html><html lang="ko"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>정기 점검 중</title><style>
+:root{color-scheme:light dark;--bg:#fff;--fg:#212529;--dim:#868e96}
+@media(prefers-color-scheme:dark){:root{--bg:#1a1b1e;--fg:#e5e7eb;--dim:#9ca3af}}
+html,body{margin:0;height:100%}
+body{background:var(--bg);color:var(--fg);display:flex;align-items:center;justify-content:center;
+text-align:center;padding:1.5rem;font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Malgun Gothic",sans-serif}
+h1{font-size:1.25rem;margin:0 0 .5rem}p{margin:0;color:var(--dim);font-size:.9375rem;line-height:1.6}
+</style></head><body><main><div style="font-size:3rem;line-height:1">🛠️</div>
+<h1>정기 점검 중입니다</h1><p>서버 점검 중이라 잠시 접속할 수 없습니다.<br>점검이 끝나면 그대로 다시 열립니다.</p>
+</main></body></html>`;
+
+function maintenanceResponse(): Response {
+	return new Response(FALLBACK_HTML, {
+		status: 503,
+		headers: { 'content-type': 'text/html; charset=utf-8' }
+	});
+}
+
 self.addEventListener('install', (event) => {
 	async function addFilesToCache() {
 		const cache = await caches.open(CACHE);
-		await cache.addAll([...ASSETS]);
+
+		// 안내 페이지부터, 따로 캐시한다.
+		//
+		// 예전에는 전부 cache.addAll 한 번으로 넣었는데, addAll은 하나라도 실패하면
+		// 통째로 거부된다. 에셋이 197개라 그중 하나만 어긋나도 아무것도 캐시되지
+		// 않고, 아래 activate가 옛 캐시까지 지워서 결국 빈 상태가 된다.
+		// 가장 중요한 파일이 가장 덜 중요한 파일 하나 때문에 사라지면 안 된다.
+		await cache.add(OFFLINE_PAGE).catch(() => {});
+
+		// 나머지는 하나씩, 실패를 허용한다. 일부가 빠져도 앱은 네트워크로 받으면
+		// 되지만, 통째로 비는 것은 복구할 방법이 없다.
+		// [...Set]으로 펼친다. Set.values().map()은 이터레이터 헬퍼라 구형 브라우저에
+		// 없고, 서비스워커가 설치 단계에서 죽으면 캐시가 통째로 비는 쪽이 된다.
+		await Promise.all([...ASSETS].map((asset) => cache.add(asset).catch(() => {})));
 	}
 
-	event.waitUntil(addFilesToCache());
-	// 새 SW가 설치되면 즉시 활성화 (대기 상태 건너뜀)
-	(self as any).skipWaiting();
+	// 안내 페이지가 캐시된 뒤에 활성화한다. skipWaiting을 먼저 부르면 캐시가
+	// 채워지기 전에 이 워커가 페이지를 넘겨받아, 그 사이 서버가 멈추면
+	// 보여줄 것이 없다.
+	event.waitUntil(addFilesToCache().then(() => (self as any).skipWaiting()));
 });
 
 self.addEventListener('activate', (event) => {
@@ -80,10 +128,10 @@ self.addEventListener('fetch', (e) => {
 	if (event.request.mode === 'navigate') {
 		event.respondWith(
 			fetch(event.request).catch(async () => {
+				// 캐시에 없어도(설치 직후이거나 캐시가 비워진 경우) 반드시 무언가
+				// 보여준다. Response.error()를 돌려주면 PWA에서는 흰 화면이 된다.
 				const cached = await caches.match(OFFLINE_PAGE);
-				// 캐시에 없으면(설치 전이거나 캐시가 비워진 경우) 브라우저 기본
-				// 오류 화면으로 넘긴다. 빈 응답을 만들어 주면 더 헷갈린다.
-				return cached ?? Response.error();
+				return cached ?? maintenanceResponse();
 			})
 		);
 		return;
