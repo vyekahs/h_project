@@ -10,6 +10,7 @@ import { getLessonById, LESSONS } from '$lib/games/tichu/tutorial/tutorialScenar
 import type { TutorialStep } from '$lib/games/tichu/tutorial/tutorialTypes';
 import { trackGameStart } from '$lib/games/utils';
 import { resetDecisionLog, observePhase, observeState, observeEvent } from './decisionLog';
+import { loadSetupPrefs, saveSetupPrefs } from './setupPrefs';
 
 export type GameView = 'setup' | 'game' | 'tutorial';
 export type ToastType = 'info' | 'success' | 'error' | 'warning';
@@ -28,10 +29,16 @@ export function createTichuGameState() {
 	let engine = $state<LocalGameEngine | null>(null);
 	let stateVersion = $state(0); // incremented on every engine state change to trigger reactivity
 
-	// Setup state
-	let partnerStrategy = $state<AiStrategy>('aggressive');
-	let aiSpeed = $state<AiSpeed>('normal');
-	let targetScore = $state(1000);
+	// Setup state — 지난번에 고른 설정에서 시작한다 (setupPrefs.ts)
+	const savedSetup = loadSetupPrefs();
+	let partnerStrategy = $state<AiStrategy>(savedSetup.partnerStrategy);
+	let aiSpeed = $state<AiSpeed>(savedSetup.aiSpeed);
+	let targetScore = $state(savedSetup.targetScore);
+
+	/** 지금 설정을 다음 방문 때도 쓰도록 남긴다 */
+	function rememberSetup() {
+		saveSetupPrefs({ partnerStrategy, aiSpeed, targetScore });
+	}
 
 	// UI state
 	let selectedCards = $state<Set<string>>(new Set());
@@ -331,6 +338,8 @@ export function createTichuGameState() {
 
 	function startGame() {
 		trackGameStart('tichu', 'classic');
+		// 고르지 않고 그대로 시작해도(이어하기에서 넘어온 설정 등) 이 판의 설정을 남긴다
+		rememberSetup();
 		if (engine) {
 			engine.destroy();
 		}
@@ -836,11 +845,11 @@ export function createTichuGameState() {
 		// View & setup
 		get view() { return view; },
 		get partnerStrategy() { return partnerStrategy; },
-		set partnerStrategy(v: AiStrategy) { partnerStrategy = v; },
+		set partnerStrategy(v: AiStrategy) { partnerStrategy = v; rememberSetup(); },
 		get aiSpeed() { return aiSpeed; },
-		set aiSpeed(v: AiSpeed) { aiSpeed = v; },
+		set aiSpeed(v: AiSpeed) { aiSpeed = v; rememberSetup(); },
 		get targetScore() { return targetScore; },
-		set targetScore(v: number) { targetScore = v; },
+		set targetScore(v: number) { targetScore = v; rememberSetup(); },
 
 		// Game state (derived from engine)
 		// Access stateVersion to subscribe to engine state changes in components
