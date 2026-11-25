@@ -1,8 +1,8 @@
 <script lang="ts">
-	import type { AiStrategy, AiSpeed } from '$lib/games/tichu/ai/types';
 	import { STRATEGY_PRESETS } from '$lib/games/tichu/ai/presets';
 	import type { createTichuGameState } from '../gameState.svelte';
 	import LessonSelect from './LessonSelect.svelte';
+	import { SPEED_OPTIONS, SCORE_OPTIONS } from '../setupPrefs';
 
 
 	interface Props {
@@ -12,14 +12,6 @@
 	}
 
 	const { game, user, isAdmin }: Props = $props();
-
-	const speedOptions: { id: AiSpeed; label: string }[] = [
-		{ id: 'fast', label: '빠름' },
-		{ id: 'normal', label: '보통' },
-		{ id: 'slow', label: '느림' },
-	];
-
-	const scoreOptions = [300, 500, 700, 1000];
 
 	let forceSetup = $state(false);
 	let showSetup = $derived(!game.savedGameAvailable || forceSetup);
@@ -103,7 +95,7 @@
 				<section class="section">
 					<h2 class="section-title">속도</h2>
 					<div class="speed-row">
-						{#each speedOptions as opt}
+						{#each SPEED_OPTIONS as opt}
 							<button
 								class="speed-btn"
 								class:selected={game.aiSpeed === opt.id}
@@ -119,7 +111,7 @@
 				<section class="section">
 					<h2 class="section-title">목표 점수</h2>
 					<div class="score-row">
-						{#each scoreOptions as score}
+						{#each SCORE_OPTIONS as score}
 							<button
 								class="score-btn"
 								class:selected={game.targetScore === score}
